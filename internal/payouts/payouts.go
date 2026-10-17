@@ -466,6 +466,9 @@ func (s *Service) handlePoll(ctx context.Context, raw json.RawMessage) error {
 		}
 		return err
 	}
+	if err := payoutIsOurs(p, snap); err != nil {
+		return jobs.Permanent(err) // not ours: polling again cannot fix that; the payout stays as it is
+	}
 	return s.apply(ctx, p.ID, snap)
 }
 
