@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+
+	"github.com/paymux/paymux/internal/routing"
 )
 
 // Level says where a setting may be set (spec section 8a, "Level" column).
@@ -52,6 +54,13 @@ func Lookup(key string) (Def, bool) {
 
 const orgApp = LevelOrg | LevelApp
 
+// defaultRouting is spec section 8: INR to razorpay, zoho, payu; BDT to
+// razorpay, whop; everything else to razorpay, whop.
+const defaultRouting = `{"rules":[` +
+	`{"name":"inr-default","when":{"currency":["INR"]},"action":{"kind":"route","targets":[{"connector":"razorpay"},{"connector":"zoho"},{"connector":"payu"}]}},` +
+	`{"name":"bdt-default","when":{"currency":["BDT"]},"action":{"kind":"route","targets":[{"connector":"razorpay"},{"connector":"whop"}]}}],` +
+	`"catch_all":{"name":"catch-all","when":{},"action":{"kind":"route","targets":[{"connector":"razorpay"},{"connector":"whop"}]}}}`
+
 // The built-in defaults live here, in code (spec section 8a). They are copied
 // into the org values on first start.
 //
@@ -64,7 +73,7 @@ const orgApp = LevelOrg | LevelApp
 // TODO(spec): the UPI cap of 3 dunning retries per cycle is enforced by the
 // subscriptions lane, which knows the mandate method.
 var defs = []Def{
-	{"routing", `{"rules":[{"currency":"INR","connectors":["razorpay","zoho","payu"]},{"currency":"BDT","connectors":["razorpay","whop"]}],"catch_all":{"connectors":["razorpay","whop"]}}`, orgApp, validRouting},
+	{"routing", defaultRouting, orgApp, validRouting},
 	{"duplicate_payment_action", `"review"`, orgApp, oneOf("review", "auto_refund")},
 	{"billing_details", `"state_required"`, orgApp, oneOf("off", "state_required", "optional", "required")},
 	{"payment_ttl", `60`, orgApp, intRange(10, 7*24*60)}, // minutes
@@ -249,32 +258,46 @@ func validWindows(raw json.RawMessage) error {
 	return nil
 }
 
-var currencyRE = regexp.MustCompile(`^[A-Z]{3}$`)
+func validAction(a routing.Action) error {
+	switch a.Kind {
+	case "reject":
+		return nil
+	case "route":
+		if len(a.Targets) == 0 {
+			return fmt.Errorf("a route action needs targets")
+		}
+		for _, t := range a.Targets {
+			if t.Connector == "" && t.AccountID == "" {
+				return fmt.Errorf("each target needs a connector or an account_id")
+			}
+		}
+		return nil
+	}
+	return fmt.Errorf("action kind must be route or reject")
+}
 
+// validRouting checks the routing document: {"rules": [Rule...], "catch_all":
+// Rule}. The org value is read as the org rules plus the catch-all; an app
+// override supplies the app rules. catch_all is optional.
 func validRouting(raw json.RawMessage) error {
 	var v struct {
-		Rules []struct {
-			Currency   string   `json:"currency"`
-			Connectors []string `json:"connectors"`
-		} `json:"rules"`
-		CatchAll *struct {
-			Connectors []string `json:"connectors"`
-			Reject     bool     `json:"reject"`
-		} `json:"catch_all"`
+		Rules    []routing.Rule `json:"rules"`
+		CatchAll *routing.Rule  `json:"catch_all"`
 	}
 	if err := decodeStrict(raw, &v); err != nil {
 		return err
 	}
-	if v.CatchAll == nil || v.Rules == nil {
-		return fmt.Errorf("rules and catch_all are required")
+	if v.Rules == nil {
+		return fmt.Errorf("rules is required (use [] for none)")
 	}
-	for _, r := range v.Rules {
-		if !currencyRE.MatchString(r.Currency) || len(r.Connectors) == 0 || slices.Contains(r.Connectors, "") {
-			return fmt.Errorf("each rule needs an upper-case ISO currency and at least one connector")
+	rules := v.Rules
+	if v.CatchAll != nil {
+		rules = append(rules, *v.CatchAll)
+	}
+	for _, r := range rules {
+		if err := validAction(r.Action); err != nil {
+			return fmt.Errorf("rule %q: %v", r.Name, err)
 		}
-	}
-	if !v.CatchAll.Reject && (len(v.CatchAll.Connectors) == 0 || slices.Contains(v.CatchAll.Connectors, "")) {
-		return fmt.Errorf("catch_all needs connectors or reject")
 	}
 	return nil
 }

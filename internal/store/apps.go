@@ -85,3 +85,9 @@ func TouchAPIKey(ctx context.Context, tx Tx, id string, now time.Time, olderThan
 		WHERE id = ? AND (last_used_at IS NULL OR last_used_at < ?)`, ms(now), id, ms(now.Add(-olderThan)))
 	return err
 }
+
+// GetAppInOrg loads an app by id, but only if it belongs to orgID; any other
+// org's app is ErrNotFound.
+func GetAppInOrg(ctx context.Context, q Queryer, orgID, id string) (App, error) {
+	return scanApp(q.QueryRowContext(ctx, "SELECT "+appCols+" FROM apps WHERE id = ? AND org_id = ?", id, orgID))
+}

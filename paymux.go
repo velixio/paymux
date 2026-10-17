@@ -3,6 +3,7 @@ package paymux
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,9 +15,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/paymux/paymux/internal/checkout"
 	"github.com/paymux/paymux/internal/config"
+	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/dashboard"
+	"github.com/paymux/paymux/internal/domains"
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/httpapi"
 	"github.com/paymux/paymux/internal/inbound"
@@ -26,12 +30,15 @@ import (
 	"github.com/paymux/paymux/internal/metrics"
 	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/outbound"
+	"github.com/paymux/paymux/internal/paypage"
+	"github.com/paymux/paymux/internal/routing"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/server"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/web"
 	"github.com/paymux/paymux/migrations"
+	"github.com/paymux/paymux/pkg/connector"
 )
 
 // Version is the build version; overridden via -ldflags -X.
@@ -52,25 +59,28 @@ type App struct {
 	emitter events.Emitter // nil means the outbound service
 
 	verifiers inbound.VerifierFunc
+	connHTTP  func(store.ProviderAccount, connector.Info, []string) *http.Client
 
 	mu          sync.Mutex
 	addr, iaddr string
 }
 
-// WithVerifiers sets how inbound webhooks find the Verifier of a provider
-// account. The default knows no accounts (every /hooks/{id} is a 404); the
-// connector lane supplies the real lookup.
+// WithVerifiers overrides how inbound webhooks find the Verifier of a provider
+// account. The default is each account's connector (VerifyWebhook).
 func WithVerifiers(f inbound.VerifierFunc) Option { return func(a *App) { a.verifiers = f } }
-
-// errNotWired fails provider-event jobs until the connector lane supplies
-// their processing, so they retry instead of being silently dropped.
-var errNotWired = errors.New("provider event processing is not wired yet")
 
 // Option customises an App.
 type Option func(*App)
 
 // WithLogger sets the logger. The default writes redacted JSON to stderr.
 func WithLogger(l *slog.Logger) Option { return func(a *App) { a.log = l } }
+
+// WithConnectorHTTP overrides the HTTP client given to each connector (tests
+// point connectors at a fake provider). The default is
+// connector.NewHTTPClient with per-account rate limiting and log redaction.
+func WithConnectorHTTP(f func(pa store.ProviderAccount, info connector.Info, secretValues []string) *http.Client) Option {
+	return func(a *App) { a.connHTTP = f }
+}
 
 // WithEmitter replaces the domain-event emitter. The default is the outbound
 // webhooks service.
@@ -87,9 +97,6 @@ func New(cfg config.Config, opts ...Option) (*App, error) {
 	}
 	if a.log == nil {
 		a.log = logging.New(os.Stderr, slog.LevelInfo)
-	}
-	if a.verifiers == nil {
-		a.verifiers = func(context.Context, string) (inbound.Verifier, error) { return nil, inbound.ErrUnknownAccount }
 	}
 	return a, nil
 }
@@ -146,25 +153,41 @@ func (a *App) Start(ctx context.Context) error {
 	if a.emitter != nil {
 		emitter = a.emitter
 	}
-	core.RegisterJobs(q)
+	breaker := routing.NewBreaker(nil)
+	rt := checkout.NewRouting(breaker)
+	conns := connectors.New(connectors.Options{DB: db, Box: box, BaseURL: a.cfg.BaseURL, Logger: a.log, HTTPClient: a.connHTTP})
 	// GST invoicing: documents are issued by hooks inside the transaction in
 	// which a payment or refund succeeds.
 	inv := invoice.New(invoice.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter, Mailer: notify.New(a.cfg),
 		BaseURL: a.cfg.BaseURL.String()})
 	inv.RegisterJobs(q)
-	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter,
+	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter, Router: rt,
 		OnPaymentSucceeded: inv.OnPaymentSucceeded, OnRefundSucceeded: inv.OnRefundSucceeded})
+	flow := checkout.New(checkout.Options{DB: db, Core: svc, Conns: conns, Routing: rt, Breaker: breaker, Logger: a.log})
+	if err := flow.Register(q); err != nil {
+		return err
+	}
 	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv})
 	if err != nil {
 		return err
 	}
-
-	// TODO(spec): the connector lane replaces these with real processing
-	// (ParseWebhook, Fetch*, apply transition) for the §6.4 jobs.
-	for _, kind := range []string{inbound.JobProcess, inbound.JobFetchOnly} {
-		q.Register(kind, func(context.Context, json.RawMessage) error { return errNotWired })
+	verifiers := a.verifiers
+	if verifiers == nil {
+		verifiers = conns.Verifiers()
 	}
-	hooks := inbound.New(inbound.Options{DB: db, Queue: q, Verifiers: a.verifiers, Logger: a.log})
+	hooks := inbound.New(inbound.Options{DB: db, Queue: q, Verifiers: verifiers, Logger: a.log})
+
+	overlay, err := web.NewOverlay(web.Embedded(), filepath.Join(a.cfg.DataDir, "custom"))
+	if err != nil {
+		return err
+	}
+	renderer, err := web.NewRenderer(overlay)
+	if err != nil {
+		return err
+	}
+	csrf := sha256.Sum256(append([]byte("paymux-pay-csrf-key|"), a.cfg.MasterKey...))
+	pay := paypage.New(paypage.Options{Core: svc, Flow: flow, Settings: set, Renderer: renderer,
+		CSRFKey: csrf[:], Logger: a.log})
 
 	reg := metrics.NewRegistry()
 	a.registerMetrics(reg, db, dialect)
@@ -204,20 +227,25 @@ func (a *App) Start(ctx context.Context) error {
 	})
 
 	api.Register(srv)
+	pay.Register(srv)
 	srv.HandleFunc("POST /hooks/{provider_account_id}", hooks.ServeHTTP)
 
-	// Operator dashboard and the shared static assets. Files in
-	// PAYMUX_DATA_DIR/custom shadow the embedded templates and assets.
-	overlay, err := web.NewOverlay(web.Embedded(), filepath.Join(a.cfg.DataDir, "custom"))
-	if err != nil {
-		return err
-	}
-	renderer, err := web.NewRenderer(overlay)
-	if err != nil {
-		return err
-	}
+	// Custom domains serve the customer routes only; everything else stays on
+	// the base host.
+	customerMux := http.NewServeMux()
+	pay.Register(paypage.StdMux(customerMux))
+	customerMux.HandleFunc("GET /i/{id}", inv.ServeHosted)
+	customerMux.Handle("GET /assets/", web.AssetHandler(overlay))
+	baseHost := a.cfg.BaseURL.Host
+	public := hostRouter(&domains.Router{BaseHost: baseHost, Lookup: svc, Base: srv.Handler(), Customer: customerMux}, srv.Handler())
+	internalMux := http.NewServeMux()
+	internalMux.Handle("GET /internal/tls-allow", domains.TLSAllowHandler(baseHost, svc))
+	internalMux.Handle("/", srv.InternalHandler())
+
+	// Operator dashboard and the shared static assets.
 	dash, err := dashboard.New(dashboard.Options{DB: db, Box: box, Renderer: renderer, MasterKey: a.cfg.MasterKey,
-		BaseURL: a.cfg.BaseURL, DevSkip2FA: a.cfg.DevSkip2FA, Logger: a.log})
+		BaseURL: a.cfg.BaseURL, DevSkip2FA: a.cfg.DevSkip2FA, Logger: a.log,
+		Core: svc, Settings: set, Outbound: out, Location: a.cfg.Location})
 	if err != nil {
 		return err
 	}
@@ -239,8 +267,8 @@ func (a *App) Start(ctx context.Context) error {
 	a.addr, a.iaddr = ln.Addr().String(), iln.Addr().String()
 	a.mu.Unlock()
 
-	main := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: readHeaderTimeout}
-	internal := &http.Server{Handler: srv.InternalHandler(), ReadHeaderTimeout: readHeaderTimeout}
+	main := &http.Server{Handler: public, ReadHeaderTimeout: readHeaderTimeout}
+	internal := &http.Server{Handler: internalMux, ReadHeaderTimeout: readHeaderTimeout}
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -270,6 +298,19 @@ func (a *App) Start(ctx context.Context) error {
 		return a.stop(main, internal, errc, workers-1, firstErr)
 	}
 	return a.stop(main, internal, errc, workers, nil)
+}
+
+// hostRouter sends requests by Host: the base host and custom domains go
+// through router, but health probes and requests addressed by IP (load
+// balancers, local tools) always reach the base handler.
+func hostRouter(router, base http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" || net.ParseIP(domains.Normalize(r.Host)) != nil {
+			base.ServeHTTP(w, r)
+			return
+		}
+		router.ServeHTTP(w, r)
+	})
 }
 
 // stop drains the listeners gracefully and waits for pending workers.

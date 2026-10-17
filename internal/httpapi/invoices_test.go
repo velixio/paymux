@@ -43,11 +43,11 @@ func newInvoiceFixture(t *testing.T, db *store.DB) *invoiceFixture {
 	f := &fixture{t: t, db: db, svc: svc, pa: "pa_live"}
 	now := time.Now()
 	var err error
-	f.app, err = svc.CreateApp(ctx, audit.System, core.CreateAppInput{Name: "One", Slug: "one"})
+	f.app, err = svc.CreateApp(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, core.CreateAppInput{Name: "One", Slug: "one"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := svc.CreateApp(ctx, audit.System, core.CreateAppInput{Name: "Two", Slug: "two"})
+	other, err := svc.CreateApp(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, core.CreateAppInput{Name: "Two", Slug: "two"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,9 +66,9 @@ func newInvoiceFixture(t *testing.T, db *store.DB) *invoiceFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.liveKey, _, _ = svc.CreateAPIKey(ctx, audit.System, f.app.ID, "live")
-	f.testKey, _, _ = svc.CreateAPIKey(ctx, audit.System, f.app.ID, "test")
-	f.otherKey, _, _ = svc.CreateAPIKey(ctx, audit.System, other.ID, "live")
+	f.liveKey, _, _ = svc.CreateAPIKey(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, f.app.ID, "live")
+	f.testKey, _, _ = svc.CreateAPIKey(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, f.app.ID, "test")
+	f.otherKey, _, _ = svc.CreateAPIKey(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, other.ID, "live")
 	box, _ := secrets.NewBox(bytes.Repeat([]byte{7}, 32))
 	base, _ := url.Parse("https://pay.example.com")
 	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: base, Invoices: inv})

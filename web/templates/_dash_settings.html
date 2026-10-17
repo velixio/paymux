@@ -1,0 +1,23 @@
+{{define "dash_settings_table"}}{{with .Table}}
+<table class="grid settings">
+<thead><tr><th>Setting</th><th>Effective value</th><th>Source</th>{{if .CanWrite}}<th>Change</th>{{end}}</tr></thead>
+<tbody>
+{{range .Rows}}<tr id="setting-{{.Key}}">
+<td><code>{{.Key}}</code></td>
+<td><pre>{{.Value}}</pre></td>
+<td>{{.Source}}</td>
+{{if $.Table.CanWrite}}<td>
+<form method="post" action="{{$.Table.Base}}/{{.Key}}">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<textarea class="json" name="value" aria-label="New value of {{.Key}}" spellcheck="false">{{.Value}}</textarea>
+<button class="linkbtn" type="submit">Save</button>
+</form>
+{{if .Overridden}}<form class="inline" method="post" action="{{$.Table.Base}}/{{.Key}}/reset">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<button class="linkbtn" type="submit">Reset to org</button>
+</form>{{end}}
+</td>{{end}}
+</tr>{{end}}
+</tbody>
+</table>
+{{end}}{{end}}

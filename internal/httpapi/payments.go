@@ -30,16 +30,15 @@ type billingReq struct {
 }
 
 type createPaymentReq struct {
-	Amount      *int64            `json:"amount"`
-	Currency    string            `json:"currency"`
-	OrderRef    string            `json:"order_ref"`
-	Description string            `json:"description"`
-	Customer    *customerReq      `json:"customer"`
-	Metadata    map[string]string `json:"metadata"`
-	ReturnURL   string            `json:"return_url"`
-	// Accepted for forward compatibility; routing (section 8) consumes them.
-	AllowedConnectors []string `json:"allowed_connectors"`
-	Country           string   `json:"country"`
+	Amount            *int64            `json:"amount"`
+	Currency          string            `json:"currency"`
+	OrderRef          string            `json:"order_ref"`
+	Description       string            `json:"description"`
+	Customer          *customerReq      `json:"customer"`
+	Metadata          map[string]string `json:"metadata"`
+	ReturnURL         string            `json:"return_url"`
+	AllowedConnectors []string          `json:"allowed_connectors"`
+	Country           string            `json:"country"`
 }
 
 type createdPaymentResp struct {
@@ -60,7 +59,8 @@ func (a *API) createPayment(w http.ResponseWriter, r *http.Request, pr core.Prin
 		return
 	}
 	in := core.CreatePaymentInput{Scope: scope(pr), Amount: *req.Amount, Currency: req.Currency, OrderRef: req.OrderRef,
-		Description: req.Description, Metadata: req.Metadata, ReturnURL: req.ReturnURL}
+		Description: req.Description, Metadata: req.Metadata, ReturnURL: req.ReturnURL,
+		Country: req.Country, AllowedConnectors: req.AllowedConnectors}
 	if c := req.Customer; c != nil {
 		in.Customer = &core.CustomerInput{ExternalRef: c.ExternalRef, Name: c.Name, Email: c.Email, Phone: c.Phone}
 		if b := c.Billing; b != nil {
