@@ -121,6 +121,18 @@ type PayPage struct {
 	StateRequired, AddressRequired bool
 	// result
 	Title, Message, ReturnURL string
+	// the simulator's hosted page
+	Sim *SimPage
+}
+
+// SimPage is what the simulator's hosted checkout page shows.
+type SimPage struct {
+	Kind, Status, Currency, Amount string
+	// Action is where the buttons post; ReturnURL leads back to the merchant.
+	Action, ReturnURL string
+	// Open: the customer can still choose. Authorized: a capture is waiting.
+	// Waiting: a delayed success is on its way. Done: nothing left to choose.
+	Open, Authorized, Waiting, Done, Late bool
 }
 
 // AssetHandler serves static/ from fsys under /assets/.

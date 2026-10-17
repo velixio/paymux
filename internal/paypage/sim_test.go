@@ -35,7 +35,7 @@ var simLink = regexp.MustCompile(`/sim/([0-9A-Za-z]+)\?pa=(pa_[0-9a-z]+)`)
 // hosted simulator page; it returns the page path and the reference.
 func openSim(t *testing.T, e *env) (path, ref, pa string, payID string) {
 	t.Helper()
-	c := e.create(core.CreatePaymentInput{Amount: 49900, Currency: "INR"})
+	c := e.create(core.CreatePaymentInput{Amount: 49900, Currency: "USD"})
 	r := e.do("GET", c.path(), "", nil)
 	loc := r.header.Get("Location")
 	m := simLink.FindStringSubmatch(loc)
@@ -57,7 +57,7 @@ func TestSimulatorPageOffersTheChoicesAndReturnsThroughReturn(t *testing.T) {
 		if page.status != 200 || !strings.Contains(page.header.Get("Cache-Control"), "no-store") {
 			t.Fatalf("page: %d %v", page.status, page.header)
 		}
-		for _, want := range []string{"Succeed", "Fail", "Pending", "Authorize", "Late success", "INR", "499.00", `action="/sim/` + ref, `name="action"`, "test mode"} {
+		for _, want := range []string{"Succeed", "Fail", "Pending", "Authorize", "Late success", "USD", "499.00", `action="/sim/` + ref, `name="action"`, "test mode"} {
 			if !strings.Contains(page.body, want) {
 				t.Errorf("page lacks %q:\n%s", want, page.body)
 			}

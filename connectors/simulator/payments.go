@@ -10,6 +10,14 @@ import (
 	"github.com/paymux/paymux/pkg/connector"
 )
 
+// Errors a caller can tell apart.
+var (
+	// ErrAlreadyDecided: the action does not apply to the payment's state.
+	ErrAlreadyDecided = errors.New("simulator: the payment is not in a state that action applies to")
+	// ErrUnknownAction: not one of the Action values.
+	ErrUnknownAction = errors.New("simulator: unknown action")
+)
+
 // Payment record kinds.
 const (
 	kindPayment  = "payment"       // a one-time checkout
@@ -359,18 +367,18 @@ func (c *conn) decide(ctx context.Context, p *payRec, a Action, delay time.Durat
 	switch a {
 	case ActionSucceed, ActionPendingSucceed, ActionLateSucceed, ActionAuthorize, ActionFail:
 		if !open {
-			return nil, 0, fmt.Errorf("simulator: the payment is already %s", p.Status)
+			return nil, 0, fmt.Errorf("%w: it is already %s", ErrAlreadyDecided, p.Status)
 		}
 	case ActionCapture:
 		if p.Status != stAuthorized {
-			return nil, 0, fmt.Errorf("simulator: only an authorised payment can be captured, this one is %s", p.Status)
+			return nil, 0, fmt.Errorf("%w: only an authorised payment can be captured, this one is %s", ErrAlreadyDecided, p.Status)
 		}
 	case ActionCancel:
 		if !open {
-			return nil, 0, fmt.Errorf("simulator: the payment is already %s", p.Status)
+			return nil, 0, fmt.Errorf("%w: it is already %s", ErrAlreadyDecided, p.Status)
 		}
 	default:
-		return nil, 0, fmt.Errorf("simulator: unknown action %q", a)
+		return nil, 0, fmt.Errorf("%w %q", ErrUnknownAction, a)
 	}
 	if p.PaymentID == "" && a != ActionCancel {
 		p.PaymentID = newID("sim_pay_")

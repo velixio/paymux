@@ -364,3 +364,9 @@ func (s *Service) HandleReturn(ctx context.Context, accountID, providerRef strin
 	}
 	return res.Payment, nil
 }
+
+// LiveConnector returns the built connector of a provider account, for the few
+// pages that talk to a connector directly (the simulator's hosted page).
+func (s *Service) LiveConnector(ctx context.Context, accountID string) (connectors.Live, error) {
+	return s.o.Conns.Get(ctx, accountID)
+}
