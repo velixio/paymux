@@ -50,8 +50,16 @@ type Enqueuer interface {
 	Enqueue(ctx context.Context, tx store.Tx, j jobs.Job) error
 }
 
+// Alerter raises ops alerts (*notify.Alerts).
+type Alerter interface {
+	Raise(ctx context.Context, al notify.Alert) error
+}
+
 // Options configures a Service.
 type Options struct {
+	// Alerter receives the alerts for tax exceptions (pos_defaulted,
+	// export_igst, fx_pending, credit_note_cutoff_passed). Nil raises none.
+	Alerter  Alerter
 	DB       *store.DB
 	Settings *settings.Service
 	Jobs     Enqueuer
@@ -76,6 +84,7 @@ type Service struct {
 	jobs     Enqueuer
 	emitter  events.Emitter
 	mailer   notify.Mailer
+	alerter  Alerter
 	baseURL  string
 	now      func() time.Time
 	isMoR    func(string) bool
@@ -115,7 +124,7 @@ func New(o Options) *Service {
 			return ok && info.MerchantOfRecord
 		}
 	}
-	return &Service{db: o.DB, settings: o.Settings, jobs: o.Jobs, emitter: o.Emitter, mailer: o.Mailer,
+	return &Service{db: o.DB, settings: o.Settings, jobs: o.Jobs, emitter: o.Emitter, mailer: o.Mailer, alerter: o.Alerter,
 		baseURL: strings.TrimRight(o.BaseURL, "/"), now: o.Now, isMoR: o.IsMerchantOfRecord, pagesOpt: o.Pages}
 }
 

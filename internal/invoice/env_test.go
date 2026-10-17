@@ -55,7 +55,31 @@ func (m *recMailer) Send(_ context.Context, msg notify.Message) error {
 
 func (m *recMailer) count() int { m.mu.Lock(); defer m.mu.Unlock(); return len(m.sent) }
 
+// recAlerts records the alerts the invoice service raises.
+type recAlerts struct {
+	mu  sync.Mutex
+	got []notify.Alert
+}
+
+func (r *recAlerts) Raise(_ context.Context, al notify.Alert) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.got = append(r.got, al)
+	return nil
+}
+
+func (r *recAlerts) kinds() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []string
+	for _, a := range r.got {
+		out = append(out, a.Kind)
+	}
+	return out
+}
+
 type env struct {
+	alerts *recAlerts
 	t      *testing.T
 	db     *store.DB
 	core   *core.Service
@@ -103,7 +127,7 @@ type tweak func(*store.TaxEntity, *store.AppTaxProfile)
 // merchant-of-record one.
 func newEnv(t *testing.T, db *store.DB, tw ...tweak) *env {
 	t.Helper()
-	e := &env{t: t, db: db, set: settings.New(db), mailer: &recMailer{}, now: time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)}
+	e := &env{t: t, db: db, set: settings.New(db), mailer: &recMailer{}, alerts: &recAlerts{}, now: time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)}
 	e.q = jobs.New(db, jobs.Options{})
 	emitter := events.EmitterFunc(func(_ context.Context, _ store.Tx, ev events.Event) error {
 		e.mu.Lock()
@@ -111,7 +135,7 @@ func newEnv(t *testing.T, db *store.DB, tw ...tweak) *env {
 		e.events = append(e.events, ev)
 		return nil
 	})
-	e.inv = invoice.New(invoice.Options{DB: db, Settings: e.set, Jobs: e.q, Emitter: emitter, Mailer: e.mailer, BaseURL: baseURL,
+	e.inv = invoice.New(invoice.Options{DB: db, Settings: e.set, Jobs: e.q, Emitter: emitter, Mailer: e.mailer, BaseURL: baseURL, Alerter: e.alerts,
 		Now: e.clock, IsMerchantOfRecord: func(name string) bool { return name == "mor" }})
 	e.inv.RegisterJobs(e.q)
 	e.core = core.NewService(core.Options{DB: db, Settings: e.set, Jobs: e.q, Emitter: emitter, Now: e.clock,
