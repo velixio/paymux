@@ -36,7 +36,10 @@ func validHost(h string) bool {
 // AddDomain registers a custom domain for an app (status pending). The first
 // domain of an app becomes its primary one. The returned Token is what the
 // activation check looks for at /.well-known/paymux/<token>.
-func (s *Service) AddDomain(ctx context.Context, actor audit.Actor, appID, host string) (store.Domain, error) {
+func (s *Service) AddDomain(ctx context.Context, actor audit.Actor, sc OrgScope, appID, host string) (store.Domain, error) {
+	if err := sc.validate(); err != nil {
+		return store.Domain{}, err
+	}
 	host = domains.Normalize(strings.TrimSpace(host))
 	if !validHost(host) {
 		return store.Domain{}, newErr(ErrInvalid, "%q is not a valid host name", host)
@@ -47,7 +50,7 @@ func (s *Service) AddDomain(ctx context.Context, actor audit.Actor, appID, host 
 	}
 	var d store.Domain
 	err := s.db.Write(ctx, func(tx store.Tx) error {
-		app, err := store.GetApp(ctx, tx, appID)
+		_, err := store.GetAppInOrg(ctx, tx, sc.OrgID, appID)
 		if err != nil {
 			return mapStoreErr(err, "app")
 		}
@@ -55,7 +58,7 @@ func (s *Service) AddDomain(ctx context.Context, actor audit.Actor, appID, host 
 		if err != nil {
 			return err
 		}
-		d = store.Domain{ID: ids.New("dom"), OrgID: app.OrgID, AppID: appID, Host: host, IsPrimary: n == 0,
+		d = store.Domain{ID: ids.New("dom"), OrgID: sc.OrgID, AppID: appID, Host: host, IsPrimary: n == 0,
 			Status: domains.StatusPending, Token: hex.EncodeToString(raw[:]), CreatedAt: s.nowUTC()}
 		if err := store.InsertDomain(ctx, tx, d); err != nil {
 			if errors.Is(err, store.ErrConflict) {
@@ -63,7 +66,7 @@ func (s *Service) AddDomain(ctx context.Context, actor audit.Actor, appID, host 
 			}
 			return err
 		}
-		return audit.Record(ctx, tx, audit.Entry{OrgID: app.OrgID, Actor: actor, Action: "domain.add", Target: d.ID,
+		return audit.Record(ctx, tx, audit.Entry{OrgID: sc.OrgID, Actor: actor, Action: "domain.add", Target: d.ID,
 			After: map[string]any{"app_id": appID, "host": host, "is_primary": d.IsPrimary}})
 	})
 	return d, err

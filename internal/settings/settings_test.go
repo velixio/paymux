@@ -70,13 +70,13 @@ func TestResolveOrder(t *testing.T) {
 		if v := resolve(t, s, app, "payment_ttl"); v.Source != settings.SourceOrg || string(v.Raw) != "120" {
 			t.Fatalf("org: %+v", v)
 		}
-		if err := s.SetApp(ctx, admin, app, "payment_ttl", json.RawMessage(` 30 `)); err != nil {
+		if err := s.SetApp(ctx, admin, store.DefaultOrgID, app, "payment_ttl", json.RawMessage(` 30 `)); err != nil {
 			t.Fatal(err)
 		}
 		if v := resolve(t, s, app, "payment_ttl"); v.Source != settings.SourceApp || string(v.Raw) != "30" {
 			t.Fatalf("app: %+v", v)
 		}
-		if err := s.ResetApp(ctx, admin, app, "payment_ttl"); err != nil {
+		if err := s.ResetApp(ctx, admin, store.DefaultOrgID, app, "payment_ttl"); err != nil {
 			t.Fatal(err)
 		}
 		if v := resolve(t, s, app, "payment_ttl"); v.Source != settings.SourceOrg || string(v.Raw) != "120" {
@@ -147,7 +147,7 @@ func TestSetValidation(t *testing.T) {
 		for _, c := range bad {
 			var err error
 			if c.appLevel {
-				err = s.SetApp(ctx, admin, app, c.key, json.RawMessage(c.val))
+				err = s.SetApp(ctx, admin, store.DefaultOrgID, app, c.key, json.RawMessage(c.val))
 			} else {
 				err = s.SetOrg(ctx, admin, org, c.key, json.RawMessage(c.val))
 			}
@@ -183,7 +183,7 @@ func TestSetValidation(t *testing.T) {
 func TestSetLevelsAndUnknownKeys(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		s, app := setup(t, db)
-		if err := s.SetApp(ctx, admin, app, "recon_time", json.RawMessage(`"04:00"`)); !errors.Is(err, settings.ErrWrongLevel) {
+		if err := s.SetApp(ctx, admin, store.DefaultOrgID, app, "recon_time", json.RawMessage(`"04:00"`)); !errors.Is(err, settings.ErrWrongLevel) {
 			t.Errorf("org-only key at app level: %v", err)
 		}
 		if err := s.SetOrg(ctx, admin, store.DefaultOrgID, "sac_code", json.RawMessage(`"998315"`)); !errors.Is(err, settings.ErrWrongLevel) {
@@ -195,10 +195,10 @@ func TestSetLevelsAndUnknownKeys(t *testing.T) {
 		if _, err := s.Resolve(ctx, app, "nope"); !errors.Is(err, settings.ErrUnknownKey) {
 			t.Errorf("unknown key resolve: %v", err)
 		}
-		if err := s.SetApp(ctx, admin, "app_missing", "payment_ttl", json.RawMessage(`30`)); err == nil {
+		if err := s.SetApp(ctx, admin, store.DefaultOrgID, "app_missing", "payment_ttl", json.RawMessage(`30`)); err == nil {
 			t.Error("unknown app accepted")
 		}
-		if err := s.SetApp(ctx, admin, app, "sac_code", json.RawMessage(`"998316"`)); err != nil {
+		if err := s.SetApp(ctx, admin, store.DefaultOrgID, app, "sac_code", json.RawMessage(`"998316"`)); err != nil {
 			t.Errorf("app-only key at app level: %v", err)
 		}
 	})
@@ -208,15 +208,15 @@ func TestSetWritesAuditEntry(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		s, app := setup(t, db)
 		_ = s.SeedOrg(ctx, store.DefaultOrgID)
-		if err := s.SetApp(ctx, admin, app, "payment_ttl", json.RawMessage(`45`)); err != nil {
+		if err := s.SetApp(ctx, admin, store.DefaultOrgID, app, "payment_ttl", json.RawMessage(`45`)); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(3 * time.Millisecond) // audit ids only order across milliseconds
-		if err := s.SetApp(ctx, admin, app, "payment_ttl", json.RawMessage(`50`)); err != nil {
+		if err := s.SetApp(ctx, admin, store.DefaultOrgID, app, "payment_ttl", json.RawMessage(`50`)); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(3 * time.Millisecond)
-		if err := s.ResetApp(ctx, admin, app, "payment_ttl"); err != nil {
+		if err := s.ResetApp(ctx, admin, store.DefaultOrgID, app, "payment_ttl"); err != nil {
 			t.Fatal(err)
 		}
 		var rows []store.AuditRow

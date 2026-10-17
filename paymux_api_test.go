@@ -38,11 +38,11 @@ func seedApp(t *testing.T, url, dataDir string) string {
 		t.Fatal(err)
 	}
 	svc := core.NewService(core.Options{DB: db, Settings: set})
-	app, err := svc.CreateApp(ctx, audit.System, core.CreateAppInput{Name: "E2E", Slug: "e2e"})
+	app, err := svc.CreateApp(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, core.CreateAppInput{Name: "E2E", Slug: "e2e"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	key, _, err := svc.CreateAPIKey(ctx, audit.System, app.ID, "test")
+	key, _, err := svc.CreateAPIKey(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, app.ID, "test")
 	if err != nil {
 		t.Fatal(err)
 	}

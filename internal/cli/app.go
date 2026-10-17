@@ -77,22 +77,23 @@ func runAppCommand(ctx context.Context, db *store.DB, sub, name, slug, appSlug, 
 		return err
 	}
 	set := settings.New(db)
-	if _, err := core.Bootstrap(ctx, db, set); err != nil {
+	org, err := core.Bootstrap(ctx, db, set)
+	if err != nil {
 		return err
 	}
+	sc := core.OrgScope{OrgID: org}
 	svc := core.NewService(core.Options{DB: db, Settings: set})
 
 	var app store.App
-	var err error
 	if sub == "create" {
-		if app, err = svc.CreateApp(ctx, cliActor, core.CreateAppInput{Name: name, Slug: slug, DefaultReturnURL: returnURL}); err != nil {
+		if app, err = svc.CreateApp(ctx, cliActor, sc, core.CreateAppInput{Name: name, Slug: slug, DefaultReturnURL: returnURL}); err != nil {
 			return err
 		}
 		fmt.Fprintf(stdout, "created app %s (slug %s, id %s)\n", app.Name, app.Slug, app.ID)
-	} else if app, err = svc.AppBySlug(ctx, appSlug); err != nil {
+	} else if app, err = svc.AppBySlug(ctx, sc, appSlug); err != nil {
 		return err
 	}
-	key, _, err := svc.CreateAPIKey(ctx, cliActor, app.ID, mode)
+	key, _, err := svc.CreateAPIKey(ctx, cliActor, sc, app.ID, mode)
 	if err != nil {
 		if sub == "create" {
 			err = errors.Join(err, fmt.Errorf("the app was created; run \"paymux app key --app %s --mode %s\" to get a key", app.Slug, mode))

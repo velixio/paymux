@@ -20,6 +20,8 @@ var (
 	ErrUnknownKey = errors.New("settings: unknown key")
 	// ErrInvalid means the value violates the setting's allowed range.
 	ErrInvalid = errors.New("settings: invalid value")
+	// ErrUnknownApp means the app does not exist in the given org.
+	ErrUnknownApp = errors.New("settings: unknown app")
 	// ErrWrongLevel means the key cannot be set at that level (org or app).
 	ErrWrongLevel = errors.New("settings: key cannot be set at this level")
 )
@@ -163,15 +165,15 @@ func (s *Service) SetOrg(ctx context.Context, actor audit.Actor, orgID, key stri
 }
 
 // SetApp validates and stores an app override and audits the change.
-func (s *Service) SetApp(ctx context.Context, actor audit.Actor, appID, key string, raw json.RawMessage) error {
+func (s *Service) SetApp(ctx context.Context, actor audit.Actor, orgID, appID, key string, raw json.RawMessage) error {
 	val, err := prepare(key, raw, LevelApp)
 	if err != nil {
 		return err
 	}
 	return s.db.Write(ctx, func(tx store.Tx) error {
-		app, err := store.GetApp(ctx, tx, appID)
+		app, err := store.GetAppInOrg(ctx, tx, orgID, appID)
 		if err != nil {
-			return fmt.Errorf("settings: app %s: %w", appID, err)
+			return fmt.Errorf("%w: %s", ErrUnknownApp, appID)
 		}
 		before, err := ResolveWith(ctx, tx, appID, key)
 		if err != nil {
@@ -187,14 +189,14 @@ func (s *Service) SetApp(ctx context.Context, actor audit.Actor, appID, key stri
 
 // ResetApp removes an app override so the app inherits the org value again.
 // It is a no-op (and writes no audit entry) when there is no override.
-func (s *Service) ResetApp(ctx context.Context, actor audit.Actor, appID, key string) error {
+func (s *Service) ResetApp(ctx context.Context, actor audit.Actor, orgID, appID, key string) error {
 	if _, ok := Lookup(key); !ok {
 		return fmt.Errorf("%w: %q", ErrUnknownKey, key)
 	}
 	return s.db.Write(ctx, func(tx store.Tx) error {
-		app, err := store.GetApp(ctx, tx, appID)
+		app, err := store.GetAppInOrg(ctx, tx, orgID, appID)
 		if err != nil {
-			return fmt.Errorf("settings: app %s: %w", appID, err)
+			return fmt.Errorf("%w: %s", ErrUnknownApp, appID)
 		}
 		old, found, err := store.GetAppSetting(ctx, tx, appID, key)
 		if err != nil || !found {

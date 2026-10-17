@@ -57,17 +57,17 @@ func newFixtureRouter(t *testing.T, db *store.DB, router core.Router) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.app, err = svc.CreateApp(ctx, audit.System, core.CreateAppInput{Name: "One", Slug: "one"})
+	f.app, err = svc.CreateApp(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, core.CreateAppInput{Name: "One", Slug: "one"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := svc.CreateApp(ctx, audit.System, core.CreateAppInput{Name: "Two", Slug: "two"})
+	other, err := svc.CreateApp(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, core.CreateAppInput{Name: "Two", Slug: "two"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.testKey, _, _ = svc.CreateAPIKey(ctx, audit.System, f.app.ID, "test")
-	f.liveKey, _, _ = svc.CreateAPIKey(ctx, audit.System, f.app.ID, "live")
-	f.otherKey, _, _ = svc.CreateAPIKey(ctx, audit.System, other.ID, "test")
+	f.testKey, _, _ = svc.CreateAPIKey(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, f.app.ID, "test")
+	f.liveKey, _, _ = svc.CreateAPIKey(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, f.app.ID, "live")
+	f.otherKey, _, _ = svc.CreateAPIKey(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, other.ID, "test")
 
 	box, err := secrets.NewBox(bytes.Repeat([]byte{7}, 32))
 	if err != nil {

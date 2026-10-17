@@ -210,26 +210,26 @@ func TestApplyRefundSnapshotIsAtomic(t *testing.T) {
 
 func TestAddDomainAndLookup(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
-		d, err := e.svc.AddDomain(ctx, audit.System, "app_1", "Pay.Example.org.")
+		d, err := e.svc.AddDomain(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, "app_1", "Pay.Example.org.")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if d.Host != "pay.example.org" || !d.IsPrimary || d.Status != "pending" || len(d.Token) < 32 {
 			t.Fatalf("domain %+v", d)
 		}
-		d2, err := e.svc.AddDomain(ctx, audit.System, "app_1", "checkout.example.org")
+		d2, err := e.svc.AddDomain(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, "app_1", "checkout.example.org")
 		if err != nil || d2.IsPrimary {
 			t.Errorf("second domain must not be primary: %+v %v", d2, err)
 		}
-		if _, err := e.svc.AddDomain(ctx, audit.System, "app_1", "pay.example.org"); !errors.Is(err, core.ErrConflict) {
+		if _, err := e.svc.AddDomain(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, "app_1", "pay.example.org"); !errors.Is(err, core.ErrConflict) {
 			t.Errorf("duplicate: %v", err)
 		}
 		for _, bad := range []string{"", "no spaces.example.org", "nodots", "-bad.example.org", "http://x.example.org", "a..b.example.org", "1.2.3.4"} {
-			if _, err := e.svc.AddDomain(ctx, audit.System, "app_1", bad); !errors.Is(err, core.ErrInvalid) {
+			if _, err := e.svc.AddDomain(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, "app_1", bad); !errors.Is(err, core.ErrInvalid) {
 				t.Errorf("%q: %v", bad, err)
 			}
 		}
-		if _, err := e.svc.AddDomain(ctx, audit.System, "app_x", "x.example.org"); !errors.Is(err, core.ErrNotFound) {
+		if _, err := e.svc.AddDomain(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, "app_x", "x.example.org"); !errors.Is(err, core.ErrNotFound) {
 			t.Errorf("missing app: %v", err)
 		}
 		var _ domains.Lookup = e.svc
