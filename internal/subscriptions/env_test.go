@@ -44,6 +44,8 @@ type rec struct {
 	payFn       func(connector.PaymentRef) (connector.PaymentSnapshot, error)
 	perAttempt  bool
 	nsub        int
+	fetchCalls  []string // ids FetchMandate was asked for
+	noReverse   bool     // the provider does not reverse the verification debit itself
 }
 
 func (r *rec) chargeCount() int { r.mu.Lock(); defer r.mu.Unlock(); return len(r.charges) }
@@ -57,7 +59,8 @@ type base struct {
 
 func (b base) Info() connector.Info {
 	return connector.Info{Name: b.name, Version: "1", DisplayName: b.name, Currencies: []string{"INR"}, SubscriptionModes: b.modes,
-		MandateLimits: b.limits, PreDebitPerAttempt: b.r.perAttempt, MandateSetupAmount: 100}
+		MandateLimits: b.limits, PreDebitPerAttempt: b.r.perAttempt, MandateSetupAmount: 100,
+		RefundsVerificationDebit: !b.r.noReverse}
 }
 func (b base) CreateCheckout(context.Context, connector.CheckoutRequest) (connector.CheckoutResult, error) {
 	return connector.CheckoutResult{}, connector.ErrUnsupported
@@ -91,6 +94,7 @@ func (c mandateConn) CreateMandateCheckout(_ context.Context, req connector.Mand
 func (c mandateConn) FetchMandate(_ context.Context, ref connector.MandateRef) (connector.MandateSnapshot, error) {
 	c.r.mu.Lock()
 	defer c.r.mu.Unlock()
+	c.r.fetchCalls = append(c.r.fetchCalls, ref.ProviderMandateID)
 	if m, ok := c.r.mandates[ref.ProviderMandateID]; ok {
 		return m, nil
 	}
@@ -179,18 +183,20 @@ func (m *recMailer) messages() []notify.Message {
 
 type env struct {
 	mailer *recMailer
-	t      *testing.T
-	db     *store.DB
-	core   *core.Service
-	inv    *invoice.Service
-	subs   *subscriptions.Service
-	q      *jobs.Queue
-	set    *settings.Service
-	r      *rec
-	scope  core.Scope
-	mu     sync.Mutex
-	now    time.Time
-	events []events.Event
+	// verifyOnSwap makes confirmations of replacement mandates carry the verification debit.
+	verifyOnSwap bool
+	t            *testing.T
+	db           *store.DB
+	core         *core.Service
+	inv          *invoice.Service
+	subs         *subscriptions.Service
+	q            *jobs.Queue
+	set          *settings.Service
+	r            *rec
+	scope        core.Scope
+	mu           sync.Mutex
+	now          time.Time
+	events       []events.Event
 }
 
 func (e *env) clock() time.Time { e.mu.Lock(); defer e.mu.Unlock(); return e.now }
@@ -239,7 +245,7 @@ func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 		return nil
 	})
 	e.inv = invoice.New(invoice.Options{DB: db, Settings: e.set, Jobs: e.q, Emitter: emitter, BaseURL: "https://pay.example.com", Now: e.clock,
-		IsMerchantOfRecord: func(string) bool { return false }})
+		IsMerchantOfRecord: func(name string) bool { return name == "whop" }})
 	e.inv.RegisterJobs(e.q)
 	e.core = core.NewService(core.Options{DB: db, Settings: e.set, Jobs: e.q, Emitter: emitter, Now: e.clock,
 		OnPaymentSucceeded: e.inv.OnPaymentSucceeded, OnRefundSucceeded: e.inv.OnRefundSucceeded})
@@ -247,6 +253,7 @@ func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 		"pa_upi":     mandateConn{base{name: "payu", modes: mandateMod, limits: allMethods, r: e.r}},
 		"pa_enach":   mandateConn{base{name: "zoho", modes: mandateMod, limits: []connector.MandateLimit{{Method: "emandate", Currency: "INR"}}, r: e.r}},
 		"pa_managed": managedConn{base{name: "razorpay", modes: managedMod, r: e.r}},
+		"pa_whop":    managedConn{base{name: "whop", modes: managedMod, r: e.r}},
 	}
 	e.subs = subscriptions.New(subscriptions.Options{DB: db, Core: e.core, Settings: e.set, Jobs: e.q, Emitter: emitter, BaseURL: "https://pay.example.com", Mailer: e.mailer,
 		Now: e.clock, Connectors: subscriptions.ConnectorsFunc(func(_ context.Context, id string) (connector.Connector, error) {
@@ -256,6 +263,7 @@ func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 			return nil, fmt.Errorf("no connector for %s", id)
 		})})
 	e.subs.RegisterJobs(e.q)
+	e.q.Register("refund.submit", func(context.Context, json.RawMessage) error { return nil })
 
 	err := db.Write(ctx, func(tx store.Tx) error {
 		if err := store.SeedOrg(ctx, tx, "Paymux", start); err != nil {
@@ -265,7 +273,7 @@ func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 			DefaultReturnURL: "https://app.example.com/done", CreatedAt: start}); err != nil {
 			return err
 		}
-		for _, a := range [][2]string{{"pa_upi", "payu"}, {"pa_enach", "zoho"}, {"pa_managed", "razorpay"}} {
+		for _, a := range [][2]string{{"pa_upi", "payu"}, {"pa_enach", "zoho"}, {"pa_managed", "razorpay"}, {"pa_whop", "whop"}} {
 			if err := store.InsertProviderAccount(ctx, tx, store.ProviderAccount{ID: a[0], OrgID: store.DefaultOrgID, Mode: "live",
 				Connector: a[1], Name: a[0], Status: "active", CreatedAt: start}); err != nil {
 				return err
@@ -419,10 +427,15 @@ func (e *env) confirmMandate(m store.Mandate, providerID string, withSetup bool)
 	snap := connector.MandateSnapshot{ProviderMandateID: providerID, Status: "active", RawStatus: "confirmed", MaxAmount: m.MaxAmount, Currency: "INR", Method: m.Method}
 	if withSetup {
 		for _, sub := range e.subsOfMandate(m.ID) {
-			if sub.Status == "incomplete" && sub.TrialEnd.IsZero() {
-				snap.SetupPayment = &connector.PaymentSnapshot{Status: connector.PaymentSucceeded, Amount: sub.Amount, Currency: "INR",
-					ProviderPaymentID: "setup_" + providerID, ProviderRef: m.ProviderRef, Method: m.Method, RawStatus: "success"}
+			if sub.Status != "incomplete" && !e.verifyOnSwap {
+				continue
 			}
+			amount := int64(100) // the verification debit: nothing is due yet
+			if sub.Status == "incomplete" && sub.TrialEnd.IsZero() {
+				amount = sub.Amount // the registration pays the first period
+			}
+			snap.SetupPayment = &connector.PaymentSnapshot{Status: connector.PaymentSucceeded, Amount: amount, Currency: "INR",
+				ProviderPaymentID: "setup_" + providerID, ProviderRef: m.ProviderRef, Method: m.Method, RawStatus: "success"}
 		}
 	}
 	e.r.mu.Lock()

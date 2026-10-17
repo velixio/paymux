@@ -54,9 +54,10 @@ var info = connector.Info{
 	Methods:      []string{"upi", "card", "netbanking"},
 	// UPI AutoPay mandates only; the issuer notifies the customer before each
 	// debit, so there is no pre-debit API (NotifyPreDebit returns ErrUnsupported).
-	SubscriptionModes:  []connector.BillingMode{connector.MerchantTriggered},
-	MandateLimits:      []connector.MandateLimit{{Method: "upi", Currency: "INR"}},
-	MandateSetupAmount: 100, // the Rs 1 verification debit of a registration without a charge due (trials)
+	SubscriptionModes:        []connector.BillingMode{connector.MerchantTriggered},
+	MandateLimits:            []connector.MandateLimit{{Method: "upi", Currency: "INR"}},
+	RefundsVerificationDebit: true, // TODO(spec): confirm Zoho reverses the verification debit itself
+	MandateSetupAmount:       100,  // the Rs 1 verification debit of a registration without a charge due (trials)
 	// Refunds are limited to 60/min; the client limiter applies that to every call.
 	RateLimit: connector.RateLimit{RequestsPerSecond: 1, Burst: 10},
 }

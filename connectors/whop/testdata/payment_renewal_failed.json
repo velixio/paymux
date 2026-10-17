@@ -1,0 +1,1 @@
+{"id":"msg_p2","api_version":"v1","type":"payment.failed","timestamp":"2026-10-17T12:00:00Z","data":{"id":"pay_wr1","status":"failed","substatus":"failed","total":4.99,"currency":"usd","membership_id":"mem_w1","metadata":{"sub":"sub_x","ref":"SUBREF01"},"created_at":"2026-10-17T11:59:00Z","refunded_amount":0}}

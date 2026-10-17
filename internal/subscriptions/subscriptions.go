@@ -70,6 +70,7 @@ const (
 	JobMandateExpiry    = "mandate.expiry"
 	JobRevokeMandate    = "mandate.revoke"
 	JobCancelAtProvider = "subscription.cancel_at_provider"
+	JobPollMandate      = "mandate.poll"
 )
 
 // Event types.

@@ -61,8 +61,12 @@ type Info struct {
 	// MandateSetupAmount is what a mandate registration debits when no real
 	// charge is due yet (a trial): the provider's minimal or verification
 	// amount, in minor units. 0 means the provider default of 100 (Rs 1).
-	MandateSetupAmount int64     `json:"mandate_setup_amount,omitempty"`
-	RateLimit          RateLimit `json:"rate_limit"`
+	MandateSetupAmount int64 `json:"mandate_setup_amount,omitempty"`
+	// RefundsVerificationDebit says the provider reverses that verification
+	// debit by itself. When false, Paymux refunds it (initiated_by=system,
+	// reason=mandate_verification).
+	RefundsVerificationDebit bool      `json:"refunds_verification_debit,omitempty"`
+	RateLimit                RateLimit `json:"rate_limit"`
 }
 
 // Has reports whether the capability is declared.
@@ -384,12 +388,17 @@ type SubscriptionRef struct {
 // SubscriptionSnapshot is the provider's view of a subscription.
 type SubscriptionSnapshot struct {
 	ProviderSubscriptionID string `json:"provider_subscription_id"`
-	Status                 string `json:"status"`
-	RawStatus              string `json:"raw_status"`
-	Amount                 int64  `json:"amount"`
-	Currency               string `json:"currency"`
-	CurrentPeriodStart     int64  `json:"current_period_start,omitempty"`
-	CurrentPeriodEnd       int64  `json:"current_period_end,omitempty"`
+	// ProviderRef is the subscription's provider_ref, when the provider hands
+	// it back (for example from checkout metadata). It lets a notification
+	// about a subscription the provider created after the checkout (Whop
+	// memberships) be linked to its Paymux subscription.
+	ProviderRef        string `json:"provider_ref,omitempty"`
+	Status             string `json:"status"`
+	RawStatus          string `json:"raw_status"`
+	Amount             int64  `json:"amount"`
+	Currency           string `json:"currency"`
+	CurrentPeriodStart int64  `json:"current_period_start,omitempty"`
+	CurrentPeriodEnd   int64  `json:"current_period_end,omitempty"`
 }
 
 // MandateRequest creates a merchant-triggered mandate checkout.

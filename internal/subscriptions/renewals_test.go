@@ -119,8 +119,8 @@ func TestTrialRegistersMinimallyAndChargesAtTrialEndWithNotice(t *testing.T) {
 		}
 		sub := e.activateMandate(c)
 		e.runJobs()
-		if sub.Status != "trialing" || len(e.renewalPayments(sub.ID)) != 0 || e.r.chargeCount() != 0 {
-			t.Fatalf("status=%s payments=%d", sub.Status, len(e.renewalPayments(sub.ID)))
+		if pays := e.renewalPayments(sub.ID); sub.Status != "trialing" || len(pays) != 1 || pays[0].Kind != "mandate_setup" || e.r.chargeCount() != 0 {
+			t.Fatalf("status=%s payments=%+v (only the verification debit may exist)", sub.Status, e.renewalPayments(sub.ID))
 		}
 		e.advanceTo(t0.AddDate(0, 0, 12)) // 48h before the end of the trial
 		if len(e.r.notices) != 1 || e.r.notices[0].DebitDate != t0.AddDate(0, 0, 14).UnixMilli() {

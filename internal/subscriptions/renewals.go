@@ -45,6 +45,7 @@ func (s *Service) RegisterJobs(q *jobs.Queue) {
 	q.Register(JobMandateExpiry, s.handleMandateExpiry)
 	q.Register(JobRevokeMandate, s.handleRevokeMandate)
 	q.Register(JobCancelAtProvider, s.handleCancelAtProvider)
+	q.Register(JobPollMandate, s.handlePollMandate)
 }
 
 type cyclePayload struct {
@@ -177,6 +178,12 @@ func (s *Service) startBilling(ctx context.Context, tx store.Tx, sub *store.Subs
 	}
 	if sub.Status == string(state.SubActive) && setup != nil && setup.Status == connector.PaymentSucceeded {
 		return s.bookSetupCycle(ctx, tx, *sub, setup)
+	}
+	if sub.Status == string(state.SubTrialing) {
+		// Nothing is due yet: the registration debited the verification amount.
+		if err := s.bookVerification(ctx, tx, *sub, setup); err != nil {
+			return err
+		}
 	}
 	if sub.Status != string(state.SubActive) && sub.Status != string(state.SubTrialing) {
 		return nil

@@ -334,7 +334,7 @@ func (s *Service) newPendingMandate(ctx context.Context, tx store.Tx, sub *store
 		ProviderAccountID: sub.ProviderAccountID, ProviderRef: ids.ProviderRef(), Method: method, Status: "pending",
 		MaxAmount: mx, Currency: sub.Currency, Frequency: sub.Interval, ValidUntil: now.AddDate(pol.validityYears, 0, 0),
 		CreatedAt: now, UpdatedAt: now}
-	if err := store.InsertMandate(ctx, tx, m); err != nil {
+	if err := s.insertMandate(ctx, tx, m); err != nil {
 		return store.Mandate{}, "", err
 	}
 	token, hash := newToken()

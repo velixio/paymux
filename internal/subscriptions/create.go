@@ -324,7 +324,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Created, error) {
 				ProviderAccountID: rt.accountID, ProviderRef: ids.ProviderRef(), Method: rt.method, Status: "pending",
 				MaxAmount: rt.maxAmount, Currency: in.Currency, Frequency: in.Interval,
 				ValidUntil: now.AddDate(pol.validityYears, 0, 0), CreatedAt: now, UpdatedAt: now}
-			if err := store.InsertMandate(ctx, tx, m); err != nil {
+			if err := s.insertMandate(ctx, tx, m); err != nil {
 				return err
 			}
 			sub.MandateID = m.ID
