@@ -26,6 +26,9 @@ type PaymentView struct {
 	CreatedAt      time.Time         `json:"created_at"`
 	Version        int64             `json:"version"`
 	Flags          []string          `json:"flags"`
+	// The routing restrictions the payment was created with.
+	AllowedConnectors []string `json:"allowed_connectors,omitempty"`
+	Country           string   `json:"country,omitempty"`
 }
 
 // ViewPayment renders p.
@@ -40,7 +43,8 @@ func ViewPayment(p store.Payment) PaymentView {
 	return PaymentView{ID: p.ID, Object: "payment", Status: p.Status, Kind: p.Kind, Amount: p.Amount, Currency: p.Currency,
 		AmountReceived: p.AmountReceived, AmountRefunded: p.AmountRefunded, OrderRef: p.OrderRef,
 		Description: p.Description, CustomerID: p.CustomerID, Metadata: meta, ReturnURL: p.ReturnURL,
-		ExpiresAt: p.ExpiresAt, CreatedAt: p.CreatedAt, Version: p.Version, Flags: flags}
+		ExpiresAt: p.ExpiresAt, CreatedAt: p.CreatedAt, Version: p.Version, Flags: flags,
+		AllowedConnectors: p.AllowedConnectors, Country: p.Country}
 }
 
 // RefundView is the public JSON shape of a refund.

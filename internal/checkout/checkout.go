@@ -146,7 +146,8 @@ func (s *Service) startCheckout(ctx context.Context, paymentID string, fresh boo
 	var accounts []store.ProviderAccount
 	err = s.o.DB.Read(ctx, func(q store.Querier) (err error) {
 		accounts, err = s.o.Routing.Pick(ctx, q, core.RouteRequest{Scope: core.Scope{AppID: p.AppID, Mode: p.Mode},
-			Currency: p.Currency, Amount: p.Amount, Purpose: routing.PurposeOneTime, Metadata: p.Metadata})
+			Currency: p.Currency, Country: p.Country, Amount: p.Amount, Purpose: routing.PurposeOneTime, Metadata: p.Metadata,
+			AllowedConnectors: p.AllowedConnectors})
 		return
 	})
 	if err != nil {
