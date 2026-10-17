@@ -502,7 +502,8 @@ func TestFullPaymentFlow(t *testing.T) {
 			if !sign {
 				sig = strings.Repeat("0", 64)
 			}
-			evID := "evt_" + event + "_" + extra[:12]
+			sum := sha256.Sum256([]byte(extra))
+			evID := "evt_" + event + "_" + hex.EncodeToString(sum[:6]) // one id per distinct payload; a retry of the same payload shares it
 			if !sign {
 				evID = "evt_forged_" + event
 			}
@@ -654,6 +655,47 @@ func TestFullPaymentFlow(t *testing.T) {
 		waitFor(t, "the loss alert", func() bool { return ops.contains("dispute.lost") })
 		if _, p := api("GET", "/v1/payments/"+id, nil); containsFlag(p["flags"], "disputed") || !containsFlag(p["flags"], "dispute_lost") {
 			t.Errorf("payment flags after the loss: %v", p["flags"])
+		}
+
+		// 12b. A refund made in the provider's own dashboard: Paymux never asked for
+		//      it, the webhook is only a hint, and the refund is fetched, booked as
+		//      initiated_by=provider, credit-noted and told to the app, once.
+		rzp.mu.Lock()
+		rzp.refunds["rfnd_dash"] = map[string]any{"id": "rfnd_dash", "entity": "refund", "payment_id": "pay_123", "amount": 5000, "currency": "INR",
+			"status": "processed", "created_at": time.Now().Unix()}
+		rzp.mu.Unlock()
+		refundsBefore := func() int {
+			n := 0
+			for _, x := range recv.types() {
+				if x == "refund.succeeded" {
+					n++
+				}
+			}
+			return n
+		}
+		before := refundsBefore()
+		dashEntity := fmt.Sprintf(`"refund":{"entity":{"id":"rfnd_dash","entity":"refund","amount":777,"currency":"INR","payment_id":"pay_123","status":"processed","created_at":%d}}`, time.Now().Unix())
+		if got := hook("refund.processed", dashEntity, true); got != 200 {
+			t.Fatalf("dashboard refund webhook = %d", got)
+		}
+		waitFor(t, "the provider refund to be booked", func() bool { return refundsBefore() == before+1 })
+		_, pAfter := api("GET", "/v1/payments/"+id, nil)
+		if pAfter["amount_refunded"] != float64(15000) { // 10000 ours + 5000 the dashboard's, not the webhook's 777
+			t.Errorf("amount_refunded after a dashboard refund: %v", pAfter["amount_refunded"])
+		}
+		_, cn2 := api("GET", "/v1/credit_notes?payment_id="+id, nil)
+		if list, _ := cn2["data"].([]any); len(list) != 2 {
+			t.Errorf("credit notes after a dashboard refund: %v", cn2)
+		}
+		lastRefund := recv.last("refund.succeeded")["data"].(map[string]any)["object"].(map[string]any)
+		if lastRefund["initiated_by"] != "provider" || lastRefund["provider_refund_id"] != "rfnd_dash" || lastRefund["amount"] != float64(5000) {
+			t.Errorf("the app's refund.succeeded: %v", lastRefund)
+		}
+		// The provider sends it again (it retries; the event id differs): nothing more happens.
+		hook("refund.processed", strings.Replace(dashEntity, `"created_at"`, `"notes":[],"created_at"`, 1), true)
+		time.Sleep(2500 * time.Millisecond)
+		if _, p2 := api("GET", "/v1/payments/"+id, nil); p2["amount_refunded"] != float64(15000) || refundsBefore() != before+1 {
+			t.Errorf("a second delivery booked it again: refunded %v, %d refund.succeeded", p2["amount_refunded"], refundsBefore())
 		}
 
 		// 13a. The business metrics reflect what happened (refreshed on scrape).
