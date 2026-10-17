@@ -29,6 +29,7 @@ import (
 
 const (
 	apiBase          = "https://api.whop.com/api/v1"
+	sandboxAPIBase   = "https://sandbox-api.whop.com/api/v1"
 	webhookTolerance = 5 * time.Minute
 )
 
@@ -40,7 +41,8 @@ const configSchema = `{
   "properties": {
     "api_key": {"type": "string", "title": "API key", "minLength": 1, "x-secret": true},
     "company_id": {"type": "string", "title": "Company id (biz_...)", "minLength": 1},
-    "webhook_secret": {"type": "string", "title": "Webhook secret (ws_...)", "minLength": 1, "x-secret": true}
+    "webhook_secret": {"type": "string", "title": "Webhook secret (ws_...)", "minLength": 1, "x-secret": true},
+    "sandbox": {"type": "boolean", "title": "Use the Whop sandbox (sandbox.whop.com)", "default": false}
   }
 }`
 
@@ -67,6 +69,7 @@ type config struct {
 	APIKey        string `json:"api_key"`
 	CompanyID     string `json:"company_id"`
 	WebhookSecret string `json:"webhook_secret"`
+	Sandbox       bool   `json:"sandbox"`
 }
 
 type whop struct {
@@ -113,8 +116,16 @@ func (w *whop) Info() connector.Info {
 	return i
 }
 
+// base is the API host for this account: production or the Whop sandbox.
+func (w *whop) base() string {
+	if w.cfg.Sandbox {
+		return sandboxAPIBase
+	}
+	return apiBase
+}
+
 func (w *whop) do(ctx context.Context, method, path string, query url.Values, in, out any, hdr map[string]string) error {
-	u := apiBase + path
+	u := w.base() + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
 	}

@@ -77,6 +77,12 @@ func (w *whop) CreateSubscriptionCheckout(ctx context.Context, req connector.Sub
 	plan := map[string]any{
 		"company_id": w.cfg.CompanyID, "plan_type": "renewal", "currency": strings.ToLower(req.Currency),
 		"renewal_price": json.Number(price), "initial_price": json.Number(price), "billing_period": days * req.IntervalCount,
+		// Whop requires inline product details for a renewal plan. A stable
+		// external id per price point lets repeat subscriptions share a product.
+		"product": map[string]any{
+			"title":               firstNonEmptyStr(req.Description, "Subscription"),
+			"external_identifier": fmt.Sprintf("paymux-renewal-%s-%d-%s-%d", strings.ToLower(req.Currency), req.Amount, req.Interval, req.IntervalCount),
+		},
 	}
 	if req.StartAt > 0 {
 		if d := time.UnixMilli(req.StartAt).Sub(w.deps.Now()); d > 0 {
@@ -139,3 +145,12 @@ func (w *whop) UpdateSubscriptionAmount(context.Context, connector.SubscriptionR
 }
 
 var _ connector.SubscriptionManager = (*whop)(nil)
+
+func firstNonEmptyStr(vs ...string) string {
+	for _, v := range vs {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
