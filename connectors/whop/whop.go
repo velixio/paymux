@@ -353,9 +353,9 @@ func (w *whop) CreateCheckout(ctx context.Context, req connector.CheckoutRequest
 			"company_id": w.cfg.CompanyID, "plan_type": "one_time",
 			"currency": strings.ToLower(req.Currency), "initial_price": json.Number(price),
 		},
-		"metadata":     map[string]string{"pay": req.PaymentID, "att": req.AttemptID, "app": req.AppID, "ref": req.ProviderRef},
-		"redirect_url": w.deps.URLs.ReturnURL(req.ProviderRef),
+		"metadata": map[string]string{"pay": req.PaymentID, "att": req.AttemptID, "app": req.AppID, "ref": req.ProviderRef},
 	}
+	w.setRedirect(in, req.ProviderRef)
 	var out struct {
 		ID          string `json:"id"`
 		PurchaseURL string `json:"purchase_url"`
@@ -634,3 +634,11 @@ func (w *whop) FetchRefund(ctx context.Context, ref connector.RefundRef) (connec
 }
 
 var _ connector.Refunder = (*whop)(nil)
+
+// setRedirect adds the return URL when it is https. Whop rejects any other
+// redirect_url, so local http setups rely on the poller and webhooks instead.
+func (w *whop) setRedirect(in map[string]any, ref string) {
+	if u := w.deps.URLs.ReturnURL(ref); strings.HasPrefix(u, "https://") {
+		in["redirect_url"] = u
+	}
+}

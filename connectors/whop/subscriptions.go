@@ -91,10 +91,10 @@ func (w *whop) CreateSubscriptionCheckout(ctx context.Context, req connector.Sub
 		}
 	}
 	in := map[string]any{
-		"plan":         plan,
-		"metadata":     map[string]string{"sub": req.SubscriptionID, "ref": req.ProviderRef},
-		"redirect_url": w.deps.URLs.ReturnURL(req.ProviderRef),
+		"plan":     plan,
+		"metadata": map[string]string{"sub": req.SubscriptionID, "ref": req.ProviderRef},
 	}
+	w.setRedirect(in, req.ProviderRef)
 	var out struct {
 		ID          string `json:"id"`
 		PurchaseURL string `json:"purchase_url"`
