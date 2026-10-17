@@ -190,7 +190,7 @@ func (a *App) Start(ctx context.Context) error {
 		return err
 	}
 	rec := reconcile.New(reconcile.Options{DB: db, Core: svc, Conns: conns, Settings: set, Alerts: alerts, Loc: a.cfg.Location, Logger: a.log,
-		KnownSubscription: knownSubscription(db), LinkRenewal: linkRenewal(conns, subs)})
+		KnownSubscription: knownSubscription(db), LinkRenewal: linkRenewal(conns, subs), Subscriptions: subs})
 	if err := rec.Register(q); err != nil {
 		return err
 	}

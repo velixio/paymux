@@ -135,5 +135,5 @@ func (s *Service) applySettlement(ctx context.Context, pa store.ProviderAccount,
 		snap.ProviderSettlementID, pa.Connector, pa.Name, snap.Fees, snap.Tax, ourFee, ourTax)
 	return s.record(ctx, pa, run, recon.Item{Kind: recon.KindFeeMismatch, ProviderID: snap.ProviderSettlementID,
 		Ours:   &recon.Record{ProviderID: snap.ProviderSettlementID, Amount: ourFee, Currency: snap.Currency},
-		Theirs: recon.Record{ProviderID: snap.ProviderSettlementID, Amount: snap.Fees, Currency: snap.Currency}}, false, detail)
+		Theirs: recon.Record{ProviderID: snap.ProviderSettlementID, Amount: snap.Fees, Currency: snap.Currency}}, false, recordNote{detail: detail})
 }

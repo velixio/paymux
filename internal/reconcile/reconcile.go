@@ -55,6 +55,10 @@ type Options struct {
 	// it fails, the renewal is stored as renewal_to_link and retried by the
 	// next run.
 	LinkRenewal func(ctx context.Context, accountID string, pay connector.PaymentSnapshot) error
+	// Subscriptions applies the provider's mandate and subscription status
+	// to Paymux's (the subscriptions service). Without it mandates and
+	// subscriptions are not reconciled.
+	Subscriptions SubscriptionSink
 }
 
 // Service runs reconciliations.
@@ -256,7 +260,10 @@ func (s *Service) reconcile(ctx context.Context, pa store.ProviderAccount, run *
 	if err := s.reconcileRefunds(ctx, pa, run, theirsRef); err != nil {
 		return err
 	}
-	return s.reconcileSettlements(ctx, pa, run, live.Connector)
+	if err := s.reconcileSettlements(ctx, pa, run, live.Connector); err != nil {
+		return err
+	}
+	return s.reconcileMandatesAndSubscriptions(ctx, pa, run, live.Connector)
 }
 
 // ---- payments ----
@@ -311,6 +318,7 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 	for _, it := range items {
 		snap := byPayID[it.ProviderID]
 		fixed := false
+		var note recordNote
 		if it.Kind == recon.KindRenewalToLink && s.o.LinkRenewal != nil {
 			if err := s.o.LinkRenewal(ctx, pa.ID, snap); err != nil {
 				s.o.Logger.Warn("reconcile: linking a renewal failed; it stays to be linked", "account", pa.ID, "payment", it.ProviderID, "err", err)
@@ -322,14 +330,12 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 			if err := s.fixPayment(ctx, pa, snap); err != nil {
 				s.o.Logger.Warn("reconcile: auto-fix failed", "account", pa.ID, "payment", it.ProviderID, "err", err)
 				it.AutoFix = false
-				s.raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: "recon.autofix_failed",
-					Message: fmt.Sprintf("Reconciliation could not apply the provider's state of payment %s: %v", it.ProviderID, err),
-					Refs:    map[string]string{"provider_account": pa.ID, "provider_id": it.ProviderID}})
+				note = failedFix("payment", it.ProviderID, err)
 			} else {
 				fixed = true
 			}
 		}
-		if err := s.record(ctx, pa, run, it, fixed, ""); err != nil {
+		if err := s.record(ctx, pa, run, it, fixed, note); err != nil {
 			return err
 		}
 	}
@@ -390,20 +396,19 @@ func (s *Service) reconcileRefunds(ctx context.Context, pa store.ProviderAccount
 	}
 	for _, it := range recon.Diff(ours, theirRecs, nil) {
 		fixed := false
+		var note recordNote
 		if it.AutoFix {
 			snap := byID[it.ProviderID]
 			_, err := s.o.Core.ApplyRefundSnapshot(ctx, ourByProviderID[it.ProviderID], core.RefundSnapshot{
 				Status: state.RefundStatus(snap.Status), ProviderRefundID: snap.ProviderRefundID, FailureReason: snap.RawStatus})
 			if err != nil {
 				s.o.Logger.Warn("reconcile: refund auto-fix failed", "account", pa.ID, "refund", it.ProviderID, "err", err)
-				s.raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: "recon.autofix_failed",
-					Message: fmt.Sprintf("Reconciliation could not apply the provider's state of refund %s: %v", it.ProviderID, err),
-					Refs:    map[string]string{"provider_account": pa.ID, "provider_id": it.ProviderID}})
+				note = failedFix("refund", it.ProviderID, err)
 			} else {
 				fixed = true
 			}
 		}
-		if err := s.record(ctx, pa, run, it, fixed, ""); err != nil {
+		if err := s.record(ctx, pa, run, it, fixed, note); err != nil {
 			return err
 		}
 	}
@@ -412,9 +417,18 @@ func (s *Service) reconcileRefunds(ctx context.Context, pa store.ProviderAccount
 
 // ---- recording ----
 
+// recordNote customises the alert of a recorded item: a message of its own
+// and an alert kind other than "recon.<item kind>".
+type recordNote struct{ detail, kind string }
+
+func failedFix(what, id string, err error) recordNote {
+	return recordNote{kind: "recon.autofix_failed",
+		detail: fmt.Sprintf("Reconciliation could not apply the provider's state of %s %s: %v", what, id, err)}
+}
+
 // record stores an item. Auto-fixed items are always stored. Anything else is
 // stored and alerted once per object and kind while it stays open.
-func (s *Service) record(ctx context.Context, pa store.ProviderAccount, run *store.ReconRun, it recon.Item, fixed bool, detail string) error {
+func (s *Service) record(ctx context.Context, pa store.ProviderAccount, run *store.ReconRun, it recon.Item, fixed bool, note recordNote) error {
 	ours := ""
 	if it.Ours != nil {
 		b, _ := json.Marshal(it.Ours)
@@ -458,8 +472,12 @@ func (s *Service) record(ctx context.Context, pa store.ProviderAccount, run *sto
 	if seen || item.State == "to_link" {
 		return nil
 	}
-	s.raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: "recon." + it.Kind,
-		Message: describe(it, pa, detail), Refs: map[string]string{"provider_account": pa.ID, "provider_id": it.ProviderID, "run": run.ID}})
+	kind := "recon." + it.Kind
+	if note.kind != "" {
+		kind = note.kind
+	}
+	s.raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: kind,
+		Message: describe(it, pa, note.detail), Refs: map[string]string{"provider_account": pa.ID, "provider_id": it.ProviderID, "run": run.ID}})
 	return nil
 }
 
