@@ -182,6 +182,10 @@ func (a *API) failCore(w http.ResponseWriter, r *http.Request, err error) {
 		status, typ = http.StatusConflict, "not_refundable"
 	case errors.Is(err, core.ErrRefundExceeds):
 		status, typ = http.StatusConflict, "refund_amount_exceeds_balance"
+	case errors.Is(err, core.ErrNoRoute):
+		status, typ = http.StatusUnprocessableEntity, "no_route"
+	case errors.Is(err, core.ErrCurrencyNotAccepted):
+		status, typ = http.StatusUnprocessableEntity, "currency_not_accepted"
 	case errors.Is(err, core.ErrConflict):
 		status, typ = http.StatusConflict, "conflict"
 	}
