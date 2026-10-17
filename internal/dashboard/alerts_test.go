@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/paymux/paymux/internal/alertcenter"
 	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
@@ -20,7 +21,7 @@ func (e *env) raise(sev notify.Severity, kind, msg string, refs map[string]strin
 
 func (e *env) openAlertID(kind string) string {
 	e.t.Helper()
-	as, err := e.alerts.List(ctx, store.DefaultOrgID, alertFilter("open"))
+	as, err := e.alerts.List(ctx, store.DefaultOrgID, stateFilter("open"))
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -81,7 +82,7 @@ func TestAlertsPageListsFiltersAndExplains(t *testing.T) {
 		lacks(t, body, "OnPaymentSucceeded failed", `/acknowledge"`) // acknowledged ones are hidden by default; viewers cannot acknowledge
 		// the repeated one shows its count
 		row := func(b, kind string) string {
-			for _, seg := range strings.Split(b, "<tr") {
+			for _, seg := range strings.Split(b, `<tr id="alert-`)[1:] {
 				if strings.Contains(seg, kind) {
 					return seg
 				}
@@ -90,16 +91,17 @@ func TestAlertsPageListsFiltersAndExplains(t *testing.T) {
 			return ""
 		}
 		has(t, row(body, "recon.failed"), "2 times")
+		table := func(b string) string { return b[strings.Index(b, "<tbody>"):] } // the filter lists every kind; the table only the matches
 
 		has(t, e.pageOK(viewer, "/dashboard/alerts?state=acknowledged"), "OnPaymentSucceeded failed", "usr_operator")
 		all := e.pageOK(viewer, "/dashboard/alerts?state=all")
 		has(t, all, "OnPaymentSucceeded failed", "Reconciliation of razorpay failed")
 		onlyCritical := e.pageOK(viewer, "/dashboard/alerts?severity=critical")
-		has(t, onlyCritical, "recon.failed")
-		lacks(t, onlyCritical, "domain.failed")
+		has(t, table(onlyCritical), "recon.failed")
+		lacks(t, table(onlyCritical), "domain.failed")
 		onlyKind := e.pageOK(viewer, "/dashboard/alerts?kind=domain.failed")
-		has(t, onlyKind, "domain.failed")
-		lacks(t, onlyKind, "recon.failed")
+		has(t, table(onlyKind), "domain.failed")
+		lacks(t, table(onlyKind), "recon.failed")
 		// the filter offers the kinds that exist
 		has(t, body, `<option value="domain.failed"`, `<option value="hook.failed"`)
 		for _, q := range []string{"?state=bogus", "?severity=loud"} {
@@ -187,3 +189,5 @@ func TestEveryRaiseThroughNotifyShowsUp(t *testing.T) {
 		}
 	})
 }
+
+func stateFilter(state string) alertcenter.Filter { return alertcenter.Filter{State: state} }

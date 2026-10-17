@@ -93,3 +93,9 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
 /* Appearance preview: a customer-page card inside the dashboard. */
 .card.sample { text-align: left; margin: 16px 0; border: 1px solid var(--color-line); border-radius: var(--radius); }
+
+/* Alerts count in the navigation. */
+.badge { display: inline-block; min-width: 1.5em; padding: 0 6px; border-radius: 999px; background: #b45309; color: #fff; font-size: 12px; font-weight: 600; text-align: center; line-height: 1.6; }
+.badge.badge-critical { background: #b91c1c; }
+.status-critical { color: #b91c1c; font-weight: 600; }
+.status-warning { color: #b45309; }

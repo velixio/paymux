@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/paymux/paymux/internal/alertcenter"
 	"github.com/paymux/paymux/internal/auth"
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
@@ -54,23 +55,24 @@ func (c *clock) Add(d time.Duration) {
 }
 
 type env struct {
-	t     *testing.T
-	db    *store.DB
-	box   *secrets.Box
-	core  *core.Service
-	set   *settings.Service
-	out   *outbound.Service
-	inv   *invoice.Service
-	disp  *disputes.Service
-	links *paylinks.Service
-	rec   *reconcile.Service
-	conn  *connectors.Service
-	mail  *recMailer
-	q     *jobs.Queue
-	d     *Dashboard
-	srv   *httptest.Server
-	clk   *clock
-	c     *http.Client
+	t      *testing.T
+	db     *store.DB
+	box    *secrets.Box
+	core   *core.Service
+	set    *settings.Service
+	out    *outbound.Service
+	inv    *invoice.Service
+	disp   *disputes.Service
+	links  *paylinks.Service
+	alerts *alertcenter.Service
+	rec    *reconcile.Service
+	conn   *connectors.Service
+	mail   *recMailer
+	q      *jobs.Queue
+	d      *Dashboard
+	srv    *httptest.Server
+	clk    *clock
+	c      *http.Client
 }
 
 type envOpt func(*Options)
@@ -105,6 +107,7 @@ func newEnv(t *testing.T, db *store.DB, opts ...envOpt) *env {
 	conns := connectors.New(connectors.Options{DB: db, Box: box, BaseURL: base, Now: clk.Now})
 	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: out, Now: clk.Now,
 		OnPaymentSucceeded: inv.OnPaymentSucceeded, OnRefundSucceeded: inv.OnRefundSucceeded})
+	alertCenter := alertcenter.New(db, clk.Now)
 	links := paylinks.New(paylinks.Options{DB: db, Core: svc, Emitter: out, Settings: set, BaseURL: "https://pay.example.com", Now: clk.Now})
 	disp := disputes.New(disputes.Options{DB: db, Settings: set, Emitter: out, Credit: inv, CutoffErr: invoice.ErrCreditNoteCutoff, Conns: conns, Now: clk.Now})
 	reco := reconcile.New(reconcile.Options{DB: db, Core: svc, Conns: conns, Settings: set, Loc: time.UTC, Logger: slog.New(slog.DiscardHandler), Now: clk.Now})
@@ -112,7 +115,7 @@ func newEnv(t *testing.T, db *store.DB, opts ...envOpt) *env {
 		t.Fatal(err)
 	}
 	o := Options{DB: db, Box: box, Renderer: rend, MasterKey: make([]byte, 32), BaseURL: base,
-		Logger: slog.New(slog.DiscardHandler), Now: clk.Now, Core: svc, Settings: set, Outbound: out, Invoice: inv, Connectors: conns, Disputes: disp, Recon: reco, Jobs: q, PaymentLinks: links, PageSize: 2}
+		Logger: slog.New(slog.DiscardHandler), Now: clk.Now, Core: svc, Settings: set, Outbound: out, Invoice: inv, Connectors: conns, Disputes: disp, Recon: reco, Jobs: q, PaymentLinks: links, Alerts: alertCenter, PageSize: 2}
 	for _, f := range opts {
 		f(&o)
 	}
@@ -123,7 +126,7 @@ func newEnv(t *testing.T, db *store.DB, opts ...envOpt) *env {
 	mux := http.NewServeMux()
 	mux.Handle("/dashboard/", d)
 	mux.Handle("/setup", d.SetupHandler())
-	e := &env{t: t, db: db, box: box, core: svc, set: set, out: out, inv: inv, disp: disp, links: links, rec: reco, conn: conns, mail: rec, q: q, d: d, srv: httptest.NewServer(mux), clk: clk}
+	e := &env{t: t, db: db, box: box, core: svc, set: set, out: out, inv: inv, disp: disp, links: links, alerts: alertCenter, rec: reco, conn: conns, mail: rec, q: q, d: d, srv: httptest.NewServer(mux), clk: clk}
 	t.Cleanup(e.srv.Close)
 	e.c = e.client()
 	return e
