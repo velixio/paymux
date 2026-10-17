@@ -2,6 +2,7 @@ package checkout
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -111,6 +112,21 @@ type Started struct {
 // and falls back to the next account; the payment itself only fails when
 // every account failed. It never falls back after a customer-side failure.
 func (s *Service) StartCheckout(ctx context.Context, paymentID string) (Started, error) {
+	return s.startCheckout(ctx, paymentID, false)
+}
+
+// StartFreshCheckout is StartCheckout for a customer who asked to try again or
+// to pay another way: it always creates a new attempt, even while an earlier
+// one is still open (which can still be paid).
+func (s *Service) StartFreshCheckout(ctx context.Context, paymentID string) (Started, error) {
+	return s.startCheckout(ctx, paymentID, true)
+}
+
+// reuseWindow is how long a checkout is shown again when the provider gave no
+// expiry of its own.
+const reuseWindow = 15 * time.Minute
+
+func (s *Service) startCheckout(ctx context.Context, paymentID string, fresh bool) (Started, error) {
 	p, err := s.o.Core.GetPaymentByID(ctx, paymentID)
 	if err != nil {
 		return Started{}, err
@@ -127,6 +143,11 @@ func (s *Service) StartCheckout(ctx context.Context, paymentID string) (Started,
 	})
 	if err != nil {
 		return Started{}, err
+	}
+	if !fresh {
+		if st, ok := s.reusable(ctx, p.ID, accounts); ok {
+			return st, nil
+		}
 	}
 	var cust store.Customer
 	if p.CustomerID != "" {
@@ -158,18 +179,46 @@ func (s *Service) StartCheckout(ctx context.Context, paymentID string) (Started,
 			continue
 		}
 		s.o.Breaker.Success(pa.ID)
-		if res.ProviderOrderID != "" {
+		expires := s.o.Now().Add(reuseWindow)
+		if res.ExpiresAt > 0 {
+			expires = time.UnixMilli(res.ExpiresAt)
+		}
+		if action, merr := json.Marshal(res.NextAction); merr == nil {
+			if err := s.o.Core.RecordCheckoutAction(ctx, att.ID, res.ProviderOrderID, action, expires); err != nil {
+				return Started{}, err
+			}
+		} else if res.ProviderOrderID != "" {
 			if err := s.o.Core.RecordCheckout(ctx, att.ID, res.ProviderOrderID); err != nil {
 				return Started{}, err
 			}
-			att.ProviderOrderID = res.ProviderOrderID
 		}
+		att.ProviderOrderID = res.ProviderOrderID
 		return Started{Attempt: att, AccountID: pa.ID, Connector: pa.Connector, Action: res.NextAction}, nil
 	}
 	if prev != nil {
 		s.failAttempt(ctx, *prev, lastErr)
 	}
 	return Started{}, fmt.Errorf("%w: %v", ErrCheckoutFailed, lastErr)
+}
+
+// reusable returns the newest open attempt's checkout when it can be shown
+// again: it is on an account routing still allows, its checkout has not
+// expired, and its stored next action is intact.
+func (s *Service) reusable(ctx context.Context, paymentID string, accounts []store.ProviderAccount) (Started, bool) {
+	a, err := s.o.Core.LatestOpenAttempt(ctx, paymentID)
+	if err != nil || a.NextAction == "" || !s.o.Now().Before(a.CheckoutExpiresAt) {
+		return Started{}, false
+	}
+	var action connector.NextAction
+	if json.Unmarshal([]byte(a.NextAction), &action) != nil || !action.Valid() {
+		return Started{}, false
+	}
+	for _, pa := range accounts {
+		if pa.ID == a.ProviderAccountID {
+			return Started{Attempt: a, AccountID: pa.ID, Connector: pa.Connector, Action: action}, true
+		}
+	}
+	return Started{}, false
 }
 
 func (s *Service) createCheckout(ctx context.Context, pa store.ProviderAccount, p store.Payment, att store.Attempt, c store.Customer) (connector.CheckoutResult, error) {

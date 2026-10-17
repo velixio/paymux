@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"net/url"
 	"slices"
 	"strings"
@@ -388,6 +389,29 @@ func (s *Service) GetPaymentByID(ctx context.Context, id string) (store.Payment,
 		return
 	})
 	return p, mapStoreErr(err, "payment")
+}
+
+// RecordCheckoutAction stores everything a later reload of the pay page needs
+// from CreateCheckout: the provider order id, the next action (JSON) and when
+// that checkout expires.
+func (s *Service) RecordCheckoutAction(ctx context.Context, attemptID, providerOrderID string, nextAction json.RawMessage, expiresAt time.Time) error {
+	return s.db.Write(ctx, func(tx store.Tx) error {
+		if _, err := store.GetAttempt(ctx, tx, attemptID); err != nil {
+			return mapStoreErr(err, "attempt")
+		}
+		return store.SetAttemptCheckout(ctx, tx, attemptID, providerOrderID, string(nextAction), expiresAt, s.nowUTC())
+	})
+}
+
+// LatestOpenAttempt returns the newest attempt of the payment that is still
+// waiting for the customer and has a stored checkout, or ErrNotFound.
+func (s *Service) LatestOpenAttempt(ctx context.Context, paymentID string) (store.Attempt, error) {
+	var a store.Attempt
+	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+		a, err = store.LatestOpenAttempt(ctx, q, paymentID)
+		return
+	})
+	return a, mapStoreErr(err, "attempt")
 }
 
 // RecordCheckout stores the provider order id returned by CreateCheckout.
