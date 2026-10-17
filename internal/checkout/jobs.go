@@ -119,7 +119,10 @@ func (s *Service) handleNotification(ctx context.Context, ev store.ProviderEvent
 		if err != nil {
 			return err
 		}
-		_, err = s.syncAttempt(ctx, a.ID, connector.PaymentRef{ProviderOrderID: ps.ProviderOrderID, ProviderPaymentID: ps.ProviderPaymentID})
+		res, err := s.syncAttempt(ctx, a.ID, connector.PaymentRef{ProviderOrderID: ps.ProviderOrderID, ProviderPaymentID: ps.ProviderPaymentID})
+		if err == nil && s.o.Subs != nil {
+			err = s.o.Subs.ReconcilePayment(ctx, res.Payment.ID) // a renewal moves its subscription
+		}
 		return err
 	case n.Kind == connector.NotifyRefund && n.Refund != nil:
 		rs := n.Refund
@@ -144,8 +147,19 @@ func (s *Service) handleNotification(ctx context.Context, ev store.ProviderEvent
 		// every dispute is recorded as unknown.
 		return s.recordUnknown(ctx, ev, "dispute", n.Dispute.ProviderDisputeID, n)
 	}
-	// TODO(spec): mandate and subscription notifications belong to the
-	// subscriptions lane.
+	if (n.Kind == connector.NotifySubscription || n.Kind == connector.NotifyMandate) && s.o.Subs != nil {
+		err := s.o.Subs.HandleNotification(ctx, account, n)
+		if errors.Is(err, ErrUnknownObject) {
+			id := n.EventID
+			if n.Subscription != nil {
+				id = n.Subscription.ProviderSubscriptionID
+			} else if n.Mandate != nil {
+				id = n.Mandate.ProviderMandateID
+			}
+			return s.recordUnknown(ctx, ev, string(n.Kind), id, n)
+		}
+		return err
+	}
 	id := n.EventID
 	return s.recordUnknown(ctx, ev, string(n.Kind), id, n)
 }

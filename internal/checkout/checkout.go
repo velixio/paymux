@@ -33,6 +33,37 @@ type Options struct {
 	Breaker *routing.Breaker
 	Logger  *slog.Logger
 	Now     func() time.Time
+	// Subs, when set, receives subscription and mandate notifications, learns
+	// when a renewal payment changed, and handles returns from subscription
+	// and mandate checkouts (internal/subscriptions implements it).
+	Subs SubscriptionSink
+}
+
+// ErrUnknownObject is wrapped by a SubscriptionSink when a notification names
+// a provider object Paymux does not know; the event is then recorded as
+// unknown instead of being retried.
+var ErrUnknownObject = errors.New("checkout: unknown provider object")
+
+// SubscriptionSink is the subscriptions engine as the payment flow sees it.
+type SubscriptionSink interface {
+	// HandleNotification applies a subscription or mandate notification.
+	HandleNotification(ctx context.Context, providerAccountID string, n connector.Notification) error
+	// ReconcilePayment settles the subscription cycle of a renewal payment
+	// whose attempt just changed; it is a no-op for other payments.
+	ReconcilePayment(ctx context.Context, paymentID string) error
+	// ReturnRedirect handles the customer returning from a subscription or
+	// mandate checkout. handled is false when providerRef is not one of them.
+	ReturnRedirect(ctx context.Context, providerAccountID, providerRef string) (url string, handled bool, err error)
+}
+
+// SubscriptionReturn handles a return that belongs to a subscription or
+// mandate checkout, if it is one. url is where to send the customer ("" when
+// the app gave no return URL).
+func (s *Service) SubscriptionReturn(ctx context.Context, accountID, providerRef string) (url string, handled bool, err error) {
+	if s.o.Subs == nil {
+		return "", false, nil
+	}
+	return s.o.Subs.ReturnRedirect(ctx, accountID, providerRef)
 }
 
 // Service runs the payment flow around the connectors.

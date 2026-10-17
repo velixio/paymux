@@ -36,6 +36,7 @@ import (
 	"github.com/paymux/paymux/internal/server"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
+	"github.com/paymux/paymux/internal/subscriptions"
 	"github.com/paymux/paymux/internal/web"
 	"github.com/paymux/paymux/migrations"
 	"github.com/paymux/paymux/pkg/connector"
@@ -163,11 +164,20 @@ func (a *App) Start(ctx context.Context) error {
 	inv.RegisterJobs(q)
 	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter, Router: rt,
 		OnPaymentSucceeded: inv.OnPaymentSucceeded, OnRefundSucceeded: inv.OnRefundSucceeded})
-	flow := checkout.New(checkout.Options{DB: db, Core: svc, Conns: conns, Routing: rt, Breaker: breaker, Logger: a.log})
+	// Subscriptions and mandates: renewals run as jobs; provider notifications
+	// and returns reach the engine through the payment flow.
+	subs := subscriptions.New(subscriptions.Options{DB: db, Core: svc, Settings: set, Jobs: q, Emitter: emitter,
+		BaseURL: a.cfg.BaseURL.String(),
+		Connectors: subscriptions.ConnectorsFunc(func(ctx context.Context, id string) (connector.Connector, error) {
+			live, err := conns.Get(ctx, id)
+			return live.Connector, err
+		})})
+	subs.RegisterJobs(q)
+	flow := checkout.New(checkout.Options{DB: db, Core: svc, Conns: conns, Routing: rt, Breaker: breaker, Logger: a.log, Subs: subs})
 	if err := flow.Register(q); err != nil {
 		return err
 	}
-	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv})
+	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv, Subscriptions: subs})
 	if err != nil {
 		return err
 	}
@@ -235,6 +245,7 @@ func (a *App) Start(ctx context.Context) error {
 	customerMux := http.NewServeMux()
 	pay.Register(paypage.StdMux(customerMux))
 	customerMux.HandleFunc("GET /i/{id}", inv.ServeHosted)
+	customerMux.HandleFunc("GET /s/{id}", subs.ServeHosted)
 	customerMux.Handle("GET /assets/", web.AssetHandler(overlay))
 	baseHost := a.cfg.BaseURL.Host
 	public := hostRouter(&domains.Router{BaseHost: baseHost, Lookup: svc, Base: srv.Handler(), Customer: customerMux}, srv.Handler())
@@ -250,7 +261,9 @@ func (a *App) Start(ctx context.Context) error {
 		return err
 	}
 	inv.SetPages(renderer)
+	subs.SetPages(renderer)
 	srv.HandleFunc("GET /i/{id}", inv.ServeHosted)
+	srv.HandleFunc("GET /s/{id}", subs.ServeHosted)
 	srv.HandleFunc("/dashboard/", dash.ServeHTTP)
 	srv.HandleFunc("GET /assets/", web.AssetHandler(overlay).ServeHTTP)
 

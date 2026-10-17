@@ -43,6 +43,9 @@ type fake struct {
 	sessionStat string
 	refundStat  string
 	refundCode  int
+	mandateStat string // status of mandate md_z1
+	chargeCode  int    // error status for mandate charges
+	chargeMsg   string
 }
 
 func newFake(status string) *fake {
@@ -108,6 +111,22 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]any{"code": 0, "refund": map[string]any{"refund_id": "rf_z1", "payment_id": "pay_z1", "amount": "100.00", "status": f.refundStat, "reference_number": "rf_01"}})
 	case r.Method == "GET" && r.URL.Path == "/api/v1/refunds/rf_z1":
 		write(w, 200, map[string]any{"code": 0, "refund": map[string]any{"refund_id": "rf_z1", "payment_id": "pay_z1", "amount": 100, "status": f.refundStat, "reference_number": "rf_01"}})
+	case r.Method == "POST" && r.URL.Path == "/api/v1/mandates":
+		write(w, 200, map[string]any{"code": 0, "mandate": map[string]any{"mandate_id": "md_z1", "payments_session_id": "ps_m1", "status": "created", "max_amount": 748.5, "currency": "INR"}})
+	case r.Method == "GET" && r.URL.Path == "/api/v1/mandates/md_z1":
+		write(w, 200, map[string]any{"code": 0, "mandate": map[string]any{"mandate_id": "md_z1", "status": f.mandateStat, "max_amount": "748.50", "currency": "INR"}})
+	case r.Method == "POST" && r.URL.Path == "/api/v1/mandates/md_z1/charges":
+		if f.chargeCode != 0 {
+			write(w, f.chargeCode, map[string]any{"code": 9, "message": f.chargeMsg})
+			return
+		}
+		write(w, 200, map[string]any{"code": 0, "payment": map[string]any{"payment_id": "pay_zm1", "status": "pending", "amount": 499.0, "currency": "INR", "reference_number": "DEBITREF01"}})
+	case r.Method == "POST" && r.URL.Path == "/api/v1/mandates/md_z1/revoke":
+		if f.mandateStat == "revoked" {
+			write(w, 400, map[string]any{"code": 9, "message": "Mandate already revoked"})
+			return
+		}
+		write(w, 200, map[string]any{"code": 0, "message": "success"})
 	default:
 		write(w, 404, map[string]any{"code": 404, "message": "not found"})
 	}

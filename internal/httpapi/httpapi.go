@@ -20,6 +20,7 @@ import (
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/server"
 	"github.com/paymux/paymux/internal/store"
+	"github.com/paymux/paymux/internal/subscriptions"
 )
 
 const maxBody = 1 << 20 // 1 MiB
@@ -32,6 +33,8 @@ type Options struct {
 	Box *secrets.Box
 	// Invoices serves /v1/invoices and /v1/credit_notes; nil answers 404.
 	Invoices *invoice.Service
+	// Subscriptions serves /v1/subscriptions; nil answers 404.
+	Subscriptions *subscriptions.Service
 	// BaseURL is PAYMUX_BASE_URL, the origin of checkout_url.
 	BaseURL *url.URL
 	Log     *slog.Logger
@@ -51,6 +54,7 @@ type API struct {
 	log     *slog.Logger
 
 	invoices *invoice.Service
+	subs     *subscriptions.Service
 }
 
 // New builds the API.
@@ -61,7 +65,7 @@ func New(o Options) (*API, error) {
 	if o.Log == nil {
 		o.Log = slog.Default()
 	}
-	return &API{core: o.Core, db: o.DB, box: o.Box, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log, invoices: o.Invoices}, nil
+	return &API{core: o.Core, db: o.DB, box: o.Box, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log, invoices: o.Invoices, subs: o.Subscriptions}, nil
 }
 
 // handler is an authenticated route handler. body is the already-read
@@ -76,6 +80,12 @@ func (a *API) Register(m Mux) {
 	m.HandleFunc("POST /v1/payments/{id}/cancel", a.wrap(a.cancelPayment, true))
 	m.HandleFunc("POST /v1/payments/{id}/refunds", a.wrap(a.createRefund, true))
 	m.HandleFunc("GET /v1/refunds/{id}", a.wrap(a.getRefund, false))
+	m.HandleFunc("POST /v1/subscriptions", a.wrap(a.createSubscription, true))
+	m.HandleFunc("GET /v1/subscriptions/{id}", a.wrap(a.getSubscription, false))
+	m.HandleFunc("GET /v1/subscriptions", a.wrap(a.listSubscriptions, false))
+	m.HandleFunc("POST /v1/subscriptions/{id}/cancel", a.wrap(a.cancelSubscription, true))
+	m.HandleFunc("POST /v1/subscriptions/{id}/update", a.wrap(a.updateSubscription, true))
+	m.HandleFunc("POST /v1/subscriptions/{id}/payment_method", a.wrap(a.subscriptionPaymentMethod, true))
 	m.HandleFunc("GET /v1/invoices/{id}", a.wrap(a.getInvoice, false))
 	m.HandleFunc("GET /v1/invoices/{id}/pdf", a.wrap(a.getInvoicePDF, false))
 	m.HandleFunc("GET /v1/invoices", a.wrap(a.listInvoices, false))
