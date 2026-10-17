@@ -466,9 +466,27 @@ paths:
     post:
       operationId: updateSubscription
       x-required-scope: subscriptions:write
-      summary: Change the amount from the next period
+      summary: Change the amount from the next period, optionally prorating the current one
       description: |
-        No proration. If the new amount is above the mandate's maximum the response has
+        The new amount applies from the next period. `proration` says what happens to the rest of the current
+        period (merchant-triggered subscriptions; the difference is `(new - old) x remaining seconds / period
+        seconds`, rounded to the nearest minor unit):
+
+        - `none` (default): nothing; the current period stays as paid.
+        - `next_invoice`: the difference is added to the next renewal (an upgrade) or taken off it (a downgrade).
+        - `immediate`: an upgrade's difference is charged as soon as the rules allow: the customer gets a
+          pre-debit notice now and the debit runs at least 24 hours later, as a separate charge (`charge_at` in
+          the `proration` object). If that cannot be done now (no active mandate, a re-authorization under way,
+          the amount above the mandate maximum) it is added to the next renewal instead and `proration.reason`
+          says why. A downgrade is a credit on the next renewal, as with `next_invoice`.
+
+        A credit is never refunded automatically; one larger than the next renewal carries over to the ones after
+        it (a renewal is never below one minor unit). The prorated amounts appear as separate lines on the invoice.
+        Provider-managed subscriptions are billed by the provider and answer 422 `unsupported` to any proration
+        other than `none`. A change on a subscription that is not active, or at the very end of the period, has
+        nothing to prorate (`proration.reason`).
+
+        If the new amount is above the mandate's maximum the response has
         `requires_reauthorization: true` and a new `checkout_url`, and `subscription.reauthorization_required`
         fires; the new amount applies once the customer authorises the larger mandate.
       parameters:
@@ -483,10 +501,14 @@ paths:
               required: [amount]
               properties:
                 amount: { type: integer, minimum: 1, description: Minor units per period. }
+                proration:
+                  type: string
+                  enum: [none, next_invoice, immediate]
+                  default: none
               additionalProperties: false
       responses:
         "200":
-          description: The subscription (with `checkout_url` when re-authorization is needed).
+          description: The subscription (with `checkout_url` when re-authorization is needed, and `proration` when a prorated change was requested).
           content:
             application/json:
               schema:
@@ -819,6 +841,7 @@ components:
         canceled_at: { type: string, format: date-time }
         ended_at: { type: string, format: date-time }
         pending_amount: { type: integer, description: Amount that applies from the next period. }
+        proration_adjust: { type: integer, description: "What the next renewal changes by after a prorated plan change: a charge when positive, a credit when negative." }
         requires_reauthorization: { type: boolean }
         description: { type: string }
         metadata: { type: object, additionalProperties: { type: string } }
@@ -835,6 +858,27 @@ components:
               type: string
               format: uri
               description: "`<PAYMUX_BASE_URL>/s/<id>?t=<secret>`. Shown only in this response."
+            proration:
+              $ref: "#/components/schemas/ProrationOutcome"
+    ProrationOutcome:
+      type: object
+      description: What a prorated plan change did.
+      required: [requested, mode, amount]
+      properties:
+        requested: { type: string, enum: [none, next_invoice, immediate] }
+        mode:
+          type: string
+          enum: [none, next_invoice, immediate]
+          description: What happened; differs from `requested` when an immediate charge fell back to the next renewal, or there was nothing to prorate.
+        amount:
+          type: integer
+          description: Signed difference for the rest of the period in minor units; positive is a charge, negative a credit.
+        description: { type: string }
+        charge_at:
+          type: string
+          format: date-time
+          description: When an `immediate` charge will be made, at the earliest.
+        reason: { type: string, description: Why the mode differs from the request, or why nothing was prorated. }
     SubscriptionList:
       type: object
       required: [object, data, has_more]

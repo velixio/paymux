@@ -120,9 +120,16 @@ func (s *Service) scheduleCycle(ctx context.Context, tx store.Tx, sub store.Subs
 		}
 		return err
 	}
-	// Every merchant-triggered debit, period 0 included, is announced first and
-	// runs at least 24h after the notice. (The first period normally is not a
-	// merchant-triggered debit at all: the registration transaction pays it.)
+	return s.queueCycle(ctx, tx, sub, &cy, pol, m, chargeAt)
+}
+
+// queueCycle announces a freshly inserted cycle and schedules its charge. Every
+// merchant-triggered debit, period 0 included, is announced first and runs at
+// least 24h after the notice. (The first period normally is not a
+// merchant-triggered debit at all: the registration transaction pays it.)
+func (s *Service) queueCycle(ctx context.Context, tx store.Tx, sub store.Subscription, cy *store.Cycle, pol policy, m store.Mandate, chargeAt time.Time) error {
+	now := s.nowUTC()
+	k := cy.PeriodIndex
 	noticeAt := billing.PreDebitAt(chargeAt, pol.predebitLead)
 	if noticeAt.Before(now) {
 		noticeAt = now
@@ -133,10 +140,10 @@ func (s *Service) scheduleCycle(ctx context.Context, tx store.Tx, sub store.Subs
 	if err := s.enqueueNotify(ctx, tx, sub, k, 0, noticeAt); err != nil {
 		return err
 	}
-	if err := s.enqueueCharge(ctx, tx, sub, &cy, pol.snap(m.Method, chargeAt)); err != nil {
+	if err := s.enqueueCharge(ctx, tx, sub, cy, pol.snap(m.Method, chargeAt)); err != nil {
 		return err
 	}
-	return store.UpdateCycle(ctx, tx, cy, now)
+	return store.UpdateCycle(ctx, tx, *cy, now)
 }
 
 // activate moves an incomplete subscription to active (or trialing) after its
@@ -257,7 +264,7 @@ func (s *Service) settleSetup(ctx context.Context, mandateID string, setup *conn
 // ensureOpenAttempt returns the attempt the next charge will use: the unused
 // one if there is one, else a new attempt (on the same payment after a failed
 // one), else a new renewal payment with its first attempt.
-func (s *Service) ensureOpenAttempt(ctx context.Context, tx store.Tx, sub store.Subscription, cy *store.Cycle) (store.Attempt, error) {
+func (s *Service) ensureOpenAttempt(ctx context.Context, tx store.Tx, sub *store.Subscription, cy *store.Cycle) (store.Attempt, error) {
 	if cy.AttemptID != "" {
 		a, err := store.GetAttempt(ctx, tx, cy.AttemptID)
 		if err != nil {
@@ -276,11 +283,20 @@ func (s *Service) ensureOpenAttempt(ctx context.Context, tx store.Tx, sub store.
 		cy.AttemptID = a.ID
 		return a, err
 	}
-	if cy.PeriodIndex >= 1 && sub.PendingAmount > 0 {
-		cy.Amount = sub.PendingAmount // an amount change applies from the next period
+	description := sub.Description
+	switch {
+	case isProration(cy.PeriodIndex):
+		description = "Plan change proration"
+	case cy.PeriodIndex >= 1:
+		if sub.PendingAmount > 0 {
+			cy.Amount = sub.PendingAmount // an amount change applies from the next period
+		}
+		if err := s.applyAdjustments(ctx, tx, sub, cy); err != nil {
+			return store.Attempt{}, err
+		}
 	}
 	p, a, err := s.core.CreateRenewalPayment(ctx, tx, core.RenewalInput{OrgID: sub.OrgID, AppID: sub.AppID, Mode: sub.Mode,
-		SubscriptionID: sub.ID, CustomerID: sub.CustomerID, Description: sub.Description, ReturnURL: sub.ReturnURL,
+		SubscriptionID: sub.ID, CustomerID: sub.CustomerID, Description: description, ReturnURL: sub.ReturnURL,
 		Metadata: sub.Metadata, Amount: cy.Amount, Currency: sub.Currency, ProviderAccountID: sub.ProviderAccountID})
 	if err != nil {
 		return store.Attempt{}, err
@@ -324,7 +340,7 @@ func (s *Service) handleNotify(ctx context.Context, raw json.RawMessage) error {
 		if m, err = s.mandateOf(ctx, tx, sub); err != nil {
 			return err
 		}
-		if att, err = s.ensureOpenAttempt(ctx, tx, sub, &cy); err != nil {
+		if att, err = s.ensureOpenAttempt(ctx, tx, &sub, &cy); err != nil {
 			return err
 		}
 		chargeT = cy.NextRunAt
@@ -375,7 +391,7 @@ func (s *Service) handleNotify(ctx context.Context, raw json.RawMessage) error {
 // endsBefore reports whether the subscription ends instead of billing this
 // cycle: cancel-at-period-end was requested, or all total_count periods are paid.
 func endsBefore(sub store.Subscription, cy store.Cycle) bool {
-	if cy.PeriodIndex < 1 || cy.PaymentID != "" || cy.Retries != 0 {
+	if cy.PeriodIndex < 1 || isProration(cy.PeriodIndex) || cy.PaymentID != "" || cy.Retries != 0 {
 		return false
 	}
 	return sub.CancelAtPeriodEnd || (sub.TotalCount > 0 && sub.RenewalsDone >= sub.TotalCount)
@@ -446,7 +462,7 @@ func (s *Service) prepareCharge(ctx context.Context, tx store.Tx, sub *store.Sub
 		return false, err
 	}
 	// End of term (first attempt at a new period only).
-	if cy.PeriodIndex >= 1 && cy.PaymentID == "" && cy.Retries == 0 {
+	if cy.PeriodIndex >= 1 && !isProration(cy.PeriodIndex) && cy.PaymentID == "" && cy.Retries == 0 {
 		switch {
 		case sub.CancelAtPeriodEnd:
 			ok, err := s.transition(sub, state.SubPeriodEndCancel)
@@ -490,7 +506,7 @@ func (s *Service) prepareCharge(ctx context.Context, tx store.Tx, sub *store.Sub
 	if at := pol.snap(m.Method, now); at.After(now) {
 		return true, s.deferCharge(ctx, tx, *sub, cy, at)
 	}
-	if *att, err = s.ensureOpenAttempt(ctx, tx, *sub, cy); err != nil {
+	if *att, err = s.ensureOpenAttempt(ctx, tx, sub, cy); err != nil {
 		return true, err
 	}
 	if cy.Amount > m.MaxAmount {
@@ -697,13 +713,20 @@ func (s *Service) succeedCycle(ctx context.Context, tx store.Tx, sub *store.Subs
 	if terminal(sub.Status) {
 		return nil // paid after the end: the payment machinery flags it, nothing to bill
 	}
-	sub.RenewalsDone++
-	if cy.Amount != sub.Amount {
-		sub.Amount = cy.Amount
+	if isProration(cy.PeriodIndex) {
+		// A prorated charge pays for part of the current period: it does not
+		// renew anything.
+		return s.emitSub(ctx, tx, EvUpdated, *sub, eventData{Reason: "proration_charged", RenewalAmount: cy.Amount})
 	}
-	if sub.PendingAmount == cy.Amount {
+	sub.RenewalsDone++
+	base := cy.Amount - adjustTotal(cy.Adjustments) // the period's own amount, without prorated lines
+	if base != sub.Amount {
+		sub.Amount = base
+	}
+	if sub.PendingAmount == base {
 		sub.PendingAmount = 0
 	}
+	sub.BilledAmount = 0 // a new period is paid at the subscription's amount
 	sub.DunningAttempt, sub.NextRetryAt = 0, time.Time{}
 	if cy.PeriodIndex >= 0 {
 		iv := billing.Interval(sub.Interval)
@@ -732,6 +755,9 @@ func (s *Service) succeedCycle(ctx context.Context, tx store.Tx, sub *store.Subs
 // re-authorization is requested instead and the charge resumes once it is done.
 func (s *Service) failCycle(ctx context.Context, tx store.Tx, sub *store.Subscription, cy *store.Cycle, pol policy, m store.Mandate, reason string, reauth bool) error {
 	now := s.nowUTC()
+	if isProration(cy.PeriodIndex) {
+		return s.failProration(ctx, tx, sub, cy, reason)
+	}
 	cy.State, cy.LeaseUntil = "failed", time.Time{}
 	was := sub.Status
 	if _, err := s.transition(sub, state.SubRenewalFailed); err != nil {

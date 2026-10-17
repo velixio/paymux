@@ -64,6 +64,8 @@ type createSubscriptionReq struct {
 type subscriptionResp struct {
 	subscriptions.View
 	CheckoutURL string `json:"checkout_url,omitempty"`
+	// Proration says what a prorated plan change did (update only).
+	Proration *subscriptions.ProrationOutcome `json:"proration,omitempty"`
 }
 
 func (a *API) createSubscription(w http.ResponseWriter, r *http.Request, pr core.Principal, body []byte) {
@@ -96,7 +98,7 @@ func (a *API) createSubscription(w http.ResponseWriter, r *http.Request, pr core
 		a.failSub(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, subscriptionResp{subscriptions.ViewSubscription(res.Subscription), res.CheckoutURL})
+	writeJSON(w, http.StatusCreated, subscriptionResp{subscriptions.ViewSubscription(res.Subscription), res.CheckoutURL, nil})
 }
 
 func (a *API) getSubscription(w http.ResponseWriter, r *http.Request, pr core.Principal, _ []byte) {
@@ -160,7 +162,8 @@ func (a *API) updateSubscription(w http.ResponseWriter, r *http.Request, pr core
 		return
 	}
 	var req struct {
-		Amount *int64 `json:"amount"`
+		Amount    *int64 `json:"amount"`
+		Proration string `json:"proration"`
 	}
 	if !a.decodeBody(w, r, body, &req, false) {
 		return
@@ -169,12 +172,13 @@ func (a *API) updateSubscription(w http.ResponseWriter, r *http.Request, pr core
 		a.fail(w, r, http.StatusBadRequest, "invalid_request", "amount is required (integer, minor units per period)")
 		return
 	}
-	res, err := a.subs.UpdateAmount(r.Context(), scope(pr), r.PathValue("id"), *req.Amount)
+	res, err := a.subs.Update(r.Context(), scope(pr), r.PathValue("id"),
+		subscriptions.UpdateInput{Amount: *req.Amount, Proration: subscriptions.Proration(req.Proration)})
 	if err != nil {
 		a.failSub(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, subscriptionResp{subscriptions.ViewSubscription(res.Subscription), res.CheckoutURL})
+	writeJSON(w, http.StatusOK, subscriptionResp{subscriptions.ViewSubscription(res.Subscription), res.CheckoutURL, res.Proration})
 }
 
 func (a *API) subscriptionPaymentMethod(w http.ResponseWriter, r *http.Request, pr core.Principal, body []byte) {
@@ -192,5 +196,5 @@ func (a *API) subscriptionPaymentMethod(w http.ResponseWriter, r *http.Request, 
 		a.failSub(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, subscriptionResp{subscriptions.ViewSubscription(res.Subscription), res.CheckoutURL})
+	writeJSON(w, http.StatusOK, subscriptionResp{subscriptions.ViewSubscription(res.Subscription), res.CheckoutURL, nil})
 }
