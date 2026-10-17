@@ -357,6 +357,9 @@ func (z *zoho) ParseWebhook(_ context.Context, req connector.WebhookRequest) ([]
 	default:
 		return nil, nil
 	}
+	if err := n.Validate(); err != nil { // e.g. an entity with no id (found by fuzzing)
+		return nil, fmt.Errorf("zoho: %w", err)
+	}
 	return []connector.Notification{n}, nil
 }
 

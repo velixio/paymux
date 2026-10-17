@@ -2,6 +2,15 @@
 
 package connector // import "github.com/paymux/paymux/pkg/connector"
 
+const (
+	OutcomeOK           = "ok"
+	OutcomeClientError  = "client_error"
+	OutcomeRateLimited  = "rate_limited"
+	OutcomeServerError  = "server_error"
+	OutcomeTimeout      = "timeout"
+	OutcomeNetworkError = "network_error"
+)
+
 var (
 	ErrNotFound           = errors.New("connector: not found")
 	ErrInvalidCredentials = errors.New("connector: invalid credentials")
@@ -159,6 +168,7 @@ type HTTPOptions struct {
 	Logger     *slog.Logger
 	Secrets    []string
 	RateLimit  RateLimit
+	Observer   Observer
 	Base       http.RoundTripper
 	Now        func() time.Time
 	Sleep      func(ctx context.Context, d time.Duration) error
@@ -279,6 +289,8 @@ type Notification struct {
 	Subscription *SubscriptionSnapshot `json:"subscription,omitempty"`
 }
 
+func (n Notification) Validate() error
+
 type NotificationKind string
 
 const (
@@ -288,6 +300,8 @@ const (
 	NotifyMandate      NotificationKind = "mandate"
 	NotifySubscription NotificationKind = "subscription"
 )
+
+type Observer func(RequestObservation)
 
 type Page[T any] struct {
 	Items []T    `json:"items"`
@@ -384,6 +398,13 @@ func (s RefundStatus) Valid() bool
 type Refunder interface {
 	Refund(ctx context.Context, req RefundRequest) (RefundSnapshot, error)
 	FetchRefund(ctx context.Context, ref RefundRef) (RefundSnapshot, error)
+}
+
+type RequestObservation struct {
+	Method   string        `json:"method"`
+	Status   int           `json:"status,omitempty"`
+	Duration time.Duration `json:"duration"`
+	Outcome  string        `json:"outcome"`
 }
 
 type ReturnRequest struct {
@@ -487,6 +508,8 @@ func (w WebhookRequest) Header(name string) string
 
 package connectortest // import "github.com/paymux/paymux/pkg/connector/connectortest"
 
+func CheckNotifications(ns []connector.Notification) error
+
 func NewDeps(srv *httptest.Server, now time.Time) connector.Deps
 
 func RedirectClient(srv *httptest.Server) *http.Client
@@ -547,4 +570,122 @@ func Exponent(currency string) (int, error)
 func FormatDecimal(minor int64, currency string) (string, error)
 
 func ParseDecimal(s, currency string) (int64, error)
+
+
+package wire // import "github.com/paymux/paymux/pkg/connector/wire"
+
+const (
+	HeaderID        = "webhook-id"
+	HeaderTimestamp = "webhook-timestamp"
+	HeaderSignature = "webhook-signature"
+	SecretPrefix    = "whsec_"
+	Tolerance       = 5 * time.Minute
+)
+
+const (
+	MethodInfo                       = "info"
+	MethodCreateCheckout             = "create_checkout"
+	MethodHandleReturn               = "handle_return"
+	MethodVerifyWebhook              = "verify_webhook"
+	MethodParseWebhook               = "parse_webhook"
+	MethodFetchPayment               = "fetch_payment"
+	MethodRefund                     = "refund"
+	MethodFetchRefund                = "fetch_refund"
+	MethodListDisputes               = "list_disputes"
+	MethodFetchDispute               = "fetch_dispute"
+	MethodAcceptDispute              = "accept_dispute"
+	MethodSubmitEvidence             = "submit_evidence"
+	MethodListPayments               = "list_payments"
+	MethodListRefunds                = "list_refunds"
+	MethodListSettlements            = "list_settlements"
+	MethodCancelCheckout             = "cancel_checkout"
+	MethodCreateSubscriptionCheckout = "create_subscription_checkout"
+	MethodFetchSubscription          = "fetch_subscription"
+	MethodCancelSubscription         = "cancel_subscription"
+	MethodUpdateSubscriptionAmount   = "update_subscription_amount"
+	MethodCreateMandateCheckout      = "create_mandate_checkout"
+	MethodFetchMandate               = "fetch_mandate"
+	MethodNotifyPreDebit             = "notify_pre_debit"
+	MethodChargeMandate              = "charge_mandate"
+	MethodRevokeMandate              = "revoke_mandate"
+)
+
+const (
+	CodeNotFound           = "not_found"
+	CodeInvalidCredentials = "invalid_credentials"
+	CodeTemporary          = "temporary"
+	CodeUnsupported        = "unsupported"
+	CodeInvalidSignature   = "invalid_signature"
+	CodeUnsigned           = "unsigned"
+	CodeInvalidReturn      = "invalid_return"
+	CodeMandateLimit       = "mandate_limit"
+	CodeNotRefundable      = "not_refundable"
+	CodeRateLimited        = "rate_limited"
+	CodeInternal           = "internal"
+	CodeBadRequest         = "bad_request"
+)
+
+var ErrBadSignature = errors.New("wire: missing, wrong or stale signature")
+
+func NewHandler(c connector.Connector, secret string, now func() time.Time) (http.Handler, error)
+
+type CancelSubscriptionRequest struct {
+	Subscription connector.SubscriptionRef `json:"subscription"`
+	AtPeriodEnd  bool                      `json:"at_period_end"`
+}
+
+type Empty struct{}
+
+type Envelope struct {
+	Error Error `json:"error"`
+}
+
+type Error struct {
+	Code         string `json:"code"`
+	Message      string `json:"message,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+	RetryAfterMS int64  `json:"retry_after_ms,omitempty"`
+}
+
+func FromError(err error) (int, Error)
+
+func (e Error) Err() error
+
+type EvidenceRequest struct {
+	Dispute  connector.DisputeRef `json:"dispute"`
+	Evidence connector.Evidence   `json:"evidence"`
+}
+
+type ListRequest struct {
+	Range  connector.TimeRange `json:"range"`
+	Cursor connector.Cursor    `json:"cursor,omitempty"`
+}
+
+type Notifications struct {
+	Items []connector.Notification `json:"items"`
+}
+
+type Settlements struct {
+	Items []connector.SettlementSnapshot `json:"items"`
+}
+
+type SettlementsRequest struct {
+	Range connector.TimeRange `json:"range"`
+}
+
+type Signer struct {
+
+}// contains filtered or unexported fields
+
+
+func NewSigner(secret string) (*Signer, error)
+
+func (s *Signer) Sign(h http.Header, body []byte, now time.Time)
+
+func (s *Signer) Verify(h http.Header, body []byte, now time.Time) error
+
+type UpdateAmountRequest struct {
+	Subscription connector.SubscriptionRef `json:"subscription"`
+	Amount       int64                     `json:"amount"`
+}
 

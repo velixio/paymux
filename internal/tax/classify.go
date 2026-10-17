@@ -95,6 +95,11 @@ func Classify(sup Supplier, rcp Recipient, invoiceDate time.Time, paidInForeignC
 		}
 		return c, nil
 	}
+	// A domestic supply is taxed by comparing states, so the supplier's must be
+	// real (found by fuzzing: an empty one gave a place of supply of "").
+	if _, ok := states[sup.StateCode]; !ok {
+		return Classification{}, fmt.Errorf("tax: unknown supplier state code %q", sup.StateCode)
+	}
 	if rcp.GSTIN != "" {
 		if err := ValidGSTIN(rcp.GSTIN); err != nil {
 			return Classification{}, fmt.Errorf("recipient GSTIN %q: %w", rcp.GSTIN, err)

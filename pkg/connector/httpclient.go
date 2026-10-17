@@ -28,6 +28,9 @@ type HTTPOptions struct {
 	Secrets []string
 	// RateLimit is a per-account token bucket; zero RequestsPerSecond disables it.
 	RateLimit RateLimit
+	// Observer, when set, receives one RequestObservation per attempt (latency
+	// and outcome only: no URL, headers or body).
+	Observer Observer
 	// Base is the underlying transport (default http.DefaultTransport).
 	Base http.RoundTripper
 	// Now and Sleep are test seams for the limiter and the backoff.
@@ -144,6 +147,9 @@ func (t *transport) once(req *http.Request) (*http.Response, error) {
 	start := t.o.Now()
 	t.logRequest(r)
 	resp, err := t.o.Base.RoundTrip(r)
+	if t.o.Observer != nil {
+		t.o.Observer(observe(req.Method, resp, err, t.o.Now().Sub(start)))
+	}
 	if err != nil {
 		cancel()
 		t.logError(r, err)

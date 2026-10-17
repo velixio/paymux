@@ -214,6 +214,26 @@ for every currency, that `Info` and the implemented interfaces agree, that
 `CreateCheckout` returns a valid `NextAction`, and that the SDK types
 round-trip through JSON.
 
+### Fuzzing
+
+Every connector has `FuzzVerifyWebhook` and `FuzzParseWebhook` (see
+`connectors/whop/fuzz_test.go` for the shortest example), seeded with the golden
+fixtures. Their invariants are the contract of the two methods:
+
+* nothing panics, whatever the bytes;
+* `VerifyWebhook` returns only nil, `ErrInvalidSignature` or `ErrUnsigned`, and
+  never nil for a body that differs from the signed one (a provider that signs
+  only some fields, like PayU, can only be held to those fields: say so in the test);
+* `ParseWebhook` results pass `connectortest.CheckNotifications` (the same check
+  as `Notification.Validate`): event id and type present, the snapshot of the
+  notification's kind present, and a provider id in it.
+
+Call `Validate` on what you are about to return from `ParseWebhook`: fuzzing
+found empty entities (`{"dispute":{}}`) being turned into notifications that
+could not be matched to anything. In CI the targets run as ordinary tests over
+the seeds and over every crashing input a fuzz run saved under
+`testdata/fuzz/`; to fuzz for real run `bash scripts/fuzz.sh [fuzztime]`.
+
 ### Fake-server patterns
 
 Never call a real provider in tests.
@@ -248,7 +268,90 @@ in the same change; reviewers read the diff of that file as the API change.
 Prefer adding to the SDK over changing or removing: removals and signature
 changes break existing connectors.
 
-## 10. Checklist
+## 10. Remote connectors (Path 2)
+
+A connector does not have to be compiled into Paymux. `connectors/remote`
+forwards every method to an HTTP service that serves the same interfaces, so a
+connector can be written in any language, deployed and upgraded on its own.
+
+**Paymux side.** Create a provider account of connector `remote` with
+
+```json
+{"base_url": "https://connector.example.com/v1", "secret": "whsec_<base64>"}
+```
+
+**Discovery.** `GET {base_url}/info` returns the connector's `Info` (JSON of
+`connector.Info`). The remote decides the optional capabilities: the remote
+connector implements exactly the optional interfaces in `Info.Capabilities`,
+so the conformance kit's "declared equals implemented" rule still holds. Info is
+read when the account's connector is built (on config change or restart).
+
+**Calls.** Each method is `POST {base_url}/{method}` with the JSON encoding of
+the request type as the body, answered by `200` and the JSON result:
+
+| method | body | result |
+|--------|------|--------|
+| `create_checkout` | `CheckoutRequest` | `CheckoutResult` |
+| `handle_return` | `ReturnRequest` | `ReturnResult` |
+| `verify_webhook` | `WebhookRequest` | `{}` |
+| `parse_webhook` | `WebhookRequest` | `{"items": [Notification]}` |
+| `fetch_payment` | `PaymentRef` | `PaymentSnapshot` |
+| `refund`, `fetch_refund` | `RefundRequest`, `RefundRef` | `RefundSnapshot` |
+| `list_disputes` | `{"range", "cursor"}` | `Page[DisputeSnapshot]` |
+| `fetch_dispute` | `DisputeRef` | `DisputeSnapshot` |
+| `accept_dispute` | `DisputeRef` | `{}` |
+| `submit_evidence` | `{"dispute", "evidence"}` | `{}` |
+| `list_payments`, `list_refunds` | `{"range", "cursor"}` | `Page[...]` |
+| `list_settlements` | `{"range"}` | `{"items": [SettlementSnapshot]}` |
+| `cancel_checkout` | `PaymentRef` | `{}` |
+| `create_subscription_checkout` | `SubscriptionRequest` | `CheckoutResult` |
+| `fetch_subscription` | `SubscriptionRef` | `SubscriptionSnapshot` |
+| `cancel_subscription` | `{"subscription", "at_period_end"}` | `{}` |
+| `update_subscription_amount` | `{"subscription", "amount"}` | `{}` |
+| `create_mandate_checkout` | `MandateRequest` | `CheckoutResult` |
+| `fetch_mandate` | `MandateRef` | `MandateSnapshot` |
+| `notify_pre_debit` | `PreDebitRequest` | `{}` |
+| `charge_mandate` | `ChargeRequest` | `PaymentSnapshot` |
+| `revoke_mandate` | `MandateRef` | `{}` |
+
+The Go definitions are in `pkg/connector/wire` (method names, the multi-argument
+envelopes, error codes); raw bodies and headers travel as base64 and header
+maps exactly as `encoding/json` encodes the SDK types.
+
+**Errors.** A failed call answers with a non-200 status and
+`{"error": {"code", "message", "reason", "retry_after_ms"}}`. The codes are
+`not_found`, `invalid_credentials`, `temporary`, `unsupported`,
+`invalid_signature`, `unsigned`, `invalid_return`, `mandate_limit`,
+`not_refundable` (with `reason`), `rate_limited` (with `retry_after_ms`),
+`bad_request` and `internal`; the client turns them back into the SDK's typed
+errors, so `errors.Is(err, connector.ErrInvalidSignature)` works across the
+hop. A 5xx without a valid signature (a proxy, a crash) and any network error
+are `ErrTemporary`; a response whose signature does not verify is
+`ErrInvalidCredentials` (almost always a wrong secret).
+
+**Signing.** Both directions use Standard Webhooks: headers `webhook-id`,
+`webhook-timestamp` and `webhook-signature: v1,<base64 HMAC-SHA256(id.timestamp.body)>`
+under the shared `whsec_` secret, with a five minute tolerance. Requests
+without a valid signature get `401`. `GET /info` is signed too (empty body).
+
+**Serving a connector.** In Go, `wire.NewHandler(connector, secret, nil)` is the
+whole server. `examples/remote-connector` is a runnable reference that wraps the
+Razorpay connector (see its header comment for the environment it reads), and
+`connectors/razorpay/remote_test.go` runs the unmodified Razorpay conformance
+fixtures through `wire.NewHandler` and `connectors/remote`: the same
+`connectortest.Run` that the in-process connector passes. A service in another
+language implements the table above and the signing rule; run the conformance
+kit against it with a Go test that builds the remote connector from the service
+URL and passes provider-side fixtures through it.
+
+Limits to know: the return and webhook URLs belong to Paymux, so the remote is
+configured with them separately (the example reads `PAYMUX_BASE_URL` and
+`PAYMUX_ACCOUNT_ID`); KV and the HTTP client live in the remote service, not in
+Paymux; and each call is one HTTP round trip with the platform's usual timeout, and POSTs are not
+retried by the client (every mutating method is idempotent by `ProviderRef`, so the
+engine retries at its own level).
+
+## 11. Checklist
 
 * [ ] imports only stdlib and `pkg/...`
 * [ ] `Info` complete; capabilities match the interfaces

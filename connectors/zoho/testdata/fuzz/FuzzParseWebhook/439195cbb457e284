@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"event_id\":\"0\",\"event_tYpe\":\"mandate.\",\"pAYloAd\":{\"mAndAte\":{}}}")
