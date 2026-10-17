@@ -656,7 +656,17 @@ func TestFullPaymentFlow(t *testing.T) {
 			t.Errorf("payment flags after the loss: %v", p["flags"])
 		}
 
-		// 13. The Go hooks ran after commit with read-only snapshots, a failing
+		// 13a. The business metrics reflect what happened (refreshed on scrape).
+		code, mbody := fetch(t, r.app.InternalAddr(), "/metrics")
+		if code != 200 {
+			t.Fatalf("metrics %d", code)
+		}
+		for _, want := range []string{`paymux_payments_total{status="`, `connector="razorpay",mode="`, "paymux_invoices_issued_total 1", "paymux_webhook_deliveries_failed_total 0"} {
+			if !strings.Contains(mbody, want) {
+				t.Errorf("metrics missing %q:\n%s", want, mbody)
+			}
+		}
+		// 13b. The Go hooks ran after commit with read-only snapshots, a failing
 		//     or panicking hook changed nothing, and ops were told about it.
 		waitFor(t, "the hooks", func() bool {
 			return seen.has("payment.succeeded") && seen.has("refund.succeeded") && seen.has("dispute.opened") && seen.has("invoice.issued")
@@ -679,18 +689,7 @@ func TestFullPaymentFlow(t *testing.T) {
 			t.Errorf("OnPaymentSucceeded ran %d times for one payment", n)
 		}
 
-		// 14. The business metrics reflect what happened (refreshed on scrape).
-		code, mbody := fetch(t, r.app.InternalAddr(), "/metrics")
-		if code != 200 {
-			t.Fatalf("metrics %d", code)
-		}
-		for _, want := range []string{`paymux_payments_total{status="`, `connector="razorpay",mode="`, "paymux_invoices_issued_total 1", "paymux_webhook_deliveries_failed_total 0"} {
-			if !strings.Contains(mbody, want) {
-				t.Errorf("metrics missing %q:\n%s", want, mbody)
-			}
-		}
-
-		// 15. The JavaScript hooks ran as well: the script posted to Slack, and
+		// 14. The JavaScript hooks ran as well: the script posted to Slack, and
 		//     its failures raised alerts without touching the payments.
 		waitFor(t, "the JS hook's Slack post", func() bool { return ops.contains("jshook paid " + id + " 49900 INR") })
 		waitFor(t, "the JS error alert", func() bool { return ops.contains("script bug on " + refundID) })
