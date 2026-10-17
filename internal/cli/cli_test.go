@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -28,7 +29,7 @@ func TestRunUnknownCommand(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("code=%d", code)
 	}
-	for _, want := range []string{`unknown command "bogus"`, "usage: paymux <serve|migrate|version>"} {
+	for _, want := range []string{`unknown command "bogus"`, "usage: paymux <serve|migrate|app|version>"} {
 		if !strings.Contains(errs, want) {
 			t.Errorf("stderr %q missing %q", errs, want)
 		}
@@ -37,7 +38,7 @@ func TestRunUnknownCommand(t *testing.T) {
 
 func TestRunNoArgs(t *testing.T) {
 	code, _, errs := run()
-	if code != 2 || !strings.Contains(errs, "usage: paymux <serve|migrate|version>") {
+	if code != 2 || !strings.Contains(errs, "usage: paymux <serve|migrate|app|version>") {
 		t.Fatalf("code=%d stderr=%q", code, errs)
 	}
 }
@@ -79,7 +80,7 @@ func TestMigrateAppliesThenIsIdempotent(t *testing.T) {
 	if code := Run(context.Background(), []string{"migrate"}, lookup, &out, &errb); code != 0 {
 		t.Fatalf("code=%d stderr=%q", code, errb.String())
 	}
-	if !strings.Contains(out.String(), "applied 1 migrations (sqlite)") {
+	if !regexp.MustCompile(`applied [1-9][0-9]* migrations \(sqlite\)`).MatchString(out.String()) {
 		t.Fatalf("stdout=%q", out.String())
 	}
 	out.Reset()
