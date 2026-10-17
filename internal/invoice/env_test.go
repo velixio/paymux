@@ -113,6 +113,7 @@ func newEnv(t *testing.T, db *store.DB, tw ...tweak) *env {
 	})
 	e.inv = invoice.New(invoice.Options{DB: db, Settings: e.set, Jobs: e.q, Emitter: emitter, Mailer: e.mailer, BaseURL: baseURL,
 		Now: e.clock, IsMerchantOfRecord: func(name string) bool { return name == "mor" }})
+	e.inv.RegisterJobs(e.q)
 	e.core = core.NewService(core.Options{DB: db, Settings: e.set, Jobs: e.q, Emitter: emitter, Now: e.clock,
 		OnPaymentSucceeded: e.inv.OnPaymentSucceeded, OnRefundSucceeded: e.inv.OnRefundSucceeded})
 
@@ -240,4 +241,25 @@ func (e *env) refund(p store.Payment, amount int64) store.Refund {
 		e.t.Fatal(err)
 	}
 	return r
+}
+
+// runJobs drains the job queue.
+func (e *env) runJobs() {
+	e.t.Helper()
+	for i := 0; i < 20; i++ {
+		n, err := e.q.RunOnce(ctx)
+		if err != nil {
+			e.t.Fatal(err)
+		}
+		if n == 0 {
+			return
+		}
+	}
+}
+
+func (e *env) setDelivery(mode string) {
+	e.t.Helper()
+	if err := e.set.SetOrg(ctx, audit.System, store.DefaultOrgID, "invoice_delivery", []byte(`"`+mode+`"`)); err != nil {
+		e.t.Fatal(err)
+	}
 }
