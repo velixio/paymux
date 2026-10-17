@@ -87,11 +87,17 @@ func TestAppDashboardStore(t *testing.T) {
 			t.Fatalf("keys %+v", keys)
 		}
 		var ok bool
-		_ = db.Write(ctx, func(tx store.Tx) (err error) { ok, err = store.RevokeAPIKey(ctx, tx, "app_a", "key_1", t0.Add(time.Hour)); return })
+		_ = db.Write(ctx, func(tx store.Tx) (err error) {
+			ok, err = store.RevokeAPIKey(ctx, tx, "app_a", "key_1", t0.Add(time.Hour))
+			return
+		})
 		if !ok {
 			t.Fatal("revoke reported nothing")
 		}
-		_ = db.Write(ctx, func(tx store.Tx) (err error) { ok, err = store.RevokeAPIKey(ctx, tx, "app_a", "key_1", t0.Add(2*time.Hour)); return })
+		_ = db.Write(ctx, func(tx store.Tx) (err error) {
+			ok, err = store.RevokeAPIKey(ctx, tx, "app_a", "key_1", t0.Add(2*time.Hour))
+			return
+		})
 		if ok {
 			t.Fatal("second revoke must be a no-op")
 		}
@@ -109,7 +115,7 @@ func TestAppDashboardStore(t *testing.T) {
 func TestBlobStore(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		seedBase(t, db)
-		b := store.Blob{ID: "blob_1", OrgID: store.DefaultOrgID, Kind: "logo", ContentType: "image/png", SHA256: "abc", Data: []byte{0, 1, 2, 255}, CreatedAt: t0}
+		b := store.Blob{ID: "blob_1", OrgID: store.DefaultOrgID, Kind: "logo", ContentType: "image/png", Data: []byte{0, 1, 2, 255}, CreatedAt: t0}
 		if err := db.Write(ctx, func(tx store.Tx) error { return store.InsertBlob(ctx, tx, b) }); err != nil {
 			t.Fatal(err)
 		}
@@ -162,7 +168,10 @@ func TestProviderAccountLists(t *testing.T) {
 			t.Fatalf("allowed %v", allowed)
 		}
 		_ = db.Write(ctx, func(tx store.Tx) error { return store.SetAppProviderAccounts(ctx, tx, "app_a", []string{"pa_2"}) })
-		_ = db.Read(ctx, func(q store.Querier) (err error) { allowed, err = store.ListAppProviderAccountIDs(ctx, q, "app_a"); return })
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			allowed, err = store.ListAppProviderAccountIDs(ctx, q, "app_a")
+			return
+		})
 		if !reflect.DeepEqual(allowed, []string{"pa_2"}) {
 			t.Fatalf("replace: %v", allowed)
 		}
@@ -260,8 +269,8 @@ func TestLedgerTotals(t *testing.T) {
 				{Kind: "refund", Amount: -3000, Currency: "INR", PaymentID: "pay_1", Mode: "test", OccurredAt: t0.Add(2 * time.Hour)},
 				{Kind: "charge", Amount: 700, Currency: "USD", PaymentID: "pay_2", Mode: "test", OccurredAt: t0},
 				{Kind: "charge", Amount: 99, Currency: "INR", PaymentID: "pay_1", Mode: "test", OccurredAt: t0.Add(-48 * time.Hour)}, // before the window
-				{Kind: "fee", Amount: -50, Currency: "INR", PaymentID: "pay_1", Mode: "test", OccurredAt: t0},                           // not gross/refund
-				{Kind: "charge", Amount: 1234, Currency: "INR", PaymentID: "pay_3", Mode: "live", OccurredAt: t0},                       // other mode
+				{Kind: "fee", Amount: -50, Currency: "INR", PaymentID: "pay_1", Mode: "test", OccurredAt: t0},                        // not gross/refund
+				{Kind: "charge", Amount: 1234, Currency: "INR", PaymentID: "pay_3", Mode: "live", OccurredAt: t0},                    // other mode
 			} {
 				e.ID, e.OrgID = "led_"+string(rune('a'+i)), store.DefaultOrgID
 				if err := store.InsertLedgerEntry(ctx, tx, e); err != nil {
