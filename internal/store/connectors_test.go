@@ -169,8 +169,51 @@ func TestDueAttemptsAndBump(t *testing.T) {
 	})
 }
 
+func TestFindRefundScopedToAccount(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		err := db.Write(ctx, func(tx store.Tx) error {
+			for i, acc := range []string{"pa_1", "pa_2"} {
+				n := string(rune('1' + i))
+				if err := store.InsertPayment(ctx, tx, store.Payment{ID: "pay_" + n, OrgID: "o", AppID: "app_1", Mode: "test", Kind: "one_time",
+					Amount: 100, Currency: "INR", Status: "created", ClientSecretHash: "x", ExpiresAt: t0, Version: 1, CreatedAt: t0, UpdatedAt: t0}); err != nil {
+					return err
+				}
+				if err := store.InsertAttempt(ctx, tx, store.Attempt{ID: "att_" + n, OrgID: "o", Mode: "test", PaymentID: "pay_" + n,
+					ProviderAccountID: acc, ProviderRef: "AREF" + n, Status: "captured", CreatedAt: t0, UpdatedAt: t0}); err != nil {
+					return err
+				}
+				if err := store.InsertRefund(ctx, tx, store.Refund{ID: "ref_" + n, OrgID: "o", AppID: "app_1", Mode: "test", PaymentID: "pay_" + n,
+					AttemptID: "att_" + n, Amount: 10, Currency: "INR", Status: "pending", ProviderRef: "RREF" + n, ProviderRefundID: "rfnd_same",
+					InitiatedBy: "api", CreatedAt: t0, UpdatedAt: t0}); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = db.Read(ctx, func(q store.Querier) error {
+			for acc, want := range map[string]string{"pa_1": "ref_1", "pa_2": "ref_2"} {
+				got, err := store.FindRefund(ctx, q, acc, "", "rfnd_same")
+				if err != nil || got.ID != want {
+					t.Errorf("%s by provider refund id: %+v %v", acc, got, err)
+				}
+			}
+			if _, err := store.FindRefund(ctx, q, "pa_1", "RREF2", ""); !errors.Is(err, store.ErrNotFound) {
+				t.Errorf("another account's provider_ref matched: %v", err)
+			}
+			if _, err := store.FindRefund(ctx, q, "pa_3", "RREF1", "rfnd_same"); !errors.Is(err, store.ErrNotFound) {
+				t.Errorf("third account matched: %v", err)
+			}
+			return nil
+		})
+	})
+}
+
 func TestRefundHelpers(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		seedPayment(t, db)
 		r := store.Refund{ID: "ref_1", OrgID: "o", AppID: "app_1", Mode: "test", PaymentID: "pay_1", AttemptID: "att_1", Amount: 10,
 			Currency: "INR", Status: "pending", ProviderRef: "RREF", InitiatedBy: "api", CreatedAt: t0, UpdatedAt: t0}
 		_ = db.Write(ctx, func(tx store.Tx) error { return store.InsertRefund(ctx, tx, r) })
@@ -180,12 +223,12 @@ func TestRefundHelpers(t *testing.T) {
 		})
 		_ = db.Read(ctx, func(q store.Querier) error {
 			for _, c := range []struct{ ref, id string }{{"RREF", ""}, {"", "rfnd_1"}} {
-				got, err := store.FindRefund(ctx, q, c.ref, c.id)
+				got, err := store.FindRefund(ctx, q, "pa_1", c.ref, c.id)
 				if err != nil || got.ID != "ref_1" || got.Status != "succeeded" || got.ProviderRefundID != "rfnd_1" {
 					t.Errorf("FindRefund(%v): %+v %v", c, got, err)
 				}
 			}
-			if _, err := store.FindRefund(ctx, q, "nope", "nope"); !errors.Is(err, store.ErrNotFound) {
+			if _, err := store.FindRefund(ctx, q, "pa_1", "nope", "nope"); !errors.Is(err, store.ErrNotFound) {
 				t.Errorf("missing: %v", err)
 			}
 			return nil
