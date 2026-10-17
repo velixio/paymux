@@ -39,12 +39,16 @@ func (d *Dashboard) renderUsers(w http.ResponseWriter, r *http.Request, s *sessi
 }
 
 func (d *Dashboard) userCreate(w http.ResponseWriter, r *http.Request, s *session) {
-	_, err := d.users.Create(r.Context(), r.PostForm.Get("email"), r.PostForm.Get("role"), r.PostForm.Get("password"))
+	u, err := d.users.Create(r.Context(), r.PostForm.Get("email"), r.PostForm.Get("role"), r.PostForm.Get("password"))
 	if errors.Is(err, ErrInvalid) {
 		d.renderUsers(w, r, s, http.StatusBadRequest, strings.TrimPrefix(err.Error(), ErrInvalid.Error()+": "))
 		return
 	}
 	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	if err := d.record(r.Context(), r, s, "user.create", u.ID, nil, map[string]string{"email": u.Email, "role": u.Role}); err != nil {
 		d.fail(w, err)
 		return
 	}
@@ -83,6 +87,10 @@ func (d *Dashboard) userRole(w http.ResponseWriter, r *http.Request, s *session)
 		d.fail(w, err)
 		return
 	}
+	if err := d.record(r.Context(), r, s, "user.role", u.ID, map[string]string{"role": u.Role}, map[string]string{"role": role}); err != nil {
+		d.fail(w, err)
+		return
+	}
 	http.Redirect(w, r, prefix+"/users?n=role", http.StatusSeeOther)
 }
 
@@ -107,6 +115,14 @@ func (d *Dashboard) userDisable(w http.ResponseWriter, r *http.Request, s *sessi
 			d.fail(w, err)
 			return
 		}
+	}
+	action := "user.enable"
+	if disable {
+		action = "user.disable"
+	}
+	if err := d.record(r.Context(), r, s, action, u.ID, nil, nil); err != nil {
+		d.fail(w, err)
+		return
 	}
 	http.Redirect(w, r, prefix+"/users?n="+n, http.StatusSeeOther)
 }

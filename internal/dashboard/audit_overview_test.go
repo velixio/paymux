@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -147,6 +148,23 @@ func TestOverviewEmpty(t *testing.T) {
 		body := e.pageOK(e.roleClient("viewer"), "/dashboard/overview")
 		for _, id := range []string{"today", "7d", "30d"} {
 			has(t, period(t, body, id), "No activity")
+		}
+	})
+}
+
+func TestUserManagementIsAudited(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		admin := e.roleClient("admin")
+		tok := csrfOf(t, e.pageOK(admin, "/dashboard/users"))
+		e.post(admin, "/dashboard/users", url.Values{"email": {"n@example.com"}, "role": {"viewer"}, "password": {goodPW}, "csrf": {tok}})
+		u, _ := db.UserByEmail(ctx, "n@example.com")
+		e.post(admin, "/dashboard/users/"+u.ID+"/role", url.Values{"role": {"operator"}, "csrf": {tok}})
+		e.post(admin, "/dashboard/users/"+u.ID+"/disable", url.Values{"action": {"disable"}, "csrf": {tok}})
+		for _, act := range []string{"user.create", "user.role", "user.disable"} {
+			body := e.pageOK(admin, "/dashboard/audit?action="+act)
+			has(t, body, act, u.ID)
+			lacks(t, body, goodPW)
 		}
 	})
 }
