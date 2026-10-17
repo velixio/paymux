@@ -3,7 +3,6 @@ package jsvm_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -314,11 +313,16 @@ func TestFetchSizeAndMethodLimits(t *testing.T) {
 	}))
 	defer big.Close()
 	small := newSlack(t)
+	okSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer okSrv.Close()
 	h := setup(t, map[string]string{"x.js": `
 		onPaymentSucceeded(function () { fetch("` + big.URL + `").text(); });
 		onRefundSucceeded(function () { fetch("` + small.srv.URL + `", {method: "POST", body: "y".repeat(1024 * 1024 + 1)}); });
 		onDisputeOpened(function () { fetch("` + small.srv.URL + `", {method: "CONNECT"}); });
-		onInvoiceIssued(function () { var r = fetch("` + small.srv.URL + `", {method: "POST", body: "y".repeat(1024 * 1024)}); if (!r.ok) throw new Error("not ok"); });
+		onInvoiceIssued(function () { var r = fetch("` + okSrv.URL + `", {method: "POST", body: "y".repeat(1024 * 1024)}); if (!r.ok) throw new Error("not ok"); });
 	`}, func(o *jsvm.Options, _ *harness) { o.AllowedHosts = []string{hostOf(t, big.URL)} })
 	if err := h.rt.Call(ctx, "onPaymentSucceeded", paymentEvent); err == nil || !strings.Contains(err.Error(), "too large") {
 		t.Errorf("response over 1 MB: %v", err)
@@ -347,8 +351,7 @@ func TestAHookCannotReachRequireOrTheFilesystem(t *testing.T) {
 			if (present.length) throw new Error("reachable: " + present.join(","));
 		});
 		onRefundSucceeded(function () { require("fs").readFileSync("/etc/passwd"); });
-		onDisputeOpened(function () { import("fs"); });
-	`}, nil)
+	`, "dynamic.js": `onDisputeOpened(function () { import("fs"); });`}, nil)
 	if err := h.rt.Call(ctx, "onPaymentSucceeded", paymentEvent); err != nil {
 		t.Errorf("%v", err)
 	}
@@ -356,8 +359,9 @@ func TestAHookCannotReachRequireOrTheFilesystem(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "require") {
 		t.Errorf("require: %v", err)
 	}
-	if err := h.rt.Call(ctx, "onDisputeOpened", map[string]any{}); err == nil {
-		t.Error("dynamic import of fs must not work")
+	// Dynamic import() is not part of the runtime: the file is refused at load.
+	if !strings.Contains(h.reported(), "dynamic.js") {
+		t.Errorf("a script using import() should be rejected at load: %q", h.reported())
 	}
 }
 
