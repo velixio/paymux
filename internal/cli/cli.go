@@ -25,6 +25,13 @@ func Run(ctx context.Context, args []string, lookupEnv func(string) (string, boo
 	case "version":
 		fmt.Fprintf(stdout, "paymux %s\n", paymux.Version)
 		return 0
+	case "user":
+		env, err := envWithDotEnv(lookupEnv)
+		if err != nil {
+			fmt.Fprintf(stderr, "paymux user: %v\n", err)
+			return 1
+		}
+		return runUser(ctx, args[1:], env, stdout, stderr)
 	case "endpoint":
 		env, err := envWithDotEnv(lookupEnv)
 		if err != nil {

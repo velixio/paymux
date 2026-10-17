@@ -1,0 +1,12 @@
+{{define "title"}}{{.Title}} - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h3>Sign in to Paymux</h3>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<form method="post" action="/dashboard/login">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<input class="field" name="email" type="email" placeholder="Email" value="{{.Email}}" autocomplete="username" required autofocus>
+<input class="field" name="password" type="password" placeholder="Password" autocomplete="current-password" required>
+<button class="btn" type="submit">Continue</button>
+</form>
+{{template "dash_close" .}}{{end}}

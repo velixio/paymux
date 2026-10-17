@@ -1,0 +1,7 @@
+{{define "title"}}{{.Title}} - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h2>{{.Section}}</h2>
+<p class="muted">This section is not built yet.</p>
+{{template "dash_close" .}}{{end}}

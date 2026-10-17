@@ -195,6 +195,28 @@ func TestHooksRouteMounted(t *testing.T) {
 	shutdown(t, r)
 }
 
+func TestDashboardAndAssetsMounted(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "sqlite://"+dir+"/paymux.db", dir)
+	r := startApp(t, cfg)
+	waitReady(t, r)
+	code, body := fetch(t, r.app.Addr(), "/dashboard/login")
+	if code != 200 || !strings.Contains(body, "Sign in") {
+		t.Fatalf("/dashboard/login = %d %q", code, body)
+	}
+	// anonymous users land on the login page
+	if code, body := fetch(t, r.app.Addr(), "/dashboard/payments"); code != 200 || !strings.Contains(body, "Sign in") {
+		t.Fatalf("/dashboard/payments (followed) = %d", code)
+	}
+	if code, body := fetch(t, r.app.Addr(), "/assets/css/dash.css"); code != 200 || !strings.Contains(body, ".dash-nav") {
+		t.Fatalf("dash.css = %d", code)
+	}
+	if strings.Contains(r.logs.String(), "2FA is disabled") {
+		t.Error("dev warning without DevSkip2FA")
+	}
+	shutdown(t, r)
+}
+
 type okVerifier struct{}
 
 func (okVerifier) Verify(http.Header, []byte) (string, error) { return "ev_1", nil }

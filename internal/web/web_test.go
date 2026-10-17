@@ -84,6 +84,28 @@ func TestRendererUsesOverlay(t *testing.T) {
 	}
 }
 
+func TestRendererSharesUnderscorePartials(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "templates"), 0o755)
+	os.WriteFile(filepath.Join(dir, "templates/_nav.html"), []byte(`{{define "nav"}}NAV[{{.Name}}]{{end}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "templates/p1.html"), []byte(`{{define "content"}}{{template "nav" .}} one{{end}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "templates/p2.html"), []byte(`{{define "content"}}{{template "nav" .}} two{{end}}`), 0o644)
+	o, _ := NewOverlay(base(), dir)
+	r, err := NewRenderer(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for page, want := range map[string]string{"p1": "NAV[x] one", "p2": "NAV[x] two"} {
+		var buf bytes.Buffer
+		if err := r.Render(&buf, page, map[string]string{"Name": "x"}); err != nil || !strings.Contains(buf.String(), want) {
+			t.Errorf("%s: %v %q", page, err, buf.String())
+		}
+	}
+	if err := r.Render(&bytes.Buffer{}, "_nav", nil); err == nil {
+		t.Fatal("a partial must not be a page")
+	}
+}
+
 func TestEmbeddedPayTemplates(t *testing.T) {
 	r, err := NewRenderer(Embedded())
 	if err != nil {
