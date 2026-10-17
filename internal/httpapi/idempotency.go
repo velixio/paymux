@@ -1,0 +1,116 @@
+package httpapi
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"net/http"
+	"time"
+
+	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/store"
+)
+
+const (
+	idempotencyTTL   = 24 * time.Hour
+	idempotencyStale = time.Minute // an in-progress reservation older than this is a crashed request
+	maxKeyLen        = 255
+)
+
+// recorder buffers a handler's response so it can be stored before sending.
+type recorder struct {
+	header http.Header
+	status int
+	buf    bytes.Buffer
+}
+
+func (r *recorder) Header() http.Header         { return r.header }
+func (r *recorder) WriteHeader(code int)        { r.status = code }
+func (r *recorder) Write(b []byte) (int, error) { return r.buf.Write(b) }
+
+// idempotent runs h under the request's Idempotency-Key. The first request
+// reserves the key, runs, and stores its response (sealed); a repeat with the
+// same body replays it, a repeat with another body is a 409, and a repeat
+// while the first is still running is a 409 to retry later. Responses with
+// status 5xx are not stored, so the client may retry.
+func (a *API) idempotent(w http.ResponseWriter, r *http.Request, pr core.Principal, body []byte, h handler) {
+	key := r.Header.Get("Idempotency-Key")
+	if len(key) > maxKeyLen {
+		a.fail(w, r, http.StatusBadRequest, "invalid_request", "Idempotency-Key must be at most 255 characters")
+		return
+	}
+	sum := sha256.Sum256(append([]byte(r.Method+"\n"+r.URL.Path+"\n"), body...))
+	hash := hex.EncodeToString(sum[:])
+	aad := []byte(pr.AppID + "/" + pr.Mode + "/" + key)
+
+	var existing *store.IdempotencyRecord
+	err := a.db.Write(r.Context(), func(tx store.Tx) (err error) {
+		existing, err = store.ReserveIdempotencyKey(r.Context(), tx, pr.AppID, pr.Mode, key, hash, time.Now(), idempotencyTTL, idempotencyStale)
+		return
+	})
+	if err != nil {
+		a.serverError(w, r, err)
+		return
+	}
+	if existing != nil {
+		a.replay(w, r, existing, hash, aad)
+		return
+	}
+
+	rec := &recorder{header: http.Header{}, status: http.StatusOK}
+	stored := false
+	defer func() {
+		if stored {
+			return
+		}
+		// The handler panicked or failed with a server error: free the key.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+		defer cancel()
+		_ = a.db.Write(ctx, func(tx store.Tx) error {
+			return store.ReleaseIdempotencyKey(ctx, tx, pr.AppID, pr.Mode, key)
+		})
+	}()
+	h(rec, r, pr, body)
+
+	if rec.status < 500 {
+		sealed, err := a.box.Seal(rec.buf.Bytes(), aad)
+		if err == nil {
+			err = a.db.Write(r.Context(), func(tx store.Tx) error {
+				return store.CompleteIdempotencyKey(r.Context(), tx, pr.AppID, pr.Mode, key, rec.status, sealed)
+			})
+		}
+		if err != nil {
+			a.log.Error("store idempotent response", "err", err) // the response is still returned
+		} else {
+			stored = true
+		}
+	}
+	for k, v := range rec.header {
+		w.Header()[k] = v
+	}
+	w.WriteHeader(rec.status)
+	_, _ = w.Write(rec.buf.Bytes())
+}
+
+func (a *API) replay(w http.ResponseWriter, r *http.Request, rec *store.IdempotencyRecord, hash string, aad []byte) {
+	switch {
+	case rec.RequestHash != hash:
+		a.fail(w, r, http.StatusConflict, "idempotency_key_reuse",
+			"this Idempotency-Key was already used with a different request")
+	case rec.Status == 0:
+		w.Header().Set("Retry-After", "1")
+		a.fail(w, r, http.StatusConflict, "idempotency_in_progress",
+			"a request with this Idempotency-Key is still being processed; retry shortly")
+	default:
+		body, err := a.box.Open(rec.ResponseEnc, aad)
+		if err != nil {
+			a.serverError(w, r, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Idempotent-Replay", "true")
+		w.WriteHeader(rec.Status)
+		_, _ = w.Write(body)
+	}
+}
