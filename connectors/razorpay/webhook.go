@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/paymux/paymux/pkg/connector"
 )
@@ -140,6 +141,9 @@ type event struct {
 		Dispute *struct {
 			Entity disputeEntity `json:"entity"`
 		} `json:"dispute"`
+		Subscription *struct {
+			Entity subEntity `json:"entity"`
+		} `json:"subscription"`
 	} `json:"payload"`
 }
 
@@ -147,7 +151,7 @@ type event struct {
 // payment.authorized is reported as authorized, and the capture happens when
 // the caller fetches the payment (FetchPayment). Events Paymux does not use
 // (subscription.*, etc.) yield no notifications.
-func (r *razorpay) ParseWebhook(_ context.Context, req connector.WebhookRequest) ([]connector.Notification, error) {
+func (r *razorpay) ParseWebhook(ctx context.Context, req connector.WebhookRequest) ([]connector.Notification, error) {
 	var ev event
 	if err := json.Unmarshal(req.Body, &ev); err != nil {
 		return nil, fmt.Errorf("razorpay: bad webhook body: %w", err)
@@ -159,6 +163,22 @@ func (r *razorpay) ParseWebhook(_ context.Context, req connector.WebhookRequest)
 		id = "body-" + hex.EncodeToString(sum[:16])
 	}
 	n := connector.Notification{EventID: id, EventType: ev.Event, OccurredAt: ms(ev.CreatedAt)}
+	if strings.HasPrefix(ev.Event, "subscription.") && ev.Payload.Subscription != nil {
+		s, err := r.subSnapshot(ctx, ev.Payload.Subscription.Entity, false)
+		if err != nil {
+			return nil, err
+		}
+		n.Kind, n.Subscription = connector.NotifySubscription, &s
+		out := []connector.Notification{n}
+		if ev.Event == "subscription.charged" && ev.Payload.Payment != nil {
+			// A renewal: the same delivery also carries the captured payment.
+			ps := ev.Payload.Payment.Entity.snapshot()
+			out = append(out, connector.Notification{
+				Kind: connector.NotifyPayment, EventID: id, EventType: ev.Event, OccurredAt: n.OccurredAt, Payment: &ps,
+			})
+		}
+		return out, nil
+	}
 	switch ev.Event {
 	case "order.paid", "payment.captured", "payment.authorized", "payment.failed":
 		if ev.Payload.Payment == nil {

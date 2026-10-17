@@ -34,14 +34,13 @@ const configSchema = `{
 }`
 
 var info = connector.Info{
-	Version:      "0.1.0",
-	DisplayName:  "Razorpay",
-	Capabilities: []connector.Capability{connector.CapRefund, connector.CapList, connector.CapDisputeRead},
-	ConfigSchema: json.RawMessage(configSchema),
-	Currencies:   []string{"INR", "USD", "EUR", "GBP", "SGD", "AED", "AUD", "CAD"},
-	Methods:      []string{"card", "upi", "netbanking", "wallet", "emi"},
-	// TODO(spec): Razorpay Subscriptions (provider_managed) are not built yet,
-	// so SubscriptionModes stays empty and CapSubscriptionManager is not declared.
+	Version:           "0.1.0",
+	DisplayName:       "Razorpay",
+	Capabilities:      []connector.Capability{connector.CapRefund, connector.CapList, connector.CapDisputeRead, connector.CapSubscriptionManager},
+	ConfigSchema:      json.RawMessage(configSchema),
+	Currencies:        []string{"INR", "USD", "EUR", "GBP", "SGD", "AED", "AUD", "CAD"},
+	Methods:           []string{"card", "upi", "netbanking", "wallet", "emi"},
+	SubscriptionModes: []connector.BillingMode{connector.ProviderManaged},
 	// TODO(spec): DisputeResponder (accept/contest) needs the multipart Documents
 	// API; left out of Capabilities until it is built.
 	// Razorpay does not publish a hard rate limit; stay well under typical
@@ -139,17 +138,24 @@ func (r *razorpay) CreateCheckout(ctx context.Context, req connector.CheckoutReq
 	}, nil
 }
 
-// HandleReturn verifies HMAC-SHA256(key_secret, order_id|payment_id) from the
-// checkout.js callback POST. The caller must still fetch the truth.
+// HandleReturn verifies the checkout.js callback POST. Order payments sign
+// HMAC-SHA256(key_secret, order_id|payment_id); subscription payments sign
+// payment_id|subscription_id (the operands are in the other order). The caller
+// must still fetch the truth.
 func (r *razorpay) HandleReturn(_ context.Context, req connector.ReturnRequest) (connector.ReturnResult, error) {
-	orderID, payID, sig := req.Param("razorpay_order_id"), req.Param("razorpay_payment_id"), req.Param("razorpay_signature")
-	if orderID == "" || payID == "" || sig == "" {
+	payID, sig := req.Param("razorpay_payment_id"), req.Param("razorpay_signature")
+	orderID, subID := req.Param("razorpay_order_id"), req.Param("razorpay_subscription_id")
+	var msg, parent string
+	switch {
+	case subID != "":
+		msg, parent = payID+"|"+subID, subID
+	case orderID != "":
+		msg, parent = orderID+"|"+payID, orderID
+	}
+	if parent == "" || payID == "" || sig == "" || !validHMAC(r.cfg.KeySecret, []byte(msg), sig) {
 		return connector.ReturnResult{}, connector.ErrInvalidReturn
 	}
-	if !validHMAC(r.cfg.KeySecret, []byte(orderID+"|"+payID), sig) {
-		return connector.ReturnResult{}, connector.ErrInvalidReturn
-	}
-	return connector.ReturnResult{ProviderRef: req.ProviderRef, ProviderOrderID: orderID, ProviderPaymentID: payID}, nil
+	return connector.ReturnResult{ProviderRef: req.ProviderRef, ProviderOrderID: parent, ProviderPaymentID: payID}, nil
 }
 
 // validHMAC compares a hex HMAC-SHA256 signature in constant time.
