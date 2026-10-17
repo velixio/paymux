@@ -64,7 +64,11 @@ func (c *cashfree) ParseWebhook(_ context.Context, req connector.WebhookRequest)
 		return nil, fmt.Errorf("cashfree: bad webhook body: %w", err)
 	}
 	sum := sha256.Sum256(req.Body)
-	n := connector.Notification{EventID: "cf-" + hex.EncodeToString(sum[:16]), EventType: ev.Type, OccurredAt: parseTime(ev.EventTime)}
+	eventID := "cf-" + hex.EncodeToString(sum[:16])
+	if k := req.Header("x-idempotency-key"); k != "" && len(k) <= 128 {
+		eventID = "cf-" + k // webhook versions from 2025-01-01 send one, unique per payload
+	}
+	n := connector.Notification{EventID: eventID, EventType: ev.Type, OccurredAt: parseTime(ev.EventTime)}
 	switch ev.Type {
 	case "PAYMENT_SUCCESS_WEBHOOK", "PAYMENT_FAILED_WEBHOOK", "PAYMENT_USER_DROPPED_WEBHOOK":
 		p := ev.Data.Payment

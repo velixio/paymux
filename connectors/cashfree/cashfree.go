@@ -10,9 +10,12 @@
 // only the payment id; the connector therefore reports a payment's id as
 // "<order_id>:<cf_payment_id>" so the order is always at hand.
 //
-// TODO(spec): written from Cashfree's documentation, not yet run against the
-// real API (see sandbox_test.go). Real APIs differ from their docs: re-verify
-// each TODO(spec) below at sandbox time.
+// Verified against the real Cashfree sandbox (api version 2023-08-01): orders,
+// order and payment reads, unknown ids (404 order_not_found), refunds, duplicate
+// order and refund ids, the 401 on bad credentials, and the settlement request
+// shape (see sandbox_test.go). Webhooks are checked against Cashfree's
+// published payloads and signature code, not against a live delivery (the
+// sandbox needs a public endpoint). Remaining TODO(spec) items are marked below.
 package cashfree
 
 import (
@@ -88,7 +91,7 @@ func New(raw json.RawMessage, deps connector.Deps) (connector.Connector, error) 
 		return nil, errors.New("cashfree: client_id and client_secret are required")
 	}
 	if cfg.WebhookSecret == "" {
-		// TODO(spec): Cashfree signs webhooks with the same secret key as the API.
+		// Cashfree signs webhooks with the PG secret key, the same as the API's.
 		cfg.WebhookSecret = cfg.ClientSecret
 	}
 	hc := deps.HTTP
@@ -156,8 +159,9 @@ func customerID(req connector.CheckoutRequest) string {
 
 // phone10 keeps the last ten digits of a phone number; Cashfree requires one.
 //
-// TODO(spec): the order API requires customer_phone. With none, a placeholder
-// is sent so the order can be created; check how the live API treats it.
+// The order API rejects an order without customer_phone (400
+// customer_details.customer_phone_missing, verified), so when the buyer has no
+// phone a placeholder is sent so the order can still be created.
 func phone10(p string) string {
 	var digits []byte
 	for i := 0; i < len(p); i++ {
