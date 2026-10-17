@@ -9,6 +9,7 @@ import (
 
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/core/state"
+	"github.com/paymux/paymux/internal/disputes"
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/inbound"
 	"github.com/paymux/paymux/internal/jobs"
@@ -139,10 +140,16 @@ func (s *Service) handleNotification(ctx context.Context, ev store.ProviderEvent
 		_, err = s.syncRefund(ctx, r.ID, rs.ProviderRefundID)
 		return err
 	case n.Kind == connector.NotifyDispute && n.Dispute != nil:
-		// TODO(spec): the dispute lane looks disputes up by provider_dispute_id
-		// within this account and applies FetchDispute; until its tables exist
-		// every dispute is recorded as unknown.
-		return s.recordUnknown(ctx, ev, "dispute", n.Dispute.ProviderDisputeID, n)
+		if s.o.Disputes == nil {
+			return s.recordUnknown(ctx, ev, "dispute", n.Dispute.ProviderDisputeID, n)
+		}
+		// The disputes service fetches the dispute from the provider (scoped to
+		// this account) and applies that, not the notification.
+		_, err := s.o.Disputes.SyncNotification(ctx, account, n)
+		if errors.Is(err, disputes.ErrUnknownPayment) || errors.Is(err, disputes.ErrNoReader) || errors.Is(err, connector.ErrNotFound) {
+			return s.recordUnknown(ctx, ev, "dispute", n.Dispute.ProviderDisputeID, n)
+		}
+		return err
 	}
 	// TODO(spec): mandate and subscription notifications belong to the
 	// subscriptions lane.

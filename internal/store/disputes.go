@@ -148,9 +148,9 @@ func ReleaseDisputeAlert(ctx context.Context, tx Tx, id, column string) error {
 	return err
 }
 
-// ListProviderAccounts returns every active provider account (for polling,
+// ListActiveProviderAccounts returns every active provider account (for polling,
 // reconciliation and the silence detector).
-func ListProviderAccounts(ctx context.Context, q Queryer) ([]ProviderAccount, error) {
+func ListActiveProviderAccounts(ctx context.Context, q Queryer) ([]ProviderAccount, error) {
 	rows, err := q.QueryContext(ctx, "SELECT "+providerAccountCols+" FROM provider_accounts WHERE status = 'active' ORDER BY id")
 	if err != nil {
 		return nil, err

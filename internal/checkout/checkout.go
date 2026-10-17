@@ -11,6 +11,7 @@ import (
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/core/state"
+	"github.com/paymux/paymux/internal/disputes"
 	"github.com/paymux/paymux/internal/routing"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector"
@@ -24,15 +25,23 @@ const (
 	fetchTimeout    = 25 * time.Second
 )
 
+// DisputeSync handles dispute notifications (*disputes.Service).
+type DisputeSync interface {
+	SyncNotification(ctx context.Context, accountID string, n connector.Notification) (disputes.Result, error)
+}
+
 // Options configures a Service.
 type Options struct {
-	DB      *store.DB
-	Core    *core.Service
-	Conns   *connectors.Service
-	Routing *Routing
-	Breaker *routing.Breaker
-	Logger  *slog.Logger
-	Now     func() time.Time
+	// Disputes, when set, receives dispute notifications; without it they are
+	// recorded as unknown objects.
+	Disputes DisputeSync
+	DB       *store.DB
+	Core     *core.Service
+	Conns    *connectors.Service
+	Routing  *Routing
+	Breaker  *routing.Breaker
+	Logger   *slog.Logger
+	Now      func() time.Time
 }
 
 // Service runs the payment flow around the connectors.

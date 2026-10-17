@@ -454,7 +454,7 @@ const pollWindow = 45 * 24 * time.Hour
 // does not know are logged and skipped.
 func (s *Service) Poll(ctx context.Context) error {
 	var accounts []store.ProviderAccount
-	err := s.o.DB.Read(ctx, func(q store.Querier) (err error) { accounts, err = store.ListProviderAccounts(ctx, q); return })
+	err := s.o.DB.Read(ctx, func(q store.Querier) (err error) { accounts, err = store.ListActiveProviderAccounts(ctx, q); return })
 	if err != nil {
 		return err
 	}
