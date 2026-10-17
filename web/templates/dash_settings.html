@@ -1,0 +1,83 @@
+{{define "title"}}Settings - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h2>Org settings</h2>
+<p class="muted">Defaults for every app. An app can override most of these on its own Settings tab.</p>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+
+<h3>Routing</h3>
+{{with .Routing}}
+<p class="muted">Rules are tried in order. The first rule whose conditions match and that has an eligible account decides; otherwise the catch-all applies.
+Targets are connector names (any eligible account) or pinned accounts written <code>account:pa_xxx</code>, tried in the order listed.
+Conditions are comma separated lists; leave a condition empty to match anything. Amounts are in minor units (paise, cents).</p>
+{{if .CanWrite}}
+<form method="post" action="/dashboard/settings/routing" class="routing-editor">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<table class="grid">
+<thead><tr><th>Name</th><th>Currency</th><th>Country</th><th>Purpose</th><th>Min</th><th>Max</th><th>Metadata</th><th>Action</th><th>Targets</th><th>Reject message</th></tr></thead>
+<tbody>
+{{range .Rules}}<tr>
+<td><input class="field" name="r_name" value="{{.Name}}" aria-label="Rule name"></td>
+<td><input class="field" name="r_currency" value="{{.Currency}}" aria-label="Currencies"></td>
+<td><input class="field" name="r_country" value="{{.Country}}" aria-label="Countries"></td>
+<td><input class="field" name="r_purpose" value="{{.Purpose}}" aria-label="Purposes"></td>
+<td><input class="field" name="r_amin" value="{{.AmountMin}}" aria-label="Minimum amount"></td>
+<td><input class="field" name="r_amax" value="{{.AmountMax}}" aria-label="Maximum amount"></td>
+<td><input class="field" name="r_meta" value="{{.Metadata}}" aria-label="Metadata conditions"></td>
+<td><select name="r_action" aria-label="Action"><option value="route"{{if ne .Action "reject"}} selected{{end}}>route</option><option value="reject"{{if eq .Action "reject"}} selected{{end}}>reject</option></select></td>
+<td><input class="field" name="r_targets" value="{{.Targets}}" aria-label="Targets"></td>
+<td><input class="field" name="r_message" value="{{.Message}}" aria-label="Reject message"></td>
+</tr>{{end}}
+{{range .BlankRows}}<tr>
+<td><input class="field" name="r_name" placeholder="new rule" aria-label="Name of a new rule"></td>
+<td><input class="field" name="r_currency" placeholder="USD" aria-label="Currencies of a new rule"></td>
+<td><input class="field" name="r_country" aria-label="Countries of a new rule"></td>
+<td><input class="field" name="r_purpose" aria-label="Purposes of a new rule"></td>
+<td><input class="field" name="r_amin" aria-label="Minimum amount of a new rule"></td>
+<td><input class="field" name="r_amax" aria-label="Maximum amount of a new rule"></td>
+<td><input class="field" name="r_meta" aria-label="Metadata of a new rule"></td>
+<td><select name="r_action" aria-label="Action of a new rule"><option value="route">route</option><option value="reject">reject</option></select></td>
+<td><input class="field" name="r_targets" placeholder="razorpay, whop" aria-label="Targets of a new rule"></td>
+<td><input class="field" name="r_message" aria-label="Reject message of a new rule"></td>
+</tr>{{end}}
+<tr><th colspan="7">Catch-all (when no rule gives an eligible account)</th>
+<td><select name="ca_action" aria-label="Catch-all action"><option value="route"{{if eq .CatchAll.Action "route"}} selected{{end}}>route</option><option value="reject"{{if eq .CatchAll.Action "reject"}} selected{{end}}>reject</option><option value="none"{{if eq .CatchAll.Action "none"}} selected{{end}}>none</option></select></td>
+<td><input class="field" name="ca_targets" value="{{.CatchAll.Targets}}" aria-label="Catch-all targets"></td>
+<td><input class="field" name="ca_message" value="{{.CatchAll.Message}}" aria-label="Catch-all reject message"></td></tr>
+</tbody>
+</table>
+<button class="btn" type="submit">Save routing</button>
+</form>
+{{else}}
+<table class="grid">
+<thead><tr><th>Rule</th><th>When</th><th>Action</th><th>Targets</th></tr></thead>
+<tbody>
+{{range .Rules}}<tr><td>{{.Name}}</td><td>{{if .Currency}}currency {{.Currency}} {{end}}{{if .Country}}country {{.Country}} {{end}}{{if .Purpose}}purpose {{.Purpose}} {{end}}{{if .AmountMin}}min {{.AmountMin}} {{end}}{{if .AmountMax}}max {{.AmountMax}} {{end}}{{if .Metadata}}metadata {{.Metadata}}{{end}}</td><td>{{.Action}}{{if .Message}}: {{.Message}}{{end}}</td><td>{{.Targets}}</td></tr>{{end}}
+<tr><th>Catch-all</th><td></td><td>{{.CatchAll.Action}}{{if .CatchAll.Message}}: {{.CatchAll.Message}}{{end}}</td><td>{{.CatchAll.Targets}}</td></tr>
+</tbody>
+</table>
+{{end}}
+{{end}}
+
+<h3>Test routing</h3>
+<form method="get" action="/dashboard/settings" class="filters">
+<input type="hidden" name="test" value="1">
+<select name="app" aria-label="App"><option value="">Org rules, all accounts</option>{{range .AppOpts}}<option value="{{.ID}}"{{if eq .ID $.TestForm.App}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+<select name="mode" aria-label="Mode"><option value="live"{{if eq .TestForm.Mode "live"}} selected{{end}}>live</option><option value="test"{{if eq .TestForm.Mode "test"}} selected{{end}}>test</option></select>
+<input name="currency" value="{{.TestForm.Currency}}" maxlength="3" size="4" aria-label="Currency" placeholder="INR">
+<input name="country" value="{{.TestForm.Country}}" maxlength="2" size="3" aria-label="Country" placeholder="IN">
+<input name="amount" value="{{.TestForm.Amount}}" size="10" aria-label="Amount in minor units" placeholder="amount (paise)">
+<select name="purpose" aria-label="Purpose"><option value="one_time"{{if eq .TestForm.Purpose "one_time"}} selected{{end}}>one_time</option><option value="subscription"{{if eq .TestForm.Purpose "subscription"}} selected{{end}}>subscription</option></select>
+<button class="btn small" type="submit">Test routing</button>
+</form>
+{{with .Route}}<div class="route-result">
+{{if .Matched}}<p><strong>Matched rule:</strong> <code>{{.Rule}}</code></p>
+<p>Accounts, in order:</p><ol>{{range .Accounts}}<li>{{.}}</li>{{end}}</ol>
+{{else if .Rejected}}<p class="error"><strong>Rejected</strong> by rule <code>{{.Rule}}</code>: {{.Message}}</p>
+{{else}}<p class="error"><strong>No route</strong>: {{.Message}}</p>{{end}}
+</div>{{end}}
+
+<h3>Settings</h3>
+{{template "dash_settings_table" .}}
+{{template "dash_close" .}}{{end}}

@@ -1,0 +1,73 @@
+{{define "title"}}{{.Title}} - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+{{with .Pay}}
+<p><a href="/dashboard/payments">&larr; Payments</a></p>
+<h2>{{.ID}} <span class="status status-{{.Status}}">{{.Status}}</span> <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h2>
+{{with $.Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+{{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<dl class="facts">
+<dt>App</dt><dd>{{.App}}</dd>
+<dt>Amount</dt><dd>{{.Amount}}</dd>
+<dt>Received</dt><dd>{{.Received}}</dd>
+<dt>Refunded</dt><dd>{{.Refunded}}</dd>
+{{if .OrderRef}}<dt>Order ref</dt><dd>{{.OrderRef}}</dd>{{end}}
+{{if .Description}}<dt>Description</dt><dd>{{.Description}}</dd>{{end}}
+{{if .Customer}}<dt>Customer</dt><dd>{{.Customer}}</dd>{{end}}
+<dt>Created</dt><dd>{{.Created}}</dd>
+{{if .Flags}}<dt>Flags</dt><dd>{{range .Flags}}<span class="flag">{{.}}</span> {{end}}</dd>{{end}}
+</dl>
+
+<h3>Attempts</h3>
+<table class="grid">
+<thead><tr><th>Attempt</th><th>Status</th><th>Provider</th><th>Provider ids</th><th>Method</th><th>Failure</th><th>Created</th></tr></thead>
+<tbody>
+{{range .Attempts}}<tr>
+<td>{{.ID}}{{if .Duplicate}} <span class="flag">duplicate</span>{{end}}</td><td>{{.Status}}</td><td>{{.Provider}}</td>
+<td><small>ref {{.ProviderRef}}{{if .OrderID}}<br>order {{.OrderID}}{{end}}{{if .PaymentID}}<br>payment {{.PaymentID}}{{end}}</small></td>
+<td>{{.Method}}</td><td>{{if .FailureCode}}{{.FailureCode}}{{if .FailureMessage}}: {{.FailureMessage}}{{end}}{{end}}</td><td>{{.Created}}</td>
+</tr>{{else}}<tr><td colspan="7" class="muted">No attempts yet.</td></tr>{{end}}
+</tbody>
+</table>
+
+<h3>Ledger</h3>
+<table class="grid">
+<thead><tr><th>Entry</th><th>Amount</th><th>At</th></tr></thead>
+<tbody>{{range .Ledger}}<tr><td>{{.Kind}}</td><td>{{.Amount}}</td><td>{{.At}}</td></tr>{{else}}<tr><td colspan="3" class="muted">No ledger entries.</td></tr>{{end}}</tbody>
+</table>
+
+<h3>Refunds</h3>
+<table class="grid">
+<thead><tr><th>Refund</th><th>Amount</th><th>Status</th><th>Reason</th><th>Initiated by</th><th>Created</th></tr></thead>
+<tbody>{{range .Refunds}}<tr><td>{{.ID}}</td><td>{{.Amount}}</td><td>{{.Status}}</td><td>{{.Reason}}</td><td>{{.InitiatedBy}}{{if .Actor}} ({{.Actor}}){{end}}</td><td>{{.Created}}</td></tr>{{else}}<tr><td colspan="6" class="muted">No refunds.</td></tr>{{end}}</tbody>
+</table>
+{{if .CanRefund}}
+<form method="post" action="/dashboard/payments/{{.ID}}/refund" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<h4>Refund</h4>
+<input class="field" name="amount" inputmode="decimal" placeholder="Amount in {{.Currency}} (blank = everything refundable)">
+<input class="field" name="reason" maxlength="500" placeholder="Reason">
+<select name="attempt_id" class="field" aria-label="Attempt to refund"><option value="">Default (the succeeded attempt)</option>{{range .Pickable}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select>
+<button class="btn" type="submit">Create refund</button>
+</form>
+{{end}}
+
+<h3>Webhook deliveries</h3>
+<table class="grid">
+<thead><tr><th>Event</th><th>Endpoint</th><th>Status</th><th>Attempts</th><th>Last result</th><th>Updated</th>{{if .CanReplay}}<th></th>{{end}}</tr></thead>
+<tbody>
+{{range .Deliveries}}<tr><td>{{.EventType}}</td><td>{{.Endpoint}}</td><td>{{.Status}}</td><td>{{.Attempts}}</td>
+<td>{{if .LastStatus}}HTTP {{.LastStatus}}{{end}} {{.LastError}}</td><td>{{.At}}</td>
+{{if $.Pay.CanReplay}}<td><form class="inline" method="post" action="/dashboard/deliveries/{{.ID}}/replay"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Path}}"><button class="linkbtn" type="submit">Replay</button></form></td>{{end}}
+</tr>{{else}}<tr><td colspan="7" class="muted">No deliveries.</td></tr>{{end}}
+</tbody>
+</table>
+
+<h3>Events</h3>
+<table class="grid">
+<thead><tr><th>Type</th><th>Object</th><th>Version</th><th>At</th></tr></thead>
+<tbody>{{range .Events}}<tr><td>{{.Type}}</td><td>{{.Object}}</td><td>{{.Version}}</td><td>{{.At}}</td></tr>{{else}}<tr><td colspan="4" class="muted">No events.</td></tr>{{end}}</tbody>
+</table>
+{{end}}
+{{template "dash_close" .}}{{end}}

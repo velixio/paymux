@@ -20,7 +20,11 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/internal/auth"
+	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/secrets"
+	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
 	"github.com/paymux/paymux/internal/web"
@@ -44,13 +48,17 @@ func (c *clock) Add(d time.Duration) {
 }
 
 type env struct {
-	t   *testing.T
-	db  *store.DB
-	box *secrets.Box
-	d   *Dashboard
-	srv *httptest.Server
-	clk *clock
-	c   *http.Client
+	t    *testing.T
+	db   *store.DB
+	box  *secrets.Box
+	core *core.Service
+	set  *settings.Service
+	out  *outbound.Service
+	q    *jobs.Queue
+	d    *Dashboard
+	srv  *httptest.Server
+	clk  *clock
+	c    *http.Client
 }
 
 type envOpt func(*Options)
@@ -70,8 +78,17 @@ func newEnv(t *testing.T, db *store.DB, opts ...envOpt) *env {
 	}
 	clk := &clock{t: time.Unix(1_800_000_000, 0).UTC()}
 	base, _ := url.Parse("http://localhost:8080")
+	set := settings.New(db)
+	if _, err := core.Bootstrap(ctx, db, set); err != nil {
+		t.Fatal(err)
+	}
+	q := jobs.New(db, jobs.Options{Clock: clk.Now, Logger: slog.New(slog.DiscardHandler)})
+	out := outbound.New(outbound.Options{DB: db, Queue: q, Box: box, AllowPrivate: true, Now: clk.Now, Logger: slog.New(slog.DiscardHandler)})
+	out.Register()
+	core.RegisterJobs(q)
+	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: out, Now: clk.Now})
 	o := Options{DB: db, Box: box, Renderer: rend, MasterKey: make([]byte, 32), BaseURL: base,
-		Logger: slog.New(slog.DiscardHandler), Now: clk.Now}
+		Logger: slog.New(slog.DiscardHandler), Now: clk.Now, Core: svc, Settings: set, Outbound: out, PageSize: 2}
 	for _, f := range opts {
 		f(&o)
 	}
@@ -81,7 +98,7 @@ func newEnv(t *testing.T, db *store.DB, opts ...envOpt) *env {
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/dashboard/", d)
-	e := &env{t: t, db: db, box: box, d: d, srv: httptest.NewServer(mux), clk: clk}
+	e := &env{t: t, db: db, box: box, core: svc, set: set, out: out, q: q, d: d, srv: httptest.NewServer(mux), clk: clk}
 	t.Cleanup(e.srv.Close)
 	e.c = e.client()
 	return e
@@ -228,7 +245,7 @@ func TestLoginWithPasswordAndTOTP(t *testing.T) {
 		if r.StatusCode != 200 {
 			t.Fatalf("payments: %d", r.StatusCode)
 		}
-		for _, item := range []string{"Payments", "Subscriptions", "Disputes", "Invoices", "Reports", "Apps", "Providers", "Settings", "Audit", "Users"} {
+		for _, item := range []string{"Overview", "Payments", "Subscriptions", "Disputes", "Invoices", "Reports", "Apps", "Providers", "Settings", "Audit", "Users"} {
 			if !strings.Contains(body, ">"+item+"<") {
 				t.Errorf("nav missing %s", item)
 			}
@@ -240,7 +257,7 @@ func TestLoginWithPasswordAndTOTP(t *testing.T) {
 			t.Errorf("security headers %v", r.Header)
 		}
 		r, _ = e.get(e.c, "/dashboard/")
-		if r.StatusCode != 303 || r.Header.Get("Location") != "/dashboard/payments" {
+		if r.StatusCode != 303 || r.Header.Get("Location") != "/dashboard/overview" {
 			t.Fatalf("root: %d %s", r.StatusCode, r.Header.Get("Location"))
 		}
 	})

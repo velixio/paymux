@@ -2,6 +2,7 @@
 {{if .User}}<header class="dash-head">
 <strong>Paymux</strong>
 <span class="muted">{{.User.Email}} ({{.User.Role}})</span>
+<form class="modeform" method="post" action="/dashboard/mode"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="next" value="{{.Path}}"><span class="mode mode-{{.Mode}}">{{.Mode}} mode</span> <button class="linkbtn" type="submit" name="mode" value="{{if eq .Mode "live"}}test{{else}}live{{end}}">Switch to {{if eq .Mode "live"}}test{{else}}live{{end}}</button></form>
 <form method="post" action="/dashboard/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="linkbtn" type="submit">Log out</button></form>
 </header>
 <div class="dash-body">

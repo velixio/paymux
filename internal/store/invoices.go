@@ -315,30 +315,3 @@ func DocumentSends(ctx context.Context, q Queryer, kind, docID string) ([]Docume
 	}
 	return out, rows.Err()
 }
-
-// Blob is a row of blobs (the db storage kind keeps bytes in Data).
-type Blob struct {
-	ID, OrgID, Kind, ContentType, SHA256 string
-	Data                                 []byte
-	CreatedAt                            time.Time
-}
-
-// InsertBlob stores b in the database.
-func InsertBlob(ctx context.Context, tx Tx, b Blob) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO blobs (id, org_id, kind, content_type, size, sha256, storage, data, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, 'db', ?, ?)`, b.ID, b.OrgID, b.Kind, b.ContentType, len(b.Data), b.SHA256, b.Data, ms(b.CreatedAt))
-	return err
-}
-
-// GetBlob loads a db-stored blob.
-func GetBlob(ctx context.Context, q Queryer, id string) (Blob, error) {
-	var b Blob
-	var created int64
-	err := q.QueryRowContext(ctx, `SELECT id, org_id, kind, content_type, sha256, data, created_at FROM blobs WHERE id = ?`, id).
-		Scan(&b.ID, &b.OrgID, &b.Kind, &b.ContentType, &b.SHA256, &b.Data, &created)
-	if err != nil {
-		return Blob{}, notFound(err)
-	}
-	b.CreatedAt = fromMS(created)
-	return b, nil
-}
