@@ -54,8 +54,10 @@ CREATE TABLE recon_items (
     provider_id         TEXT NOT NULL,
     ours                TEXT,
     theirs              TEXT NOT NULL,
-    state               TEXT NOT NULL CHECK (state IN ('open','fixed','to_link')),
+    state               TEXT NOT NULL CHECK (state IN ('open','fixed','to_link','resolved')),
+    note                TEXT,
     created_at          BIGINT NOT NULL,
-    UNIQUE (provider_account_id, kind, provider_id)
+    resolved_at         BIGINT
 );
+CREATE INDEX recon_items_object ON recon_items (provider_account_id, kind, provider_id);
 CREATE INDEX recon_items_run ON recon_items (run_id);

@@ -42,23 +42,28 @@ type State struct {
 	// DisputeErr fails FetchDispute and ListDisputes; AcceptErr and
 	// EvidenceErr fail the responder calls.
 	DisputeErr, AcceptErr, EvidenceErr error
+	// ListErr fails ListPayments and ListRefunds.
+	ListErr error
 	// AcceptFn and EvidenceFn run after the call is recorded, so a test can
 	// move the provider's dispute (for example to under_review).
 	AcceptFn   func(connector.DisputeRef)
 	EvidenceFn func(connector.DisputeRef)
 
-	Checkouts   []connector.CheckoutRequest
-	Returns     []connector.ReturnRequest
-	Fetches     []connector.PaymentRef
-	RefundCalls []connector.RefundRequest
-	RefundFetch []connector.RefundRef
-	DisputeList int
-	DisputeGets []connector.DisputeRef
-	Accepts     []connector.DisputeRef
-	Evidence    []connector.Evidence
-	Configs     []json.RawMessage
-	Deps        []connector.Deps
-	Built       int
+	Checkouts    []connector.CheckoutRequest
+	Returns      []connector.ReturnRequest
+	Fetches      []connector.PaymentRef
+	RefundCalls  []connector.RefundRequest
+	RefundFetch  []connector.RefundRef
+	DisputeList  int
+	PaymentLists int
+	RefundLists  int
+	ListRanges   []connector.TimeRange
+	DisputeGets  []connector.DisputeRef
+	Accepts      []connector.DisputeRef
+	Evidence     []connector.Evidence
+	Configs      []json.RawMessage
+	Deps         []connector.Deps
+	Built        int
 }
 
 var seq atomic.Int64
@@ -71,7 +76,7 @@ func Register(prefix string) *State {
 	info := connector.Info{
 		Version: "test", DisplayName: "Fake", ConfigSchema: json.RawMessage(schema),
 		Currencies:   []string{"INR", "USD", "BDT"},
-		Capabilities: []connector.Capability{connector.CapRefund, connector.CapDisputeRead, connector.CapDisputeRespond},
+		Capabilities: []connector.Capability{connector.CapRefund, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapList},
 		RateLimit:    connector.RateLimit{RequestsPerSecond: 100, Burst: 100},
 	}
 	connector.Register(st.Name, func(cfg json.RawMessage, deps connector.Deps) (connector.Connector, error) {
@@ -265,7 +270,57 @@ func (c *Conn) SubmitEvidence(_ context.Context, ref connector.DisputeRef, ev co
 	return err
 }
 
+func inRange(tr connector.TimeRange, createdAt int64) bool {
+	if createdAt == 0 {
+		return true
+	}
+	return (tr.From == 0 || createdAt >= tr.From) && (tr.To == 0 || createdAt <= tr.To)
+}
+
+// ListPayments implements connector.Lister: every scripted payment created in
+// the range (CreatedAt 0 always matches), in one page.
+func (c *Conn) ListPayments(_ context.Context, tr connector.TimeRange, _ connector.Cursor) (connector.Page[connector.PaymentSnapshot], error) {
+	c.st.mu.Lock()
+	defer c.st.mu.Unlock()
+	c.st.PaymentLists++
+	c.st.ListRanges = append(c.st.ListRanges, tr)
+	if c.st.ListErr != nil {
+		return connector.Page[connector.PaymentSnapshot]{}, c.st.ListErr
+	}
+	var items []connector.PaymentSnapshot
+	for key, s := range c.st.Payments {
+		if s.ProviderRef == "" {
+			s.ProviderRef = key
+		}
+		if inRange(tr, s.CreatedAt) {
+			items = append(items, s)
+		}
+	}
+	return connector.Page[connector.PaymentSnapshot]{Items: items}, nil
+}
+
+// ListRefunds implements connector.Lister.
+func (c *Conn) ListRefunds(_ context.Context, tr connector.TimeRange, _ connector.Cursor) (connector.Page[connector.RefundSnapshot], error) {
+	c.st.mu.Lock()
+	defer c.st.mu.Unlock()
+	c.st.RefundLists++
+	if c.st.ListErr != nil {
+		return connector.Page[connector.RefundSnapshot]{}, c.st.ListErr
+	}
+	var items []connector.RefundSnapshot
+	for key, s := range c.st.Refunds {
+		if s.ProviderRef == "" {
+			s.ProviderRef = key
+		}
+		if inRange(tr, s.CreatedAt) {
+			items = append(items, s)
+		}
+	}
+	return connector.Page[connector.RefundSnapshot]{Items: items}, nil
+}
+
 var (
+	_ connector.Lister           = (*Conn)(nil)
 	_ connector.Connector        = (*Conn)(nil)
 	_ connector.Refunder         = (*Conn)(nil)
 	_ connector.DisputeReader    = (*Conn)(nil)
