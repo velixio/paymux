@@ -46,12 +46,15 @@ type Options struct {
 	Loc    *time.Location
 	Logger *slog.Logger
 	Now    func() time.Time
-	// SubscriptionOf returns the provider subscription id a payment belongs
-	// to (renewals), "" for none; KnownSubscription says whether Paymux has
-	// that subscription. A payment of a known subscription that Paymux does
-	// not have is stored as renewal_to_link for the subscriptions lane.
-	SubscriptionOf    func(connector.PaymentSnapshot) string
-	KnownSubscription func(string) bool
+	// KnownSubscription says whether Paymux has the provider subscription
+	// (of this provider account). A payment of a known subscription that
+	// Paymux does not have is a provider-managed renewal that was missed.
+	KnownSubscription func(ctx context.Context, accountID, providerSubscriptionID string) bool
+	// LinkRenewal records such a renewal payment on its subscription (the
+	// subscriptions service creates the renewal payment). Without it, or when
+	// it fails, the renewal is stored as renewal_to_link and retried by the
+	// next run.
+	LinkRenewal func(ctx context.Context, accountID string, pay connector.PaymentSnapshot) error
 }
 
 // Service runs reconciliations.
@@ -277,7 +280,7 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 			byOrder[t.ProviderOrderID] = t.ProviderPaymentID
 		}
 		theirRecs = append(theirRecs, recon.Record{ProviderID: t.ProviderPaymentID, Status: string(checkout.ToSnapshot(t).Status),
-			Amount: t.Amount, Currency: t.Currency, SubscriptionID: s.subscriptionOf(t)})
+			Amount: t.Amount, Currency: t.Currency, SubscriptionID: t.SubscriptionID})
 	}
 	for i := range theirRecs {
 		theirRecs[i].Status = openStatus(theirRecs[i].Status)
@@ -297,10 +300,21 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 		}
 		ours = append(ours, rec)
 	}
-	items := recon.Diff(ours, theirRecs, s.o.KnownSubscription)
+	var known func(string) bool
+	if s.o.KnownSubscription != nil {
+		known = func(id string) bool { return s.o.KnownSubscription(ctx, pa.ID, id) }
+	}
+	items := recon.Diff(ours, theirRecs, known)
 	for _, it := range items {
 		snap := byPayID[it.ProviderID]
 		fixed := false
+		if it.Kind == recon.KindRenewalToLink && s.o.LinkRenewal != nil {
+			if err := s.o.LinkRenewal(ctx, pa.ID, snap); err != nil {
+				s.o.Logger.Warn("reconcile: linking a renewal failed; it stays to be linked", "account", pa.ID, "payment", it.ProviderID, "err", err)
+			} else {
+				fixed = true
+			}
+		}
 		if it.AutoFix {
 			if err := s.fixPayment(ctx, pa, snap); err != nil {
 				s.o.Logger.Warn("reconcile: auto-fix failed", "account", pa.ID, "payment", it.ProviderID, "err", err)
@@ -317,13 +331,6 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 		}
 	}
 	return nil
-}
-
-func (s *Service) subscriptionOf(t connector.PaymentSnapshot) string {
-	if s.o.SubscriptionOf == nil {
-		return ""
-	}
-	return s.o.SubscriptionOf(t)
 }
 
 func (s *Service) fixPayment(ctx context.Context, pa store.ProviderAccount, snap connector.PaymentSnapshot) error {
@@ -422,7 +429,12 @@ func (s *Service) record(ctx context.Context, pa store.ProviderAccount, run *sto
 	var existing store.ReconItem
 	var seen bool
 	err := s.o.DB.Write(ctx, func(tx store.Tx) (err error) {
-		if !fixed {
+		if fixed {
+			// A fixed item supersedes any earlier open item of the same object.
+			if err := store.CloseReconItems(ctx, tx, pa.ID, it.Kind, it.ProviderID); err != nil {
+				return err
+			}
+		} else {
 			if existing, seen, err = store.FindOpenReconItem(ctx, tx, pa.ID, it.Kind, it.ProviderID); err != nil {
 				return err
 			}
