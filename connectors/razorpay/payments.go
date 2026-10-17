@@ -158,6 +158,12 @@ func (r *razorpay) FetchRefund(ctx context.Context, ref connector.RefundRef) (co
 	if ref.ProviderRefundID != "" {
 		var e refundEntity
 		if err := r.api.do(ctx, "GET", "/v1/refunds/"+url.PathEscape(ref.ProviderRefundID), nil, nil, &e, nil); err != nil {
+			// The sandbox answers unknown refund ids with a bare 400
+			// "invalid request sent"; for a single-resource GET that means not found.
+			var ae *apiError
+			if errors.As(err, &ae) && ae.Status == 400 && !errors.Is(err, connector.ErrNotFound) {
+				return connector.RefundSnapshot{}, fmt.Errorf("%w: %w", connector.ErrNotFound, err)
+			}
 			return connector.RefundSnapshot{}, err
 		}
 		return e.snapshot(), nil

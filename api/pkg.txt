@@ -318,6 +318,7 @@ type PaymentSnapshot struct {
 	ProviderRef       string        `json:"provider_ref,omitempty"`
 	ProviderOrderID   string        `json:"provider_order_id,omitempty"`
 	ProviderPaymentID string        `json:"provider_payment_id,omitempty"`
+	SubscriptionID    string        `json:"subscription_id,omitempty"`
 	Status            PaymentStatus `json:"status"`
 	RawStatus         string        `json:"raw_status"`
 	Amount            int64         `json:"amount"`
@@ -423,15 +424,25 @@ type ReturnResult struct {
 	ProviderPaymentID string `json:"provider_payment_id,omitempty"`
 }
 
+type SettlementItem struct {
+	Kind              string `json:"kind"`
+	ProviderPaymentID string `json:"provider_payment_id,omitempty"`
+	ProviderRefundID  string `json:"provider_refund_id,omitempty"`
+	Amount            int64  `json:"amount"`
+	Fee               int64  `json:"fee"`
+	Tax               int64  `json:"tax"`
+}
+
 type SettlementSnapshot struct {
-	ProviderSettlementID string `json:"provider_settlement_id"`
-	Amount               int64  `json:"amount"`
-	Fees                 int64  `json:"fees"`
-	Tax                  int64  `json:"tax"`
-	Currency             string `json:"currency"`
-	Status               string `json:"status"`
-	UTR                  string `json:"utr,omitempty"`
-	SettledAt            int64  `json:"settled_at,omitempty"`
+	ProviderSettlementID string           `json:"provider_settlement_id"`
+	Amount               int64            `json:"amount"`
+	Fees                 int64            `json:"fees"`
+	Tax                  int64            `json:"tax"`
+	Currency             string           `json:"currency"`
+	Status               string           `json:"status"`
+	UTR                  string           `json:"utr,omitempty"`
+	SettledAt            int64            `json:"settled_at,omitempty"`
+	Items                []SettlementItem `json:"items,omitempty"`
 }
 
 type Settler interface {

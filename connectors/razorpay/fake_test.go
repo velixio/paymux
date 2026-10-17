@@ -36,6 +36,12 @@ type fake struct {
 	listPages     int  // number of full pages to serve for lists
 	plans         int  // plans created
 	subStatus     string
+	settlements   []map[string]any // GET /v1/settlements
+	documents     int              // documents uploaded
+	docFail       int              // when set, POST /v1/documents answers this status
+	acceptErr     int              // when set, dispute accept answers this status
+	contestErr    int              // when set, dispute contest answers this status
+	recon         map[string][]any // GET /v1/settlements/recon/combined, keyed "Y-M-D"
 }
 
 func newFake(status string) *fake { return &fake{payStatus: status, refundStatus: "processed"} }
@@ -153,6 +159,54 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		writeJSON(w, 200, fakeCollection(items...))
+	case r.Method == "GET" && p == "/v1/settlements":
+		q := r.URL.Query()
+		from, _ := strconv.ParseInt(q.Get("from"), 10, 64)
+		to, _ := strconv.ParseInt(q.Get("to"), 10, 64)
+		var items []any
+		for _, s := range f.settlements {
+			if at := s["created_at"].(int64); at >= from && at <= to {
+				items = append(items, s)
+			}
+		}
+		skip, _ := strconv.Atoi(q.Get("skip"))
+		count, _ := strconv.Atoi(q.Get("count"))
+		if skip > len(items) {
+			skip = len(items)
+		}
+		items = items[skip:min(skip+count, len(items))]
+		writeJSON(w, 200, fakeCollection(items...))
+	case r.Method == "GET" && p == "/v1/settlements/recon/combined":
+		q := r.URL.Query()
+		items := f.recon[q.Get("year")+"-"+q.Get("month")+"-"+q.Get("day")]
+		skip, _ := strconv.Atoi(q.Get("skip"))
+		count, _ := strconv.Atoi(q.Get("count"))
+		if skip > len(items) {
+			skip = len(items)
+		}
+		writeJSON(w, 200, fakeCollection(items[skip:min(skip+count, len(items))]...))
+	case r.Method == "POST" && p == "/v1/documents":
+		if f.docFail != 0 {
+			writeAPIError(w, f.docFail, "The file type is not supported")
+			return
+		}
+		f.mu.Lock()
+		f.documents++
+		id := "doc_Nx" + strconv.Itoa(f.documents)
+		f.mu.Unlock()
+		writeJSON(w, 200, map[string]any{"id": id, "entity": "document", "purpose": "dispute_evidence"})
+	case r.Method == "POST" && p == "/v1/disputes/disp_Nx3/accept":
+		if f.acceptErr != 0 {
+			writeAPIError(w, f.acceptErr, "The dispute cannot be accepted in its current state")
+			return
+		}
+		writeJSON(w, 200, disputeJSON("lost"))
+	case r.Method == "PATCH" && p == "/v1/disputes/disp_Nx3/contest":
+		if f.contestErr != 0 {
+			writeAPIError(w, f.contestErr, "The response period has ended")
+			return
+		}
+		writeJSON(w, 200, disputeJSON("under_review"))
 	case r.Method == "GET" && p == "/v1/disputes":
 		writeJSON(w, 200, fakeCollection(disputeJSON("open")))
 	case r.Method == "GET" && p == "/v1/disputes/disp_Nx3":

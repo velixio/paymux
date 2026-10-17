@@ -248,6 +248,8 @@ func TestParseSubscriptionWebhooks(t *testing.T) {
 			if tc.event == "subscription.charged" {
 				if n.Payment == nil || n.Payment.Status != connector.PaymentSucceeded || n.Payment.ProviderPaymentID != "pay_Nx1" {
 					t.Errorf("charged must carry the renewal payment: %+v", n)
+				} else if n.Payment.SubscriptionID != "sub_Nx5" {
+					t.Errorf("the renewal payment must name its subscription, got %q", n.Payment.SubscriptionID)
 				}
 			} else if n.Payment != nil {
 				t.Errorf("only subscription.charged carries a payment: %+v", n.Payment)
@@ -275,5 +277,20 @@ func TestInfoDeclaresProviderManaged(t *testing.T) {
 	i := newConn(t, newFake("")).Info()
 	if !i.Has(connector.CapSubscriptionManager) || len(i.SubscriptionModes) != 1 || i.SubscriptionModes[0] != connector.ProviderManaged {
 		t.Errorf("info = %+v", i)
+	}
+}
+
+func TestPaymentEntityCarriesItsSubscription(t *testing.T) {
+	var p paymentEntity
+	if err := json.Unmarshal([]byte(`{"id":"pay_1","order_id":"order_1","status":"captured","amount":100,"currency":"INR","subscription_id":"sub_7"}`), &p); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.snapshot().SubscriptionID; got != "sub_7" {
+		t.Errorf("SubscriptionID = %q", got)
+	}
+	var plain paymentEntity
+	_ = json.Unmarshal([]byte(`{"id":"pay_2","status":"captured","amount":100,"currency":"INR"}`), &plain)
+	if plain.snapshot().SubscriptionID != "" {
+		t.Error("a one-time payment has no subscription")
 	}
 }

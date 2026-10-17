@@ -191,7 +191,8 @@ func (a *App) Start(ctx context.Context) error {
 	if err := disp.Register(q); err != nil {
 		return err
 	}
-	rec := reconcile.New(reconcile.Options{DB: db, Core: svc, Conns: conns, Settings: set, Alerts: alerts, Loc: a.cfg.Location, Logger: a.log})
+	rec := reconcile.New(reconcile.Options{DB: db, Core: svc, Conns: conns, Settings: set, Alerts: alerts, Loc: a.cfg.Location, Logger: a.log,
+		KnownSubscription: knownSubscription(db), LinkRenewal: linkRenewal(conns, subs), Subscriptions: subs})
 	if err := rec.Register(q); err != nil {
 		return err
 	}

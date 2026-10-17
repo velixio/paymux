@@ -39,17 +39,24 @@ func (e *apiError) Error() string {
 // do sends the request with basic auth and decodes a JSON response into out.
 // extra headers may be nil.
 func (c *client) do(ctx context.Context, method, path string, query url.Values, in, out any, extra map[string]string) error {
-	u := apiBase + path
-	if len(query) > 0 {
-		u += "?" + query.Encode()
-	}
 	var body io.Reader
+	ctype := ""
 	if in != nil {
 		b, err := json.Marshal(in)
 		if err != nil {
 			return err
 		}
-		body = bytes.NewReader(b)
+		body, ctype = bytes.NewReader(b), "application/json"
+	}
+	return c.send(ctx, method, path, query, body, ctype, out, extra)
+}
+
+// send sends a request with an already encoded body (empty ctype: none) and
+// decodes a JSON response into out.
+func (c *client) send(ctx context.Context, method, path string, query url.Values, body io.Reader, ctype string, out any, extra map[string]string) error {
+	u := apiBase + path
+	if len(query) > 0 {
+		u += "?" + query.Encode()
 	}
 	req, err := http.NewRequestWithContext(ctx, method, u, body)
 	if err != nil {
@@ -57,8 +64,8 @@ func (c *client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	req.SetBasicAuth(c.keyID, c.keySecret)
 	req.Header.Set("Accept", "application/json")
-	if in != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if ctype != "" {
+		req.Header.Set("Content-Type", ctype)
 	}
 	for k, v := range extra {
 		req.Header.Set(k, v)
@@ -110,7 +117,9 @@ func classify(resp *http.Response, raw []byte) error {
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		return fmt.Errorf("%w: %w", connector.ErrInvalidCredentials, ae)
-	case resp.StatusCode == http.StatusNotFound:
+	case resp.StatusCode == http.StatusNotFound,
+		// Razorpay reports unknown ids as 400 BAD_REQUEST_ERROR (seen in the sandbox).
+		resp.StatusCode == http.StatusBadRequest && strings.Contains(strings.ToLower(ae.Description), "does not exist"):
 		return fmt.Errorf("%w: %w", connector.ErrNotFound, ae)
 	case resp.StatusCode == http.StatusTooManyRequests:
 		after := 5 * time.Second
