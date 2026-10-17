@@ -38,10 +38,36 @@ func TestRunUnknownCommand(t *testing.T) {
 	}
 }
 
-func TestRunNoArgs(t *testing.T) {
-	code, _, errs := run()
-	if code != 2 || !strings.Contains(errs, "usage: paymux <serve|migrate|backup|db|build|update|app|provider|domain|tax-entity|report|fx|endpoint|version>") {
-		t.Fatalf("code=%d stderr=%q", code, errs)
+func TestRunNoArgsServes(t *testing.T) {
+	// No command means serve: a bad .env is reported by the serve path.
+	p := filepath.Join(t.TempDir(), "bad.env")
+	if err := os.WriteFile(p, []byte("NOEQUALS\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	lookup := func(k string) (string, bool) {
+		if k == "PAYMUX_ENV_FILE" {
+			return p, true
+		}
+		return "", false
+	}
+	code := Run(context.Background(), nil, lookup, &out, &errb)
+	if code != 1 || !strings.Contains(errb.String(), "paymux serve:") {
+		t.Fatalf("code=%d stderr=%q", code, errb.String())
+	}
+}
+
+func TestRunHelp(t *testing.T) {
+	for _, arg := range []string{"-h", "--help", "help"} {
+		code, out, errs := run(arg)
+		if code != 0 || errs != "" {
+			t.Fatalf("%s: code=%d stderr=%q", arg, code, errs)
+		}
+		for _, want := range []string{"usage: paymux [command]", "serve", "migrate", "version", "with no command, paymux serves"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("%s: help %q missing %q", arg, out, want)
+			}
+		}
 	}
 }
 
