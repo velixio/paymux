@@ -36,13 +36,11 @@ const configSchema = `{
 var info = connector.Info{
 	Version:           "0.1.0",
 	DisplayName:       "Razorpay",
-	Capabilities:      []connector.Capability{connector.CapRefund, connector.CapList, connector.CapDisputeRead, connector.CapSubscriptionManager},
+	Capabilities:      []connector.Capability{connector.CapRefund, connector.CapList, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapSubscriptionManager, connector.CapSettle},
 	ConfigSchema:      json.RawMessage(configSchema),
 	Currencies:        []string{"INR", "USD", "EUR", "GBP", "SGD", "AED", "AUD", "CAD"},
 	Methods:           []string{"card", "upi", "netbanking", "wallet", "emi"},
 	SubscriptionModes: []connector.BillingMode{connector.ProviderManaged},
-	// TODO(spec): DisputeResponder (accept/contest) needs the multipart Documents
-	// API; left out of Capabilities until it is built.
 	// Razorpay does not publish a hard rate limit; stay well under typical
 	// per-key throttling.
 	RateLimit: connector.RateLimit{RequestsPerSecond: 20, Burst: 20},

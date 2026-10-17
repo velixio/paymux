@@ -81,7 +81,7 @@ func TestMonthlyReportGolden(t *testing.T) {
 			}
 		}
 		wantNames := []string{"sales_register.csv", "b2b.csv", "b2cl.csv", "b2cs.csv", "exp.csv", "cdnr.csv", "cdnur.csv",
-			"sac_summary.csv", "documents_issued.csv", "exceptions.csv"}
+			"sac_summary.csv", "documents_issued.csv", "exceptions.csv", "settlements.csv", "itc_fees.csv"}
 		if strings.Join(names, ",") != strings.Join(wantNames, ",") {
 			t.Errorf("files = %v", names)
 		}

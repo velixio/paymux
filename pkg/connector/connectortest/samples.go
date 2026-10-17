@@ -63,7 +63,8 @@ func SampleValues() []any {
 		connector.DisputeRef{ProviderDisputeID: "d"},
 		*dsp,
 		connector.Evidence{Text: "t", Files: map[string][]byte{"receipt": []byte("pdf")}},
-		connector.SettlementSnapshot{ProviderSettlementID: "s", Amount: 1, Fees: 2, Tax: 3, Currency: "INR", Status: "processed", UTR: "u", SettledAt: 4},
+		connector.SettlementSnapshot{ProviderSettlementID: "s", Amount: 1, Fees: 2, Tax: 3, Currency: "INR", Status: "processed", UTR: "u", SettledAt: 4,
+			Items: []connector.SettlementItem{{Kind: "payment", ProviderPaymentID: "pp", ProviderRefundID: "rf", Amount: 5, Fee: 6, Tax: 7}}},
 		connector.SubscriptionRequest{
 			SubscriptionID: "s", ProviderRef: "r", Amount: 1, Currency: "INR", Interval: "month", IntervalCount: 1,
 			TotalCount: 12, StartAt: 5, Description: "d", Customer: cust, Metadata: map[string]string{"k": "v"},

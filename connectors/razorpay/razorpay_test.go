@@ -408,8 +408,8 @@ func TestInfo(t *testing.T) {
 	if info.Name != "razorpay" || !info.Has(connector.CapRefund) || !info.Has(connector.CapList) || !info.Has(connector.CapDisputeRead) {
 		t.Errorf("info = %+v", info)
 	}
-	if info.Has(connector.CapDisputeRespond) {
-		t.Error("DisputeResponder is not implemented yet")
+	if !info.Has(connector.CapDisputeRespond) || !info.Has(connector.CapSettle) {
+		t.Error("DisputeResponder (accept, contest) and Settler are implemented")
 	}
 	var schema map[string]any
 	if err := json.Unmarshal(info.ConfigSchema, &schema); err != nil {
