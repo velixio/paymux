@@ -36,12 +36,13 @@ const (
 	UserManage            Action = "user.manage"
 	AuditRead             Action = "audit.read"
 	RoleManage            Action = "role.manage"
+	PayoutCreate          Action = "payout.create" // sends money out: admin only unless a role is given it
 )
 
 // AllActions lists every action.
 var AllActions = []Action{PaymentCreate, PaymentRead, PaymentCancel, RefundCreate, RefundRead, DisputeManage,
 	WebhookReplay, InvoiceReissue, SettingsRead, SettingsWrite, AppCreate, APIKeyCreate, ProviderAccountManage,
-	UserManage, AuditRead, RoleManage}
+	UserManage, AuditRead, RoleManage, PayoutCreate}
 
 // adminOnly actions can never be granted to a custom role: whoever holds them
 // can create users and roles, so they could give themselves everything.
@@ -109,7 +110,7 @@ var (
 	viewerActions   = []Action{PaymentRead, RefundRead, SettingsRead}
 	operatorActions = append(slices.Clone(viewerActions), PaymentCreate, PaymentCancel, RefundCreate, DisputeManage,
 		WebhookReplay, InvoiceReissue)
-	apiKeyActions = []Action{PaymentCreate, PaymentRead, PaymentCancel, RefundCreate, RefundRead}
+	apiKeyActions = []Action{PaymentCreate, PaymentRead, PaymentCancel, RefundCreate, RefundRead, PayoutCreate}
 )
 
 // Can reports whether actor may perform action on res, with the built-in
@@ -158,20 +159,31 @@ const (
 	ScopeSubscriptionsRead  = "subscriptions:read"
 	ScopeSubscriptionsWrite = "subscriptions:write"
 	ScopeInvoicesRead       = "invoices:read"
+	ScopePayoutsRead        = "payouts:read"
+	ScopePayoutsWrite       = "payouts:write"
 )
 
 // AllScopes lists every scope.
 var AllScopes = []string{ScopePaymentsRead, ScopePaymentsWrite, ScopeRefundsRead, ScopeRefundsWrite,
-	ScopeSubscriptionsRead, ScopeSubscriptionsWrite, ScopeInvoicesRead}
+	ScopeSubscriptionsRead, ScopeSubscriptionsWrite, ScopeInvoicesRead, ScopePayoutsRead, ScopePayoutsWrite}
+
+// explicitScopes are never implied by "no scopes": a key has them only when
+// they are listed. Sending money out must be a deliberate grant, so keys made
+// before payouts existed, and keys made without a scope list, cannot pay out.
+var explicitScopes = []string{ScopePayoutsRead, ScopePayoutsWrite}
 
 // ValidScope reports whether s is a known scope.
 func ValidScope(s string) bool { return slices.Contains(AllScopes, s) }
 
 // ScopeAllows reports whether the granted scopes cover need. nil granted means
-// every scope; "x:write" also covers "x:read".
+// every scope except the explicit ones (payouts); "x:write" also covers
+// "x:read".
 func ScopeAllows(granted []string, need string) bool {
-	if need == "" || granted == nil {
+	if need == "" {
 		return true
+	}
+	if granted == nil {
+		return !slices.Contains(explicitScopes, need)
 	}
 	if slices.Contains(granted, need) {
 		return true

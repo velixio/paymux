@@ -49,6 +49,14 @@ type State struct {
 	// Mandates and Subs are the provider's view (FetchMandate, FetchSubscription), keyed by provider id.
 	Mandates map[string]connector.MandateSnapshot
 	Subs     map[string]connector.SubscriptionSnapshot
+	// PayoutFn answers CreatePayout (default: accepts it as processing, once per
+	// provider_ref); Payouts is the provider's view keyed by provider_ref
+	// (FetchPayout); PayoutCalls logs every CreatePayout request;
+	// PayoutFetchErr fails FetchPayout.
+	PayoutFn       func(connector.PayoutRequest) (connector.PayoutSnapshot, error)
+	Payouts        map[string]connector.PayoutSnapshot
+	PayoutCalls    []connector.PayoutRequest
+	PayoutFetchErr error
 	// ManagerErr fails FetchMandate and FetchSubscription.
 	ManagerErr                 error
 	MandateFetches, SubFetches []string
@@ -86,12 +94,12 @@ func Register(prefix string) *State { return RegisterSchema(prefix, schema) }
 func RegisterSchema(prefix, configSchema string) *State {
 	st := &State{Name: fmt.Sprintf("%s%d", prefix, seq.Add(1)), Payments: map[string]connector.PaymentSnapshot{},
 		Refunds: map[string]connector.RefundSnapshot{}, Disputes: map[string]connector.DisputeSnapshot{},
-		Mandates: map[string]connector.MandateSnapshot{}, Subs: map[string]connector.SubscriptionSnapshot{}}
+		Payouts: map[string]connector.PayoutSnapshot{}, Mandates: map[string]connector.MandateSnapshot{}, Subs: map[string]connector.SubscriptionSnapshot{}}
 	info := connector.Info{
 		Version: "test", DisplayName: "Fake", ConfigSchema: json.RawMessage(configSchema),
 		Currencies: []string{"INR", "USD", "BDT"},
 		Capabilities: []connector.Capability{connector.CapRefund, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapList, connector.CapSettle,
-			connector.CapMandateManager, connector.CapSubscriptionManager},
+			connector.CapMandateManager, connector.CapSubscriptionManager, connector.CapPayout},
 		RateLimit: connector.RateLimit{RequestsPerSecond: 100, Burst: 100},
 	}
 	connector.Register(st.Name, func(cfg json.RawMessage, deps connector.Deps) (connector.Connector, error) {
@@ -404,7 +412,49 @@ func (c *Conn) UpdateSubscriptionAmount(context.Context, connector.SubscriptionR
 	return connector.ErrUnsupported
 }
 
+// CreatePayout implements connector.Payouter. Repeating a provider_ref returns
+// the payout already made, as a real provider does.
+func (c *Conn) CreatePayout(_ context.Context, req connector.PayoutRequest) (connector.PayoutSnapshot, error) {
+	c.st.mu.Lock()
+	c.st.PayoutCalls = append(c.st.PayoutCalls, req)
+	fn := c.st.PayoutFn
+	existing, seen := c.st.Payouts[req.ProviderRef]
+	c.st.mu.Unlock()
+	if seen {
+		return existing, nil
+	}
+	if fn != nil {
+		snap, err := fn(req)
+		if err == nil {
+			c.st.mu.Lock()
+			c.st.Payouts[req.ProviderRef] = snap
+			c.st.mu.Unlock()
+		}
+		return snap, err
+	}
+	snap := connector.PayoutSnapshot{ProviderRef: req.ProviderRef, ProviderPayoutID: "pout_" + req.ProviderRef,
+		Status: connector.PayoutProcessing, RawStatus: "processing", Amount: req.Amount, Currency: req.Currency}
+	c.st.mu.Lock()
+	c.st.Payouts[req.ProviderRef] = snap
+	c.st.mu.Unlock()
+	return snap, nil
+}
+
+// FetchPayout implements connector.Payouter.
+func (c *Conn) FetchPayout(_ context.Context, ref connector.PayoutRef) (connector.PayoutSnapshot, error) {
+	c.st.mu.Lock()
+	defer c.st.mu.Unlock()
+	if c.st.PayoutFetchErr != nil {
+		return connector.PayoutSnapshot{}, c.st.PayoutFetchErr
+	}
+	if s, ok := c.st.Payouts[ref.ProviderRef]; ok {
+		return s, nil
+	}
+	return connector.PayoutSnapshot{}, connector.ErrNotFound
+}
+
 var (
+	_ connector.Payouter            = (*Conn)(nil)
 	_ connector.MandateManager      = (*Conn)(nil)
 	_ connector.SubscriptionManager = (*Conn)(nil)
 	_ connector.Settler             = (*Conn)(nil)

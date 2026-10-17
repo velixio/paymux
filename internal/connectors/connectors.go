@@ -94,7 +94,7 @@ type CreateAccountInput struct {
 	AppID string
 }
 
-var validPurposes = []string{"one_time", "subscription"}
+var validPurposes = []string{"one_time", "subscription", "payout"}
 
 func checkCurrencies(want []string, info connector.Info) error {
 	for _, c := range want {
