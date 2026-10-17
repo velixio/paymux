@@ -29,7 +29,7 @@ func TestExpireDue(t *testing.T) {
 		e.backdate(idle.ID, time.Minute)
 
 		abandoned := e.payment(100) // expired; an attempt was created but never reached a provider
-		e.attempt(abandoned.ID)
+		abandonedAttempt := e.attempt(abandoned.ID)
 		e.backdate(abandoned.ID, time.Minute)
 
 		inFlight := e.payment(100) // expired, but a customer is mid-payment at the provider
@@ -81,9 +81,8 @@ func TestExpireDue(t *testing.T) {
 		if got := e.get(inFlight.ID); got.Status != "succeeded" {
 			t.Errorf("in-flight payment: %s", got.Status)
 		}
-		late := e.attempt(idle.ID)
-		e.apply(late.ID, captured(100))
-		if got := e.get(idle.ID); got.Status != "succeeded" || !got.HasFlag("late_success") {
+		e.apply(abandonedAttempt.ID, captured(100))
+		if got := e.get(abandoned.ID); got.Status != "succeeded" || !got.HasFlag("late_success") {
 			t.Errorf("late success after expiry: %+v", got)
 		}
 	})
