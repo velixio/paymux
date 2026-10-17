@@ -15,7 +15,7 @@ import (
 	"github.com/paymux/paymux/migrations"
 )
 
-func migrated(t *testing.T, db *store.DB) *store.DB {
+func migratedDB(t *testing.T, db *store.DB) *store.DB {
 	t.Helper()
 	if err := db.Migrate(ctx, migrations.FS); err != nil {
 		t.Fatal(err)
@@ -102,8 +102,8 @@ func TestCopyAllAcrossDialects(t *testing.T) {
 		name     string
 		src, dst func(t *testing.T) *store.DB
 	}
-	sqlite := func(t *testing.T) *store.DB { return migrated(t, storetest.SQLite(t)) }
-	postgres := func(t *testing.T) *store.DB { return migrated(t, storetest.Postgres(t)) }
+	sqlite := func(t *testing.T) *store.DB { return migratedDB(t, storetest.SQLite(t)) }
+	postgres := func(t *testing.T) *store.DB { return migratedDB(t, storetest.Postgres(t)) }
 	for _, p := range []pair{{"sqlite to sqlite", sqlite, sqlite}, {"sqlite to postgres", sqlite, postgres},
 		{"postgres to sqlite", postgres, sqlite}, {"postgres to postgres", postgres, postgres}} {
 		t.Run(p.name, func(t *testing.T) {
@@ -133,7 +133,7 @@ func TestCopyAllAcrossDialects(t *testing.T) {
 }
 
 func TestCopyAllRefusesANonEmptyTargetUnlessForced(t *testing.T) {
-	src, dst := migrated(t, storetest.SQLite(t)), migrated(t, storetest.SQLite(t))
+	src, dst := migratedDB(t, storetest.SQLite(t)), migratedDB(t, storetest.SQLite(t))
 	populate(t, src)
 	err := dst.Write(ctx, func(tx store.Tx) error { return store.SeedOrg(ctx, tx, "Other", t0) })
 	if err != nil {
@@ -158,7 +158,7 @@ func TestCopyAllRefusesANonEmptyTargetUnlessForced(t *testing.T) {
 }
 
 func TestCopyAllRefusesMismatchedSchemas(t *testing.T) {
-	src := migrated(t, storetest.SQLite(t))
+	src := migratedDB(t, storetest.SQLite(t))
 	unmigrated := storetest.SQLite(t)
 	if _, err := store.CopyAll(ctx, src, unmigrated, store.CopyOptions{}); err == nil || !strings.Contains(err.Error(), "schemas differ") {
 		t.Errorf("unmigrated target: %v", err)
@@ -169,7 +169,7 @@ func TestCopyAllRefusesMismatchedSchemas(t *testing.T) {
 }
 
 func TestBackupSQLite(t *testing.T) {
-	db := migrated(t, storetest.SQLite(t))
+	db := migratedDB(t, storetest.SQLite(t))
 	populate(t, db)
 	dest := filepath.Join(t.TempDir(), "sub", "backup.db")
 	if err := db.Backup(ctx, dest); err != nil {
