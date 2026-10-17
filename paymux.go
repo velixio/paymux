@@ -218,7 +218,7 @@ func (a *App) Start(ctx context.Context) error {
 			return live.Connector, err
 		})})
 	payoutSvc.RegisterJobs(q)
-	flow := checkout.New(checkout.Options{DB: db, Core: svc, Conns: conns, Routing: rt, Breaker: breaker, Logger: a.log, Disputes: disp, Subs: subs})
+	flow := checkout.New(checkout.Options{DB: db, Core: svc, Conns: conns, Routing: rt, Breaker: breaker, Logger: a.log, Disputes: disp, Subs: subs, Payouts: payoutSvc})
 	if err := flow.Register(q); err != nil {
 		return err
 	}
