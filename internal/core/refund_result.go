@@ -82,8 +82,9 @@ func (s *Service) applyRefundTx(ctx context.Context, tx store.Tx, refundID strin
 		case state.Reject:
 			return res, newErr(ErrInvalidState, "refund cannot move from %s to %s", r.Status, snap.Status)
 		case state.Ignore:
-			// A repeat may still carry the provider id we did not have yet.
-			if r.ProviderRefundID == "" && snap.ProviderRefundID != "" {
+			// A repeat may still carry the provider id we did not have yet (or
+			// only had as our own reference standing in for it).
+			if snap.ProviderRefundID != "" && snap.ProviderRefundID != r.ProviderRefundID && (r.ProviderRefundID == "" || r.ProviderRefundID == r.ProviderRef) {
 				r.ProviderRefundID = snap.ProviderRefundID
 				res.Refund = r
 				return res, store.UpdateRefund(ctx, tx, r, s.nowUTC())

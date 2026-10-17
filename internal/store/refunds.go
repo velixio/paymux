@@ -79,11 +79,14 @@ func FindRefundByProviderID(ctx context.Context, q Queryer, attemptID, providerR
 		attemptID, providerRefundID))
 }
 
-// FindAdoptableRefund returns the oldest pending refund of the attempt that
-// we asked for (not initiated by the provider), of exactly this amount, and
-// that does not know its provider id yet: the refund a provider refund
-// notification most likely is.
+// FindAdoptableRefund returns the oldest refund of the attempt that we asked
+// for (not initiated by the provider), of exactly this amount, that does not
+// know the provider's own id for it: it has none yet, or only our reference
+// standing in for one (a provider that answers a refund request without a
+// refund object). It is pending or already succeeded. It is the refund a
+// provider refund notification most likely is.
 func FindAdoptableRefund(ctx context.Context, q Queryer, attemptID string, amount int64) (Refund, error) {
-	return scanRefund(q.QueryRowContext(ctx, "SELECT "+refundCols+` FROM refunds WHERE attempt_id = ? AND status = 'pending'
-		AND initiated_by <> 'provider' AND provider_refund_id IS NULL AND amount = ? ORDER BY created_at, id LIMIT 1`, attemptID, amount))
+	return scanRefund(q.QueryRowContext(ctx, "SELECT "+refundCols+` FROM refunds WHERE attempt_id = ? AND status IN ('pending','succeeded')
+		AND initiated_by <> 'provider' AND (provider_refund_id IS NULL OR provider_refund_id = provider_ref) AND amount = ?
+		ORDER BY created_at, id LIMIT 1`, attemptID, amount))
 }
