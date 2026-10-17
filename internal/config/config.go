@@ -29,6 +29,7 @@ type Config struct {
 	MasterKey                       []byte // 32 bytes
 	Location                        *time.Location
 	DevSkip2FA                      bool
+	AllowPrivateWebhooks            bool // PAYMUX_ALLOW_PRIVATE_WEBHOOKS: outbound webhooks may target private IPs
 }
 
 // Load reads and validates configuration, reporting every problem at once.
@@ -98,6 +99,14 @@ func Load(lookupEnv func(string) (string, bool)) (Config, error) {
 		} else {
 			c.DevSkip2FA = true
 		}
+	}
+
+	switch strings.ToLower(get("PAYMUX_ALLOW_PRIVATE_WEBHOOKS", "false")) {
+	case "true":
+		c.AllowPrivateWebhooks = true
+	case "false":
+	default:
+		bad("PAYMUX_ALLOW_PRIVATE_WEBHOOKS must be true or false")
 	}
 
 	if len(errs) > 0 {

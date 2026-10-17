@@ -14,9 +14,12 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/internal/config"
+	"github.com/paymux/paymux/internal/inbound"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/logging"
 	"github.com/paymux/paymux/internal/metrics"
+	"github.com/paymux/paymux/internal/outbound"
+	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/server"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/migrations"
@@ -38,9 +41,20 @@ type App struct {
 	cfg config.Config
 	log *slog.Logger
 
+	verifiers inbound.VerifierFunc
+
 	mu          sync.Mutex
 	addr, iaddr string
 }
+
+// WithVerifiers sets how inbound webhooks find the Verifier of a provider
+// account. The default knows no accounts (every /hooks/{id} is a 404); the
+// connector lane supplies the real lookup.
+func WithVerifiers(f inbound.VerifierFunc) Option { return func(a *App) { a.verifiers = f } }
+
+// errNotWired fails provider-event jobs until the connector lane supplies
+// their processing, so they retry instead of being silently dropped.
+var errNotWired = errors.New("provider event processing is not wired yet")
 
 // Option customises an App.
 type Option func(*App)
@@ -59,6 +73,9 @@ func New(cfg config.Config, opts ...Option) (*App, error) {
 	}
 	if a.log == nil {
 		a.log = logging.New(os.Stderr, slog.LevelInfo)
+	}
+	if a.verifiers == nil {
+		a.verifiers = func(context.Context, string) (inbound.Verifier, error) { return nil, inbound.ErrUnknownAccount }
 	}
 	return a, nil
 }
@@ -97,6 +114,21 @@ func (a *App) Start(ctx context.Context) error {
 		return err
 	}
 
+	box, err := secrets.NewBox(a.cfg.MasterKey)
+	if err != nil {
+		return err
+	}
+	// The outbound service is the events.Emitter other lanes will be given.
+	out := outbound.New(outbound.Options{DB: db, Queue: q, Box: box,
+		AllowPrivate: a.cfg.AllowPrivateWebhooks, Logger: a.log})
+	out.Register()
+	// TODO(spec): the connector lane replaces these with real processing
+	// (ParseWebhook, Fetch*, apply transition) for the §6.4 jobs.
+	for _, kind := range []string{inbound.JobProcess, inbound.JobFetchOnly} {
+		q.Register(kind, func(context.Context, json.RawMessage) error { return errNotWired })
+	}
+	hooks := inbound.New(inbound.Options{DB: db, Queue: q, Verifiers: a.verifiers, Logger: a.log})
+
 	reg := metrics.NewRegistry()
 	a.registerMetrics(reg, db, dialect)
 
@@ -133,6 +165,8 @@ func (a *App) Start(ctx context.Context) error {
 			}},
 		},
 	})
+
+	srv.HandleFunc("POST /hooks/{provider_account_id}", hooks.ServeHTTP)
 
 	ln, err := net.Listen("tcp", a.cfg.Listen)
 	if err != nil {

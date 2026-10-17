@@ -171,6 +171,24 @@ func TestDevSkip2FAGuard(t *testing.T) {
 	}
 }
 
+func TestAllowPrivateWebhooks(t *testing.T) {
+	for _, tc := range []struct {
+		val  string
+		want bool
+	}{{"", false}, {"true", true}, {"false", false}} {
+		kv := []string{}
+		if tc.val != "" {
+			kv = append(kv, "PAYMUX_ALLOW_PRIVATE_WEBHOOKS", tc.val)
+		}
+		c, err := Load(base(kv...))
+		if err != nil || c.AllowPrivateWebhooks != tc.want {
+			t.Errorf("%q: err=%v got=%v", tc.val, err, c.AllowPrivateWebhooks)
+		}
+	}
+	_, err := Load(base("PAYMUX_ALLOW_PRIVATE_WEBHOOKS", "yes"))
+	wantErr(t, err, "PAYMUX_ALLOW_PRIVATE_WEBHOOKS must be true or false")
+}
+
 func TestAllProblemsReported(t *testing.T) {
 	_, err := Load(env("PAYMUX_TZ", "Mars/Base", "PAYMUX_ENV", "staging"))
 	for _, s := range []string{"PAYMUX_TZ", "PAYMUX_ENV", "PAYMUX_BASE_URL is required", "PAYMUX_MASTER_KEY"} {
