@@ -424,4 +424,3 @@ func TestResolveItemIsAudited(t *testing.T) {
 		}
 	})
 }
-
