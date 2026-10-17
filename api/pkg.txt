@@ -389,6 +389,7 @@ type Info struct {
 	MandateSetupAmount       int64           `json:"mandate_setup_amount,omitempty"`
 	RefundsVerificationDebit bool            `json:"refunds_verification_debit,omitempty"`
 	RateLimit                RateLimit       `json:"rate_limit"`
+	TestOnly                 bool            `json:"test_only,omitempty"`
 }
 
 func List() []Info

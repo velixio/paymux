@@ -73,6 +73,9 @@ type Info struct {
 	// reason=mandate_verification).
 	RefundsVerificationDebit bool      `json:"refunds_verification_debit,omitempty"`
 	RateLimit                RateLimit `json:"rate_limit"`
+	// TestOnly marks a connector that only makes sense in test mode (a
+	// simulator): Paymux refuses to link it to a live-mode account.
+	TestOnly bool `json:"test_only,omitempty"`
 }
 
 // Has reports whether the capability is declared.

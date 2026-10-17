@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"errors"
+	"github.com/paymux/paymux/connectors/simulator"
 	"net/http"
 	"net/url"
 	"strings"
@@ -53,6 +54,10 @@ type payDetail struct {
 	Events                                                                                             []eventRow
 	Pickable                                                                                           []attemptOpt
 	CanRefund, CanReplay                                                                               bool
+	// SimAttempts are the captured attempts on a test-mode simulator account,
+	// the ones a dispute can be simulated on.
+	SimAttempts []attemptOpt
+	CanSimulate bool
 }
 
 // parseDay parses YYYY-MM-DD in the dashboard's time zone.
@@ -211,8 +216,10 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	}
 
 	provider := map[string]string{}
+	connectorOf := map[string]string{}
 	for _, a := range accounts {
 		provider[a.ID] = a.Name + " (" + a.Connector + ")"
+		connectorOf[a.ID] = a.Connector
 	}
 	det := &payDetail{ID: p.ID, App: app.Name, AppID: app.ID, Mode: p.Mode, Status: p.Status, Currency: p.Currency,
 		Amount: fmtMoney(p.Amount, p.Currency), Received: fmtMoney(p.AmountReceived, p.Currency), Refunded: fmtMoney(p.AmountRefunded, p.Currency),
@@ -229,8 +236,12 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 		if a.Status == string(state.AttemptCaptured) && !a.Duplicate {
 			det.Pickable = append(det.Pickable, attemptOpt{ID: a.ID, Label: a.ID + " - " + fmtMoney(a.AmountReceived, a.CurrencyReceived) + " via " + name})
 		}
+		if a.Status == string(state.AttemptCaptured) && !a.Duplicate && p.Mode == "test" && connectorOf[a.ProviderAccountID] == simulator.Name {
+			det.SimAttempts = append(det.SimAttempts, attemptOpt{ID: a.ID, Label: a.ID + " - " + fmtMoney(a.AmountReceived, a.CurrencyReceived)})
+		}
 	}
 	det.CanRefund = s.can(authz.RefundCreate) && len(det.Pickable) > 0
+	det.CanSimulate = s.can(authz.DisputeManage) && len(det.SimAttempts) > 0
 	for _, l := range ledger {
 		det.Ledger = append(det.Ledger, ledgerRow{Kind: l.Kind, Amount: fmtMoney(l.Amount, l.Currency), At: d.fmtTime(l.OccurredAt)})
 	}
@@ -306,4 +317,63 @@ func (d *Dashboard) replaySubmit(w http.ResponseWriter, r *http.Request, s *sess
 		return
 	}
 	http.Redirect(w, r, safeNext(r.PostForm.Get("next"), prefix+"/overview"), http.StatusSeeOther)
+}
+
+// simulateDispute opens a dispute on a test-mode payment made through the
+// simulator connector. The simulator then sends its signed dispute.created
+// webhook, so what appears is exactly what a real provider's dispute would
+// produce.
+func (d *Dashboard) simulateDispute(w http.ResponseWriter, r *http.Request, s *session) {
+	ctx := r.Context()
+	var (
+		p        store.Payment
+		attempts []store.Attempt
+	)
+	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) {
+		if p, err = store.GetPayment(ctx, q, r.PathValue("id")); err != nil {
+			return err
+		}
+		attempts, err = store.ListAttempts(ctx, q, p.ID)
+		return err
+	})
+	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, p.OrgID) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	var att store.Attempt
+	for _, a := range attempts {
+		if a.ID == r.PostForm.Get("attempt_id") {
+			att = a
+		}
+	}
+	var ctl simulator.Controller
+	if att.ID != "" && att.Status == string(state.AttemptCaptured) && p.Mode == "test" {
+		if live, err := d.o.Connectors.Get(ctx, att.ProviderAccountID); err == nil {
+			ctl, _ = live.Connector.(simulator.Controller)
+		}
+	}
+	if ctl == nil {
+		d.renderPayment(w, r, s, http.StatusBadRequest, "A dispute can only be simulated on a captured test-mode payment made through the simulator.", "")
+		return
+	}
+	reason := r.PostForm.Get("reason")
+	switch reason {
+	case "fraudulent", "product_not_received", "duplicate", "credit_not_processed":
+	default:
+		reason = "fraudulent"
+	}
+	snap, err := ctl.SimulateDispute(ctx, att.ProviderPaymentID, reason)
+	if err != nil {
+		d.renderPayment(w, r, s, http.StatusBadRequest, err.Error(), "")
+		return
+	}
+	if err := d.record(ctx, r, s, "simulator.dispute", p.ID, nil, map[string]string{"dispute": snap.ProviderDisputeID, "reason": reason}); err != nil {
+		d.fail(w, err)
+		return
+	}
+	d.renderPayment(w, r, s, http.StatusOK, "", "Dispute simulated. It shows up under Disputes as soon as the simulator's webhook has been processed (a second or two).")
 }

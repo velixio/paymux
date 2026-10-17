@@ -28,6 +28,7 @@ import (
 	// The built-in connectors, the same set as the paymux binary.
 	_ "github.com/paymux/paymux/connectors/payu"
 	_ "github.com/paymux/paymux/connectors/razorpay"
+	_ "github.com/paymux/paymux/connectors/simulator"
 	_ "github.com/paymux/paymux/connectors/whop"
 	_ "github.com/paymux/paymux/connectors/zoho"
 

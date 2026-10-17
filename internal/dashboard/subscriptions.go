@@ -3,6 +3,7 @@ package dashboard
 import (
 	"bytes"
 	"errors"
+	"github.com/paymux/paymux/connectors/simulator"
 	"net/http"
 	"net/url"
 	"strings"
@@ -41,6 +42,7 @@ type subDetail struct {
 	Dunning                                                                                 int
 	CancelAtPeriodEnd, RequiresReauth                                                       bool
 	Open, CanCancel, CanLink, WaitingForCustomer                                            bool
+	CanSimulate                                                                             bool
 	Mandates                                                                                []mandateRow
 	Cycles                                                                                  []cycleRow
 }
@@ -64,6 +66,7 @@ func (d *Dashboard) routesSubscriptions() {
 	m.HandleFunc("GET "+prefix+"/subscriptions", d.authed(authz.PaymentRead, d.subscriptionsPage))
 	m.HandleFunc("GET "+prefix+"/subscriptions/{id}", d.authed(authz.PaymentRead, d.subscriptionPage))
 	m.HandleFunc("POST "+prefix+"/subscriptions/{id}/cancel", d.authed(authz.PaymentCancel, d.subscriptionCancel))
+	m.HandleFunc("POST "+prefix+"/subscriptions/{id}/simulate-renewal", d.authed(authz.PaymentCreate, d.simulateRenewal))
 	m.HandleFunc("POST "+prefix+"/subscriptions/{id}/checkout-link", d.authed(authz.PaymentCreate, d.subscriptionLink))
 }
 
@@ -272,6 +275,7 @@ func (d *Dashboard) renderSubscription(w http.ResponseWriter, r *http.Request, s
 		WaitingForCustomer: sub.BillingMode == "merchant_triggered" && (sub.Status == string(state.SubIncomplete) || sub.PendingMandateID != "" || sub.RequiresReauthorization),
 		Renewals:           itoa(sub.RenewalsDone)}
 	det.CanLink = det.WaitingForCustomer && open && s.can(authz.PaymentCreate)
+	det.CanSimulate = simulatedRenewable(sub, account) && s.can(authz.PaymentCreate)
 	if sub.TotalCount > 0 {
 		det.Renewals += " of " + itoa(sub.TotalCount)
 	}
@@ -368,4 +372,64 @@ func (d *Dashboard) subscriptionLink(w http.ResponseWriter, r *http.Request, s *
 	default:
 		d.fail(w, err)
 	}
+}
+
+// simulatedRenewable: a provider-managed test-mode subscription on the
+// simulator, which can be told to charge its next period.
+func simulatedRenewable(sub store.Subscription, account store.ProviderAccount) bool {
+	return sub.Mode == "test" && sub.BillingMode == "provider_managed" && account.Connector == simulator.Name &&
+		(sub.Status == string(state.SubActive) || sub.Status == string(state.SubPastDue))
+}
+
+// simulateRenewal makes the simulator charge (or fail to charge) the next
+// period of a provider-managed subscription. The simulator's signed webhook
+// then drives the normal renewal path.
+func (d *Dashboard) simulateRenewal(w http.ResponseWriter, r *http.Request, s *session) {
+	if !d.subsEnabled(w) {
+		return
+	}
+	ctx := r.Context()
+	var (
+		sub     store.Subscription
+		account store.ProviderAccount
+	)
+	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) {
+		if sub, err = store.GetSubscription(ctx, q, r.PathValue("id")); err != nil {
+			return err
+		}
+		account, _ = store.GetProviderAccount(ctx, q, sub.ProviderAccountID)
+		return nil
+	})
+	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, sub.OrgID) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	var ctl simulator.Controller
+	if simulatedRenewable(sub, account) {
+		if live, err := d.o.Connectors.Get(ctx, account.ID); err == nil {
+			ctl, _ = live.Connector.(simulator.Controller)
+		}
+	}
+	if ctl == nil {
+		d.renderSubscription(w, r, s, http.StatusBadRequest, "Only an active provider-managed test subscription on the simulator can be renewed this way.", "", "")
+		return
+	}
+	fail := r.PostForm.Get("fail") != ""
+	if err := ctl.SimulateRenewal(ctx, sub.ProviderSubscriptionID, fail); err != nil {
+		d.renderSubscription(w, r, s, http.StatusBadRequest, err.Error(), "", "")
+		return
+	}
+	if err := d.record(ctx, r, s, "simulator.renewal", sub.ID, nil, map[string]any{"fail": fail}); err != nil {
+		d.fail(w, err)
+		return
+	}
+	notice := "Renewal simulated. It appears once the simulator's webhook has been processed (a second or two)."
+	if fail {
+		notice = "A failed renewal was simulated; the subscription turns past due once the webhook has been processed."
+	}
+	d.renderSubscription(w, r, s, http.StatusOK, "", notice, "")
 }
