@@ -73,6 +73,29 @@ func UpdateMandate(ctx context.Context, tx Tx, m Mandate, now time.Time) error {
 	return err
 }
 
+// AdjustLine is one line of a prorated adjustment: a charge when Amount is
+// positive, a credit when negative (minor units of the subscription currency).
+type AdjustLine struct {
+	Description string `json:"description"`
+	Amount      int64  `json:"amount"`
+}
+
+func marshalLines(l []AdjustLine) string {
+	if len(l) == 0 {
+		return "[]"
+	}
+	b, _ := json.Marshal(l)
+	return string(b)
+}
+
+func unmarshalLines(raw string) ([]AdjustLine, error) {
+	var l []AdjustLine
+	if err := json.Unmarshal([]byte(raw), &l); err != nil {
+		return nil, err
+	}
+	return l, nil
+}
+
 // Subscription is a row of subscriptions.
 type Subscription struct {
 	ID, OrgID, Mode, AppID, CustomerID, Status, BillingMode string
@@ -87,16 +110,22 @@ type Subscription struct {
 	CancelAtPeriodEnd                                       bool
 	CanceledAt, EndedAt                                     time.Time
 	PendingAmount                                           int64 // 0 = none
-	RequiresReauthorization                                 bool
-	DunningAttempt                                          int
-	NextRetryAt                                             time.Time
-	Description                                             string
-	Metadata                                                map[string]string
-	ReturnURL, CheckoutTokenHash                            string
-	CheckoutAction                                          string // JSON of the cached connector.NextAction
-	ExpiresAt                                               time.Time
-	Version                                                 int64
-	CreatedAt, UpdatedAt                                    time.Time
+	// ProrationAdjust is what the next renewal changes by after a prorated
+	// plan change (a charge when positive, a credit when negative), explained
+	// by ProrationLines. BilledAmount is the rate the current period is paid
+	// at once a prorated change has been made (0: Amount).
+	ProrationAdjust, BilledAmount int64
+	ProrationLines                []AdjustLine
+	RequiresReauthorization       bool
+	DunningAttempt                int
+	NextRetryAt                   time.Time
+	Description                   string
+	Metadata                      map[string]string
+	ReturnURL, CheckoutTokenHash  string
+	CheckoutAction                string // JSON of the cached connector.NextAction
+	ExpiresAt                     time.Time
+	Version                       int64
+	CreatedAt, UpdatedAt          time.Time
 }
 
 const subCols = `id, org_id, mode, app_id, customer_id, status, billing_mode, provider_account_id,
@@ -104,20 +133,24 @@ const subCols = `id, org_id, mode, app_id, customer_id, status, billing_mode, pr
 	currency, interval, interval_count, anchor_at, current_period_start, current_period_end, COALESCE(trial_end,0),
 	COALESCE(total_count,0), renewals_done, cancel_at_period_end, COALESCE(canceled_at,0), COALESCE(ended_at,0),
 	COALESCE(pending_amount,0), requires_reauthorization, dunning_attempt, COALESCE(next_retry_at,0), description, metadata,
-	return_url, checkout_token_hash, checkout_action, expires_at, version, created_at, updated_at`
+	return_url, checkout_token_hash, checkout_action, expires_at, version, created_at, updated_at,
+	proration_adjust, billed_amount, proration_lines`
 
 func scanSub(row interface{ Scan(...any) error }) (Subscription, error) {
 	var s Subscription
 	var anchor, ps, pe, trial, canceled, ended, retry, exp, created, updated int64
 	var cape, reauth int
-	var meta string
+	var meta, lines string
 	err := row.Scan(&s.ID, &s.OrgID, &s.Mode, &s.AppID, &s.CustomerID, &s.Status, &s.BillingMode, &s.ProviderAccountID,
 		&s.ProviderSubscriptionID, &s.ProviderRef, &s.MandateID, &s.PendingMandateID, &s.Amount, &s.Currency, &s.Interval,
 		&s.IntervalCount, &anchor, &ps, &pe, &trial, &s.TotalCount, &s.RenewalsDone, &cape, &canceled, &ended,
 		&s.PendingAmount, &reauth, &s.DunningAttempt, &retry, &s.Description, &meta, &s.ReturnURL, &s.CheckoutTokenHash, &s.CheckoutAction,
-		&exp, &s.Version, &created, &updated)
+		&exp, &s.Version, &created, &updated, &s.ProrationAdjust, &s.BilledAmount, &lines)
 	if err != nil {
 		return Subscription{}, notFound(err)
+	}
+	if s.ProrationLines, err = unmarshalLines(lines); err != nil {
+		return Subscription{}, fmt.Errorf("subscription %s proration lines: %w", s.ID, err)
 	}
 	if err := json.Unmarshal([]byte(meta), &s.Metadata); err != nil {
 		return Subscription{}, fmt.Errorf("subscription %s metadata: %w", s.ID, err)
@@ -233,12 +266,13 @@ func UpdateSubscription(ctx context.Context, tx Tx, s *Subscription, now time.Ti
 		pending_mandate_id = ?, amount = ?, current_period_start = ?, current_period_end = ?, trial_end = ?, anchor_at = ?,
 		renewals_done = ?, cancel_at_period_end = ?, canceled_at = ?, ended_at = ?, pending_amount = ?,
 		requires_reauthorization = ?, dunning_attempt = ?, next_retry_at = ?, checkout_token_hash = ?, checkout_action = ?, expires_at = ?,
+		proration_adjust = ?, billed_amount = ?, proration_lines = ?,
 		version = version + 1, updated_at = ? WHERE id = ? AND version = ?`,
 		s.Status, nullIfEmpty(s.ProviderSubscriptionID), nullIfEmpty(s.MandateID), nullIfEmpty(s.PendingMandateID), s.Amount,
 		ms(s.CurrentPeriodStart), ms(s.CurrentPeriodEnd), zeroMS(s.TrialEnd), ms(s.AnchorAt), s.RenewalsDone,
 		boolInt(s.CancelAtPeriodEnd), zeroMS(s.CanceledAt), zeroMS(s.EndedAt), zeroInt64(s.PendingAmount),
 		boolInt(s.RequiresReauthorization), s.DunningAttempt, zeroMS(s.NextRetryAt), s.CheckoutTokenHash, s.CheckoutAction, ms(s.ExpiresAt),
-		ms(now), s.ID, s.Version)
+		s.ProrationAdjust, s.BilledAmount, marshalLines(s.ProrationLines), ms(now), s.ID, s.Version)
 	if err != nil {
 		return err
 	}
@@ -256,23 +290,30 @@ type Cycle struct {
 	PeriodIndex                             int // -1 for provider-managed charges (keyed by ProviderPaymentID)
 	ProviderPaymentID, PaymentID, AttemptID string
 	Amount                                  int64
-	State                                   string
-	Retries, JobSeq                         int
-	NotifiedAt, NextRunAt, LeaseUntil       time.Time
-	CreatedAt, UpdatedAt                    time.Time
+	// Adjustments are the prorated lines included in Amount (the rest is the
+	// period's own amount), kept for the invoice.
+	Adjustments                       []AdjustLine
+	State                             string
+	Retries, JobSeq                   int
+	NotifiedAt, NextRunAt, LeaseUntil time.Time
+	CreatedAt, UpdatedAt              time.Time
 }
 
 const cycleCols = `id, subscription_id, COALESCE(period_index,-1), COALESCE(provider_payment_id,''), COALESCE(payment_id,''),
 	COALESCE(attempt_id,''), amount, state, retries, job_seq, COALESCE(notified_at,0), COALESCE(next_run_at,0),
-	COALESCE(lease_until,0), created_at, updated_at`
+	COALESCE(lease_until,0), created_at, updated_at, adjustments`
 
 func scanCycle(row interface{ Scan(...any) error }) (Cycle, error) {
 	var c Cycle
 	var notified, next, lease, created, updated int64
+	var adj string
 	err := row.Scan(&c.ID, &c.SubscriptionID, &c.PeriodIndex, &c.ProviderPaymentID, &c.PaymentID, &c.AttemptID, &c.Amount,
-		&c.State, &c.Retries, &c.JobSeq, &notified, &next, &lease, &created, &updated)
+		&c.State, &c.Retries, &c.JobSeq, &notified, &next, &lease, &created, &updated, &adj)
 	if err != nil {
 		return Cycle{}, notFound(err)
+	}
+	if c.Adjustments, err = unmarshalLines(adj); err != nil {
+		return Cycle{}, fmt.Errorf("cycle %s adjustments: %w", c.ID, err)
 	}
 	c.NotifiedAt, c.NextRunAt, c.LeaseUntil = fromMSZero(notified), fromMSZero(next), fromMSZero(lease)
 	c.CreatedAt, c.UpdatedAt = fromMS(created), fromMS(updated)
@@ -287,11 +328,11 @@ func InsertCycle(ctx context.Context, tx Tx, c Cycle) error {
 		period = c.PeriodIndex
 	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO subscription_cycles (id, subscription_id, period_index, provider_payment_id,
-		payment_id, attempt_id, amount, state, retries, job_seq, notified_at, next_run_at, lease_until, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		payment_id, attempt_id, amount, state, retries, job_seq, notified_at, next_run_at, lease_until, created_at, updated_at, adjustments)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.ID, c.SubscriptionID, period, nullIfEmpty(c.ProviderPaymentID), nullIfEmpty(c.PaymentID), nullIfEmpty(c.AttemptID),
 		c.Amount, c.State, c.Retries, c.JobSeq, zeroMS(c.NotifiedAt), zeroMS(c.NextRunAt), zeroMS(c.LeaseUntil),
-		ms(c.CreatedAt), ms(c.UpdatedAt))
+		ms(c.CreatedAt), ms(c.UpdatedAt), marshalLines(c.Adjustments))
 	if IsUniqueViolation(err) {
 		return fmt.Errorf("%w: cycle exists", ErrConflict)
 	}
@@ -335,9 +376,9 @@ func ListCycles(ctx context.Context, q Queryer, subID string) ([]Cycle, error) {
 // UpdateCycle writes the mutable fields of c.
 func UpdateCycle(ctx context.Context, tx Tx, c Cycle, now time.Time) error {
 	_, err := tx.ExecContext(ctx, `UPDATE subscription_cycles SET provider_payment_id = ?, payment_id = ?, attempt_id = ?,
-		amount = ?, state = ?, retries = ?, job_seq = ?, notified_at = ?, next_run_at = ?, lease_until = ?, updated_at = ? WHERE id = ?`,
+		amount = ?, state = ?, retries = ?, job_seq = ?, notified_at = ?, next_run_at = ?, lease_until = ?, adjustments = ?, updated_at = ? WHERE id = ?`,
 		nullIfEmpty(c.ProviderPaymentID), nullIfEmpty(c.PaymentID), nullIfEmpty(c.AttemptID), c.Amount, c.State, c.Retries,
-		c.JobSeq, zeroMS(c.NotifiedAt), zeroMS(c.NextRunAt), zeroMS(c.LeaseUntil), ms(now), c.ID)
+		c.JobSeq, zeroMS(c.NotifiedAt), zeroMS(c.NextRunAt), zeroMS(c.LeaseUntil), marshalLines(c.Adjustments), ms(now), c.ID)
 	return err
 }
 
