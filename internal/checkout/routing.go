@@ -30,9 +30,11 @@ type routingDoc struct {
 	CatchAll *routing.Rule  `json:"catch_all"`
 }
 
-func (r *Routing) config(ctx context.Context, q store.Queryer, app store.App) (routing.Config, error) {
+// OrgRoutingConfig loads the org-level routing setting: the org rules and the
+// catch-all.
+func OrgRoutingConfig(ctx context.Context, q store.Queryer, orgID string) (routing.Config, error) {
 	var cfg routing.Config
-	org, err := settings.ResolveOrgWith(ctx, q, app.OrgID, "routing")
+	org, err := settings.ResolveOrgWith(ctx, q, orgID, "routing")
 	if err != nil {
 		return cfg, err
 	}
@@ -43,6 +45,17 @@ func (r *Routing) config(ctx context.Context, q store.Queryer, app store.App) (r
 	cfg.Org = orgDoc.Rules
 	if orgDoc.CatchAll != nil {
 		cfg.CatchAll = *orgDoc.CatchAll
+	}
+	return cfg, nil
+}
+
+// AppRoutingConfig loads the rule hierarchy for an app: its own override (if it
+// has one) ahead of the org rules and the org catch-all. Payments are routed
+// with exactly this configuration.
+func AppRoutingConfig(ctx context.Context, q store.Queryer, app store.App) (routing.Config, error) {
+	cfg, err := OrgRoutingConfig(ctx, q, app.OrgID)
+	if err != nil {
+		return cfg, err
 	}
 	ov, err := settings.ResolveWith(ctx, q, app.ID, "routing")
 	if err != nil {
@@ -56,6 +69,20 @@ func (r *Routing) config(ctx context.Context, q store.Queryer, app store.App) (r
 		cfg.App = appDoc.Rules
 	}
 	return cfg, nil
+}
+
+// RoutingAccounts converts provider accounts to what routing.Choose evaluates.
+func RoutingAccounts(pas []store.ProviderAccount) []routing.Account {
+	accounts := make([]routing.Account, 0, len(pas))
+	for _, pa := range pas {
+		accounts = append(accounts, routing.Account{ID: pa.ID, Connector: pa.Connector, Currencies: pa.AcceptedCurrencies,
+			Purposes: pa.EnabledPurposes, Disabled: pa.Status != "active"})
+	}
+	return accounts
+}
+
+func (r *Routing) config(ctx context.Context, q store.Queryer, app store.App) (routing.Config, error) {
+	return AppRoutingConfig(ctx, q, app)
 }
 
 // Pick returns the eligible provider accounts for the request, best first
@@ -74,11 +101,9 @@ func (r *Routing) Pick(ctx context.Context, q store.Queryer, req core.RouteReque
 	if err != nil {
 		return nil, err
 	}
-	accounts := make([]routing.Account, 0, len(pas))
+	accounts := RoutingAccounts(pas)
 	byID := map[string]store.ProviderAccount{}
 	for _, pa := range pas {
-		accounts = append(accounts, routing.Account{ID: pa.ID, Connector: pa.Connector, Currencies: pa.AcceptedCurrencies,
-			Purposes: pa.EnabledPurposes, Disabled: pa.Status != "active"})
 		byID[pa.ID] = pa
 	}
 	purpose := req.Purpose
