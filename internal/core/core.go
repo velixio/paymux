@@ -78,6 +78,9 @@ type Scope struct {
 	Mode  string // "test" | "live"
 }
 
+// Validate checks that the scope names an app and a mode.
+func (s Scope) Validate() error { return s.validate() }
+
 func (s Scope) validate() error {
 	if s.AppID == "" || (s.Mode != "test" && s.Mode != "live") {
 		return newErr(ErrInvalid, "scope needs an app and a mode of test or live")

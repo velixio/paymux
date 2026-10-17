@@ -91,6 +91,7 @@ type fake struct {
 	refund  string
 	check   string
 	listing string
+	cmds    map[string]string // other commands (standing instructions)
 }
 
 func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -108,6 +109,9 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := map[string]string{"verify_payment": f.verify, "cancel_refund_transaction": f.refund, "check_action_status": f.check, "get_Transaction_Details": f.listing}[r.PostForm.Get("command")]
+	if b, ok := f.cmds[r.PostForm.Get("command")]; ok {
+		body = b
+	}
 	_, _ = w.Write([]byte(body))
 }
 

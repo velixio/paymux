@@ -429,6 +429,23 @@ func (h *Handler) ret(w http.ResponseWriter, r *http.Request) {
 		h.result(w, http.StatusBadRequest, "", "Invalid request", "The request could not be read.", "")
 		return
 	}
+	// Returns from subscription and mandate checkouts are not payment attempts.
+	if back, handled, err := h.o.Flow.SubscriptionReturn(ctx, r.PathValue("pa"), r.PathValue("ref")); handled {
+		switch {
+		case err != nil:
+			h.serverError(w, "", err)
+		case back != "":
+			w.Header().Set("Referrer-Policy", "no-referrer")
+			w.Header().Set("Cache-Control", "no-store")
+			http.Redirect(w, r, back, http.StatusSeeOther)
+		default:
+			h.result(w, http.StatusOK, "", "Thank you", "Your subscription is being set up. You can close this page.", "")
+		}
+		return
+	} else if err != nil {
+		h.serverError(w, "", err)
+		return
+	}
 	p, err := h.o.Flow.HandleReturn(ctx, r.PathValue("pa"), r.PathValue("ref"), checkout.ReturnInput{
 		Method: r.Method, Query: r.URL.Query(), Form: r.PostForm, Headers: r.Header})
 	if errors.Is(err, core.ErrNotFound) || err == nil && !h.hostMayServe(ctx, p.AppID) {

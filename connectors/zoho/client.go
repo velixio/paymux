@@ -190,3 +190,8 @@ func (c *client) once(ctx context.Context, tok, method, path string, query url.V
 	}
 	return ae
 }
+
+// timeFromMS converts unix ms to an IST time (Zoho India dates are IST).
+func timeFromMS(ms int64) time.Time {
+	return time.UnixMilli(ms).In(time.FixedZone("IST", 5*3600+1800))
+}
