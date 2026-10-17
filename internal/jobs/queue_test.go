@@ -488,3 +488,29 @@ func TestQueueLogsWarningForStaleCompletion(t *testing.T) {
 		}
 	})
 }
+
+func TestInsertJobDuplicateIDStillErrors(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		fixture(t, db)
+		j := store.JobRow{ID: "job_dupid", Kind: "k", Payload: json.RawMessage(`1`), RunAt: t0, MaxAttempts: 3}
+		insert := func(j store.JobRow) error {
+			return db.Write(ctx, func(tx store.Tx) error { return db.InsertJob(ctx, tx, j) })
+		}
+		if err := insert(j); err != nil {
+			t.Fatal(err)
+		}
+		if err := insert(j); err == nil {
+			t.Fatal("duplicate primary key must be an error, not a silent dedupe")
+		}
+		// Dedupe conflicts, by contrast, are silent no-ops.
+		a := store.JobRow{ID: "job_a", Kind: "k", Payload: json.RawMessage(`1`), RunAt: t0, MaxAttempts: 3, DedupeKey: "dk"}
+		b := a
+		b.ID = "job_b"
+		if err := insert(a); err != nil {
+			t.Fatal(err)
+		}
+		if err := insert(b); err != nil {
+			t.Fatalf("dedupe conflict must be a no-op: %v", err)
+		}
+	})
+}
