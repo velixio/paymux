@@ -422,6 +422,23 @@ func (s *Service) reconcileRefunds(ctx context.Context, pa store.ProviderAccount
 	for _, it := range recon.Diff(ours, theirRecs, nil) {
 		fixed := false
 		var note recordNote
+		if it.Kind == recon.KindUnknownProviderObject {
+			// A refund Paymux has no row for. If it belongs to one of our
+			// payments the provider made it on its own (its dashboard, a
+			// resolution centre) and its webhook was missed: book it, from the
+			// provider's record, as initiated_by=provider. Anything else stays
+			// an open item for a person.
+			imported, err := checkout.ImportRefund(ctx, s.o.DB, s.o.Core, pa.ID, byID[it.ProviderID])
+			switch {
+			case err != nil:
+				s.o.Logger.Warn("reconcile: importing a provider refund failed", "account", pa.ID, "refund", it.ProviderID, "err", err)
+				if !errors.Is(err, core.ErrInvalid) && !errors.Is(err, core.ErrNotRefundable) {
+					note = failedFix("refund", it.ProviderID, err)
+				}
+			default:
+				fixed = imported
+			}
+		}
 		if it.AutoFix {
 			snap := byID[it.ProviderID]
 			_, err := s.o.Core.ApplyRefundSnapshot(ctx, ourByProviderID[it.ProviderID], core.RefundSnapshot{
