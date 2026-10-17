@@ -73,3 +73,16 @@ type paymentEventData struct {
 	Reason    string `json:"reason,omitempty"`
 	AttemptID string `json:"attempt_id,omitempty"`
 }
+
+// AttemptView is the public JSON shape of a payment attempt: what an app needs
+// to debug a failed payment, and nothing internal.
+type AttemptView struct {
+	ID                string    `json:"id"`
+	Status            string    `json:"status"`
+	Provider          string    `json:"provider"` // the connector, for example "razorpay"
+	ProviderPaymentID string    `json:"provider_payment_id,omitempty"`
+	Method            string    `json:"method,omitempty"`
+	FailureCode       string    `json:"failure_code,omitempty"`
+	FailureMessage    string    `json:"failure_message,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
+}

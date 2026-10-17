@@ -104,11 +104,11 @@ paths:
         - $ref: "#/components/parameters/PaymentId"
       responses:
         "200":
-          description: The payment.
+          description: The payment, with its attempts.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Payment"
+                $ref: "#/components/schemas/PaymentDetail"
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":
@@ -642,6 +642,29 @@ components:
           items:
             type: string
             examples: [duplicate_success, late_success, amount_mismatch, success_after_cancel]
+    PaymentAttempt:
+      type: object
+      description: One try at paying, on one provider account. Useful for finding out why a payment failed.
+      required: [id, status, provider, created_at]
+      properties:
+        id: { type: string, pattern: "^att_[0-9a-z]{26}$" }
+        status: { type: string, enum: [created, pending, authorized, captured, failed] }
+        provider: { type: string, description: "The connector, for example razorpay." }
+        provider_payment_id: { type: string }
+        method: { type: string, description: "For example upi, card, netbanking." }
+        failure_code: { type: string }
+        failure_message: { type: string }
+        created_at: { type: string, format: date-time }
+    PaymentDetail:
+      allOf:
+        - $ref: "#/components/schemas/Payment"
+        - type: object
+          required: [attempts]
+          properties:
+            attempts:
+              type: array
+              description: Oldest first.
+              items: { $ref: "#/components/schemas/PaymentAttempt" }
     CreatedPayment:
       allOf:
         - $ref: "#/components/schemas/Payment"

@@ -228,6 +228,36 @@ func (s *Service) GetPayment(ctx context.Context, sc Scope, id string) (store.Pa
 	return p, nil
 }
 
+// PaymentAttempts lists the attempts of a payment of the scope's app and mode,
+// oldest first, as the API shows them.
+func (s *Service) PaymentAttempts(ctx context.Context, sc Scope, paymentID string) ([]AttemptView, error) {
+	p, err := s.GetPayment(ctx, sc, paymentID)
+	if err != nil {
+		return nil, err
+	}
+	out := []AttemptView{}
+	err = s.db.Read(ctx, func(q store.Querier) error {
+		attempts, err := store.ListAttempts(ctx, q, p.ID)
+		if err != nil {
+			return err
+		}
+		connectors := map[string]string{}
+		for _, a := range attempts {
+			name, ok := connectors[a.ProviderAccountID]
+			if !ok {
+				if pa, err := store.GetProviderAccount(ctx, q, a.ProviderAccountID); err == nil {
+					name = pa.Connector
+				}
+				connectors[a.ProviderAccountID] = name
+			}
+			out = append(out, AttemptView{ID: a.ID, Status: a.Status, Provider: name, ProviderPaymentID: a.ProviderPaymentID, Method: a.Method,
+				FailureCode: a.FailureCode, FailureMessage: a.FailureMessage, CreatedAt: a.CreatedAt})
+		}
+		return nil
+	})
+	return out, err
+}
+
 // GetAttempt returns an attempt by id.
 func (s *Service) GetAttempt(ctx context.Context, id string) (store.Attempt, error) {
 	var a store.Attempt
