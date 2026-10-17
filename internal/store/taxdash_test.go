@@ -213,3 +213,37 @@ func TestFXRatesAndDomainsLists(t *testing.T) {
 		}
 	})
 }
+
+func TestInvoicesPendingFXAllCurrencies(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		seedBase(t, db)
+		when := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
+		err := db.Write(ctx, func(tx store.Tx) error {
+			if err := store.InsertTaxEntity(ctx, tx, entity("te_a", "27AAPFU0939F1ZV")); err != nil {
+				return err
+			}
+			usd, eur, done := inv("inv_1", "te_a", "app_a", "live", "INV/2627/000001", when, "fx_pending"), inv("inv_2", "te_a", "app_a", "live", "INV/2627/000002", when, "fx_pending"),
+				inv("inv_3", "te_a", "app_a", "live", "INV/2627/000003", when, "fx_pending")
+			usd.Currency, eur.Currency, done.Currency = "USD", "EUR", "USD"
+			other := inv("inv_4", "te_a", "app_a", "live", "INV/2627/000004", when, "fx_pending")
+			other.Currency, other.OrgID = "USD", "org_other"
+			for _, i := range []store.Invoice{usd, eur, done, other} {
+				if err := store.InsertInvoice(ctx, tx, i); err != nil {
+					return err
+				}
+			}
+			return store.SetInvoiceFX(ctx, tx, "inv_3", "83.0", "manual", nil) // rate known: no longer pending
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []store.Invoice
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			got, err = store.AllInvoicesPendingFX(ctx, q, store.DefaultOrgID)
+			return
+		})
+		if len(got) != 2 || got[0].ID != "inv_1" || got[1].ID != "inv_2" {
+			t.Fatalf("%+v", got)
+		}
+	})
+}

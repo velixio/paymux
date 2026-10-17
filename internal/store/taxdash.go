@@ -155,3 +155,9 @@ func UpdateCustomerBilling(ctx context.Context, tx Tx, customerID string, b Bill
 	}
 	return nil
 }
+
+// AllInvoicesPendingFX lists the org's invoices still waiting for an FX rate,
+// whatever the currency, oldest first.
+func AllInvoicesPendingFX(ctx context.Context, q Queryer, orgID string) ([]Invoice, error) {
+	return listInvoices(ctx, q, "org_id = ? AND fx_rate_inr IS NULL AND flags LIKE '%fx_pending%' ORDER BY issued_at, id", orgID)
+}
