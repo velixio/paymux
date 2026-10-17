@@ -23,6 +23,7 @@ import (
 	"github.com/paymux/paymux/internal/invoice/render"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/notify"
+	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/tax"
@@ -57,6 +58,9 @@ type Alerter interface {
 
 // Options configures a Service.
 type Options struct {
+	// Box seals the digital signature certificate of a tax entity. Without
+	// it no certificate can be stored and documents are never signed.
+	Box *secrets.Box
 	// Alerter receives the alerts for tax exceptions (pos_defaulted,
 	// export_igst, fx_pending, credit_note_cutoff_passed). Nil raises none.
 	Alerter  Alerter
@@ -85,6 +89,7 @@ type Service struct {
 	emitter  events.Emitter
 	mailer   notify.Mailer
 	alerter  Alerter
+	box      *secrets.Box
 	baseURL  string
 	now      func() time.Time
 	isMoR    func(string) bool
@@ -127,7 +132,7 @@ func New(o Options) *Service {
 			return ok && info.MerchantOfRecord
 		}
 	}
-	return &Service{db: o.DB, settings: o.Settings, jobs: o.Jobs, emitter: o.Emitter, mailer: o.Mailer, alerter: o.Alerter,
+	return &Service{db: o.DB, settings: o.Settings, jobs: o.Jobs, emitter: o.Emitter, mailer: o.Mailer, alerter: o.Alerter, box: o.Box,
 		baseURL: strings.TrimRight(o.BaseURL, "/"), now: o.Now, isMoR: o.IsMerchantOfRecord, pagesOpt: o.Pages}
 }
 

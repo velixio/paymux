@@ -2,9 +2,13 @@ package invoice_test
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +32,36 @@ func p12(t *testing.T, name string) []byte {
 
 func isSigned(pdf []byte) bool {
 	return bytes.Contains(pdf, []byte("/ByteRange")) && bytes.Contains(pdf, []byte("ETSI.CAdES.detached"))
+}
+
+var byteRangeRE = regexp.MustCompile(`/ByteRange \[0 (\d+) (\d+) (\d+)\]`)
+
+// opensslVerifies checks the signature of a signed PDF with OpenSSL, an
+// implementation independent of the one that made it. It skips when OpenSSL is
+// not installed.
+func opensslVerifies(t *testing.T, pdf []byte) {
+	t.Helper()
+	bin, err := exec.LookPath("openssl")
+	if err != nil {
+		return
+	}
+	m := byteRangeRE.FindSubmatch(pdf)
+	if m == nil {
+		t.Fatal("no byte range")
+	}
+	a, _ := strconv.Atoi(string(m[1]))
+	b, _ := strconv.Atoi(string(m[2]))
+	raw, err := hex.DecodeString(string(pdf[a+1 : b-1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	sig, content := filepath.Join(dir, "sig.der"), filepath.Join(dir, "signed.bin")
+	_ = os.WriteFile(sig, raw, 0o600)
+	_ = os.WriteFile(content, append(append([]byte{}, pdf[:a]...), pdf[b:]...), 0o600)
+	if o, err := exec.Command(bin, "cms", "-verify", "-inform", "DER", "-in", sig, "-content", content, "-binary", "-noverify", "-out", os.DevNull).CombinedOutput(); err != nil {
+		t.Errorf("openssl rejected the signature of the rendered document: %v\n%s", err, o)
+	}
 }
 
 // The test certificates are valid from the day they were made, so the
@@ -58,12 +92,15 @@ func TestDocumentsAreSignedWhenTheTaxEntityHasADSC(t *testing.T) {
 		p, _ := e.pay(118000, "INR", intraB2C, "pa_1")
 		e.refund(p, 30000)
 		e.runJobs()
-		if !isSigned(pdfOf(t, e, only(t, e, p.ID).PDFBlobID)) {
+		invPDF, cnPDF := pdfOf(t, e, only(t, e, p.ID).PDFBlobID), pdfOf(t, e, e.creditNotes(p.ID)[0].PDFBlobID)
+		if !isSigned(invPDF) {
 			t.Error("the invoice PDF is not signed")
 		}
-		if !isSigned(pdfOf(t, e, e.creditNotes(p.ID)[0].PDFBlobID)) {
+		if !isSigned(cnPDF) {
 			t.Error("the credit note PDF is not signed")
 		}
+		opensslVerifies(t, invPDF)
+		opensslVerifies(t, cnPDF)
 		// Documents rendered before stay as they were.
 		if isSigned(pdfOf(t, e, only(t, e, p0.ID).PDFBlobID)) {
 			t.Error("an old PDF changed")

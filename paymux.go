@@ -178,7 +178,7 @@ func (a *App) Start(ctx context.Context) error {
 	// GST invoicing: documents are issued by hooks inside the transaction in
 	// which a payment or refund succeeds.
 	mailer := notify.New(a.cfg)
-	inv := invoice.New(invoice.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter, Mailer: mailer,
+	inv := invoice.New(invoice.Options{DB: db, Box: box, Settings: set, Jobs: q, Emitter: emitter, Mailer: mailer,
 		BaseURL: a.cfg.BaseURL.String()})
 	inv.RegisterJobs(q)
 	// Ops alerts (PAYMUX_OPS_EMAILS and PAYMUX_OPS_WEBHOOK_URL) go through one

@@ -89,7 +89,11 @@ type Document struct {
 	ForeignAmount int64
 	FXRate        string
 
-	SignatoryName   string
+	SignatoryName string
+	// SignedBy, when set, says the PDF is going to be digitally signed by this
+	// name (the Signer of Options does it); the page then reads "Digitally
+	// signed by ..." in place of "This is a computer-generated document".
+	SignedBy        string
 	FooterNote      string
 	TemplateVersion string
 
@@ -108,8 +112,8 @@ type EInvoiceInfo struct {
 	QR string
 }
 
-// Signer signs a finished PDF (PAdES with the tax entity's DSC).
-// TODO(spec §10): implement DSC/PAdES signing; only the hook exists.
+// Signer signs a finished PDF (PAdES with the tax entity's DSC, see
+// internal/invoice/pades).
 type Signer interface {
 	Sign(pdf []byte) ([]byte, error)
 }
