@@ -123,7 +123,8 @@ func checkCredentials(msg string) error {
 
 type txnDetail struct {
 	MihPayID       flexStr `json:"mihpayid"`
-	ID             flexStr `json:"id"` // get_Transaction_Details names the PayU id "id"
+	ID             flexStr `json:"id"`         // get_Transaction_Details names the PayU id "id"
+	RequestID      flexStr `json:"request_id"` // set on the row PayU adds for a refund
 	ServiceFee     flexStr `json:"mer_service_fee"`
 	ServiceTax     flexStr `json:"mer_service_tax"`
 	TxnID          flexStr `json:"txnid"`
@@ -396,6 +397,9 @@ func (p *payu) ListPayments(ctx context.Context, tr connector.TimeRange, cur con
 		}
 	}
 	for _, d := range out.Details {
+		if d.RequestID != "" {
+			continue // a refund's row repeats the payment (same id, txnid, amount and status): not a payment
+		}
 		s, err := d.snapshot(string(d.TxnID))
 		if err != nil {
 			return pg, err

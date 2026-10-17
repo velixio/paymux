@@ -82,6 +82,9 @@ func TestRealListPayments(t *testing.T) {
 	f := &fake{listing: body(t, "listing_captured")}
 	tr := connector.TimeRange{From: 1792272000000, To: 1792358400000} // 2026-10-18 IST
 	pg, err := newConn(t, f).(connector.Lister).ListPayments(context.Background(), tr, "")
+	// The fixture also holds the row PayU adds for a refund of the payment: the same
+	// id, txnid, amount and status "captured" as the payment, told apart only by its
+	// request_id. It is not a second payment.
 	if err != nil || len(pg.Items) != 1 {
 		t.Fatalf("%+v %v", pg, err)
 	}
