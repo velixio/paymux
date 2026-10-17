@@ -452,7 +452,7 @@ func TestAppSettingsTab(t *testing.T) {
 			"bad enum":     {"duplicate_payment_action", `"maybe"`},
 			"org only key": {"mandate_afa_limit", "100"},
 			"unknown key":  {"nope", "1"},
-			"bad routing":  {"routing", `{"rules":[]}`},
+			"bad routing":  {"routing", `{"rules":[{"name":"x","action":{"kind":"explode"}}]}`},
 		} {
 			r, body := e.post(admin, page+"/settings/"+c.key, url.Values{"value": {c.val}, "csrf": {tok}})
 			if r.StatusCode != 400 {
