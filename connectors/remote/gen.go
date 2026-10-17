@@ -22,6 +22,7 @@ var caps = []struct{ capability, part string }{
 	{"CapCancel", "cancelPart"},
 	{"CapSubscriptionManager", "subscriptionPart"},
 	{"CapMandateManager", "mandatePart"},
+	{"CapPayout", "payoutPart"},
 }
 
 func main() {

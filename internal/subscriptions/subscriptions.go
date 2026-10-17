@@ -295,6 +295,7 @@ type View struct {
 	CanceledAt              *time.Time        `json:"canceled_at,omitempty"`
 	EndedAt                 *time.Time        `json:"ended_at,omitempty"`
 	PendingAmount           int64             `json:"pending_amount,omitempty"`
+	ProrationAdjust         int64             `json:"proration_adjust,omitempty"`
 	RequiresReauthorization bool              `json:"requires_reauthorization"`
 	Description             string            `json:"description,omitempty"`
 	Metadata                map[string]string `json:"metadata"`
@@ -321,7 +322,7 @@ func ViewSubscription(sub store.Subscription) View {
 		Amount: sub.Amount, Currency: sub.Currency, Interval: sub.Interval, IntervalCount: sub.IntervalCount,
 		CurrentPeriodStart: sub.CurrentPeriodStart, CurrentPeriodEnd: sub.CurrentPeriodEnd, TrialEnd: tp(sub.TrialEnd),
 		TotalCount: sub.TotalCount, RenewalsDone: sub.RenewalsDone, CancelAtPeriodEnd: sub.CancelAtPeriodEnd,
-		CanceledAt: tp(sub.CanceledAt), EndedAt: tp(sub.EndedAt), PendingAmount: sub.PendingAmount,
+		CanceledAt: tp(sub.CanceledAt), EndedAt: tp(sub.EndedAt), PendingAmount: sub.PendingAmount, ProrationAdjust: sub.ProrationAdjust,
 		RequiresReauthorization: sub.RequiresReauthorization, Description: sub.Description, Metadata: meta,
 		ReturnURL: sub.ReturnURL, MandateID: sub.MandateID, CreatedAt: sub.CreatedAt, Version: sub.Version}
 }

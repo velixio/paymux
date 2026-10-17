@@ -236,6 +236,75 @@ func (s *Service) IssueForPayment(ctx context.Context, tx store.Tx, p store.Paym
 	return s.issue(ctx, tx, p, a, c, prof, nil)
 }
 
+// prorationLines returns the invoice lines: just line, or, when the
+// subscription cycle behind the payment includes prorated adjustments, the
+// period's own amount followed by one line per adjustment (a credit is a
+// negative line). The tax of the whole invoice (amts) is split over the lines
+// by their amounts; rounding differences land on the last line, so the lines
+// always add up to the invoice.
+func (s *Service) prorationLines(ctx context.Context, tx store.Tx, p store.Payment, line Line, received int64, amts tax.Amounts,
+	inclusive bool, rateBP int, interState, zeroRated bool) ([]Line, error) {
+	if p.SubscriptionID == "" {
+		return []Line{line}, nil
+	}
+	cy, err := store.GetCycleByPayment(ctx, tx, p.ID)
+	if errors.Is(err, store.ErrNotFound) || (err == nil && len(cy.Adjustments) == 0) {
+		return []Line{line}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	type item struct {
+		desc   string
+		amount int64
+	}
+	var items []item
+	adj := int64(0)
+	for _, a := range cy.Adjustments {
+		adj += a.Amount
+	}
+	if base := received - adj; base > 0 {
+		items = append(items, item{line.Description, base})
+	}
+	for _, a := range cy.Adjustments {
+		items = append(items, item{a.Description, a.Amount})
+	}
+	if len(items) == 0 {
+		return []Line{line}, nil
+	}
+	var out []Line
+	var sum tax.Amounts
+	for i, it := range items {
+		var a tax.Amounts
+		if i == len(items)-1 {
+			a = tax.Amounts{Taxable: amts.Taxable - sum.Taxable, CGST: amts.CGST - sum.CGST, SGST: amts.SGST - sum.SGST,
+				IGST: amts.IGST - sum.IGST, Total: amts.Total - sum.Total}
+		} else {
+			abs := it.amount
+			if abs < 0 {
+				abs = -abs
+			}
+			var err error
+			if inclusive {
+				a, err = tax.FromTotal(abs, rateBP, interState, zeroRated)
+			} else {
+				a, err = tax.FromTaxable(abs, rateBP, interState, zeroRated)
+			}
+			if err != nil {
+				return nil, fmt.Errorf("invoice: amounts for line %q: %w", it.desc, err)
+			}
+			if it.amount < 0 {
+				a = tax.Amounts{Taxable: -a.Taxable, CGST: -a.CGST, SGST: -a.SGST, IGST: -a.IGST, Total: -a.Total}
+			}
+		}
+		sum = sum.Add(a)
+		l := line
+		l.Description, l.UnitAmount, l.Taxable, l.CGST, l.SGST, l.IGST = it.desc, a.Taxable, a.Taxable, a.CGST, a.SGST, a.IGST
+		out = append(out, l)
+	}
+	return out, nil
+}
+
 // issue writes a new invoice for the payment. IssueForPayment calls it once
 // per payment; ReissueInvoice calls it again with corrected billing details.
 func (s *Service) issue(ctx context.Context, tx store.Tx, p store.Payment, a store.Attempt, c store.Customer,
@@ -330,7 +399,11 @@ func (s *Service) issue(ctx context.Context, tx store.Tx, p store.Payment, a sto
 	line := Line{Description: firstNonEmpty(p.Description, "Payment "+firstNonEmpty(p.OrderRef, p.ID)), SAC: prof.SACCode, Qty: 1,
 		Unit: "service", UnitAmount: amts.Taxable, Taxable: amts.Taxable, CGSTRateBP: cgstBP, SGSTRateBP: sgstBP,
 		IGSTRateBP: igstBP, CGST: amts.CGST, SGST: amts.SGST, IGST: amts.IGST}
-	linesJSON, _ := json.Marshal([]Line{line})
+	lines, err := s.prorationLines(ctx, tx, p, line, received, amts, prof.PricesIncludeTax, prof.GSTRateBP, cls.InterState, cls.ZeroRated())
+	if err != nil {
+		return nil, err
+	}
+	linesJSON, _ := json.Marshal(lines)
 
 	token, tokenHash := newToken()
 	inv := store.Invoice{

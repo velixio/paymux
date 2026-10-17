@@ -91,14 +91,14 @@ type Options struct {
 	}
 	// Subscriptions serves the subscription pages; nil answers 404 there.
 	Subscriptions *subscriptions.Service
-	// PaymentLinks serves the payment links page.
-	PaymentLinks *paylinks.Service
 	// OIDC enables single sign-on (nil: password and TOTP only). People whose
 	// verified e-mail is in OIDCAllowedDomains are created at first sign-in with
 	// OIDCDefaultRole (default viewer).
 	OIDC               *oidc.Client
 	OIDCAllowedDomains []string
 	OIDCDefaultRole    string
+	// PaymentLinks serves the payment links page.
+	PaymentLinks *paylinks.Service
 	// Location is the time zone of "today" and of date filters (default UTC).
 	Location *time.Location
 	// PageSize is the number of rows per list page (default 25).

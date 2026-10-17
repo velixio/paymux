@@ -119,6 +119,12 @@ func (f *fullFake) ChargeMandate(_ context.Context, r connector.ChargeRequest) (
 func (f *fullFake) RevokeMandate(_ context.Context, r connector.MandateRef) error {
 	return f.rec("revoke_mandate", r)
 }
+func (f *fullFake) CreatePayout(_ context.Context, r connector.PayoutRequest) (connector.PayoutSnapshot, error) {
+	return connector.PayoutSnapshot{ProviderRef: r.ProviderRef, ProviderPayoutID: "po_1", Status: connector.PayoutProcessing}, f.rec("create_payout", r)
+}
+func (f *fullFake) FetchPayout(_ context.Context, r connector.PayoutRef) (connector.PayoutSnapshot, error) {
+	return connector.PayoutSnapshot{ProviderPayoutID: r.ProviderPayoutID, Status: connector.PayoutSucceeded}, f.rec("fetch_payout", r)
+}
 
 // bare implements only the required interface.
 type bare struct{ *fullFake }
@@ -126,7 +132,7 @@ type bare struct{ *fullFake }
 func (b bare) Info() connector.Info { return connector.Info{Name: "bare"} }
 
 var allCaps = []connector.Capability{connector.CapRefund, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapList,
-	connector.CapSettle, connector.CapCancel, connector.CapSubscriptionManager, connector.CapMandateManager}
+	connector.CapSettle, connector.CapCancel, connector.CapSubscriptionManager, connector.CapMandateManager, connector.CapPayout}
 
 // serve exposes c at a test server and returns a remote connector for it.
 func serve(t *testing.T, c connector.Connector, wrap func(http.Handler) http.Handler) connector.Connector {
@@ -156,7 +162,7 @@ func dial(t *testing.T, srv *httptest.Server, secret string) connector.Connector
 }
 
 func TestDiscoveryDecidesTheOptionalInterfaces(t *testing.T) {
-	has := func(c connector.Connector) (m [8]bool) {
+	has := func(c connector.Connector) (m [9]bool) {
 		_, m[0] = c.(connector.Refunder)
 		_, m[1] = c.(connector.DisputeReader)
 		_, m[2] = c.(connector.DisputeResponder)
@@ -165,12 +171,13 @@ func TestDiscoveryDecidesTheOptionalInterfaces(t *testing.T) {
 		_, m[5] = c.(connector.Canceler)
 		_, m[6] = c.(connector.SubscriptionManager)
 		_, m[7] = c.(connector.MandateManager)
+		_, m[8] = c.(connector.Payouter)
 		return
 	}
-	// Every one of the 256 capability sets yields exactly those interfaces.
-	for mask := 0; mask < 256; mask++ {
+	// Every one of the 512 capability sets yields exactly those interfaces.
+	for mask := 0; mask < 512; mask++ {
 		var caps []connector.Capability
-		var want [8]bool
+		var want [9]bool
 		for i, c := range allCaps {
 			if mask&(1<<i) != 0 {
 				caps = append(caps, c)
@@ -179,14 +186,14 @@ func TestDiscoveryDecidesTheOptionalInterfaces(t *testing.T) {
 		}
 		rc := serve(t, &fullFake{caps: caps}, nil)
 		if got := has(rc); got != want {
-			t.Fatalf("mask %08b: interfaces %v want %v", mask, got, want)
+			t.Fatalf("mask %09b: interfaces %v want %v", mask, got, want)
 		}
 		if info := rc.Info(); info.Name != "remote" || info.DisplayName != "Upstream" || !info.MerchantOfRecord || !reflect.DeepEqual(info.Capabilities, caps) {
-			t.Fatalf("mask %08b: info %+v", mask, info)
+			t.Fatalf("mask %09b: info %+v", mask, info)
 		}
 	}
 	// A connector that declares nothing, and a remote that declares something unknown.
-	if got := has(serve(t, bare{&fullFake{}}, nil)); got != [8]bool{} {
+	if got := has(serve(t, bare{&fullFake{}}, nil)); got != [9]bool{} {
 		t.Errorf("bare: %v", got)
 	}
 	if got := has(serve(t, &fullFake{caps: []connector.Capability{"time_travel", connector.CapRefund}}, nil)); !got[0] {
@@ -221,6 +228,15 @@ func TestEveryMethodForwardsItsArguments(t *testing.T) {
 	must(err)
 	if len(ns) != 1 || ns[0].Payment.ProviderRef != "r" {
 		t.Errorf("notifications %+v", ns)
+	}
+	po, err := c.(connector.Payouter).CreatePayout(ctx, connector.PayoutRequest{ProviderRef: "PO", Amount: 5000, Currency: "INR",
+		Beneficiary: connector.Beneficiary{Name: "B", AccountNumber: "1234567890", IFSC: "HDFC0000001"}})
+	must(err)
+	pf, err := c.(connector.Payouter).FetchPayout(ctx, connector.PayoutRef{ProviderPayoutID: "po_9"})
+	must(err)
+	if po.ProviderRef != "PO" || pf.ProviderPayoutID != "po_9" || pf.Status != connector.PayoutSucceeded ||
+		f.args["create_payout"].(connector.PayoutRequest).Beneficiary.AccountNumber != "1234567890" {
+		t.Errorf("payouts %+v %+v %+v", po, pf, f.args["create_payout"])
 	}
 	if !reflect.DeepEqual(f.args["verify_webhook"], hook) {
 		t.Errorf("binary webhook body altered: %+v", f.args["verify_webhook"])
@@ -295,7 +311,7 @@ func TestEveryMethodForwardsItsArguments(t *testing.T) {
 	}
 
 	// Every wire method name was exercised exactly once on the server side.
-	if len(f.calls) != 24 {
+	if len(f.calls) != 26 {
 		t.Errorf("server saw %d calls: %v", len(f.calls), f.calls)
 	}
 }

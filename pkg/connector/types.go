@@ -21,6 +21,7 @@ const (
 	CapCancel              Capability = "cancel"
 	CapSubscriptionManager Capability = "subscription_manager"
 	CapMandateManager      Capability = "mandate_manager"
+	CapPayout              Capability = "payout"
 )
 
 // BillingMode is how recurring renewals are driven.
@@ -486,4 +487,62 @@ type Cursor string
 type Page[T any] struct {
 	Items []T    `json:"items"`
 	Next  Cursor `json:"next,omitempty"`
+}
+
+// PayoutStatus is the SDK's view of a payout (money sent out to a beneficiary).
+type PayoutStatus string
+
+// Payout statuses. Unknown provider statuses map to PayoutProcessing: a payout
+// is never reported failed (and so never retried) unless the provider says so.
+const (
+	PayoutPending    PayoutStatus = "pending"    // accepted, not yet sent to the rail
+	PayoutProcessing PayoutStatus = "processing" // on its way
+	PayoutSucceeded  PayoutStatus = "succeeded"  // the beneficiary has the money
+	PayoutFailed     PayoutStatus = "failed"     // it will not arrive; the money stays with the merchant
+	PayoutReversed   PayoutStatus = "reversed"   // it arrived and then came back
+)
+
+// Beneficiary is who a payout is sent to. Which fields are needed depends on
+// the rail: AccountNumber and IFSC for a bank transfer, UPI for a UPI payout.
+// These are personal data: they are stored encrypted and never logged.
+type Beneficiary struct {
+	Name          string `json:"name"`
+	AccountNumber string `json:"account_number,omitempty"`
+	IFSC          string `json:"ifsc,omitempty"`
+	UPI           string `json:"upi,omitempty"`
+	Email         string `json:"email,omitempty"`
+	Phone         string `json:"phone,omitempty"`
+}
+
+// PayoutRequest asks a connector to send money out.
+type PayoutRequest struct {
+	// ProviderRef is the payout's unique reference. It is the idempotency
+	// token: a connector must send it to the provider, so that repeating the
+	// request (after a timeout, say) never pays twice.
+	ProviderRef string      `json:"provider_ref"`
+	Amount      int64       `json:"amount"`
+	Currency    string      `json:"currency"`
+	Beneficiary Beneficiary `json:"beneficiary"`
+	Narration   string      `json:"narration,omitempty"`
+}
+
+// PayoutRef identifies a payout at the provider; either id is enough.
+type PayoutRef struct {
+	ProviderRef      string `json:"provider_ref,omitempty"`
+	ProviderPayoutID string `json:"provider_payout_id,omitempty"`
+}
+
+// PayoutSnapshot is the provider's view of a payout.
+type PayoutSnapshot struct {
+	ProviderRef      string       `json:"provider_ref,omitempty"`
+	ProviderPayoutID string       `json:"provider_payout_id"`
+	Status           PayoutStatus `json:"status"`
+	RawStatus        string       `json:"raw_status"`
+	Amount           int64        `json:"amount"`
+	Currency         string       `json:"currency"`
+	// UTR is the bank's reference of a completed transfer.
+	UTR          string `json:"utr,omitempty"`
+	ErrorCode    string `json:"error_code,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
+	CreatedAt    int64  `json:"created_at,omitempty"`
 }

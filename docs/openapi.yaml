@@ -13,10 +13,11 @@ info:
 
     **Scopes.** An API key may be limited to some scopes: `payments:read`,
     `payments:write`, `refunds:read`, `refunds:write`, `subscriptions:read`,
-    `subscriptions:write` and `invoices:read`. `x:write` also allows the reads
+    `subscriptions:write`, `invoices:read`, `payouts:read` and `payouts:write`. `x:write` also allows the reads
     of `x`. Each operation names the scope it needs in `x-required-scope`; a key
     without it gets 403 `insufficient_scope`. Keys created before scopes
-    existed, and keys created without any, have every scope.
+    existed, and keys created without any, have every scope except the payouts ones (`payouts:read`,
+    `payouts:write`), which a key has only when they are listed: sending money out is always a deliberate grant.
 
     **Idempotency.** `POST` requests may carry an `Idempotency-Key` header
     (up to 255 characters). The same key with the same method, path and body
@@ -560,9 +561,27 @@ paths:
     post:
       operationId: updateSubscription
       x-required-scope: subscriptions:write
-      summary: Change the amount from the next period
+      summary: Change the amount from the next period, optionally prorating the current one
       description: |
-        No proration. If the new amount is above the mandate's maximum the response has
+        The new amount applies from the next period. `proration` says what happens to the rest of the current
+        period (merchant-triggered subscriptions; the difference is `(new - old) x remaining seconds / period
+        seconds`, rounded to the nearest minor unit):
+
+        - `none` (default): nothing; the current period stays as paid.
+        - `next_invoice`: the difference is added to the next renewal (an upgrade) or taken off it (a downgrade).
+        - `immediate`: an upgrade's difference is charged as soon as the rules allow: the customer gets a
+          pre-debit notice now and the debit runs at least 24 hours later, as a separate charge (`charge_at` in
+          the `proration` object). If that cannot be done now (no active mandate, a re-authorization under way,
+          the amount above the mandate maximum) it is added to the next renewal instead and `proration.reason`
+          says why. A downgrade is a credit on the next renewal, as with `next_invoice`.
+
+        A credit is never refunded automatically; one larger than the next renewal carries over to the ones after
+        it (a renewal is never below one minor unit). The prorated amounts appear as separate lines on the invoice.
+        Provider-managed subscriptions are billed by the provider and answer 422 `unsupported` to any proration
+        other than `none`. A change on a subscription that is not active, or at the very end of the period, has
+        nothing to prorate (`proration.reason`).
+
+        If the new amount is above the mandate's maximum the response has
         `requires_reauthorization: true` and a new `checkout_url`, and `subscription.reauthorization_required`
         fires; the new amount applies once the customer authorises the larger mandate.
       parameters:
@@ -577,10 +596,14 @@ paths:
               required: [amount]
               properties:
                 amount: { type: integer, minimum: 1, description: Minor units per period. }
+                proration:
+                  type: string
+                  enum: [none, next_invoice, immediate]
+                  default: none
               additionalProperties: false
       responses:
         "200":
-          description: The subscription (with `checkout_url` when re-authorization is needed).
+          description: The subscription (with `checkout_url` when re-authorization is needed, and `proration` when a prorated change was requested).
           content:
             application/json:
               schema:
@@ -634,6 +657,107 @@ paths:
           $ref: "#/components/responses/StateConflict"
         "422":
           $ref: "#/components/responses/SubscriptionUnprocessable"
+  /v1/payouts:
+    post:
+      operationId: createPayout
+      x-required-scope: payouts:write
+      summary: Send money out to a beneficiary
+      description: |
+        Records the payout (`pending`) and submits it to the provider in the background; follow it with
+        `payout.processing`, `payout.succeeded`, `payout.failed` and `payout.reversed` events or `GET`. The
+        provider is sent the payout's own reference as an idempotency token, so a retry never pays twice; use an
+        `Idempotency-Key` for your own retries as well.
+
+        This is the only operation an ordinary key cannot do: the key must list `payouts:write` explicitly (keys
+        with no scope list do not have it), and a provider account of the app must have the `payout` purpose and a
+        connector that can pay out. The beneficiary is stored encrypted and shown masked.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, currency, beneficiary]
+              properties:
+                amount: { type: integer, minimum: 1, description: Minor units. }
+                currency: { type: string, examples: [INR] }
+                beneficiary:
+                  type: object
+                  description: Either a bank account (`account_number` and `ifsc`) or a `upi` id.
+                  required: [name]
+                  properties:
+                    name: { type: string, maxLength: 100 }
+                    account_number: { type: string, pattern: "^[0-9]{6,20}$" }
+                    ifsc: { type: string, pattern: "^[A-Z]{4}0[A-Z0-9]{6}$" }
+                    upi: { type: string }
+                    email: { type: string }
+                    phone: { type: string }
+                  additionalProperties: false
+                narration: { type: string, maxLength: 100 }
+                metadata: { type: object, additionalProperties: { type: string } }
+                provider_account_id: { type: string, description: Pick the provider account (default the app's first that accepts payouts in the currency). }
+              additionalProperties: false
+      responses:
+        "201":
+          description: The pending payout.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payout"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "422":
+          description: "`no_route`: no provider account of the app accepts payouts in this currency."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    get:
+      operationId: listPayouts
+      x-required-scope: payouts:read
+      summary: List payouts
+      parameters:
+        - { name: status, in: query, required: false, schema: { $ref: "#/components/schemas/PayoutStatus" } }
+        - { name: starting_after, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 10 } }
+      responses:
+        "200":
+          description: A page of payouts, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayoutList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+  /v1/payouts/{id}:
+    get:
+      operationId: getPayout
+      x-required-scope: payouts:read
+      summary: Retrieve a payout
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^po_[0-9a-z]{26}$" } }
+      responses:
+        "200":
+          description: The payout.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payout"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   securitySchemes:
     bearerAuth:
@@ -918,6 +1042,7 @@ components:
         canceled_at: { type: string, format: date-time }
         ended_at: { type: string, format: date-time }
         pending_amount: { type: integer, description: Amount that applies from the next period. }
+        proration_adjust: { type: integer, description: "What the next renewal changes by after a prorated plan change: a charge when positive, a credit when negative." }
         requires_reauthorization: { type: boolean }
         description: { type: string }
         metadata: { type: object, additionalProperties: { type: string } }
@@ -934,6 +1059,8 @@ components:
               type: string
               format: uri
               description: "`<PAYMUX_BASE_URL>/s/<id>?t=<secret>`. Shown only in this response."
+            proration:
+              $ref: "#/components/schemas/ProrationOutcome"
     SubscriptionList:
       type: object
       required: [object, data, has_more]
@@ -1096,3 +1223,60 @@ components:
           type: array
           items: { $ref: "#/components/schemas/CreditNote" }
         has_more: { type: boolean }
+    ProrationOutcome:
+      type: object
+      description: What a prorated plan change did.
+      required: [requested, mode, amount]
+      properties:
+        requested: { type: string, enum: [none, next_invoice, immediate] }
+        mode:
+          type: string
+          enum: [none, next_invoice, immediate]
+          description: What happened; differs from `requested` when an immediate charge fell back to the next renewal, or there was nothing to prorate.
+        amount:
+          type: integer
+          description: Signed difference for the rest of the period in minor units; positive is a charge, negative a credit.
+        description: { type: string }
+        charge_at:
+          type: string
+          format: date-time
+          description: When an `immediate` charge will be made, at the earliest.
+        reason: { type: string, description: Why the mode differs from the request, or why nothing was prorated. }
+    PayoutStatus:
+      type: string
+      enum: [pending, processing, succeeded, failed, reversed]
+      description: |
+        `pending` is recorded and not yet with the provider; `processing` is on its way; `succeeded` has arrived;
+        `failed` will not arrive (the money stays with you); `reversed` arrived and came back. A status the
+        provider reports that Paymux does not know stays `processing`.
+    Payout:
+      type: object
+      required: [id, object, status, amount, currency, beneficiary, metadata, created_at, version]
+      properties:
+        id: { type: string, pattern: "^po_[0-9a-z]{26}$" }
+        object: { type: string, const: payout }
+        status: { $ref: "#/components/schemas/PayoutStatus" }
+        amount: { type: integer }
+        currency: { type: string }
+        beneficiary:
+          type: object
+          required: [label]
+          properties:
+            label: { type: string, description: "Masked destination, e.g. `••••9012 HDFC` or `ra•••@okbank`." }
+        narration: { type: string }
+        metadata: { type: object, additionalProperties: { type: string } }
+        failure_code: { type: string }
+        failure_message: { type: string }
+        created_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+        version: { type: integer }
+    PayoutList:
+      type: object
+      required: [object, data, has_more]
+      properties:
+        object: { type: string, const: list }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Payout" }
+        has_more: { type: boolean }
+        next_cursor: { type: string }

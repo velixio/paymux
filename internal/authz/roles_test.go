@@ -134,7 +134,13 @@ func TestScopes(t *testing.T) {
 		need    string
 		want    bool
 	}{
-		{nil, ScopeRefundsWrite, true},                           // existing keys: every scope
+		{nil, ScopeRefundsWrite, true},  // existing keys: every scope...
+		{nil, ScopePayoutsWrite, false}, // ...except sending money out
+		{nil, ScopePayoutsRead, false},
+		{[]string{ScopePayoutsWrite}, ScopePayoutsWrite, true},
+		{[]string{ScopePayoutsWrite}, ScopePayoutsRead, true}, // write covers read
+		{[]string{ScopePayoutsRead}, ScopePayoutsWrite, false},
+		{[]string{ScopePaymentsWrite, ScopeRefundsWrite}, ScopePayoutsWrite, false},
 		{[]string{}, ScopePaymentsRead, false},                   // no scopes at all
 		{[]string{ScopePaymentsRead}, ScopePaymentsRead, true},   // exact
 		{[]string{ScopePaymentsRead}, ScopePaymentsWrite, false}, // read does not give write

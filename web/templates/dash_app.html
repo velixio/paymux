@@ -23,7 +23,7 @@
 {{if .CanKeys}}<form method="post" action="/dashboard/apps/{{.ID}}/keys" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <select name="mode" class="field" aria-label="Key mode"><option value="test">test</option><option value="live">live</option></select>
-<fieldset><legend>Scopes (none ticked: full access)</legend>
+<fieldset><legend>Scopes (none ticked: full access, except payouts, which must be ticked)</legend>
 {{range .ScopeChoices}}<label><input type="checkbox" name="scope" value="{{.}}"> {{.}}</label>
 {{end}}</fieldset>
 <button class="btn" type="submit">Create API key</button>

@@ -198,15 +198,31 @@ type UpdateResult struct {
 	// CheckoutURL is set when the new amount needs the customer to authorise
 	// a larger mandate first (Subscription.RequiresReauthorization).
 	CheckoutURL string
+	// Proration says what a prorated change did; nil for proration none.
+	Proration *ProrationOutcome
 }
 
 // UpdateAmount changes the amount from the next period on, with no proration.
-// For a mandate whose maximum is below the new amount it starts a
-// re-authorization (a new pending mandate) and emits
-// subscription.reauthorization_required with a fresh checkout URL.
 func (s *Service) UpdateAmount(ctx context.Context, sc core.Scope, id string, amount int64) (UpdateResult, error) {
+	return s.Update(ctx, sc, id, UpdateInput{Amount: amount})
+}
+
+// Update changes the amount from the next period on and, when in.Proration
+// asks, bills the difference for the rest of the current period (see
+// proration.go). For a mandate whose maximum is below the new amount it starts
+// a re-authorization (a new pending mandate) and emits
+// subscription.reauthorization_required with a fresh checkout URL.
+func (s *Service) Update(ctx context.Context, sc core.Scope, id string, in UpdateInput) (UpdateResult, error) {
+	amount, mode := in.Amount, in.Proration
 	if amount <= 0 || amount > maxAmount {
 		return UpdateResult{}, newErr(ErrInvalid, "amount must be a positive integer in minor units")
+	}
+	switch mode {
+	case "":
+		mode = ProrationNone
+	case ProrationNone, ProrationNextInvoice, ProrationImmediate:
+	default:
+		return UpdateResult{}, newErr(ErrInvalid, "proration must be none, next_invoice or immediate")
 	}
 	var res UpdateResult
 	var providerID string
@@ -220,6 +236,9 @@ func (s *Service) UpdateAmount(ctx context.Context, sc core.Scope, id string, am
 			}
 			if sub.BillingMode == string(connector.ProviderManaged) && !terminal(sub.Status) && sub.Status != string(state.SubIncomplete) &&
 				sub.Amount != amount {
+				if mode != ProrationNone {
+					return newErr(ErrUnsupported, "proration is not available for provider-managed subscriptions: the provider bills them and applies the new amount from the next cycle")
+				}
 				providerID = sub.ProviderAccountID
 			}
 			return nil
@@ -255,7 +274,21 @@ func (s *Service) UpdateAmount(ctx context.Context, sc core.Scope, id string, am
 		if terminal(sub.Status) || sub.Status == string(state.SubIncomplete) {
 			return newErr(ErrInvalidState, "the amount of a %s subscription cannot be changed", sub.Status)
 		}
-		if amount == sub.Amount && sub.PendingAmount == 0 {
+		// A prorated change is measured against what the current period is paid at,
+		// which is not the subscription's amount after an earlier prorated change.
+		dirty := false
+		effective := sub.Amount
+		if sub.BilledAmount != 0 {
+			effective = sub.BilledAmount
+		}
+		if mode != ProrationNone && sub.BillingMode == string(connector.MerchantTriggered) && amount != effective {
+			out, err := s.prorate(ctx, tx, sub, amount, mode)
+			if err != nil {
+				return err
+			}
+			res.Proration, dirty = out, true
+		}
+		if amount == sub.Amount && sub.PendingAmount == 0 && !dirty {
 			return nil
 		}
 		if amount == sub.Amount {

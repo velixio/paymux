@@ -24,7 +24,7 @@ func newSSO(t *testing.T, db *store.DB, mod func(*Options)) *sso {
 	t.Helper()
 	idp := oidctest.New(t)
 	client := oidc.New(oidc.Config{Issuer: idp.Issuer, ClientID: idp.ClientID, ClientSecret: idp.ClientSecret,
-		RedirectURL: "http://localhost:8080/dashboard/login/oidc/callback"})
+		RedirectURL: "http://localhost:8080/dashboard/login/oidc/callback", AllowInsecure: true})
 	e := newEnv(t, db, func(o *Options) {
 		o.OIDC, o.OIDCAllowedDomains = client, []string{"example.com"}
 		if mod != nil {

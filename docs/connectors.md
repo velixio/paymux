@@ -75,6 +75,7 @@ conformance kit fails when the two disagree.
 | `Canceler`            | `cancel`               | `CancelCheckout` |
 | `SubscriptionManager` | `subscription_manager` | provider-managed recurring billing |
 | `MandateManager`      | `mandate_manager`      | merchant-triggered debits on a mandate |
+| `Payouter`            | `payout`               | `CreatePayout`, `FetchPayout`: money out to a bank account or UPI id |
 
 ## 2. Declaring capabilities (`Info`)
 
@@ -313,6 +314,8 @@ the request type as the body, answered by `200` and the JSON result:
 | `notify_pre_debit` | `PreDebitRequest` | `{}` |
 | `charge_mandate` | `ChargeRequest` | `PaymentSnapshot` |
 | `revoke_mandate` | `MandateRef` | `{}` |
+| `create_payout` | `PayoutRequest` | `PayoutSnapshot` |
+| `fetch_payout` | `PayoutRef` | `PayoutSnapshot` |
 
 The Go definitions are in `pkg/connector/wire` (method names, the multi-argument
 envelopes, error codes); raw bodies and headers travel as base64 and header
