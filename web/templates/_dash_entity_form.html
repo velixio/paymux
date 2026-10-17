@@ -1,0 +1,22 @@
+{{define "dash_entity_fields"}}{{with .TaxForm}}
+<label>Legal name<input class="field" name="legal_name" value="{{.LegalName}}" required></label>
+<label>Trade name<input class="field" name="trade_name" value="{{.TradeName}}"></label>
+<label>GSTIN<input class="field" name="gstin" value="{{.GSTIN}}" required pattern="[0-9A-Za-z]{15}"{{if .Editing}} readonly{{end}}></label>
+{{if .Editing}}<p class="muted">State: {{.State}}. The GSTIN cannot be changed; register a new entity for a different GSTIN.</p>{{end}}
+<label>PAN (defaults from the GSTIN)<input class="field" name="pan" value="{{.PAN}}" maxlength="10"></label>
+<label>Address<textarea class="field" name="address" rows="3">{{.Address}}</textarea></label>
+<fieldset><legend>Letter of undertaking (exports)</legend>
+<label>LUT number<input class="field" name="lut_number" value="{{.LUTNumber}}"></label>
+<label>Valid from<input class="field" name="lut_from" type="date" value="{{.LUTFrom}}"></label>
+<label>Valid to<input class="field" name="lut_to" type="date" value="{{.LUTTo}}"></label>
+</fieldset>
+<label>Invoice prefix<input class="field" name="invoice_prefix" value="{{.InvoicePrefix}}" maxlength="5"></label>
+<label>Credit note prefix<input class="field" name="credit_note_prefix" value="{{.CreditNotePrefix}}" maxlength="5"></label>
+<label>Authorised signatory<input class="field" name="signatory_name" value="{{.Signatory}}"></label>
+<label>Footer note<input class="field" name="footer_note" value="{{.Footer}}"></label>
+<label>Support email<input class="field" name="support_email" type="email" value="{{.SupportEmail}}"></label>
+<label>Turnover band<input class="field" name="turnover_band" value="{{.TurnoverBand}}"></label>
+{{if .HasLogo}}<p>Logo: <img src="/dashboard/tax-entities/{{.ID}}/logo" alt="Logo" class="logo-preview"></p>
+<label><input type="checkbox" name="remove_logo" value="1"> Remove the logo</label>{{end}}
+<label>Logo (PNG or JPEG, up to 512 KB)<input class="field" type="file" name="logo" accept="image/png,image/jpeg"></label>
+{{end}}{{end}}

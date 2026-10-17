@@ -1,0 +1,60 @@
+# Caddy in front of Paymux.
+#
+#   - pay.example.com is the hub itself (dashboard, API, webhooks, pay pages).
+#   - Every app custom domain (pay.yourapp.com ...) gets a certificate on
+#     demand, but only for hosts Paymux knows: Caddy asks the hub's internal
+#     listener before it requests one, so strangers cannot make it issue
+#     certificates for arbitrary names.
+#
+# Replace pay.example.com and the e-mail address. Set in /etc/paymux/paymux.env:
+#     PAYMUX_BASE_URL=https://pay.example.com
+#     PAYMUX_TRUSTED_PROXIES=127.0.0.1/32
+# so the hub believes the client address Caddy forwards (login lockout, audit).
+
+{
+	email ops@example.com
+
+	on_demand_tls {
+		# The internal listener (PAYMUX_INTERNAL_LISTEN, default 127.0.0.1:9100)
+		# answers 200 for the base host and for known app domains, 404 otherwise.
+		ask http://127.0.0.1:9100/internal/tls-allow
+	}
+}
+
+# The hub's own host: a normal certificate.
+pay.example.com {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	# 1 MiB webhooks; the dashboard takes evidence uploads of a few MiB.
+	request_body {
+		max_size 40MB
+	}
+
+	reverse_proxy 127.0.0.1:8080 {
+		# Caddy sets X-Forwarded-For to the connecting client's address.
+		header_up X-Forwarded-For {remote_host}
+		health_uri /healthz
+		health_interval 15s
+	}
+}
+
+# App custom domains: any other host name, certificate issued on demand.
+# The hub itself serves only the customer-facing pages on these hosts
+# (pay page, return page, invoices), never the dashboard or the API.
+https:// {
+	tls {
+		on_demand
+	}
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080 {
+		header_up X-Forwarded-For {remote_host}
+	}
+}
+
+# Plain HTTP is redirected automatically by Caddy.

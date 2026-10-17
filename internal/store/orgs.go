@@ -15,6 +15,18 @@ func SeedOrg(ctx context.Context, tx Tx, name string, now time.Time) error {
 	return err
 }
 
+// RenameOrg sets an org's display name; ErrNotFound if there is no such org.
+func RenameOrg(ctx context.Context, tx Tx, orgID, name string) error {
+	res, err := tx.ExecContext(ctx, `UPDATE orgs SET name = ? WHERE id = ?`, name, orgID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // FirstOrgID returns the id of the oldest org.
 func FirstOrgID(ctx context.Context, q Queryer) (string, error) {
 	var id string

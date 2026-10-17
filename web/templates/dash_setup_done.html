@@ -1,0 +1,26 @@
+{{define "title"}}{{.Title}} - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h3>Setup complete</h3>
+<p>The administrator <strong>{{.Email}}</strong> was created{{with .SetupOrg}} for <strong>{{.}}</strong>{{end}}.</p>
+{{if .SetupKeys}}<h4>API keys for {{.SetupApp}}</h4>
+<p class="error" role="alert">Copy these keys now. They are shown only once and cannot be recovered; you can create new ones later on the app's page.</p>
+<table class="grid">
+<thead><tr><th>Mode</th><th>Key</th></tr></thead>
+<tbody>{{range .SetupKeys}}<tr><td>{{.Mode}}</td><td><code class="wrap">{{.Token}}</code></td></tr>{{end}}</tbody>
+</table>
+<p class="muted">Use the test key while you build; switch to the live key when you go live. Keep both out of source control.</p>
+{{end}}
+{{if .SetupSignedIn}}<p><a class="btn" href="/dashboard/">Open the dashboard</a></p>
+{{else}}<h4>Set up two-factor sign-in</h4>
+<p class="muted">Add this key to an authenticator app (Google Authenticator, Authy, 1Password and similar) by hand, or open the link on your phone, then enter the 6-digit code it shows.</p>
+<p>Secret key<br><code id="totp-secret">{{.TOTPSecret}}</code></p>
+<p>Setup link<br><code class="wrap" id="totp-uri">{{.TOTPURI}}</code></p>
+<form method="post" action="/dashboard/login/totp">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<input class="field" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="8" placeholder="123456" required>
+<button class="btn" type="submit">Confirm and sign in</button>
+</form>
+<p class="muted">If this page is closed before you confirm, sign in at <a href="/dashboard/login">/dashboard/login</a> with your password: the same key is shown again until the first code is accepted.</p>
+{{end}}
+{{template "dash_close" .}}{{end}}

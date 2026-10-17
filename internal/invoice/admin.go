@@ -39,6 +39,10 @@ type TaxEntityInput struct {
 	FooterNote       string
 	SupportEmail     string
 	TurnoverBand     string
+	// LogoBlobID sets the logo; on update an empty value keeps the current one
+	// unless RemoveLogo is set.
+	LogoBlobID string
+	RemoveLogo bool
 }
 
 // checkPrefix rejects a prefix that could push a document number past 16
@@ -53,21 +57,22 @@ func checkPrefix(kind, p string) error {
 	return nil
 }
 
-// AddTaxEntity validates and stores a tax entity and audits it.
-func (s *Service) AddTaxEntity(ctx context.Context, actor audit.Actor, in TaxEntityInput) (store.TaxEntity, error) {
+// normalize validates the input and fills its defaults (State and PAN from
+// the GSTIN, default prefixes).
+func (in *TaxEntityInput) normalize() error {
 	in.GSTIN = strings.ToUpper(strings.TrimSpace(in.GSTIN))
 	if strings.TrimSpace(in.LegalName) == "" {
-		return store.TaxEntity{}, invalid("legal name is required")
+		return invalid("legal name is required")
 	}
 	if err := tax.ValidGSTIN(in.GSTIN); err != nil {
-		return store.TaxEntity{}, invalid("GSTIN: %v", err)
+		return invalid("GSTIN: %v", err)
 	}
 	fromGSTIN := tax.StateFromGSTIN(in.GSTIN)
 	if in.StateCode == "" {
 		in.StateCode = fromGSTIN
 	}
 	if in.StateCode != fromGSTIN {
-		return store.TaxEntity{}, invalid("state code %s does not match the GSTIN state %s", in.StateCode, fromGSTIN)
+		return invalid("state code %s does not match the GSTIN state %s", in.StateCode, fromGSTIN)
 	}
 	if in.PAN == "" {
 		in.PAN = in.GSTIN[2:12]
@@ -80,19 +85,28 @@ func (s *Service) AddTaxEntity(ctx context.Context, actor audit.Actor, in TaxEnt
 	}
 	for kind, p := range map[string]string{"invoice": in.InvoicePrefix, "credit note": in.CreditNotePrefix} {
 		if err := checkPrefix(kind, p); err != nil {
-			return store.TaxEntity{}, err
+			return err
 		}
 	}
 	hasLUT := in.LUTNumber != "" || !in.LUTFrom.IsZero() || !in.LUTTo.IsZero()
 	if hasLUT && (in.LUTNumber == "" || in.LUTFrom.IsZero() || in.LUTTo.IsZero() || in.LUTTo.Before(in.LUTFrom)) {
-		return store.TaxEntity{}, invalid("a LUT needs a number and a valid-from date not after its valid-to date")
+		return invalid("a LUT needs a number and a valid-from date not after its valid-to date")
+	}
+	return nil
+}
+
+// AddTaxEntity validates and stores a tax entity and audits it.
+func (s *Service) AddTaxEntity(ctx context.Context, actor audit.Actor, in TaxEntityInput) (store.TaxEntity, error) {
+	if err := in.normalize(); err != nil {
+		return store.TaxEntity{}, err
 	}
 	now := s.now().UTC()
 	e := store.TaxEntity{ID: ids.New("te"), OrgID: store.DefaultOrgID, LegalName: strings.TrimSpace(in.LegalName),
 		TradeName: in.TradeName, GSTIN: in.GSTIN, PAN: in.PAN, Address: in.Address, StateCode: in.StateCode,
 		LUTNumber: in.LUTNumber, LUTValidFrom: in.LUTFrom, LUTValidTo: in.LUTTo,
 		InvoicePrefix: in.InvoicePrefix, CreditNotePrefix: in.CreditNotePrefix, SignatoryName: in.SignatoryName,
-		FooterNote: in.FooterNote, SupportEmail: in.SupportEmail, TurnoverBand: in.TurnoverBand, CreatedAt: now, UpdatedAt: now}
+		FooterNote: in.FooterNote, SupportEmail: in.SupportEmail, TurnoverBand: in.TurnoverBand, LogoBlobID: in.LogoBlobID,
+		CreatedAt: now, UpdatedAt: now}
 	err := s.db.Write(ctx, func(tx store.Tx) error {
 		if err := store.InsertTaxEntity(ctx, tx, e); err != nil {
 			return err
@@ -103,6 +117,45 @@ func (s *Service) AddTaxEntity(ctx context.Context, actor audit.Actor, in TaxEnt
 		return store.TaxEntity{}, invalid("a tax entity with GSTIN %s already exists", in.GSTIN)
 	}
 	return e, err
+}
+
+// UpdateTaxEntity changes a tax entity and audits the change. The GSTIN cannot
+// change (documents already carry it): register a new entity instead. Prefix
+// changes apply to documents issued from now on.
+func (s *Service) UpdateTaxEntity(ctx context.Context, actor audit.Actor, id string, in TaxEntityInput) (store.TaxEntity, error) {
+	if err := in.normalize(); err != nil {
+		return store.TaxEntity{}, err
+	}
+	var out store.TaxEntity
+	err := s.db.Write(ctx, func(tx store.Tx) error {
+		cur, err := store.GetTaxEntity(ctx, tx, id)
+		if errors.Is(err, store.ErrNotFound) {
+			return invalid("no tax entity %q", id)
+		}
+		if err != nil {
+			return err
+		}
+		if in.GSTIN != cur.GSTIN {
+			return invalid("the GSTIN of an entity cannot change; register a new tax entity")
+		}
+		out = cur
+		out.LegalName, out.TradeName, out.PAN, out.Address = strings.TrimSpace(in.LegalName), in.TradeName, in.PAN, in.Address
+		out.LUTNumber, out.LUTValidFrom, out.LUTValidTo = in.LUTNumber, in.LUTFrom, in.LUTTo
+		out.InvoicePrefix, out.CreditNotePrefix = in.InvoicePrefix, in.CreditNotePrefix
+		out.SignatoryName, out.FooterNote, out.SupportEmail, out.TurnoverBand = in.SignatoryName, in.FooterNote, in.SupportEmail, in.TurnoverBand
+		switch {
+		case in.RemoveLogo:
+			out.LogoBlobID = ""
+		case in.LogoBlobID != "":
+			out.LogoBlobID = in.LogoBlobID
+		}
+		out.UpdatedAt = s.now().UTC()
+		if err := store.UpdateTaxEntity(ctx, tx, out, out.UpdatedAt); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{OrgID: cur.OrgID, Actor: actor, Action: "tax_entity.update", Target: id, Before: cur, After: out})
+	})
+	return out, err
 }
 
 // FindTaxEntity resolves an id (te_...) or a GSTIN.

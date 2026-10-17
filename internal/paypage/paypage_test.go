@@ -100,7 +100,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 	if err := e.set.SetOrg(ctx, audit.System, store.DefaultOrgID, "routing", json.RawMessage(doc)); err != nil {
 		t.Fatal(err)
 	}
-	rend, err := web.NewRenderer(web.Embedded())
+	rend, err := web.NewThemedRenderer(web.ThemedOptions{Base: web.Embedded(), Themes: web.NewThemes(web.Bundled(), ""), Recheck: -1})
 	if err != nil {
 		t.Fatal(err)
 	}

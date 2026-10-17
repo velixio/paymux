@@ -1,0 +1,50 @@
+# The full gate: scripts/ci.sh, with a real Postgres for the Postgres half of
+# the tests. Also callable from other workflows (release.yml runs it before
+# building anything).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: paymux
+          POSTGRES_DB: paymux
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # make test-pg uses this server instead of starting its own container,
+      # and PAYMUX_REQUIRE_PG turns a missing database into a failure rather
+      # than a silent skip.
+      PAYMUX_TEST_POSTGRES_URL: postgres://postgres:paymux@localhost:5432/paymux?sslmode=disable
+      PAYMUX_REQUIRE_PG: "1"
+    steps:
+      # TODO(review): pin these actions to commit SHAs before the first run.
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: scripts/ci.sh
+        run: ./scripts/ci.sh

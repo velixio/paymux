@@ -63,7 +63,12 @@ func (d *Dashboard) parseDay(s string) (time.Time, error) {
 func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *session) {
 	qv := r.URL.Query()
 	f := payFilter{App: qv.Get("app"), Status: qv.Get("status"), Q: strings.TrimSpace(qv.Get("q")), From: qv.Get("from"), To: qv.Get("to")}
-	sf := store.PaymentFilter{AppID: f.App, Mode: d.mode(r, s), Status: f.Status, Search: f.Q}
+	org, err := d.orgID(r.Context())
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	sf := store.PaymentFilter{OrgID: org, AppID: f.App, Mode: d.mode(r, s), Status: f.Status, Search: f.Q}
 	if f.Status != "" {
 		known := false
 		for _, st := range state.AllPaymentStatuses {
@@ -94,11 +99,7 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 
 	var rows []store.Payment
 	var apps []store.App
-	err := d.o.DB.Read(r.Context(), func(q store.Querier) (err error) {
-		org, err := store.FirstOrgID(r.Context(), q)
-		if err != nil {
-			return err
-		}
+	err = d.o.DB.Read(r.Context(), func(q store.Querier) (err error) {
 		if apps, err = store.ListApps(r.Context(), q, org); err != nil {
 			return err
 		}
@@ -200,7 +201,7 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 		}
 		return nil
 	})
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, p.OrgID) {
 		http.NotFound(w, r)
 		return
 	}
@@ -253,7 +254,7 @@ func (d *Dashboard) refundSubmit(w http.ResponseWriter, r *http.Request, s *sess
 	ctx := r.Context()
 	var p store.Payment
 	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) { p, err = store.GetPayment(ctx, q, r.PathValue("id")); return })
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, p.OrgID) {
 		http.NotFound(w, r)
 		return
 	}
@@ -288,7 +289,7 @@ func (d *Dashboard) replaySubmit(w http.ResponseWriter, r *http.Request, s *sess
 	ctx := r.Context()
 	id := r.PathValue("id")
 	det, err := d.o.DB.GetDelivery(ctx, id)
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, det.Event.OrgID) {
 		http.NotFound(w, r)
 		return
 	}

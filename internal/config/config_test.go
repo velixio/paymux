@@ -255,6 +255,32 @@ func TestSMTPAndOpsValidation(t *testing.T) {
 	}
 }
 
+func TestTrustedProxies(t *testing.T) {
+	c, err := Load(base())
+	if err != nil || len(c.TrustedProxies) != 0 {
+		t.Fatalf("default: %v %v", err, c.TrustedProxies)
+	}
+	c, err = Load(base("PAYMUX_TRUSTED_PROXIES", "10.0.0.0/8, 192.168.1.5 ,2001:db8::/32"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, p := range c.TrustedProxies {
+		got = append(got, p.String())
+	}
+	if strings.Join(got, ",") != "10.0.0.0/8,192.168.1.5/32,2001:db8::/32" {
+		t.Fatalf("parsed %v", got)
+	}
+	for _, bad := range []string{"10.0.0.0/33", "proxy.example.com", "10.0.0.0/8,,nope", "0.0.0.0/0"} {
+		_, err := Load(base("PAYMUX_TRUSTED_PROXIES", bad))
+		if bad == "0.0.0.0/0" {
+			wantErr(t, err, "PAYMUX_TRUSTED_PROXIES")
+			continue
+		}
+		wantErr(t, err, "PAYMUX_TRUSTED_PROXIES")
+	}
+}
+
 func TestAllProblemsReported(t *testing.T) {
 	_, err := Load(env("PAYMUX_TZ", "Mars/Base", "PAYMUX_ENV", "staging"))
 	for _, s := range []string{"PAYMUX_TZ", "PAYMUX_ENV", "PAYMUX_BASE_URL is required", "PAYMUX_MASTER_KEY"} {

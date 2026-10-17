@@ -224,6 +224,27 @@ func TestDashboardAndAssetsMounted(t *testing.T) {
 	shutdown(t, r)
 }
 
+func TestFaviconIsServed(t *testing.T) {
+	dir := t.TempDir()
+	r := startApp(t, testConfig(t, "sqlite://"+dir+"/paymux.db", dir))
+	waitReady(t, r)
+	resp, err := http.Get("http://" + r.app.Addr() + "/favicon.ico") // follows the redirect
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 || !strings.Contains(resp.Header.Get("Content-Type"), "svg") || !strings.Contains(string(b), "<svg") {
+		t.Fatalf("/favicon.ico -> %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	for _, page := range []string{"/dashboard/login"} {
+		if code, body := fetch(t, r.app.Addr(), page); code != 200 || !strings.Contains(body, `rel="icon"`) || !strings.Contains(body, "/assets/favicon.svg") {
+			t.Fatalf("%s lacks the icon link (%d)", page, code)
+		}
+	}
+	shutdown(t, r)
+}
+
 type okVerifier struct{}
 
 func (okVerifier) Verify(http.Header, []byte) (string, error) { return "ev_1", nil }

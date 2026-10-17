@@ -224,7 +224,20 @@ func (a *App) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	renderer, err := web.NewRenderer(overlay)
+	// Themes: bundled ones plus <data>/themes/<name>/. Files are rechecked every
+	// second, so adding or editing a theme needs no restart. A theme that cannot
+	// be used is reported to ops once and its pages fall back to the embedded look.
+	themes := web.NewThemes(web.Bundled(), filepath.Join(a.cfg.DataDir, "themes"))
+	themes.CacheFor(time.Second)
+	renderer, err := web.NewThemedRenderer(web.ThemedOptions{Base: web.Embedded(), CustomDir: filepath.Join(a.cfg.DataDir, "custom"),
+		Themes: themes, Recheck: time.Second, Alert: func(what string, err error) {
+			a.log.Warn("theme or catalog unusable", "name", what, "err", err)
+			// Off the render path: sending may take a while.
+			go func() {
+				_ = alerts.Raise(context.Background(), notify.Alert{Severity: notify.SeverityWarning, Kind: "theme.unusable",
+					Message: "Pages fall back to the standard look: " + err.Error(), Refs: map[string]string{"theme": what}})
+			}()
+		}})
 	if err != nil {
 		return err
 	}
@@ -280,6 +293,7 @@ func (a *App) Start(ctx context.Context) error {
 	customerMux.HandleFunc("GET /i/{id}", inv.ServeHosted)
 	customerMux.HandleFunc("GET /s/{id}", subs.ServeHosted)
 	customerMux.Handle("GET /assets/", web.AssetHandler(overlay))
+	customerMux.Handle("GET /theme/", themes.Handler())
 	baseHost := a.cfg.BaseURL.Host
 	public := hostRouter(&domains.Router{BaseHost: baseHost, Lookup: svc, Base: srv.Handler(), Customer: customerMux}, srv.Handler())
 	internalMux := http.NewServeMux()
@@ -287,9 +301,10 @@ func (a *App) Start(ctx context.Context) error {
 	internalMux.Handle("/", srv.InternalHandler())
 
 	// Operator dashboard and the shared static assets.
-	dash, err := dashboard.New(dashboard.Options{DB: db, Box: box, Renderer: renderer, MasterKey: a.cfg.MasterKey,
+	dash, err := dashboard.New(dashboard.Options{DB: db, Box: box, Renderer: renderer, Themes: themes, MasterKey: a.cfg.MasterKey,
 		BaseURL: a.cfg.BaseURL, DevSkip2FA: a.cfg.DevSkip2FA, Logger: a.log,
-		Core: svc, Settings: set, Outbound: out, Subscriptions: subs, Location: a.cfg.Location})
+		TrustedProxies: a.cfg.TrustedProxies, Core: svc, Settings: set, Outbound: out, Invoice: inv, Connectors: conns, Disputes: disp, Recon: rec, Jobs: q,
+		Subscriptions: subs, Location: a.cfg.Location})
 	if err != nil {
 		return err
 	}
@@ -299,7 +314,14 @@ func (a *App) Start(ctx context.Context) error {
 	srv.HandleFunc("GET /i/{id}", inv.ServeHosted)
 	srv.HandleFunc("GET /s/{id}", subs.ServeHosted)
 	srv.HandleFunc("/dashboard/", dash.ServeHTTP)
+	// First-run setup: open only while there are no users (the token is in the log).
+	srv.HandleFunc("/setup", dash.SetupHandler().ServeHTTP)
 	srv.HandleFunc("GET /assets/", web.AssetHandler(overlay).ServeHTTP)
+	srv.HandleFunc("GET /theme/", themes.Handler().ServeHTTP)
+	// Browsers ask for /favicon.ico whatever the page says.
+	srv.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/assets/favicon.svg", http.StatusMovedPermanently)
+	})
 
 	ln, err := net.Listen("tcp", a.cfg.Listen)
 	if err != nil {

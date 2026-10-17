@@ -17,8 +17,8 @@ const (
 
 func totpAAD(userID string) []byte { return []byte("users.totp_secret:" + userID) }
 
-func limitKey(email string, r *http.Request) string {
-	return strings.ToLower(strings.TrimSpace(email)) + "|" + clientIP(r)
+func (d *Dashboard) limitKey(email string, r *http.Request) string {
+	return strings.ToLower(strings.TrimSpace(email)) + "|" + d.clientIP(r)
 }
 
 // dummyPasswordHash lets an unknown or disabled account cost the same time as
@@ -33,7 +33,7 @@ func (d *Dashboard) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, prefix+"/", http.StatusSeeOther)
 		return
 	}
-	d.render(w, http.StatusOK, "dash_login", view{Title: "Sign in", CSRF: d.preToken(w, r)})
+	d.render(w, http.StatusOK, "dash_login", view{Title: "Sign in", CSRF: d.preToken(w, r), NeedsSetup: d.SetupToken() != ""})
 }
 
 func (d *Dashboard) loginSubmit(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +46,7 @@ func (d *Dashboard) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	again := func(status int, msg string) {
 		d.render(w, status, "dash_login", view{Title: "Sign in", CSRF: d.preToken(w, r), Email: email, Error: msg})
 	}
-	key := limitKey(email, r)
+	key := d.limitKey(email, r)
 	now := d.o.Now()
 	if d.lim.locked(key, now) {
 		again(http.StatusTooManyRequests, msgLockedOut)
@@ -164,7 +164,7 @@ func (d *Dashboard) totpSubmit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	key := limitKey(u.Email, r)
+	key := d.limitKey(u.Email, r)
 	now := d.o.Now()
 	if d.lim.locked(key, now) {
 		d.totpView(w, r, u, http.StatusTooManyRequests, msgLockedOut)

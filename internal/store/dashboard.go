@@ -217,6 +217,7 @@ func SetAppProviderAccounts(ctx context.Context, tx Tx, appID string, accountIDs
 // part of the order_ref or part of the customer's email (case-insensitive,
 // wildcards literal).
 type PaymentFilter struct {
+	OrgID                       string // required: an empty org matches nothing
 	AppID, Mode, Status, Search string
 	From, To                    time.Time
 }
@@ -229,8 +230,8 @@ func likeEscape(s string) string {
 // SearchPayments returns matching payments newest first. after is an exclusive
 // id cursor.
 func SearchPayments(ctx context.Context, q Queryer, f PaymentFilter, afterID string, limit int) ([]Payment, error) {
-	query := "SELECT " + paymentCols + " FROM payments WHERE 1 = 1"
-	var args []any
+	query := "SELECT " + paymentCols + " FROM payments WHERE org_id = ?"
+	args := []any{f.OrgID}
 	add := func(cond string, a ...any) {
 		query += " AND " + cond
 		args = append(args, a...)
@@ -286,15 +287,15 @@ type LedgerTotal struct {
 	Gross, Refunds  int64
 }
 
-// LedgerTotals sums charge and refund ledger entries of one mode since the
-// given time, per app and currency.
-func LedgerTotals(ctx context.Context, q Queryer, mode string, since time.Time) ([]LedgerTotal, error) {
+// LedgerTotals sums charge and refund ledger entries of one org and mode since
+// the given time, per app and currency.
+func LedgerTotals(ctx context.Context, q Queryer, orgID, mode string, since time.Time) ([]LedgerTotal, error) {
 	rows, err := q.QueryContext(ctx, `SELECT p.app_id, l.currency,
 			COALESCE(SUM(CASE WHEN l.kind = 'charge' THEN l.amount ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN l.kind = 'refund' THEN -l.amount ELSE 0 END), 0)
 		FROM ledger_entries l JOIN payments p ON p.id = l.payment_id
-		WHERE l.mode = ? AND l.occurred_at >= ? AND l.kind IN ('charge','refund')
-		GROUP BY p.app_id, l.currency ORDER BY p.app_id, l.currency`, mode, ms(since))
+		WHERE l.org_id = ? AND p.org_id = ? AND l.mode = ? AND l.occurred_at >= ? AND l.kind IN ('charge','refund')
+		GROUP BY p.app_id, l.currency ORDER BY p.app_id, l.currency`, orgID, orgID, mode, ms(since))
 	if err != nil {
 		return nil, err
 	}
@@ -317,6 +318,7 @@ func LedgerTotals(ctx context.Context, q Queryer, mode string, since time.Time) 
 // change). From is inclusive, To exclusive; After is an exclusive id cursor.
 type AuditFilter struct {
 	OrgID, Actor, Action, After string
+	Target                      string // exact match
 	From, To                    time.Time
 }
 
@@ -334,6 +336,9 @@ func SearchAudit(ctx context.Context, q Queryer, f AuditFilter, limit int) ([]Au
 	}
 	if f.Action != "" {
 		add(`LOWER(action) LIKE ? ESCAPE '\'`, likeEscape(f.Action)+"%")
+	}
+	if f.Target != "" {
+		add("target = ?", f.Target)
 	}
 	if !f.From.IsZero() {
 		add("at >= ?", ms(f.From))
@@ -434,4 +439,27 @@ func ListPaymentDeliveries(ctx context.Context, q Queryer, paymentID string) ([]
 // ListEndpointDeliveries returns an endpoint's latest deliveries, newest first.
 func ListEndpointDeliveries(ctx context.Context, q Queryer, endpointID string, limit int) ([]DeliveryListRow, error) {
 	return collectDeliveries(q.QueryContext(ctx, deliveryListSelect+" WHERE d.endpoint_id = ? ORDER BY d.created_at DESC, d.id DESC LIMIT ?", endpointID, limit))
+}
+
+// ListObjectEvents returns the org's events about one object (for example a
+// dispute), oldest first.
+func ListObjectEvents(ctx context.Context, q Queryer, orgID, objectType, objectID string) ([]EventRow, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id, org_id, app_id, mode, type, object_type, object_id, object_version, data, created_at
+		FROM events WHERE org_id = ? AND object_type = ? AND object_id = ? ORDER BY created_at, id`, orgID, objectType, objectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []EventRow
+	for rows.Next() {
+		var e EventRow
+		var data string
+		var created int64
+		if err := rows.Scan(&e.ID, &e.OrgID, &e.AppID, &e.Mode, &e.Type, &e.ObjectType, &e.ObjectID, &e.ObjectVersion, &data, &created); err != nil {
+			return nil, err
+		}
+		e.Data, e.CreatedAt = json.RawMessage(data), fromMS(created)
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }

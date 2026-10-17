@@ -79,12 +79,16 @@ var seq atomic.Int64
 
 // Register registers a fresh fake connector under a unique name derived from
 // prefix and returns its state. It is safe to call from parallel tests.
-func Register(prefix string) *State {
+func Register(prefix string) *State { return RegisterSchema(prefix, schema) }
+
+// RegisterSchema is Register with a custom config schema. With a schema other
+// than the default the fake accepts any config object.
+func RegisterSchema(prefix, configSchema string) *State {
 	st := &State{Name: fmt.Sprintf("%s%d", prefix, seq.Add(1)), Payments: map[string]connector.PaymentSnapshot{},
 		Refunds: map[string]connector.RefundSnapshot{}, Disputes: map[string]connector.DisputeSnapshot{},
 		Mandates: map[string]connector.MandateSnapshot{}, Subs: map[string]connector.SubscriptionSnapshot{}}
 	info := connector.Info{
-		Version: "test", DisplayName: "Fake", ConfigSchema: json.RawMessage(schema),
+		Version: "test", DisplayName: "Fake", ConfigSchema: json.RawMessage(configSchema),
 		Currencies: []string{"INR", "USD", "BDT"},
 		Capabilities: []connector.Capability{connector.CapRefund, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapList, connector.CapSettle,
 			connector.CapMandateManager, connector.CapSubscriptionManager},
@@ -94,7 +98,7 @@ func Register(prefix string) *State {
 		var c struct {
 			APIKey string `json:"api_key"`
 		}
-		if err := json.Unmarshal(cfg, &c); err != nil || c.APIKey == "" {
+		if err := json.Unmarshal(cfg, &c); err != nil || (configSchema == schema && c.APIKey == "") {
 			return nil, errors.New("fakeconn: api_key is required")
 		}
 		st.mu.Lock()

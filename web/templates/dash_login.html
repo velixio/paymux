@@ -9,4 +9,5 @@
 <input class="field" name="password" type="password" placeholder="Password" autocomplete="current-password" required>
 <button class="btn" type="submit">Continue</button>
 </form>
+{{if .NeedsSetup}}<p class="muted">This hub has no users yet. <a href="/setup">Run the first-run setup</a>.</p>{{end}}
 {{template "dash_close" .}}{{end}}

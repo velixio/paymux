@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/paymux/paymux/internal/look"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/tax"
 	"github.com/paymux/paymux/pkg/connector/money"
@@ -65,6 +66,7 @@ func (s *Service) ServeHosted(w http.ResponseWriter, r *http.Request) {
 
 	var (
 		number, hash, blobID string
+		appID                string
 		page                 docPage
 	)
 	err := s.db.Read(r.Context(), func(q store.Querier) error {
@@ -74,7 +76,7 @@ func (s *Service) ServeHosted(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return err
 			}
-			number, hash, blobID = inv.Number, inv.AccessTokenHash, inv.PDFBlobID
+			number, hash, blobID, appID = inv.Number, inv.AccessTokenHash, inv.PDFBlobID, inv.AppID
 			if subtle.ConstantTimeCompare([]byte(got), []byte(hash)) != 1 || wantPDF {
 				return nil
 			}
@@ -85,7 +87,7 @@ func (s *Service) ServeHosted(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return err
 			}
-			number, hash, blobID = cn.Number, cn.AccessTokenHash, cn.PDFBlobID
+			number, hash, blobID, appID = cn.Number, cn.AccessTokenHash, cn.PDFBlobID, cn.AppID
 			if subtle.ConstantTimeCompare([]byte(got), []byte(hash)) != 1 || wantPDF {
 				return nil
 			}
@@ -127,7 +129,9 @@ func (s *Service) ServeHosted(w http.ResponseWriter, r *http.Request) {
 	pages, err := s.pages()
 	if err == nil {
 		var buf bytes.Buffer
-		if err = pages.Render(&buf, "invoice", page); err == nil {
+		// The page wears the app's theme. It is a legal document, so its words are not translated.
+		themed := look.Resolve(r.Context(), s.settings, pages, appID, "").Bind(pages)
+		if err = themed.Render(&buf, "invoice", page); err == nil {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:")
 			_, _ = w.Write(buf.Bytes())

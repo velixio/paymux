@@ -1,0 +1,59 @@
+{{define "title"}}{{.Title}} - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<p><a href="/dashboard/disputes">&larr; Disputes</a></p>
+{{with .Disp}}
+<h2>{{.ID}} <span class="status status-{{.Status}}">{{.Status}}</span></h2>
+{{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<dl class="facts">
+<dt>Amount</dt><dd>{{.Amount}}</dd>
+<dt>Reason</dt><dd>{{.Reason}}{{if .Stage}} ({{.Stage}}){{end}}</dd>
+<dt>Respond by</dt><dd>{{if .Due}}{{.Due}}{{else}}no deadline{{end}}</dd>
+<dt>Payment</dt><dd><a href="/dashboard/payments/{{.PaymentID}}">{{.PaymentID}}</a>{{if .PaymentRef}} &middot; order {{.PaymentRef}}{{end}}{{if .Customer}} &middot; {{.Customer}}{{end}}</dd>
+<dt>App</dt><dd>{{.App}}</dd>
+<dt>Provider</dt><dd>{{.Provider}} &middot; {{.Account}} &middot; <code>{{.ProviderID}}</code></dd>
+<dt>Source</dt><dd>{{.Source}}</dd>
+<dt>Recorded</dt><dd>{{.Created}}</dd>
+</dl>
+
+{{if .Open}}
+{{if .CanRespond}}{{if .CanAct}}
+<h3>Respond</h3>
+<form method="post" action="/dashboard/disputes/{{.ID}}/accept" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<button class="btn" type="submit">Accept the dispute</button> <small class="muted">Concedes it at the provider.</small></form>
+<form method="post" action="/dashboard/disputes/{{.ID}}/evidence" enctype="multipart/form-data" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<h4>Submit evidence</h4>
+<textarea class="field" name="notes" rows="4" placeholder="Notes for the bank"></textarea>
+<div class="row"><input class="field" name="type_1" placeholder="Evidence type, e.g. shipping_proof"><input type="file" name="file_1" accept="application/pdf,image/jpeg,image/png"></div>
+<div class="row"><input class="field" name="type_2" placeholder="Evidence type, e.g. shipping_proof"><input type="file" name="file_2" accept="application/pdf,image/jpeg,image/png"></div>
+<div class="row"><input class="field" name="type_3" placeholder="Evidence type, e.g. shipping_proof"><input type="file" name="file_3" accept="application/pdf,image/jpeg,image/png"></div>
+<p class="muted">PDF, JPEG or PNG, up to 10 MiB each.</p>
+<button class="btn" type="submit">Upload and submit</button></form>
+{{end}}
+{{else}}
+<div class="portal-note"><p>Respond to this dispute in the provider's portal: {{if .Portal.URL}}<a href="{{.Portal.URL}}" rel="noopener noreferrer" target="_blank">open {{.Portal.Name}}</a>{{else}}{{.Portal.Name}}{{end}}. This provider's connector cannot do it from here{{if eq .Source "manual"}} (the dispute was entered by hand){{end}}.</p></div>
+{{if and .CanAct .CanMark}}
+<form method="post" action="/dashboard/disputes/{{.ID}}/status" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Mark as <select class="field" name="status">{{range .MarkOptions}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
+<button class="btn" type="submit">Update status</button></form>
+{{end}}
+{{end}}
+{{end}}
+
+{{if and .CanAct .CanCredit}}
+<h3>Credit note</h3>
+<form method="post" action="/dashboard/disputes/{{.ID}}/credit-note" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Reason code <select class="field" name="reason_code">{{range $.CreditCodes}}<option value="{{.Code}}">{{.Code}}: {{.Label}}</option>{{end}}</select></label>
+<button class="btn" type="submit">Issue credit note</button></form>
+{{end}}
+
+<h3>Evidence</h3>
+{{if .Notes}}<p>{{.Notes}}</p>{{end}}
+<table class="grid"><thead><tr><th>File</th><th>Type</th><th>Size</th><th>Uploaded</th></tr></thead>
+<tbody>{{range .Evidence}}<tr><td><a href="{{.Href}}">{{.ID}}</a></td><td>{{.ContentType}}</td><td>{{.Size}}</td><td>{{.At}}</td></tr>{{else}}<tr><td colspan="4" class="muted">No evidence uploaded.</td></tr>{{end}}</tbody></table>
+
+<h3>Timeline</h3>
+<table class="grid"><tbody>{{range .Timeline}}<tr><td>{{.At}}</td><td>{{.Text}}</td></tr>{{end}}</tbody></table>
+{{end}}
+{{template "dash_close" .}}{{end}}

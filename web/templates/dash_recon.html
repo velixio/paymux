@@ -1,0 +1,39 @@
+{{define "title"}}Reconciliation - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h2>Reconciliation</h2>
+<p class="muted">Each provider account is compared with the provider's own records every day. Differences that could not be fixed automatically become items to look at.</p>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+
+<h3>Accounts</h3>
+<table class="grid">
+<thead><tr><th>Account</th><th>Connector</th><th>Last run</th><th>Result</th><th>Open items</th>{{if .CanManage}}<th></th>{{end}}</tr></thead>
+<tbody>{{range .ReconAccounts}}<tr id="acct-{{.ID}}"><td>{{.Name}} <small class="muted">{{.Mode}}</small></td><td>{{.Connector}}</td><td>{{.LastRun}}</td>
+<td>{{.LastStatus}}{{if .LastError}}<br><small class="error">{{.LastError}}</small>{{end}}</td><td>{{.Open}}</td>
+{{if $.CanManage}}<td><form class="inline" method="post" action="/dashboard/reconciliation/run"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="account_id" value="{{.ID}}"><button class="linkbtn" type="submit">Run now</button></form></td>{{end}}</tr>
+{{else}}<tr><td colspan="6" class="muted">No provider accounts.</td></tr>{{end}}</tbody>
+</table>
+
+<h3>Items</h3>
+<form class="filters" method="get" action="/dashboard/reconciliation">
+<select name="state" aria-label="State"><option value="open"{{if or (eq .ReconFilter.State "") (eq .ReconFilter.State "open")}} selected{{end}}>Open</option><option value="resolved"{{if eq .ReconFilter.State "resolved"}} selected{{end}}>Resolved</option><option value="all"{{if eq .ReconFilter.State "all"}} selected{{end}}>All</option></select>
+<select name="kind" aria-label="Kind"><option value="">Any kind</option>{{range .ReconKinds}}<option value="{{.}}"{{if eq . $.ReconFilter.Kind}} selected{{end}}>{{.}}</option>{{end}}</select>
+<select name="account" aria-label="Account"><option value="">All accounts</option>{{range .ReconAccounts}}<option value="{{.ID}}"{{if eq .ID $.ReconFilter.Account}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+<button class="btn small" type="submit">Filter</button>
+</form>
+<table class="grid">
+<thead><tr><th>Account</th><th>Kind</th><th>Provider id</th><th>Ours</th><th>Theirs</th><th>State</th><th>Found</th><th></th></tr></thead>
+<tbody>{{range .ReconItems}}<tr><td>{{.Account}}</td><td>{{.Kind}}</td><td><code>{{.ProviderID}}</code></td><td><small class="wrap">{{.Ours}}</small></td><td><small class="wrap">{{.Theirs}}</small></td>
+<td>{{.State}}{{if .Note}}<br><small class="muted">{{.Note}}</small>{{end}}</td><td>{{.At}}</td>
+<td>{{if and .Resolvable $.CanManage}}<form method="post" action="/dashboard/reconciliation/items/{{.ID}}/resolve" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input class="field" name="note" placeholder="What you checked or did" required maxlength="500"><button class="linkbtn" type="submit">Resolve</button></form>{{end}}</td></tr>
+{{else}}<tr><td colspan="8" class="muted">No items match.</td></tr>{{end}}</tbody>
+</table>
+
+<h3>Recent runs</h3>
+<table class="grid">
+<thead><tr><th>Run</th><th>Account</th><th>Started</th><th>Window</th><th>Status</th><th>Checked</th><th>Differences</th><th>Auto-fixed</th></tr></thead>
+<tbody>{{range .ReconRuns}}<tr><td>{{.ID}}</td><td>{{.Account}}</td><td>{{.Started}}</td><td><small>{{.Window}}</small></td><td>{{.Status}}{{if .Error}}<br><small class="error">{{.Error}}</small>{{end}}</td><td>{{.Checked}}</td><td>{{.Items}}</td><td>{{.Fixed}}</td></tr>
+{{else}}<tr><td colspan="8" class="muted">No runs yet.</td></tr>{{end}}</tbody>
+</table>
+{{template "dash_close" .}}{{end}}

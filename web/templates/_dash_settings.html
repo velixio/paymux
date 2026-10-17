@@ -3,13 +3,20 @@
 <thead><tr><th>Setting</th><th>Effective value</th><th>Source</th>{{if .CanWrite}}<th>Change</th>{{end}}</tr></thead>
 <tbody>
 {{range .Rows}}<tr id="setting-{{.Key}}">
-<td><code>{{.Key}}</code></td>
-<td><pre>{{.Value}}</pre></td>
-<td>{{.Source}}</td>
-{{if $.Table.CanWrite}}<td>
-<form method="post" action="{{$.Table.Base}}/{{.Key}}">
+<td data-label="Setting"><code>{{.Key}}</code><p class="help">{{.Help}}</p></td>
+<td data-label="Effective value">{{if eq .Kind "json"}}<pre>{{.Value}}</pre>{{else}}<span class="eff">{{.Display}}</span>{{end}}{{with .Aux}} <small class="muted">({{.}})</small>{{end}}
+<p class="muted default">Default: {{.Default}}</p></td>
+<td data-label="Source">{{.Source}}</td>
+{{if $.Table.CanWrite}}<td data-label="Change">
+<form method="post" action="{{$.Table.Base}}/{{.Key}}" class="setting-form">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
-<textarea class="json" name="value" aria-label="New value of {{.Key}}" spellcheck="false">{{.Value}}</textarea>
+{{if eq .Kind "enum"}}<select class="field" name="value" aria-label="{{.Key}}">{{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Value}}</option>{{end}}</select>
+{{else if eq .Kind "bool"}}<input type="hidden" name="value" value="false"><label class="inline"><input type="checkbox" name="value" value="true"{{if .Checked}} checked{{end}}> on</label>
+{{else if or (eq .Kind "int") (eq .Kind "float")}}<input class="field num" type="number" name="value" value="{{.Text}}" step="{{.Step}}"{{with .Min}} min="{{.}}"{{end}}{{with .Max}} max="{{.}}"{{end}} aria-label="{{.Key}}" required>{{with .Unit}} <span class="unit">{{.}}</span>{{end}}
+{{else if eq .Kind "clock"}}<input class="field" type="time" name="value" value="{{.Text}}" aria-label="{{.Key}}" required>
+{{else if eq .Kind "list"}}<input class="field" type="text" name="value" value="{{.Text}}" placeholder="comma separated" aria-label="{{.Key}}">{{with .Unit}} <span class="unit">{{.}}</span>{{end}}
+{{else if eq .Kind "string"}}<input class="field" type="text" name="value" value="{{.Text}}"{{with .Pattern}} pattern="{{.}}"{{end}} aria-label="{{.Key}}" required>
+{{else}}<textarea class="json wide" name="value" aria-label="{{.Key}}" spellcheck="false">{{.Value}}</textarea>{{end}}
 <button class="linkbtn" type="submit">Save</button>
 </form>
 {{if .Overridden}}<form class="inline" method="post" action="{{$.Table.Base}}/{{.Key}}/reset">

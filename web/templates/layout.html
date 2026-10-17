@@ -1,11 +1,13 @@
 {{define "layout"}}<!doctype html>
-<html lang="en">
+<html lang="{{lang}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{block "title" .}}Payment{{end}}</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/assets/css/app.css">
 {{block "head" .}}{{end}}
+{{with themeCSS}}<link rel="stylesheet" href="{{.}}">{{end}}
 {{with .Accent}}<style>:root{--accent: {{.}};}</style>{{end}}
 </head>
 <body>
