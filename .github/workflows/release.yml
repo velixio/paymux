@@ -1,0 +1,47 @@
+# Release on a version tag (v1.2.3): run the whole CI gate, build the archives
+# with scripts/release.sh, sign SHA256SUMS with cosign (keyless, using this
+# workflow's OIDC identity) and publish a GitHub release.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write # create the release and upload the assets
+      id-token: write # keyless cosign signing
+    steps:
+      # TODO(review): pin these actions to commit SHAs before the first run.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the tag and history, for the release notes and SOURCE_DATE_EPOCH
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: sigstore/cosign-installer@v3
+      - name: Build, checksum and sign
+        env:
+          TAG: ${{ github.ref_name }}
+          OUT: dist/release
+        run: ./scripts/release.sh "$TAG"
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" dist/release/* \
+            --verify-tag \
+            --generate-notes \
+            --title "$TAG"
