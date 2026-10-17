@@ -141,7 +141,8 @@ func (q *Queue) process(ctx context.Context, r store.JobRow) {
 func (q *Queue) finish(ctx context.Context, r store.JobRow, h Handler) {
 	err := h(ctx, r.Payload)
 	if err != nil {
-		q.fail(ctx, r, err, r.Attempts >= r.MaxAttempts)
+		var perm permanentError
+		q.fail(ctx, r, err, errors.As(err, &perm) || r.Attempts >= r.MaxAttempts)
 		return
 	}
 	if err := q.db.CompleteJob(ctx, r.ID, q.opts.Clock()); err != nil {
@@ -165,5 +166,15 @@ func (q *Queue) Start(ctx context.Context) error {
 // Running reports whether Start is looping.
 func (q *Queue) Running() bool { return q.running.Load() }
 
-// Permanent marks err as non-retryable.
-func Permanent(err error) error { return err }
+type permanentError struct{ err error }
+
+func (p permanentError) Error() string { return p.err.Error() }
+func (p permanentError) Unwrap() error { return p.err }
+
+// Permanent marks err as non-retryable: the job goes straight to dead.
+func Permanent(err error) error {
+	if err == nil {
+		return nil
+	}
+	return permanentError{err}
+}
