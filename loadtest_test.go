@@ -217,7 +217,6 @@ func TestLoad(t *testing.T) {
 			failures  []error
 			wg        sync.WaitGroup
 		)
-		os.Setenv("PAYMUX_SQLTRACE", os.Getenv("LOADTEST_TRACE"))
 		interval := time.Second / sustainedRate
 		total := sustainedRate * seconds
 		startAt := time.Now()
@@ -243,7 +242,6 @@ func TestLoad(t *testing.T) {
 			}(i)
 		}
 		wg.Wait()
-		os.Unsetenv("PAYMUX_SQLTRACE")
 		if len(failures) > 0 {
 			t.Fatalf("%d of %d requests failed, first: %v", len(failures), total, failures[0])
 		}
