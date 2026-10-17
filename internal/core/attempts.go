@@ -12,7 +12,6 @@ import (
 	"github.com/paymux/paymux/internal/core/state"
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/notify"
-	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector/money"
 )
@@ -256,7 +255,7 @@ func (s *Service) handleDuplicate(ctx context.Context, tx store.Tx, p *store.Pay
 	if err := store.UpdatePayment(ctx, tx, p, now); err != nil {
 		return err
 	}
-	v, err := settings.ResolveWith(ctx, tx, p.AppID, "duplicate_payment_action")
+	v, err := s.policy(ctx, tx, p.AppID, "duplicate_payment_action")
 	if err != nil {
 		return err
 	}

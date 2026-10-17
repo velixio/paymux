@@ -6,7 +6,6 @@ import (
 
 	"github.com/paymux/paymux/internal/core/state"
 	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector/money"
 )
@@ -50,7 +49,7 @@ func (s *Service) CreateRenewalPayment(ctx context.Context, tx store.Tx, in Rene
 	if pa.Mode != in.Mode || pa.OrgID != in.OrgID {
 		return store.Payment{}, store.Attempt{}, newErr(ErrInvalid, "provider account is in another mode")
 	}
-	ttl, err := settings.ResolveWith(ctx, tx, in.AppID, "payment_ttl")
+	ttl, err := s.policy(ctx, tx, in.AppID, "payment_ttl")
 	if err != nil {
 		return store.Payment{}, store.Attempt{}, err
 	}

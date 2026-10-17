@@ -198,7 +198,13 @@ func (h *Handler) pay(w http.ResponseWriter, r *http.Request) {
 		h.billingForm(w, http.StatusOK, p, secret, appName, cust, need, "")
 		return
 	}
-	st, err := h.o.Flow.StartCheckout(ctx, p.ID)
+	// A reload shows the open attempt's checkout again; ?fresh=1 ("try again",
+	// "pay another way") starts a new attempt.
+	start := h.o.Flow.StartCheckout
+	if r.URL.Query().Get("fresh") == "1" {
+		start = h.o.Flow.StartFreshCheckout
+	}
+	st, err := start(ctx, p.ID)
 	switch {
 	case err == nil:
 		h.render(w, r, appName, st)

@@ -14,24 +14,33 @@ type Attempt struct {
 	CurrencyReceived                                           string
 	Duplicate                                                  bool // an extra success on an already-succeeded payment
 	CreatedAt, UpdatedAt                                       time.Time
+	// NextAction is the checkout's connector.NextAction as JSON, kept so a
+	// reload of the pay page can show it again; CheckoutExpiresAt is when the
+	// checkout stops being worth showing. Both are set by SetAttemptCheckout.
+	NextAction        string
+	CheckoutExpiresAt time.Time
 }
 
 const attemptCols = `id, org_id, mode, payment_id, provider_account_id, provider_ref, COALESCE(provider_order_id,''),
 	COALESCE(provider_payment_id,''), status, COALESCE(method,''), COALESCE(failure_code,''),
-	COALESCE(failure_message,''), amount_received, COALESCE(currency_received,''), duplicate, created_at, updated_at`
+	COALESCE(failure_message,''), amount_received, COALESCE(currency_received,''), duplicate, created_at, updated_at,
+	COALESCE(next_action,''), COALESCE(checkout_expires_at,0)`
 
 func scanAttempt(row interface{ Scan(...any) error }) (Attempt, error) {
 	var a Attempt
 	var dup int
-	var created, updated int64
+	var created, updated, checkoutExp int64
 	err := row.Scan(&a.ID, &a.OrgID, &a.Mode, &a.PaymentID, &a.ProviderAccountID, &a.ProviderRef, &a.ProviderOrderID,
 		&a.ProviderPaymentID, &a.Status, &a.Method, &a.FailureCode, &a.FailureMessage, &a.AmountReceived,
-		&a.CurrencyReceived, &dup, &created, &updated)
+		&a.CurrencyReceived, &dup, &created, &updated, &a.NextAction, &checkoutExp)
 	if err != nil {
 		return Attempt{}, notFound(err)
 	}
 	a.Duplicate = dup == 1
 	a.CreatedAt, a.UpdatedAt = fromMS(created), fromMS(updated)
+	if checkoutExp != 0 {
+		a.CheckoutExpiresAt = fromMS(checkoutExp)
+	}
 	return a, nil
 }
 
@@ -86,4 +95,20 @@ func boolInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// SetAttemptCheckout records what CreateCheckout returned: the provider order,
+// the next action (JSON) and when the checkout expires.
+func SetAttemptCheckout(ctx context.Context, tx Tx, id, providerOrderID, nextAction string, expiresAt, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `UPDATE payment_attempts SET provider_order_id = ?, next_action = ?, checkout_expires_at = ?, updated_at = ? WHERE id = ?`,
+		nullIfEmpty(providerOrderID), nullIfEmpty(nextAction), ms(expiresAt), ms(now), id)
+	return err
+}
+
+// LatestOpenAttempt returns the newest attempt of the payment that is still
+// waiting for the customer (created or pending) and has a stored next
+// action; ErrNotFound when there is none.
+func LatestOpenAttempt(ctx context.Context, q Queryer, paymentID string) (Attempt, error) {
+	return scanAttempt(q.QueryRowContext(ctx, "SELECT "+attemptCols+` FROM payment_attempts WHERE payment_id = ?
+		AND status IN ('created','pending') AND next_action IS NOT NULL ORDER BY created_at DESC, id DESC LIMIT 1`, paymentID))
 }

@@ -45,22 +45,25 @@ func ViewPayment(p store.Payment) PaymentView {
 
 // RefundView is the public JSON shape of a refund.
 type RefundView struct {
-	ID          string    `json:"id"`
-	Object      string    `json:"object"`
-	PaymentID   string    `json:"payment_id"`
-	AttemptID   string    `json:"attempt_id"`
-	Amount      int64     `json:"amount"`
-	Currency    string    `json:"currency"`
-	Status      string    `json:"status"`
-	Reason      string    `json:"reason,omitempty"`
-	InitiatedBy string    `json:"initiated_by"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID          string `json:"id"`
+	Object      string `json:"object"`
+	PaymentID   string `json:"payment_id"`
+	AttemptID   string `json:"attempt_id"`
+	Amount      int64  `json:"amount"`
+	Currency    string `json:"currency"`
+	Status      string `json:"status"`
+	Reason      string `json:"reason,omitempty"`
+	InitiatedBy string `json:"initiated_by"`
+	// ProviderRefundID is the provider's id for the refund, once the provider
+	// has accepted it. Absent while the refund is still queued here.
+	ProviderRefundID string    `json:"provider_refund_id,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // ViewRefund renders r.
 func ViewRefund(r store.Refund) RefundView {
 	return RefundView{ID: r.ID, Object: "refund", PaymentID: r.PaymentID, AttemptID: r.AttemptID, Amount: r.Amount,
-		Currency: r.Currency, Status: r.Status, Reason: r.Reason, InitiatedBy: r.InitiatedBy, CreatedAt: r.CreatedAt}
+		Currency: r.Currency, Status: r.Status, Reason: r.Reason, InitiatedBy: r.InitiatedBy, ProviderRefundID: r.ProviderRefundID, CreatedAt: r.CreatedAt}
 }
 
 // paymentEventData is the data of payment.* events: the payment plus, where
@@ -69,4 +72,17 @@ type paymentEventData struct {
 	PaymentView
 	Reason    string `json:"reason,omitempty"`
 	AttemptID string `json:"attempt_id,omitempty"`
+}
+
+// AttemptView is the public JSON shape of a payment attempt: what an app needs
+// to debug a failed payment, and nothing internal.
+type AttemptView struct {
+	ID                string    `json:"id"`
+	Status            string    `json:"status"`
+	Provider          string    `json:"provider"` // the connector, for example "razorpay"
+	ProviderPaymentID string    `json:"provider_payment_id,omitempty"`
+	Method            string    `json:"method,omitempty"`
+	FailureCode       string    `json:"failure_code,omitempty"`
+	FailureMessage    string    `json:"failure_message,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
 }

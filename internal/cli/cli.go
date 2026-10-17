@@ -13,10 +13,17 @@ import (
 	"github.com/paymux/paymux/migrations"
 )
 
-const usage = "usage: paymux <serve|migrate|backup|db|app|provider|domain|tax-entity|report|fx|endpoint|version>"
+const usage = "usage: paymux <serve|migrate|backup|db|build|app|provider|domain|tax-entity|report|fx|endpoint|version>"
 
 // Run executes the CLI and returns the process exit code.
 func Run(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer) int {
+	return RunWith(ctx, args, lookupEnv, stdout, stderr, nil)
+}
+
+// RunWith is Run for a custom binary (framework mode): "serve" calls each
+// setup function on the App, in order, before starting it, which is where
+// hooks are registered.
+func RunWith(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer, setup []func(*paymux.App)) int {
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, usage)
 		return 2
@@ -27,6 +34,8 @@ func Run(ctx context.Context, args []string, lookupEnv func(string) (string, boo
 		return 0
 	case "db":
 		return runDB(ctx, args[1:], stdout, stderr)
+	case "build":
+		return runBuild(ctx, args[1:], stdout, stderr)
 	case "user":
 		env, err := envWithDotEnv(lookupEnv)
 		if err != nil {
@@ -72,7 +81,7 @@ func Run(ctx context.Context, args []string, lookupEnv func(string) (string, boo
 		case "domain":
 			return runDomain(ctx, args[1:], env, stdout, stderr)
 		}
-		return runServe(ctx, env, stderr)
+		return runServe(ctx, env, stderr, setup)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n%s\n", args[0], usage)
 		return 2
@@ -93,7 +102,7 @@ func envWithDotEnv(lookupEnv func(string) (string, bool)) (func(string) (string,
 	return config.WithDotEnv(lookupEnv, file), nil
 }
 
-func runServe(ctx context.Context, env func(string) (string, bool), stderr io.Writer) int {
+func runServe(ctx context.Context, env func(string) (string, bool), stderr io.Writer, setup []func(*paymux.App)) int {
 	cfg, err := config.Load(env)
 	if err != nil {
 		fmt.Fprintf(stderr, "paymux serve: invalid configuration:\n%v\n", err)
@@ -101,6 +110,9 @@ func runServe(ctx context.Context, env func(string) (string, bool), stderr io.Wr
 	}
 	app, err := paymux.New(cfg)
 	if err == nil {
+		for _, f := range setup {
+			f(app)
+		}
 		err = app.Start(ctx)
 	}
 	if err != nil {

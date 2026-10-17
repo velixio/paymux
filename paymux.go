@@ -65,6 +65,9 @@ type App struct {
 	verifiers inbound.VerifierFunc
 	connHTTP  func(store.ProviderAccount, connector.Info, []string) *http.Client
 
+	hooks      hookSet                                                         // Go hooks (hooks.go)
+	hookFailed func(ctx context.Context, hook string, ev hookEvent, err error) // set by Start unless a test sets it
+
 	mu          sync.Mutex
 	addr, iaddr string
 }
@@ -157,8 +160,11 @@ func (a *App) Start(ctx context.Context) error {
 	if a.emitter != nil {
 		emitter = a.emitter
 	}
+	// Go hooks run after commit: every event is also queued as a job in the
+	// same transaction (only when a hook listens to it).
+	emitter = hookEmitter{next: emitter, queue: q, hooks: &a.hooks}
 	breaker := routing.NewBreaker(nil)
-	rt := checkout.NewRouting(breaker)
+	rt := checkout.NewRouting(breaker).WithSettings(set).WithSuggester(a.suggestRoute)
 	reg := metrics.NewRegistry()
 	conns := connectors.New(connectors.Options{DB: db, Box: box, BaseURL: a.cfg.BaseURL, Logger: a.log, HTTPClient: a.connHTTP,
 		Observe: connectors.ProviderMetrics(reg)})
@@ -171,6 +177,7 @@ func (a *App) Start(ctx context.Context) error {
 	// Ops alerts (PAYMUX_OPS_EMAILS and PAYMUX_OPS_WEBHOOK_URL) go through one
 	// rate-limited sender shared by every component that raises them.
 	alerts := notify.NewAlerts(notify.AlertsOptions{Mailer: mailer, Emails: a.cfg.OpsEmails, WebhookURL: a.cfg.OpsWebhookURL})
+	a.registerHookJob(q, alerts)
 	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter, Router: rt, Alerts: alerts,
 		OnPaymentSucceeded: inv.OnPaymentSucceeded, OnRefundSucceeded: inv.OnRefundSucceeded})
 	disp := disputes.New(disputes.Options{DB: db, Settings: set, Emitter: emitter, Alerts: alerts, Credit: inv, Conns: conns,

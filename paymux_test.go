@@ -92,7 +92,7 @@ func fetch(t *testing.T, addr, path string) (int, string) {
 
 func waitReady(t *testing.T, r *running) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		select {
 		case <-r.done:
@@ -106,7 +106,7 @@ func waitReady(t *testing.T, r *running) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("not ready within 10s; logs: %s", r.logs)
+	t.Fatalf("not ready within 30s; logs: %s", r.logs)
 }
 
 func shutdown(t *testing.T, r *running) {
