@@ -1,0 +1,19 @@
+{{define "title"}}{{.Title}} - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h3>Two-factor authentication</h3>
+{{if .Enrol}}
+<p class="muted">Set up an authenticator app (Google Authenticator, Authy, 1Password and similar) for {{.Email}}.
+Add this key by hand, or open the link on your phone, then enter the 6-digit code it shows.</p>
+<p>Secret key<br><code id="totp-secret">{{.TOTPSecret}}</code></p>
+<p>Setup link<br><code class="wrap" id="totp-uri">{{.TOTPURI}}</code></p>
+{{else}}
+<p class="muted">Enter the 6-digit code from your authenticator app.</p>
+{{end}}
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<form method="post" action="/dashboard/login/totp">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<input class="field" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="8" placeholder="123456" required autofocus>
+<button class="btn" type="submit">{{if .Enrol}}Confirm and sign in{{else}}Sign in{{end}}</button>
+</form>
+{{template "dash_close" .}}{{end}}

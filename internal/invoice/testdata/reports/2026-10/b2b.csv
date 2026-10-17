@@ -1,0 +1,2 @@
+gstin,receiver_name,invoice_number,invoice_date,invoice_value,place_of_supply,rate,taxable_value,igst,cgst,sgst
+29ABCDE1234F1ZW,Acme Pvt Ltd,INV/2627/000002,2026-10-05,2360.00,29,18.00,2000.00,360.00,0.00,0.00

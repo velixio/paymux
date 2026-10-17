@@ -336,8 +336,14 @@ func TestStartCheckoutFallsBackToNextAccount(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		a := e.attempts(p.ID)
-		if len(a) != 2 || a[0].Status != "failed" || a[0].FailureCode != "checkout_error" || a[1].Status != "created" || a[1].ID != st.Attempt.ID {
+		a := e.attempts(p.ID) // ids within one millisecond are unordered: tell the attempts apart by status
+		if len(a) != 2 {
+			t.Fatalf("attempts %+v", a)
+		}
+		if a[0].Status != "failed" {
+			a[0], a[1] = a[1], a[0]
+		}
+		if a[0].Status != "failed" || a[0].FailureCode != "checkout_error" || a[1].Status != "created" || a[1].ID != st.Attempt.ID {
 			t.Fatalf("attempts %+v", a)
 		}
 		if a[0].ProviderAccountID == a[1].ProviderAccountID {
@@ -397,9 +403,12 @@ func TestBreakerRecordsFailuresAndSuccessesAndReordersAccounts(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			a := e.attempts(st.Attempt.PaymentID)
 			if first == "" {
-				first = a[0].ProviderAccountID
+				for _, at := range e.attempts(st.Attempt.PaymentID) {
+					if at.Status == "failed" {
+						first = at.ProviderAccountID
+					}
+				}
 			}
 			if st.AccountID == first {
 				t.Fatal("the failing first choice must not be the one that succeeded")

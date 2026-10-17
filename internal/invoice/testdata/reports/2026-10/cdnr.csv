@@ -1,0 +1,2 @@
+gstin,receiver_name,note_number,note_date,against_invoice,invoice_date,reason,place_of_supply,rate,taxable_value,igst,cgst,sgst,note_value
+29ABCDE1234F1ZW,Acme Pvt Ltd,CN/2627/000002,2026-10-16,INV/2627/000002,2026-10-05,customer request,29,18.00,1000.00,180.00,0.00,0.00,1180.00

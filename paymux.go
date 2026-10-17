@@ -19,13 +19,16 @@ import (
 	"github.com/paymux/paymux/internal/config"
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/dashboard"
 	"github.com/paymux/paymux/internal/domains"
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/httpapi"
 	"github.com/paymux/paymux/internal/inbound"
+	"github.com/paymux/paymux/internal/invoice"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/logging"
 	"github.com/paymux/paymux/internal/metrics"
+	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/paypage"
 	"github.com/paymux/paymux/internal/routing"
@@ -144,12 +147,18 @@ func (a *App) Start(ctx context.Context) error {
 	breaker := routing.NewBreaker(nil)
 	rt := checkout.NewRouting(breaker)
 	conns := connectors.New(connectors.Options{DB: db, Box: box, BaseURL: a.cfg.BaseURL, Logger: a.log})
-	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter, Router: rt})
+	// GST invoicing: documents are issued by hooks inside the transaction in
+	// which a payment or refund succeeds.
+	inv := invoice.New(invoice.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter, Mailer: notify.New(a.cfg),
+		BaseURL: a.cfg.BaseURL.String()})
+	inv.RegisterJobs(q)
+	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter, Router: rt,
+		OnPaymentSucceeded: inv.OnPaymentSucceeded, OnRefundSucceeded: inv.OnRefundSucceeded})
 	flow := checkout.New(checkout.Options{DB: db, Core: svc, Conns: conns, Routing: rt, Breaker: breaker, Logger: a.log})
 	if err := flow.Register(q); err != nil {
 		return err
 	}
-	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log})
+	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv})
 	if err != nil {
 		return err
 	}
@@ -169,7 +178,7 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	csrf := sha256.Sum256(append([]byte("paymux-pay-csrf-key|"), a.cfg.MasterKey...))
 	pay := paypage.New(paypage.Options{Core: svc, Flow: flow, Settings: set, Renderer: renderer,
-		Assets: web.AssetHandler(overlay), CSRFKey: csrf[:], Logger: a.log})
+		CSRFKey: csrf[:], Logger: a.log})
 
 	reg := metrics.NewRegistry()
 	a.registerMetrics(reg, db, dialect)
@@ -216,11 +225,24 @@ func (a *App) Start(ctx context.Context) error {
 	// the base host.
 	customerMux := http.NewServeMux()
 	pay.Register(paypage.StdMux(customerMux))
+	customerMux.HandleFunc("GET /i/{id}", inv.ServeHosted)
+	customerMux.Handle("GET /assets/", web.AssetHandler(overlay))
 	baseHost := a.cfg.BaseURL.Host
 	public := hostRouter(&domains.Router{BaseHost: baseHost, Lookup: svc, Base: srv.Handler(), Customer: customerMux}, srv.Handler())
 	internalMux := http.NewServeMux()
 	internalMux.Handle("GET /internal/tls-allow", domains.TLSAllowHandler(baseHost, svc))
 	internalMux.Handle("/", srv.InternalHandler())
+
+	// Operator dashboard and the shared static assets.
+	dash, err := dashboard.New(dashboard.Options{DB: db, Box: box, Renderer: renderer, MasterKey: a.cfg.MasterKey,
+		BaseURL: a.cfg.BaseURL, DevSkip2FA: a.cfg.DevSkip2FA, Logger: a.log})
+	if err != nil {
+		return err
+	}
+	inv.SetPages(renderer)
+	srv.HandleFunc("GET /i/{id}", inv.ServeHosted)
+	srv.HandleFunc("/dashboard/", dash.ServeHTTP)
+	srv.HandleFunc("GET /assets/", web.AssetHandler(overlay).ServeHTTP)
 
 	ln, err := net.Listen("tcp", a.cfg.Listen)
 	if err != nil {

@@ -5,10 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{block "title" .}}Payment{{end}}</title>
 <link rel="stylesheet" href="/assets/css/app.css">
+{{block "head" .}}{{end}}
 {{with .Accent}}<style>:root{--accent: {{.}};}</style>{{end}}
 </head>
 <body>
-<main class="card">
+<main class="{{block "mainclass" .}}card{{end}}">
 {{with .AppName}}<div class="brand">{{with $.LogoURL}}<img src="{{.}}" alt="">{{else}}<h2>{{$.AppName}}</h2>{{end}}</div>{{end}}
 {{template "content" .}}
 </main>

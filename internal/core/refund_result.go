@@ -90,6 +90,11 @@ func (s *Service) ApplyRefundSnapshot(ctx context.Context, refundID string, snap
 				Kind: "refund", Amount: -r.Amount, Currency: r.Currency, PaymentID: p.ID, RefundID: r.ID, OccurredAt: now}); err != nil {
 				return err
 			}
+			// Issues the GST credit note (when the payment has an invoice) in
+			// this same transaction.
+			if err := s.RefundSucceeded(ctx, tx, r); err != nil {
+				return err
+			}
 		}
 		res.Refund, res.Payment, res.Changed = r, p, true
 		return s.emitter.Emit(ctx, tx, events.Event{OrgID: r.OrgID, AppID: r.AppID, Mode: r.Mode, Type: typ,

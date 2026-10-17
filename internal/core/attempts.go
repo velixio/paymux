@@ -175,6 +175,7 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 			}
 		}
 
+		prevStatus := p.Status
 		ev, haveEvent := paymentEventFor(snap, p, otherOpen)
 		if haveEvent {
 			po := state.PaymentNext(state.PaymentStatus(p.Status), ev)
@@ -192,6 +193,12 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 		}
 		if err := store.UpdateAttempt(ctx, tx, a, now); err != nil {
 			return err
+		}
+		if s.onPaymentSucceeded != nil && prevStatus != string(state.PaymentSucceeded) &&
+			p.Status == string(state.PaymentSucceeded) && !a.Duplicate {
+			if err := s.onPaymentSucceeded(ctx, tx, p, a); err != nil {
+				return err
+			}
 		}
 		res.Payment, res.Attempt = p, a
 		return nil
