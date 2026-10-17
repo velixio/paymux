@@ -87,28 +87,37 @@ func (db *DB) ClaimJobs(ctx context.Context, now time.Time, lease time.Duration,
 	return out, nil
 }
 
-// CompleteJob marks the job done.
-func (db *DB) CompleteJob(ctx context.Context, id string, now time.Time) error {
-	return db.Write(ctx, func(tx Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE jobs SET state = 'done', locked_until = NULL, updated_at = ? WHERE id = ?`,
-			now.UnixMilli(), id)
-		return err
-	})
+// CompleteJob marks the job done, but only if it is still the claim identified
+// by attempts (the claim token). It reports whether a row was updated; false
+// means a newer claim superseded this worker.
+func (db *DB) CompleteJob(ctx context.Context, id string, attempts int, now time.Time) (bool, error) {
+	return db.updateClaim(ctx, `UPDATE jobs SET state = 'done', locked_until = NULL, updated_at = ?
+		WHERE id = ? AND state = 'running' AND attempts = ?`, now.UnixMilli(), id, attempts)
 }
 
-// FailJob records a failure: dead jobs stay dead, others return to pending at nextRunAt.
-func (db *DB) FailJob(ctx context.Context, id string, now, nextRunAt time.Time, errMsg string, dead bool) error {
-	return db.Write(ctx, func(tx Tx) error {
-		var err error
-		if dead {
-			_, err = tx.ExecContext(ctx, `UPDATE jobs SET state = 'dead', locked_until = NULL, last_error = ?, updated_at = ? WHERE id = ?`,
-				errMsg, now.UnixMilli(), id)
-		} else {
-			_, err = tx.ExecContext(ctx, `UPDATE jobs SET state = 'pending', run_at = ?, locked_until = NULL, last_error = ?, updated_at = ? WHERE id = ?`,
-				nextRunAt.UnixMilli(), errMsg, now.UnixMilli(), id)
+// FailJob records a failure for the claim identified by attempts: dead jobs stay
+// dead, others return to pending at nextRunAt. It reports whether a row was
+// updated; false means a newer claim superseded this worker.
+func (db *DB) FailJob(ctx context.Context, id string, attempts int, now, nextRunAt time.Time, errMsg string, dead bool) (bool, error) {
+	if dead {
+		return db.updateClaim(ctx, `UPDATE jobs SET state = 'dead', locked_until = NULL, last_error = ?, updated_at = ?
+			WHERE id = ? AND state = 'running' AND attempts = ?`, errMsg, now.UnixMilli(), id, attempts)
+	}
+	return db.updateClaim(ctx, `UPDATE jobs SET state = 'pending', run_at = ?, locked_until = NULL, last_error = ?, updated_at = ?
+		WHERE id = ? AND state = 'running' AND attempts = ?`, nextRunAt.UnixMilli(), errMsg, now.UnixMilli(), id, attempts)
+}
+
+func (db *DB) updateClaim(ctx context.Context, query string, args ...any) (bool, error) {
+	var n int64
+	err := db.Write(ctx, func(tx Tx) error {
+		res, err := tx.ExecContext(ctx, query, args...)
+		if err != nil {
+			return err
 		}
+		n, err = res.RowsAffected()
 		return err
 	})
+	return n > 0, err
 }
 
 // JobStats returns the job count per state and the age of the oldest due pending job.

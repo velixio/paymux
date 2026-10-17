@@ -150,9 +150,8 @@ func (q *Queue) finish(ctx context.Context, r store.JobRow, h Handler) {
 		q.fail(ctx, r, err, errors.As(err, &perm) || r.Attempts >= r.MaxAttempts)
 		return
 	}
-	if err := q.db.CompleteJob(ctx, r.ID, q.opts.Clock()); err != nil {
-		q.opts.Logger.Error("complete job", "job_id", r.ID, "err", err)
-	}
+	ok, err := q.db.CompleteJob(ctx, r.ID, r.Attempts, q.opts.Clock())
+	q.logUpdate("complete", r, ok, err)
 }
 
 // safeCall runs h, converting a panic into an error so the job is retried.
@@ -168,8 +167,18 @@ func safeCall(ctx context.Context, h Handler, payload json.RawMessage) (err erro
 func (q *Queue) fail(ctx context.Context, r store.JobRow, cause error, dead bool) {
 	now := q.opts.Clock()
 	next := now.Add(Backoff(r.Attempts, q.opts.Jitter()))
-	if err := q.db.FailJob(ctx, r.ID, now, next, cause.Error(), dead); err != nil {
-		q.opts.Logger.Error("fail job", "job_id", r.ID, "err", err)
+	ok, err := q.db.FailJob(ctx, r.ID, r.Attempts, now, next, cause.Error(), dead)
+	q.logUpdate("fail", r, ok, err)
+}
+
+// logUpdate reports a failed or superseded state update.
+func (q *Queue) logUpdate(op string, r store.JobRow, applied bool, err error) {
+	switch {
+	case err != nil:
+		q.opts.Logger.Error(op+" job", "job_id", r.ID, "err", err)
+	case !applied:
+		q.opts.Logger.Warn("stale worker result ignored: job was reclaimed by a newer run",
+			"op", op, "job_id", r.ID, "kind", r.Kind, "attempt", r.Attempts)
 	}
 }
 
