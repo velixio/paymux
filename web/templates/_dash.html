@@ -1,0 +1,12 @@
+{{define "dash_open"}}{{if .DevBanner}}<div class="dev-banner" role="alert">2FA disabled (development)</div>{{end}}
+{{if .User}}<header class="dash-head">
+<strong>Paymux</strong>
+<span class="muted">{{.User.Email}} ({{.User.Role}})</span>
+<form method="post" action="/dashboard/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="linkbtn" type="submit">Log out</button></form>
+</header>
+<div class="dash-body">
+<nav class="dash-nav" aria-label="Main">{{range .Nav}}<a href="{{.Href}}"{{if eq .Key $.Active}} class="active" aria-current="page"{{end}}>{{.Label}}</a>{{end}}</nav>
+<section class="dash-main">{{end}}{{end}}
+
+{{define "dash_close"}}{{if .User}}</section>
+</div>{{end}}{{end}}

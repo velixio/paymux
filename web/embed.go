@@ -4,7 +4,8 @@ package webassets
 
 import "embed"
 
-// FS holds templates/ and static/.
+// FS holds templates/ and static/. "all:" keeps the _partial.html files, which
+// a plain directory embed would silently drop.
 //
-//go:embed templates static
+//go:embed all:templates static
 var FS embed.FS

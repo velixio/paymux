@@ -105,6 +105,18 @@ func NewRenderer(fsys fs.FS) (*Renderer, error) {
 		return nil, err
 	}
 	r := &Renderer{pages: map[string]*template.Template{}}
+	// Files starting with "_" are partials: their templates are available to
+	// every page but they are not pages themselves.
+	var partials []string
+	for _, e := range entries {
+		if n := e.Name(); !e.IsDir() && strings.HasSuffix(n, ".html") && strings.HasPrefix(n, "_") {
+			b, err := fs.ReadFile(fsys, path.Join("templates", n))
+			if err != nil {
+				return nil, err
+			}
+			partials = append(partials, string(b))
+		}
+	}
 	for _, e := range entries {
 		n := e.Name()
 		if e.IsDir() || !strings.HasSuffix(n, ".html") || n == "layout.html" || strings.HasPrefix(n, "_") {
@@ -115,6 +127,12 @@ func NewRenderer(fsys fs.FS) (*Renderer, error) {
 			return nil, err
 		}
 		t, err := template.New("layout").Parse(string(layout))
+		for _, p := range partials {
+			if err != nil {
+				break
+			}
+			_, err = t.Parse(p)
+		}
 		if err == nil {
 			_, err = t.Parse(string(body))
 		}
