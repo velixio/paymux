@@ -33,7 +33,10 @@ func nullStr(s string) any {
 	return s
 }
 
-// InsertJob inserts j inside tx. A dedupe conflict is a silent no-op.
+// InsertJob inserts j inside tx. A conflict on the jobs_dedupe partial unique
+// index is a silent no-op; any other violation (e.g. a duplicate id) is an
+// error. The conflict target with its partial-index predicate is accepted by
+// both SQLite and Postgres.
 func (db *DB) InsertJob(ctx context.Context, tx Tx, j JobRow) error {
 	if j.State == "" {
 		j.State = "pending"
@@ -42,7 +45,7 @@ func (db *DB) InsertJob(ctx context.Context, tx Tx, j JobRow) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO jobs
 		(id, kind, payload, state, run_at, attempts, max_attempts, locked_until, last_error, dedupe_key, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT DO NOTHING`,
+		ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND state IN ('pending','running') DO NOTHING`,
 		j.ID, j.Kind, string(j.Payload), j.State, j.RunAt.UnixMilli(), j.Attempts, j.MaxAttempts,
 		nullTime(j.LockedUntil), nullStr(j.LastError), nullStr(j.DedupeKey), now, now)
 	if err != nil {
