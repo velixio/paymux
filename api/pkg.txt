@@ -15,7 +15,74 @@ func (a *App) Addr() string
 
 func (a *App) InternalAddr() string
 
+func (a *App) OnDisputeOpened(f func(context.Context, DisputeEvent) error)
+
+func (a *App) OnInvoiceIssued(f func(context.Context, InvoiceEvent) error)
+
+func (a *App) OnPaymentFailed(f func(context.Context, PaymentEvent) error)
+
+func (a *App) OnPaymentSucceeded(f func(context.Context, PaymentEvent) error)
+
+func (a *App) OnRefundSucceeded(f func(context.Context, RefundEvent) error)
+
+func (a *App) OnRoute(f func(RouteRequest) []string)
+
+func (a *App) OnSubscriptionRenewed(f func(context.Context, SubscriptionEvent) error)
+
 func (a *App) Start(ctx context.Context) error
+
+type Dispute struct {
+	ID        string    `json:"id"`
+	PaymentID string    `json:"payment_id"`
+	AttemptID string    `json:"attempt_id"`
+	Amount    int64     `json:"amount"`
+	Currency  string    `json:"currency"`
+	Reason    string    `json:"reason"`
+	Status    string    `json:"status"`
+	Stage     string    `json:"stage"`
+	DueBy     time.Time `json:"due_by"`
+	Source    string    `json:"source"`
+	Version   int64     `json:"version"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type DisputeEvent struct {
+	Event   EventInfo
+	Dispute Dispute
+	Raw     json.RawMessage
+}
+
+type EventInfo struct {
+	Type          string
+	OrgID         string
+	AppID         string
+	Mode          string
+	ObjectType    string
+	ObjectID      string
+	ObjectVersion int64
+}
+
+type Invoice struct {
+	ID             string    `json:"id"`
+	Number         string    `json:"number"`
+	PaymentID      string    `json:"payment_id"`
+	SubscriptionID string    `json:"subscription_id"`
+	IssuedAt       time.Time `json:"issued_at"`
+	SupplyType     string    `json:"supply_type"`
+	PlaceOfSupply  string    `json:"place_of_supply"`
+	Currency       string    `json:"currency"`
+	Taxable        int64     `json:"taxable"`
+	CGST           int64     `json:"cgst"`
+	SGST           int64     `json:"sgst"`
+	IGST           int64     `json:"igst"`
+	Total          int64     `json:"total"`
+}
+
+type InvoiceEvent struct {
+	Event   EventInfo
+	Invoice Invoice
+	Raw     json.RawMessage
+}
 
 type Option func(*App)
 
@@ -26,6 +93,92 @@ func WithEmitter(e events.Emitter) Option
 func WithLogger(l *slog.Logger) Option
 
 func WithVerifiers(f inbound.VerifierFunc) Option
+
+type Payment struct {
+	ID             string            `json:"id"`
+	Status         string            `json:"status"`
+	Kind           string            `json:"kind"`
+	Amount         int64             `json:"amount"`
+	Currency       string            `json:"currency"`
+	AmountReceived int64             `json:"amount_received"`
+	AmountRefunded int64             `json:"amount_refunded"`
+	OrderRef       string            `json:"order_ref"`
+	Description    string            `json:"description"`
+	CustomerID     string            `json:"customer_id"`
+	Metadata       map[string]string `json:"metadata"`
+	Flags          []string          `json:"flags"`
+	ExpiresAt      time.Time         `json:"expires_at"`
+	CreatedAt      time.Time         `json:"created_at"`
+	Version        int64             `json:"version"`
+}
+
+type PaymentEvent struct {
+	Event     EventInfo
+	Payment   Payment
+	Reason    string
+	AttemptID string
+	Raw       json.RawMessage
+}
+
+type Refund struct {
+	ID          string    `json:"id"`
+	PaymentID   string    `json:"payment_id"`
+	AttemptID   string    `json:"attempt_id"`
+	Amount      int64     `json:"amount"`
+	Currency    string    `json:"currency"`
+	Status      string    `json:"status"`
+	Reason      string    `json:"reason"`
+	InitiatedBy string    `json:"initiated_by"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type RefundEvent struct {
+	Event         EventInfo
+	Refund        Refund
+	FailureReason string
+	Raw           json.RawMessage
+}
+
+type RouteAccount struct {
+	ID        string
+	Connector string
+	Name      string
+}
+
+type RouteRequest struct {
+	AppID    string
+	Mode     string
+	Currency string
+	Country  string
+	Amount   int64
+	Purpose  string
+	Metadata map[string]string
+	Accounts []RouteAccount
+}
+
+type Subscription struct {
+	ID                 string            `json:"id"`
+	Status             string            `json:"status"`
+	BillingMode        string            `json:"billing_mode"`
+	CustomerID         string            `json:"customer_id"`
+	Amount             int64             `json:"amount"`
+	Currency           string            `json:"currency"`
+	Interval           string            `json:"interval"`
+	IntervalCount      int               `json:"interval_count"`
+	CurrentPeriodStart time.Time         `json:"current_period_start"`
+	CurrentPeriodEnd   time.Time         `json:"current_period_end"`
+	RenewalsDone       int               `json:"renewals_done"`
+	CancelAtPeriodEnd  bool              `json:"cancel_at_period_end"`
+	Metadata           map[string]string `json:"metadata"`
+	Version            int64             `json:"version"`
+}
+
+type SubscriptionEvent struct {
+	Event        EventInfo
+	Subscription Subscription
+	Reason       string
+	Raw          json.RawMessage
+}
 
 
 package connector // import "github.com/paymux/paymux/pkg/connector"
