@@ -22,6 +22,7 @@ type DB struct {
 	writer, reader *sql.DB
 	d              dialect.Dialect
 	unlock         func()
+	path           string // sqlite database file; empty for postgres
 }
 
 type execer interface {

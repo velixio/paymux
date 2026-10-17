@@ -45,5 +45,12 @@ func openSQLite(ctx context.Context, path string) (*DB, error) {
 		return fail(err)
 	}
 	reader.SetMaxOpenConns(4)
-	return &DB{writer: writer, reader: reader, d: dialect.SQLite{}, unlock: unlock}, nil
+	return &DB{writer: writer, reader: reader, d: dialect.SQLite{}, unlock: unlock, path: path}, nil
+}
+
+func mkdir0700(dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create dir %s: %w", dir, err)
+	}
+	return nil
 }

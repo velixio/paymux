@@ -59,3 +59,34 @@ func TestServeReportsMalformedDotEnv(t *testing.T) {
 		t.Fatalf("code=%d stderr=%q", code, errb.String())
 	}
 }
+
+func migrateEnv(dir string) func(string) (string, bool) {
+	env := map[string]string{
+		"PAYMUX_ENV":          "development",
+		"PAYMUX_BASE_URL":     "http://localhost:8080",
+		"PAYMUX_DATA_DIR":     dir,
+		"PAYMUX_ENV_FILE":     filepath.Join(dir, "none.env"),
+		"PAYMUX_MASTER_KEY":   "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=",
+		"PAYMUX_DEV_SKIP_2FA": "true",
+	}
+	return func(k string) (string, bool) { v, ok := env[k]; return v, ok }
+}
+
+func TestMigrateAppliesThenIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	lookup := migrateEnv(dir)
+	var out, errb bytes.Buffer
+	if code := Run(context.Background(), []string{"migrate"}, lookup, &out, &errb); code != 0 {
+		t.Fatalf("code=%d stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "applied 1 migrations (sqlite)") {
+		t.Fatalf("stdout=%q", out.String())
+	}
+	out.Reset()
+	if code := Run(context.Background(), []string{"migrate"}, lookup, &out, &errb); code != 0 {
+		t.Fatalf("second run code=%d stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "applied 0 migrations (sqlite)") {
+		t.Fatalf("stdout=%q", out.String())
+	}
+}

@@ -5,9 +5,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/paymux/paymux"
 	"github.com/paymux/paymux/internal/config"
+	"github.com/paymux/paymux/internal/store"
+	"github.com/paymux/paymux/migrations"
 )
 
 const usage = "usage: paymux <serve|migrate|version>"
@@ -23,9 +26,13 @@ func Run(ctx context.Context, args []string, lookupEnv func(string) (string, boo
 		fmt.Fprintf(stdout, "paymux %s\n", paymux.Version)
 		return 0
 	case "serve", "migrate":
-		if _, err := envWithDotEnv(lookupEnv); err != nil {
+		env, err := envWithDotEnv(lookupEnv)
+		if err != nil {
 			fmt.Fprintf(stderr, "paymux %s: %v\n", args[0], err)
 			return 1
+		}
+		if args[0] == "migrate" {
+			return runMigrate(ctx, env, stdout, stderr)
 		}
 		fmt.Fprintf(stderr, "paymux %s: not implemented\n", args[0])
 		return 1
@@ -47,4 +54,28 @@ func envWithDotEnv(lookupEnv func(string) (string, bool)) (func(string) (string,
 		return nil, err
 	}
 	return config.WithDotEnv(lookupEnv, file), nil
+}
+
+func runMigrate(ctx context.Context, env func(string) (string, bool), stdout, stderr io.Writer) int {
+	cfg, err := config.Load(env)
+	if err != nil {
+		fmt.Fprintf(stderr, "paymux migrate: %v\n", err)
+		return 1
+	}
+	db, err := store.Open(ctx, cfg.DatabaseURL, cfg.DataDir, slog.New(slog.NewTextHandler(stderr, nil)))
+	if err != nil {
+		fmt.Fprintf(stderr, "paymux migrate: %v\n", err)
+		return 1
+	}
+	defer db.Close()
+	n, err := db.PendingMigrations(ctx, migrations.FS)
+	if err == nil {
+		err = db.Migrate(ctx, migrations.FS)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "paymux migrate: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "applied %d migrations (%s)\n", n, db.Dialect().Name())
+	return 0
 }
