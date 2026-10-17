@@ -13,7 +13,11 @@ require (
 )
 
 require (
+	github.com/dlclark/regexp2/v2 v2.8.1 // indirect
+	github.com/dop251/goja v0.0.0-20261016120441-313b6b662e53 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
+	github.com/google/pprof v0.0.0-20260802141513-ef3492d7dac3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
