@@ -49,6 +49,9 @@ type event struct {
 		} `json:"order"`
 		Payment *paymentWire `json:"payment"`
 		Refund  *refundWire  `json:"refund"`
+		// In webhooks error_details is a sibling of payment, not inside it
+		// (verified against Cashfree's published payloads).
+		ErrorDetails *errorDetails `json:"error_details"`
 	} `json:"data"`
 }
 
@@ -70,6 +73,9 @@ func (c *cashfree) ParseWebhook(_ context.Context, req connector.WebhookRequest)
 		}
 		if p.Currency == "" {
 			p.Currency = ev.Data.Order.Currency
+		}
+		if p.ErrorDetails == nil {
+			p.ErrorDetails = ev.Data.ErrorDetails
 		}
 		snap := p.snapshot(ev.Data.Order.OrderID)
 		n.Kind, n.Payment = connector.NotifyPayment, &snap

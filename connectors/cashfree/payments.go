@@ -22,10 +22,12 @@ type paymentWire struct {
 	PaymentTime   string          `json:"payment_time"`
 	PaymentGroup  string          `json:"payment_group"`
 	PaymentMethod json.RawMessage `json:"payment_method"`
-	ErrorDetails  *struct {
-		Code        string `json:"error_code"`
-		Description string `json:"error_description"`
-	} `json:"error_details"`
+	ErrorDetails  *errorDetails   `json:"error_details"`
+}
+
+type errorDetails struct {
+	Code        string `json:"error_code"`
+	Description string `json:"error_description"`
 }
 
 // paymentID is the id Paymux stores for a payment: the order is part of it, so

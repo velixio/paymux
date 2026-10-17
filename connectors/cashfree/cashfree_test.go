@@ -193,7 +193,7 @@ func TestParseWebhook(t *testing.T) {
 		code   string
 	}{
 		{"event_payment_success", connector.PaymentSucceeded, ""},
-		{"event_payment_failed", connector.PaymentFailed, "TRANSACTION_DECLINED"},
+		{"event_payment_failed", connector.PaymentFailed, "GATEWAY_ERROR"},
 		{"event_payment_user_dropped", connector.PaymentCanceled, ""},
 	}
 	for _, tc := range cases {
