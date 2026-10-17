@@ -289,6 +289,8 @@ type Notification struct {
 	Subscription *SubscriptionSnapshot `json:"subscription,omitempty"`
 }
 
+func (n Notification) Validate() error
+
 type NotificationKind string
 
 const (
