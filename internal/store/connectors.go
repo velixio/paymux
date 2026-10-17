@@ -268,3 +268,72 @@ func MarkProviderEventProcessed(ctx context.Context, tx Tx, id string, at time.T
 	_, err := tx.ExecContext(ctx, "UPDATE provider_events SET processed_at = ?, error = ? WHERE id = ?", ms(at), nullIfEmpty(errText), id)
 	return err
 }
+
+// GetDomainByID loads a domain by id.
+func GetDomainByID(ctx context.Context, q Queryer, id string) (Domain, error) {
+	var host string
+	if err := q.QueryRowContext(ctx, "SELECT host FROM app_domains WHERE id = ?", id).Scan(&host); err != nil {
+		return Domain{}, notFound(err)
+	}
+	return GetDomainByHost(ctx, q, host)
+}
+
+// ListDomainsByStatus returns the domains in one status, oldest first.
+func ListDomainsByStatus(ctx context.Context, q Queryer, status string) ([]Domain, error) {
+	rows, err := q.QueryContext(ctx, "SELECT host FROM app_domains WHERE status = ? ORDER BY created_at, id", status)
+	if err != nil {
+		return nil, err
+	}
+	var hosts []string
+	for rows.Next() {
+		var h string
+		if err := rows.Scan(&h); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		hosts = append(hosts, h)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]Domain, 0, len(hosts))
+	for _, h := range hosts {
+		d, err := GetDomainByHost(ctx, q, h)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
+// UpdateDomainCheck records the result of an activation check: the new status,
+// the error text ("" clears it) and the check time.
+func UpdateDomainCheck(ctx context.Context, tx Tx, id, status, errText string, now time.Time) error {
+	_, err := tx.ExecContext(ctx, "UPDATE app_domains SET status = ?, last_error = ?, last_check_at = ? WHERE id = ?",
+		status, nullIfEmpty(errText), ms(now), id)
+	return err
+}
+
+// ResetDomain puts a failed domain back to pending with a fresh activation
+// grace period (created_at is the start of the grace period).
+func ResetDomain(ctx context.Context, tx Tx, id string, now time.Time) error {
+	_, err := tx.ExecContext(ctx, "UPDATE app_domains SET status = 'pending', last_error = NULL, created_at = ? WHERE id = ?", ms(now), id)
+	return err
+}
+
+// CountAttemptsSince counts the account's attempts created at or after since.
+func CountAttemptsSince(ctx context.Context, q Queryer, accountID string, since time.Time) (int, error) {
+	var n int
+	err := q.QueryRowContext(ctx, "SELECT COUNT(*) FROM payment_attempts WHERE provider_account_id = ? AND created_at >= ?", accountID, ms(since)).Scan(&n)
+	return n, err
+}
+
+// CountVerifiedEventsSince counts verified inbound webhooks of the account
+// received at or after since.
+func CountVerifiedEventsSince(ctx context.Context, q Queryer, accountID string, since time.Time) (int, error) {
+	var n int
+	err := q.QueryRowContext(ctx, "SELECT COUNT(*) FROM provider_events WHERE provider_account_id = ? AND verified = 1 AND received_at >= ?", accountID, ms(since)).Scan(&n)
+	return n, err
+}

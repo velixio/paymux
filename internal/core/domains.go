@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"net"
@@ -86,4 +87,43 @@ func (s *Service) LookupHost(ctx context.Context, host string) (domains.Domain, 
 		return domains.Domain{}, false, err
 	}
 	return domains.Domain{AppID: d.AppID, Status: d.Status}, true, nil
+}
+
+// VerifyDomainToken reports whether token is the activation token of host. It
+// answers GET /.well-known/paymux/<token> on custom domains.
+func (s *Service) VerifyDomainToken(ctx context.Context, host, token string) bool {
+	if token == "" {
+		return false
+	}
+	var d store.Domain
+	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+		d, err = store.GetDomainByHost(ctx, q, domains.Normalize(host))
+		return
+	})
+	return err == nil && subtle.ConstantTimeCompare([]byte(d.Token), []byte(token)) == 1
+}
+
+// RecheckDomain puts a failed domain of the scope's org back to pending so
+// the activation check tries again for another grace period.
+func (s *Service) RecheckDomain(ctx context.Context, actor audit.Actor, sc OrgScope, domainID string) error {
+	if err := sc.validate(); err != nil {
+		return err
+	}
+	return s.db.Write(ctx, func(tx store.Tx) error {
+		d, err := store.GetDomainByID(ctx, tx, domainID)
+		if errors.Is(err, store.ErrNotFound) || err == nil && d.OrgID != sc.OrgID {
+			return newErr(ErrNotFound, "domain not found")
+		}
+		if err != nil {
+			return err
+		}
+		if d.Status != domains.StatusFailed {
+			return newErr(ErrInvalidState, "only a failed domain can be rechecked, this one is %s", d.Status)
+		}
+		if err := store.ResetDomain(ctx, tx, d.ID, s.nowUTC()); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{OrgID: sc.OrgID, Actor: actor, Action: "domain.recheck", Target: d.ID,
+			After: map[string]string{"host": d.Host}})
+	})
 }
