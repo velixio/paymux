@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test of the real binary: builds dist/paymux, starts it on a fresh data
+# Smoke test of the real binary: builds bin/paymux, starts it on a fresh data
 # directory, completes first-run setup over HTTP, adds a simulator provider
 # account, and drives a payment to success, a signed webhook to a local
 # receiver, an invoice PDF and a refund (scripts/smoke.py does the driving).
@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.."
 
 command -v python3 >/dev/null || { echo "smoke: python3 is required" >&2; exit 1; }
 
-echo "==> building dist/paymux"
+echo "==> building bin/paymux"
 make build >/dev/null
 
 free_port() {
@@ -70,7 +70,7 @@ run_one() {
 		PAYMUX_DEV_SKIP_2FA=true \
 		PAYMUX_ALLOW_PRIVATE_WEBHOOKS=true \
 		${url:+PAYMUX_DATABASE_URL="$url"} \
-		dist/paymux serve >"$tmp/server.log" 2>&1 &
+		bin/paymux serve >"$tmp/server.log" 2>&1 &
 	pid=$!
 
 	local i

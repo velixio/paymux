@@ -1,5 +1,6 @@
 /data/
 /dist/
+/bin/
 .env
 /.claude/
 /.playwright-mcp/

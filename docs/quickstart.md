@@ -14,11 +14,11 @@ Either build it:
 
 ```bash
 git clone https://github.com/velixio/paymux && cd paymux
-make build                  # writes dist/paymux
+make build                  # writes bin/paymux
 ```
 
 or download `paymux_<version>_<os>_<arch>.tar.gz` from the releases page,
-unpack it, and use that `paymux` instead of `dist/paymux` below.
+unpack it, and use that `paymux` instead of `bin/paymux` below.
 
 ## 2. Start it (1 minute)
 
@@ -33,7 +33,7 @@ PAYMUX_MASTER_KEY=$(head -c32 /dev/urandom | base64)
 PAYMUX_DEV_SKIP_2FA=true
 PAYMUX_ALLOW_PRIVATE_WEBHOOKS=true
 EOF
-./dist/paymux serve
+./bin/paymux serve
 ```
 
 What those say: `development` relaxes production-only checks;

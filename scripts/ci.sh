@@ -37,9 +37,9 @@ step "smoke test of the real binary (SQLite; scripts/smoke.sh runs PostgreSQL to
 PAYMUX_SMOKE_SQLITE_ONLY=1 bash scripts/smoke.sh
 
 step "cross builds (CGO_ENABLED=0)"
-mkdir -p dist
+mkdir -p bin
 for arch in amd64 arm64; do
-  CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -o "dist/paymux-linux-$arch" ./cmd/paymux
+  CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -o "bin/paymux-linux-$arch" ./cmd/paymux
 done
 
 step "docker build (skipped when docker is not usable)"

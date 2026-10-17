@@ -3,7 +3,7 @@ VERSION ?= $(shell git describe --always --dirty 2>/dev/null || echo dev)
 .PHONY: build test test-pg test-all fmt ci run-dev
 
 build:
-	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/paymux/paymux.Version=$(VERSION)" -o dist/paymux ./cmd/paymux
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/paymux/paymux.Version=$(VERSION)" -o bin/paymux ./cmd/paymux
 
 test:
 	go test -race -timeout 30m ./...
