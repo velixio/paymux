@@ -214,6 +214,26 @@ for every currency, that `Info` and the implemented interfaces agree, that
 `CreateCheckout` returns a valid `NextAction`, and that the SDK types
 round-trip through JSON.
 
+### Fuzzing
+
+Every connector has `FuzzVerifyWebhook` and `FuzzParseWebhook` (see
+`connectors/whop/fuzz_test.go` for the shortest example), seeded with the golden
+fixtures. Their invariants are the contract of the two methods:
+
+* nothing panics, whatever the bytes;
+* `VerifyWebhook` returns only nil, `ErrInvalidSignature` or `ErrUnsigned`, and
+  never nil for a body that differs from the signed one (a provider that signs
+  only some fields, like PayU, can only be held to those fields: say so in the test);
+* `ParseWebhook` results pass `connectortest.CheckNotifications` (the same check
+  as `Notification.Validate`): event id and type present, the snapshot of the
+  notification's kind present, and a provider id in it.
+
+Call `Validate` on what you are about to return from `ParseWebhook`: fuzzing
+found empty entities (`{"dispute":{}}`) being turned into notifications that
+could not be matched to anything. In CI the targets run as ordinary tests over
+the seeds and over every crashing input a fuzz run saved under
+`testdata/fuzz/`; to fuzz for real run `bash scripts/fuzz.sh [fuzztime]`.
+
 ### Fake-server patterns
 
 Never call a real provider in tests.
