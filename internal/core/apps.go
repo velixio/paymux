@@ -9,6 +9,7 @@ import (
 	"errors"
 	"math/big"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -146,26 +147,65 @@ func keyPrefix(token string) string {
 // CreateAPIKey creates a key for the app in the given mode and returns the
 // plaintext token. It is shown once: only its SHA-256 is stored.
 func (s *Service) CreateAPIKey(ctx context.Context, actor audit.Actor, sc OrgScope, appID, mode string) (string, store.APIKey, error) {
+	return s.CreateAPIKeyWith(ctx, actor, sc, appID, mode, KeyOptions{})
+}
+
+// KeyOptions are the optional properties of a new API key.
+type KeyOptions struct {
+	// Scopes limits the key (see authz.AllScopes). Nil means every scope.
+	Scopes []string
+}
+
+// ValidateScopes checks a scope list: nil is fine (all scopes); otherwise it
+// must be non-empty, known and free of duplicates. The result is sorted in the
+// canonical order of authz.AllScopes.
+func ValidateScopes(scopes []string) ([]string, error) {
+	if scopes == nil {
+		return nil, nil
+	}
+	if len(scopes) == 0 {
+		return nil, newErr(ErrInvalid, "a scoped key needs at least one scope; omit scopes for a full-access key")
+	}
+	var out []string
+	for _, want := range authz.AllScopes {
+		if slices.Contains(scopes, want) {
+			out = append(out, want)
+		}
+	}
+	for _, sc := range scopes {
+		if !authz.ValidScope(sc) {
+			return nil, newErr(ErrInvalid, "unknown scope %q (valid: %s)", sc, strings.Join(authz.AllScopes, ", "))
+		}
+	}
+	return out, nil
+}
+
+// CreateAPIKeyWith is CreateAPIKey with options.
+func (s *Service) CreateAPIKeyWith(ctx context.Context, actor audit.Actor, sc OrgScope, appID, mode string, opts KeyOptions) (string, store.APIKey, error) {
 	if err := sc.validate(); err != nil {
 		return "", store.APIKey{}, err
 	}
 	if mode != "test" && mode != "live" {
 		return "", store.APIKey{}, newErr(ErrInvalid, "mode must be test or live")
 	}
+	scopes, err := ValidateScopes(opts.Scopes)
+	if err != nil {
+		return "", store.APIKey{}, err
+	}
 	token := newKeyToken(mode)
 	var key store.APIKey
-	err := s.db.Write(ctx, func(tx store.Tx) error {
+	err = s.db.Write(ctx, func(tx store.Tx) error {
 		app, err := store.GetAppInOrg(ctx, tx, sc.OrgID, appID)
 		if err != nil {
 			return mapStoreErr(err, "app")
 		}
 		key = store.APIKey{ID: ids.New("key"), OrgID: app.OrgID, AppID: app.ID, Mode: mode, Prefix: keyPrefix(token),
-			Hash: keyHash(token), CreatedAt: s.nowUTC()}
+			Hash: keyHash(token), CreatedAt: s.nowUTC(), Scopes: scopes}
 		if err := store.InsertAPIKey(ctx, tx, key); err != nil {
 			return err
 		}
 		return audit.Record(ctx, tx, audit.Entry{OrgID: app.OrgID, Actor: actor, Action: "api_key.create", Target: key.ID,
-			After: map[string]string{"app_id": app.ID, "mode": mode, "prefix": key.Prefix}})
+			After: map[string]any{"app_id": app.ID, "mode": mode, "prefix": key.Prefix, "scopes": scopeLabel(scopes)}})
 	})
 	if err != nil {
 		return "", store.APIKey{}, err
@@ -173,9 +213,72 @@ func (s *Service) CreateAPIKey(ctx context.Context, actor audit.Actor, sc OrgSco
 	return token, key, nil
 }
 
+// scopeLabel renders scopes for the audit log: "all" for a full-access key.
+func scopeLabel(scopes []string) string {
+	if scopes == nil {
+		return "all"
+	}
+	return strings.Join(scopes, ",")
+}
+
+// RotateAPIKey creates a new key for the app and mode and makes the keys that
+// are live now stop working after grace; both work meanwhile. The new key takes
+// the scopes of the newest key it replaces (all scopes when there is none)
+// unless opts.Scopes is set. It returns the new token, the new key and the
+// keys that were given an expiry.
+func (s *Service) RotateAPIKey(ctx context.Context, actor audit.Actor, sc OrgScope, appID, mode string, grace time.Duration, opts KeyOptions) (string, store.APIKey, []store.APIKey, error) {
+	if err := sc.validate(); err != nil {
+		return "", store.APIKey{}, nil, err
+	}
+	if mode != "test" && mode != "live" {
+		return "", store.APIKey{}, nil, newErr(ErrInvalid, "mode must be test or live")
+	}
+	if grace <= 0 {
+		return "", store.APIKey{}, nil, newErr(ErrInvalid, "the grace period must be positive")
+	}
+	scopes, err := ValidateScopes(opts.Scopes)
+	if err != nil {
+		return "", store.APIKey{}, nil, err
+	}
+	token := newKeyToken(mode)
+	var key store.APIKey
+	var expired []store.APIKey
+	err = s.db.Write(ctx, func(tx store.Tx) error {
+		app, err := store.GetAppInOrg(ctx, tx, sc.OrgID, appID)
+		if err != nil {
+			return mapStoreErr(err, "app")
+		}
+		now := s.nowUTC()
+		key = store.APIKey{ID: ids.New("key"), OrgID: app.OrgID, AppID: app.ID, Mode: mode, Prefix: keyPrefix(token),
+			Hash: keyHash(token), CreatedAt: now, Scopes: scopes}
+		if expired, err = store.ExpireAPIKeys(ctx, tx, app.ID, mode, key.ID, now.Add(grace)); err != nil {
+			return err
+		}
+		if opts.Scopes == nil && len(expired) > 0 {
+			key.Scopes = expired[len(expired)-1].Scopes // the newest old key
+		}
+		if err := store.InsertAPIKey(ctx, tx, key); err != nil {
+			return err
+		}
+		expiring := make([]string, len(expired))
+		for i, k := range expired {
+			expiring[i] = k.ID
+		}
+		return audit.Record(ctx, tx, audit.Entry{OrgID: app.OrgID, Actor: actor, Action: "api_key.rotate", Target: key.ID,
+			After: map[string]any{"app_id": app.ID, "mode": mode, "prefix": key.Prefix, "scopes": scopeLabel(key.Scopes),
+				"expiring": expiring, "expires_at": now.Add(grace).Format(time.RFC3339)}})
+	})
+	if err != nil {
+		return "", store.APIKey{}, nil, err
+	}
+	return token, key, expired, nil
+}
+
 // Principal is the identity behind an authenticated API key.
 type Principal struct {
 	KeyID, OrgID, AppID, Mode string
+	// Scopes limits what the key may do; nil means every scope.
+	Scopes []string
 }
 
 // dummyHash makes lookups of unknown prefixes cost the same comparison.
@@ -200,12 +303,14 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Principal, er
 		key.Hash = dummyHash
 	}
 	match := subtle.ConstantTimeCompare([]byte(keyHash(token)), []byte(key.Hash)) == 1
-	if lookupErr != nil || !match || !key.RevokedAt.IsZero() || !strings.HasPrefix(token, "pmx_"+key.Mode+"_sk_") {
+	now := s.nowUTC()
+	expired := !key.ExpiresAt.IsZero() && !now.Before(key.ExpiresAt) // a rotated-out key past its grace period
+	if lookupErr != nil || !match || !key.RevokedAt.IsZero() || expired || !strings.HasPrefix(token, "pmx_"+key.Mode+"_sk_") {
 		return Principal{}, ErrUnauthenticated
 	}
-	if now := s.nowUTC(); key.LastUsedAt.IsZero() || now.Sub(key.LastUsedAt) > touchEvery {
+	if key.LastUsedAt.IsZero() || now.Sub(key.LastUsedAt) > touchEvery {
 		// Best effort: a failed touch must not fail the request.
 		_ = s.db.Write(ctx, func(tx store.Tx) error { return store.TouchAPIKey(ctx, tx, key.ID, now, touchEvery) })
 	}
-	return Principal{KeyID: key.ID, OrgID: key.OrgID, AppID: key.AppID, Mode: key.Mode}, nil
+	return Principal{KeyID: key.ID, OrgID: key.OrgID, AppID: key.AppID, Mode: key.Mode, Scopes: key.Scopes}, nil
 }
