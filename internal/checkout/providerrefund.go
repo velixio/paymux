@@ -62,6 +62,8 @@ func ImportRefund(ctx context.Context, db *store.DB, c *core.Service, accountID 
 func (s *Service) importProviderRefund(ctx context.Context, ev store.ProviderEventRow, n connector.Notification) error {
 	rs := n.Refund
 	unknown := func() error {
+		s.o.Logger.Info("checkout: a refund notification is not one of our refunds or payments; recorded as unknown",
+			"account", ev.ProviderAccountID, "refund", firstNonEmpty(rs.ProviderRefundID, rs.ProviderRef))
 		return s.recordUnknown(ctx, ev, "refund", firstNonEmpty(rs.ProviderRefundID, rs.ProviderRef), n)
 	}
 	live, err := s.o.Conns.Get(ctx, ev.ProviderAccountID)

@@ -305,7 +305,28 @@ func (s *Service) syncAttempt(ctx context.Context, attemptID string, hint connec
 	if err != nil {
 		return core.ApplyResult{}, err
 	}
+	if !snapshotIsOurs(a, snap) {
+		// The provider answered for an id that was handed to us (a return
+		// URL's payment_id, a notification) with a payment that belongs to
+		// something else. It is not applied: nothing about this attempt is known.
+		s.o.Logger.Warn("checkout: the provider returned a payment that is not this attempt's; ignored", "attempt", a.ID,
+			"account", a.ProviderAccountID, "provider_payment", snap.ProviderPaymentID)
+		p, perr := s.o.Core.GetPaymentByID(ctx, a.PaymentID)
+		return core.ApplyResult{Payment: p, Attempt: a}, perr
+	}
 	return s.o.Core.ApplyAttemptSnapshot(ctx, a.ID, ToSnapshot(snap))
+}
+
+// snapshotIsOurs reports whether a payment fetched from the provider can be
+// the attempt's: where both sides name a reference or an order, they agree.
+func snapshotIsOurs(a store.Attempt, snap connector.PaymentSnapshot) bool {
+	if snap.ProviderRef != "" && a.ProviderRef != "" && snap.ProviderRef != a.ProviderRef {
+		return false
+	}
+	if snap.ProviderOrderID != "" && a.ProviderOrderID != "" && snap.ProviderOrderID != a.ProviderOrderID {
+		return false
+	}
+	return true
 }
 
 func firstNonEmpty(a, b string) string {
