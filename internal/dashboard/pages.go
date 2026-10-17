@@ -54,10 +54,17 @@ type Page struct {
 
 	// reconciliation
 	ReconAccounts []reconAcct
-	ReconRuns     []reconRunRow
-	ReconItems    []reconItemRow
-	ReconFilter   reconFilter
-	ReconKinds    []string
+
+	// appearance
+	ThemeRows      []themeRow
+	CurrentTheme   string
+	Languages      []string
+	AppearanceRows []appearanceRow
+	PreviewTheme   themeRow
+	ReconRuns      []reconRunRow
+	ReconItems     []reconItemRow
+	ReconFilter    reconFilter
+	ReconKinds     []string
 
 	// provider accounts
 	Providers []provRow
@@ -97,6 +104,7 @@ func (d *Dashboard) routesPages() {
 	d.routesDomains()
 	d.routesDisputes()
 	d.routesRecon()
+	d.routesAppearance()
 }
 
 // orgID returns the single org's id (cached once found).

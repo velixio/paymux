@@ -28,6 +28,7 @@ import (
 	"github.com/paymux/paymux/internal/disputes"
 	"github.com/paymux/paymux/internal/invoice"
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/look"
 	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/reconcile"
 	"github.com/paymux/paymux/internal/secrets"
@@ -59,9 +60,11 @@ const (
 
 // Options configures a Dashboard.
 type Options struct {
-	DB         *store.DB
-	Box        *secrets.Box // encrypts TOTP secrets
-	Renderer   *web.Renderer
+	DB       *store.DB
+	Box      *secrets.Box // encrypts TOTP secrets
+	Renderer *web.Renderer
+	// Themes lists the installed themes for the Appearance page (nil: none).
+	Themes     *web.Themes
 	MasterKey  []byte // derives the CSRF and login-ticket keys
 	BaseURL    *url.URL
 	DevSkip2FA bool
@@ -156,7 +159,7 @@ var navItems = []navItem{
 	{"invoices", "Invoices", prefix + "/invoices"}, {"reports", "Reports", prefix + "/reports"},
 	{"apps", "Apps", prefix + "/apps"}, {"providers", "Providers", prefix + "/providers"},
 	{"tax-entities", "Tax entities", prefix + "/tax-entities"}, {"fx", "FX rates", prefix + "/fx"},
-	{"settings", "Settings", prefix + "/settings"}, {"audit", "Audit", prefix + "/audit"}, {"users", "Users", prefix + "/users"},
+	{"settings", "Settings", prefix + "/settings"}, {"appearance", "Appearance", prefix + "/appearance"}, {"audit", "Audit", prefix + "/audit"}, {"users", "Users", prefix + "/users"},
 }
 
 type navItem struct{ Key, Label, Href string }
@@ -244,10 +247,26 @@ type userRow struct {
 	IsSelf          bool
 }
 
+// dashboardTheme is the org's theme, which the dashboard wears.
+func (d *Dashboard) dashboardTheme(ctx context.Context) string {
+	return look.Dashboard(ctx, d.o.Settings)
+}
+
+// themedRenderer is the renderer drawing in the org's theme.
+func (d *Dashboard) themedRenderer() *web.Renderer {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return d.o.Renderer.With(d.dashboardTheme(ctx), "")
+}
+
 func (d *Dashboard) render(w http.ResponseWriter, status int, page string, v view) {
+	d.renderWith(w, status, d.themedRenderer(), page, v)
+}
+
+func (d *Dashboard) renderWith(w http.ResponseWriter, status int, rend *web.Renderer, page string, v view) {
 	v.DevBanner = d.o.DevSkip2FA
 	var buf bytes.Buffer
-	if err := d.o.Renderer.Render(&buf, page, v); err != nil {
+	if err := rend.Render(&buf, page, v); err != nil {
 		d.o.Logger.Error("dashboard: render", "page", page, "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

@@ -90,3 +90,6 @@ textarea.json.wide { width: 100%; min-width: 22em; min-height: 7em; font-family:
 .rule-card .field { width: 100%; margin: 4px 0 0; color: var(--color-fg); }
 .table-scroll { overflow-x: auto; max-width: 100%; }
 html, body { max-width: 100%; overflow-x: hidden; }
+
+/* Appearance preview: a customer-page card inside the dashboard. */
+.card.sample { text-align: left; margin: 16px 0; border: 1px solid var(--color-line); border-radius: var(--radius); }

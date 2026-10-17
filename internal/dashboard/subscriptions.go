@@ -70,7 +70,7 @@ func (d *Dashboard) routesSubscriptions() {
 func (d *Dashboard) renderSubs(w http.ResponseWriter, status int, page string, v subsView) {
 	v.DevBanner = d.o.DevSkip2FA
 	var buf bytes.Buffer
-	if err := d.o.Renderer.Render(&buf, page, v); err != nil {
+	if err := d.themedRenderer().Render(&buf, page, v); err != nil {
 		d.o.Logger.Error("dashboard: render", "page", page, "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
