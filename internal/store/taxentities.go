@@ -17,11 +17,15 @@ type TaxEntity struct {
 	InvoicePrefix, CreditNotePrefix, LogoBlobID           string
 	SignatoryName, FooterNote, SupportEmail, TurnoverBand string
 	CreatedAt, UpdatedAt                                  time.Time
+	// DSCSubject and DSCNotAfter describe the digital signature certificate
+	// uploaded for the entity, if any; the sealed file is EntityDSC.
+	DSCSubject  string
+	DSCNotAfter time.Time
 }
 
 const taxEntityCols = `id, org_id, legal_name, trade_name, gstin, pan, address, state_code, COALESCE(lut_number,''),
 	COALESCE(lut_valid_from,0), COALESCE(lut_valid_to,0), invoice_prefix, credit_note_prefix, COALESCE(logo_blob_id,''),
-	signatory_name, footer_note, support_email, turnover_band, created_at, updated_at`
+	signatory_name, footer_note, support_email, turnover_band, created_at, updated_at, dsc_subject, COALESCE(dsc_not_after,0)`
 
 func zeroMS(t time.Time) any {
 	if t.IsZero() {
@@ -39,13 +43,14 @@ func fromMSZero(v int64) time.Time {
 
 func scanTaxEntity(row interface{ Scan(...any) error }) (TaxEntity, error) {
 	var e TaxEntity
-	var from, to, created, updated int64
+	var from, to, created, updated, dscNotAfter int64
 	err := row.Scan(&e.ID, &e.OrgID, &e.LegalName, &e.TradeName, &e.GSTIN, &e.PAN, &e.Address, &e.StateCode, &e.LUTNumber,
 		&from, &to, &e.InvoicePrefix, &e.CreditNotePrefix, &e.LogoBlobID, &e.SignatoryName, &e.FooterNote,
-		&e.SupportEmail, &e.TurnoverBand, &created, &updated)
+		&e.SupportEmail, &e.TurnoverBand, &created, &updated, &e.DSCSubject, &dscNotAfter)
 	if err != nil {
 		return TaxEntity{}, notFound(err)
 	}
+	e.DSCNotAfter = fromMSZero(dscNotAfter)
 	e.LUTValidFrom, e.LUTValidTo = fromMSZero(from), fromMSZero(to)
 	e.CreatedAt, e.UpdatedAt = fromMS(created), fromMS(updated)
 	return e, nil
@@ -160,4 +165,53 @@ func GetFXRate(ctx context.Context, q Queryer, orgID, currency, date string) (FX
 		return FXRate{}, notFound(err)
 	}
 	return r, nil
+}
+
+// EntityDSC is the digital signature certificate of a tax entity. Enc is the
+// PKCS#12 file and its password, sealed by the caller; the rest is readable.
+type EntityDSC struct {
+	Enc                  []byte
+	Subject, Fingerprint string
+	NotAfter, UploadedAt time.Time
+}
+
+// SetTaxEntityDSC stores (or replaces) the entity's DSC; ErrNotFound for an unknown entity.
+func SetTaxEntityDSC(ctx context.Context, tx Tx, entityID string, d EntityDSC, now time.Time) error {
+	res, err := tx.ExecContext(ctx, `UPDATE tax_entities SET dsc_enc = ?, dsc_subject = ?, dsc_fingerprint = ?, dsc_not_after = ?,
+		dsc_uploaded_at = ?, updated_at = ? WHERE id = ?`, d.Enc, d.Subject, d.Fingerprint, ms(d.NotAfter), ms(d.UploadedAt), ms(now), entityID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ClearTaxEntityDSC removes the entity's DSC; ErrNotFound for an unknown entity.
+func ClearTaxEntityDSC(ctx context.Context, tx Tx, entityID string, now time.Time) error {
+	res, err := tx.ExecContext(ctx, `UPDATE tax_entities SET dsc_enc = NULL, dsc_subject = '', dsc_fingerprint = '', dsc_not_after = NULL,
+		dsc_uploaded_at = NULL, updated_at = ? WHERE id = ?`, ms(now), entityID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// GetTaxEntityDSC loads the entity's DSC; ok is false when it has none.
+func GetTaxEntityDSC(ctx context.Context, q Queryer, entityID string) (d EntityDSC, ok bool, err error) {
+	var notAfter, uploaded int64
+	err = q.QueryRowContext(ctx, `SELECT dsc_enc, dsc_subject, dsc_fingerprint, COALESCE(dsc_not_after,0), COALESCE(dsc_uploaded_at,0)
+		FROM tax_entities WHERE id = ?`, entityID).Scan(&d.Enc, &d.Subject, &d.Fingerprint, &notAfter, &uploaded)
+	if err != nil {
+		return EntityDSC{}, false, notFound(err)
+	}
+	if len(d.Enc) == 0 {
+		return EntityDSC{}, false, nil
+	}
+	d.NotAfter, d.UploadedAt = fromMSZero(notAfter), fromMSZero(uploaded)
+	return d, true, nil
 }

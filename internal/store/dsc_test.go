@@ -39,7 +39,10 @@ func TestTaxEntityDSCRoundTrip(t *testing.T) {
 		}
 		// The entity itself is untouched and its listing does not carry the sealed blob.
 		var list []store.TaxEntity
-		_ = db.Read(ctx, func(q store.Querier) (err error) { list, err = store.ListTaxEntities(ctx, q, store.DefaultOrgID); return })
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			list, err = store.ListTaxEntities(ctx, q, store.DefaultOrgID)
+			return
+		})
 		if len(list) != 1 || list[0].DSCSubject != "CN=Test Signatory" || !list[0].DSCNotAfter.Equal(want.NotAfter) {
 			t.Errorf("entity = %+v", list)
 		}
@@ -55,7 +58,10 @@ func TestTaxEntityDSCRoundTrip(t *testing.T) {
 		if _, ok := read(); ok {
 			t.Error("still there after Clear")
 		}
-		_ = db.Read(ctx, func(q store.Querier) (err error) { list, err = store.ListTaxEntities(ctx, q, store.DefaultOrgID); return })
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			list, err = store.ListTaxEntities(ctx, q, store.DefaultOrgID)
+			return
+		})
 		if list[0].DSCSubject != "" || !list[0].DSCNotAfter.IsZero() {
 			t.Errorf("entity after clear = %+v", list[0])
 		}
