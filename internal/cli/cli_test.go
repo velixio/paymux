@@ -90,3 +90,17 @@ func TestMigrateAppliesThenIsIdempotent(t *testing.T) {
 		t.Fatalf("stdout=%q", out.String())
 	}
 }
+
+func TestServeMissingConfigExit1(t *testing.T) {
+	var out, errb bytes.Buffer
+	lookup := func(k string) (string, bool) {
+		if k == "PAYMUX_ENV_FILE" {
+			return filepath.Join(t.TempDir(), "absent.env"), true
+		}
+		return "", false
+	}
+	code := Run(context.Background(), []string{"serve"}, lookup, &out, &errb)
+	if code != 1 || !strings.Contains(errb.String(), "PAYMUX_BASE_URL is required") {
+		t.Fatalf("code=%d stderr=%q", code, errb.String())
+	}
+}

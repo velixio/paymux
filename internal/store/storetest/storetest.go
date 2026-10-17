@@ -27,9 +27,10 @@ func SQLite(t *testing.T) *store.DB {
 	return db
 }
 
-// Postgres opens a store on a fresh random schema. Without
-// PAYMUX_TEST_POSTGRES_URL it skips, or fails if PAYMUX_REQUIRE_PG=1.
-func Postgres(t *testing.T) *store.DB {
+// PostgresURL creates a fresh random schema and returns a database URL that
+// uses it; the schema is dropped on cleanup. Without PAYMUX_TEST_POSTGRES_URL
+// it skips, or fails if PAYMUX_REQUIRE_PG=1.
+func PostgresURL(t *testing.T) string {
 	t.Helper()
 	raw := os.Getenv("PAYMUX_TEST_POSTGRES_URL")
 	if raw == "" {
@@ -60,8 +61,13 @@ func Postgres(t *testing.T) *store.DB {
 	q := u.Query()
 	q.Set("search_path", schema)
 	u.RawQuery = q.Encode()
+	return u.String()
+}
 
-	db, err := store.Open(ctx, u.String(), t.TempDir(), slog.New(slog.DiscardHandler))
+// Postgres opens a store on a fresh random schema.
+func Postgres(t *testing.T) *store.DB {
+	t.Helper()
+	db, err := store.Open(context.Background(), PostgresURL(t), t.TempDir(), slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}

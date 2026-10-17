@@ -34,8 +34,7 @@ func Run(ctx context.Context, args []string, lookupEnv func(string) (string, boo
 		if args[0] == "migrate" {
 			return runMigrate(ctx, env, stdout, stderr)
 		}
-		fmt.Fprintf(stderr, "paymux %s: not implemented\n", args[0])
-		return 1
+		return runServe(ctx, env, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n%s\n", args[0], usage)
 		return 2
@@ -54,6 +53,23 @@ func envWithDotEnv(lookupEnv func(string) (string, bool)) (func(string) (string,
 		return nil, err
 	}
 	return config.WithDotEnv(lookupEnv, file), nil
+}
+
+func runServe(ctx context.Context, env func(string) (string, bool), stderr io.Writer) int {
+	cfg, err := config.Load(env)
+	if err != nil {
+		fmt.Fprintf(stderr, "paymux serve: invalid configuration:\n%v\n", err)
+		return 1
+	}
+	app, err := paymux.New(cfg)
+	if err == nil {
+		err = app.Start(ctx)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "paymux serve: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 func runMigrate(ctx context.Context, env func(string) (string, bool), stdout, stderr io.Writer) int {
