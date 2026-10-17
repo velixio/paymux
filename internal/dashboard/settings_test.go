@@ -214,8 +214,8 @@ func TestRoutingTestBox(t *testing.T) {
 		e.seedAccounts()
 		app := e.seedApp("alpha")
 		viewer := e.roleClient("viewer")
-		try := func(q string) string {
-			return e.pageOK(viewer, "/dashboard/settings?test=1&"+q)
+		try := func(q string) string { // just the result box, not the editor around it
+			return regexpFind(t, `(?s)(<div class="route-result">.*?</div>)`, e.pageOK(viewer, "/dashboard/settings?test=1&"+q))
 		}
 		// a currency with its own rule (the seeded defaults)
 		body := try("mode=live&currency=INR&country=IN&amount=100000&purpose=one_time")
