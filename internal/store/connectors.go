@@ -142,6 +142,9 @@ func ListUnknownObjects(ctx context.Context, q Queryer, accountID string) ([]Unk
 	return out, rows.Err()
 }
 
+const refundColsQualified = `r.id, r.org_id, r.app_id, r.mode, r.payment_id, r.attempt_id, r.amount, r.currency, r.status, COALESCE(r.reason,''),
+	r.provider_ref, COALESCE(r.provider_refund_id,''), r.initiated_by, COALESCE(r.actor,''), r.created_at, r.updated_at`
+
 // FindAttempt looks an attempt of the account up by any of its provider
 // identifiers (empty ones are skipped). It returns ErrNotFound when none match.
 func FindAttempt(ctx context.Context, q Queryer, accountID, providerRef, orderID, paymentID string) (Attempt, error) {
@@ -160,13 +163,16 @@ func FindAttempt(ctx context.Context, q Queryer, accountID, providerRef, orderID
 	return Attempt{}, ErrNotFound
 }
 
-// FindRefund looks a refund up by provider_ref or provider refund id.
-func FindRefund(ctx context.Context, q Queryer, providerRef, providerRefundID string) (Refund, error) {
+// FindRefund looks a refund up by provider_ref or provider refund id, only
+// among refunds of attempts that belong to the delivering provider account, so
+// one account's identifiers can never reach another account's refunds.
+func FindRefund(ctx context.Context, q Queryer, accountID, providerRef, providerRefundID string) (Refund, error) {
 	for _, c := range []struct{ col, val string }{{"provider_ref", providerRef}, {"provider_refund_id", providerRefundID}} {
 		if c.val == "" {
 			continue
 		}
-		r, err := scanRefund(q.QueryRowContext(ctx, "SELECT "+refundCols+" FROM refunds WHERE "+c.col+" = ?", c.val))
+		r, err := scanRefund(q.QueryRowContext(ctx, "SELECT "+refundColsQualified+` FROM refunds r JOIN payment_attempts a ON a.id = r.attempt_id
+			WHERE a.provider_account_id = ? AND r.`+c.col+" = ?", accountID, c.val))
 		if !errors.Is(err, ErrNotFound) {
 			return r, err
 		}

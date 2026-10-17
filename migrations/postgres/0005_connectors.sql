@@ -42,4 +42,4 @@ ALTER TABLE refunds ADD COLUMN next_poll_at BIGINT;
 
 CREATE INDEX payment_attempts_provider_order ON payment_attempts (provider_account_id, provider_order_id);
 CREATE INDEX payment_attempts_provider_payment ON payment_attempts (provider_account_id, provider_payment_id);
-CREATE INDEX refunds_provider_refund ON refunds (provider_refund_id);
+CREATE INDEX refunds_provider_refund ON refunds (attempt_id, provider_refund_id);
