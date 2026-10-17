@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
@@ -36,6 +37,13 @@ type Alert struct {
 	Refs     map[string]string // related ids: payment, provider_account, ...
 }
 
+// Recorder keeps every raised alert (the dashboard's alerts page). Record is
+// called for each Raise, before delivery and whether or not delivery is
+// rate-limited; at is the time of the raise.
+type Recorder interface {
+	Record(ctx context.Context, al Alert, at time.Time) error
+}
+
 // AlertsOptions configures Alerts. Empty Emails or WebhookURL disable that
 // channel.
 type AlertsOptions struct {
@@ -44,6 +52,10 @@ type AlertsOptions struct {
 	WebhookURL string   // PAYMUX_OPS_WEBHOOK_URL, Slack-compatible
 	Client     *http.Client
 	Now        func() time.Time
+	// Recorder, when set, persists every raised alert. A failure to record is
+	// logged and never stops delivery.
+	Recorder Recorder
+	Logger   *slog.Logger
 }
 
 // Alerts delivers ops alerts and rate-limits identical ones, in memory (a
@@ -66,7 +78,27 @@ func NewAlerts(o AlertsOptions) *Alerts {
 	if o.Mailer == nil {
 		o.Mailer = NoopMailer{}
 	}
+	if o.Logger == nil {
+		o.Logger = slog.Default()
+	}
 	return &Alerts{o: o, last: map[string]time.Time{}}
+}
+
+// Fingerprint identifies the condition an alert reports: its kind and refs.
+// The message and severity may change over time (a silence that grows from 6
+// to 7 hours is still one alert), so they are not part of it.
+func (a Alert) Fingerprint() string {
+	keys := make([]string, 0, len(a.Refs))
+	for k := range a.Refs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	h := sha256.New()
+	fmt.Fprintf(h, "alert\x00%s", a.Kind)
+	for _, k := range keys {
+		fmt.Fprintf(h, "\x00%s=%s", k, a.Refs[k])
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func (a Alert) key() string {
@@ -124,6 +156,11 @@ func (s *Alerts) tracked() int { s.mu.Lock(); defer s.mu.Unlock(); return len(s.
 func (s *Alerts) Raise(ctx context.Context, al Alert) error {
 	if al.Severity == "" {
 		al.Severity = SeverityWarning
+	}
+	if s.o.Recorder != nil {
+		if err := s.o.Recorder.Record(ctx, al, s.o.Now()); err != nil {
+			s.o.Logger.Warn("notify: alert not recorded", "kind", al.Kind, "err", err)
+		}
 	}
 	k := al.key()
 	if !s.claim(k, s.o.Now()) {
