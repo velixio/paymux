@@ -238,7 +238,17 @@ For engine-level behaviour (linking, renewals, invoices) the test in
 `internal/subscriptions/whop_test.go` shows how to feed the real connector's
 `ParseWebhook` output to the engine.
 
-## 9. Checklist
+## 9. The public API is guarded
+
+`pkg/...` is the contract connector authors build against. CI snapshots its
+exported declarations (no comments, no bodies, no unexported details) into
+`api/pkg.txt` and fails when the package no longer matches the file. After an
+intended change, run `go run ./scripts/apisnap -w` and commit the updated file
+in the same change; reviewers read the diff of that file as the API change.
+Prefer adding to the SDK over changing or removing: removals and signature
+changes break existing connectors.
+
+## 10. Checklist
 
 * [ ] imports only stdlib and `pkg/...`
 * [ ] `Info` complete; capabilities match the interfaces
