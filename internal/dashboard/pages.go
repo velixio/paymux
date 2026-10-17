@@ -80,6 +80,13 @@ func (d *Dashboard) orgID(ctx context.Context) (string, error) {
 	return id, nil
 }
 
+// inOrg reports whether an object belongs to the dashboard's org. Handlers
+// answer 404 for anything else, so ids of another org reveal nothing.
+func (d *Dashboard) inOrg(ctx context.Context, objectOrg string) bool {
+	org, err := d.orgID(ctx)
+	return err == nil && org != "" && org == objectOrg
+}
+
 func (s *session) auditActor() audit.Actor {
 	return audit.Actor{Type: audit.ActorUser, ID: s.User.ID}
 }

@@ -115,7 +115,7 @@ func (d *Dashboard) overviewPage(w http.ResponseWriter, r *http.Request, s *sess
 			names[a.ID] = a.Name
 		}
 		for i, p := range periods {
-			if totals[i], err = store.LedgerTotals(ctx, q, mode, p.since); err != nil {
+			if totals[i], err = store.LedgerTotals(ctx, q, org, mode, p.since); err != nil {
 				return err
 			}
 		}
@@ -129,9 +129,9 @@ func (d *Dashboard) overviewPage(w http.ResponseWriter, r *http.Request, s *sess
 	for i, p := range periods {
 		pv := periodView{ID: p.id, Label: p.label}
 		for _, t := range totals[i] {
-			name := names[t.AppID]
-			if name == "" {
-				name = t.AppID
+			name, known := names[t.AppID]
+			if !known {
+				continue // defence in depth: only this org's apps are shown
 			}
 			pv.Rows = append(pv.Rows, totalRow{App: name, Currency: t.Currency, Gross: fmtMoney(t.Gross, t.Currency),
 				Refunds: fmtMoney(t.Refunds, t.Currency), Net: fmtMoney(t.Gross-t.Refunds, t.Currency)})

@@ -51,12 +51,13 @@ func UpdateTaxEntity(ctx context.Context, tx Tx, e TaxEntity, now time.Time) err
 // From is inclusive and To exclusive (on the issue time). Flag matches a
 // document carrying exactly that flag.
 type DocFilter struct {
+	OrgID                       string // required: an empty org matches nothing
 	EntityID, AppID, Mode, Flag string
 	From, To                    time.Time
 }
 
 func (f DocFilter) where(afterID string) (string, []any) {
-	cond, args := "1 = 1", []any{}
+	cond, args := "org_id = ?", []any{f.OrgID}
 	add := func(c string, a ...any) {
 		cond += " AND " + c
 		args = append(args, a...)

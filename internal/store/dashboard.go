@@ -217,6 +217,7 @@ func SetAppProviderAccounts(ctx context.Context, tx Tx, appID string, accountIDs
 // part of the order_ref or part of the customer's email (case-insensitive,
 // wildcards literal).
 type PaymentFilter struct {
+	OrgID                       string // required: an empty org matches nothing
 	AppID, Mode, Status, Search string
 	From, To                    time.Time
 }
@@ -229,8 +230,8 @@ func likeEscape(s string) string {
 // SearchPayments returns matching payments newest first. after is an exclusive
 // id cursor.
 func SearchPayments(ctx context.Context, q Queryer, f PaymentFilter, afterID string, limit int) ([]Payment, error) {
-	query := "SELECT " + paymentCols + " FROM payments WHERE 1 = 1"
-	var args []any
+	query := "SELECT " + paymentCols + " FROM payments WHERE org_id = ?"
+	args := []any{f.OrgID}
 	add := func(cond string, a ...any) {
 		query += " AND " + cond
 		args = append(args, a...)
@@ -286,15 +287,15 @@ type LedgerTotal struct {
 	Gross, Refunds  int64
 }
 
-// LedgerTotals sums charge and refund ledger entries of one mode since the
-// given time, per app and currency.
-func LedgerTotals(ctx context.Context, q Queryer, mode string, since time.Time) ([]LedgerTotal, error) {
+// LedgerTotals sums charge and refund ledger entries of one org and mode since
+// the given time, per app and currency.
+func LedgerTotals(ctx context.Context, q Queryer, orgID, mode string, since time.Time) ([]LedgerTotal, error) {
 	rows, err := q.QueryContext(ctx, `SELECT p.app_id, l.currency,
 			COALESCE(SUM(CASE WHEN l.kind = 'charge' THEN l.amount ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN l.kind = 'refund' THEN -l.amount ELSE 0 END), 0)
 		FROM ledger_entries l JOIN payments p ON p.id = l.payment_id
-		WHERE l.mode = ? AND l.occurred_at >= ? AND l.kind IN ('charge','refund')
-		GROUP BY p.app_id, l.currency ORDER BY p.app_id, l.currency`, mode, ms(since))
+		WHERE l.org_id = ? AND p.org_id = ? AND l.mode = ? AND l.occurred_at >= ? AND l.kind IN ('charge','refund')
+		GROUP BY p.app_id, l.currency ORDER BY p.app_id, l.currency`, orgID, orgID, mode, ms(since))
 	if err != nil {
 		return nil, err
 	}

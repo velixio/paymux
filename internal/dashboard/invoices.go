@@ -116,7 +116,12 @@ func (d *Dashboard) invoicesPage(w http.ResponseWriter, r *http.Request, s *sess
 		badRequest(w, "unknown flag")
 		return
 	}
-	sf := store.DocFilter{EntityID: f.Entity, AppID: f.App, Mode: d.mode(r, s), Flag: f.Flag}
+	org, err := d.orgID(ctx)
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	sf := store.DocFilter{OrgID: org, EntityID: f.Entity, AppID: f.App, Mode: d.mode(r, s), Flag: f.Flag}
 	if f.Month != "" {
 		var err error
 		if sf.From, sf.To, err = monthBounds(f.Month); err != nil {
@@ -135,11 +140,6 @@ func (d *Dashboard) invoicesPage(w http.ResponseWriter, r *http.Request, s *sess
 	}
 	if f.Entity != "" && entName[f.Entity] == "" {
 		badRequest(w, "unknown tax entity")
-		return
-	}
-	org, err := d.orgID(ctx)
-	if err != nil {
-		d.fail(w, err)
 		return
 	}
 	var apps []store.App
@@ -283,7 +283,7 @@ func (d *Dashboard) renderInvoice(w http.ResponseWriter, r *http.Request, s *ses
 		app, err = store.GetApp(ctx, q, inv.AppID)
 		return err
 	})
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, inv.OrgID) {
 		http.NotFound(w, r)
 		return
 	}
@@ -354,7 +354,7 @@ func (d *Dashboard) invoicePDF(w http.ResponseWriter, r *http.Request, s *sessio
 		inv, err = store.GetInvoice(r.Context(), q, r.PathValue("id"))
 		return
 	})
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(r.Context(), inv.OrgID) {
 		http.NotFound(w, r)
 		return
 	}
@@ -392,7 +392,7 @@ func (d *Dashboard) renderCreditNote(w http.ResponseWriter, r *http.Request, s *
 		app, err = store.GetApp(ctx, q, cn.AppID)
 		return err
 	})
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, cn.OrgID) {
 		http.NotFound(w, r)
 		return
 	}
@@ -419,7 +419,7 @@ func (d *Dashboard) creditNotePDF(w http.ResponseWriter, r *http.Request, s *ses
 		cn, err = store.GetCreditNote(r.Context(), q, r.PathValue("id"))
 		return
 	})
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(r.Context(), cn.OrgID) {
 		http.NotFound(w, r)
 		return
 	}
@@ -434,10 +434,22 @@ func (d *Dashboard) creditNotePDF(w http.ResponseWriter, r *http.Request, s *ses
 func (d *Dashboard) resend(w http.ResponseWriter, r *http.Request, s *session, kind string) {
 	id := r.PathValue("id")
 	render := d.renderInvoice
-	exists := func(q store.Querier) error { _, err := store.GetInvoice(r.Context(), q, id); return err }
+	exists := func(q store.Querier) error {
+		i, err := store.GetInvoice(r.Context(), q, id)
+		if err == nil && !d.inOrg(r.Context(), i.OrgID) {
+			return store.ErrNotFound
+		}
+		return err
+	}
 	if kind == "credit_note" {
 		render = d.renderCreditNote
-		exists = func(q store.Querier) error { _, err := store.GetCreditNote(r.Context(), q, id); return err }
+		exists = func(q store.Querier) error {
+			c, err := store.GetCreditNote(r.Context(), q, id)
+			if err == nil && !d.inOrg(r.Context(), c.OrgID) {
+				return store.ErrNotFound
+			}
+			return err
+		}
 	}
 	if err := d.o.DB.Read(r.Context(), exists); errors.Is(err, store.ErrNotFound) {
 		http.NotFound(w, r)
@@ -471,7 +483,13 @@ func (d *Dashboard) creditNoteResend(w http.ResponseWriter, r *http.Request, s *
 
 func (d *Dashboard) invoiceReissue(w http.ResponseWriter, r *http.Request, s *session) {
 	id := r.PathValue("id")
-	if err := d.o.DB.Read(r.Context(), func(q store.Querier) error { _, err := store.GetInvoice(r.Context(), q, id); return err }); errors.Is(err, store.ErrNotFound) {
+	if err := d.o.DB.Read(r.Context(), func(q store.Querier) error {
+		i, err := store.GetInvoice(r.Context(), q, id)
+		if err == nil && !d.inOrg(r.Context(), i.OrgID) {
+			return store.ErrNotFound
+		}
+		return err
+	}); errors.Is(err, store.ErrNotFound) {
 		http.NotFound(w, r)
 		return
 	} else if err != nil {

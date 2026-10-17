@@ -157,7 +157,7 @@ func (d *Dashboard) appCreate(w http.ResponseWriter, r *http.Request, s *session
 func (d *Dashboard) loadApp(w http.ResponseWriter, r *http.Request) (store.App, bool) {
 	var app store.App
 	err := d.o.DB.Read(r.Context(), func(q store.Querier) (err error) { app, err = store.GetApp(r.Context(), q, r.PathValue("id")); return })
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(r.Context(), app.OrgID) {
 		http.NotFound(w, r)
 		return app, false
 	}
