@@ -135,6 +135,11 @@ func (q *Queue) process(ctx context.Context, r store.JobRow) {
 		q.fail(ctx, r, fmt.Errorf("no handler registered for %q", r.Kind), true)
 		return
 	}
+	if r.Attempts > r.MaxAttempts {
+		// Lease expired on the last attempt (process died): do not run again.
+		q.fail(ctx, r, errors.New("lease expired after max attempts"), true)
+		return
+	}
 	q.finish(ctx, r, h)
 }
 
