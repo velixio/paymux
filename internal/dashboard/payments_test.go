@@ -113,33 +113,34 @@ func TestPaymentListFiltersModeAndPaging(t *testing.T) {
 
 		// default mode is live
 		body := e.pageOK(c, "/dashboard/payments")
-		has(t, body, "pay_l1", "ORD-LIVE")
-		lacks(t, body, "pay_a1", "pay_b1")
+		has(t, body, "href=\"/dashboard/payments/pay_l1\"", "ORD-LIVE")
+		lacks(t, body, "href=\"/dashboard/payments/pay_a1\"", "href=\"/dashboard/payments/pay_b1\"")
 		e.setMode(c, "test")
 		body = e.pageOK(c, "/dashboard/payments")
-		has(t, body, "pay_b1", "pay_a3") // newest two (page size 2)
-		lacks(t, body, "pay_a2", "pay_l1")
+		has(t, body, "href=\"/dashboard/payments/pay_b1\"", "href=\"/dashboard/payments/pay_a3\"") // newest two (page size 2)
+		lacks(t, body, "href=\"/dashboard/payments/pay_a2\"", "href=\"/dashboard/payments/pay_l1\"")
 
 		// cursor pagination keeps the filters
 		m := regexpFind(t, `href="([^"]*after=pay_a3[^"]*)"`, body)
 		m = strings.ReplaceAll(m, "&amp;", "&")
 		body = e.pageOK(c, m)
-		has(t, body, "pay_a2", "pay_a1")
-		lacks(t, body, "pay_b1", "pay_a3", `class="next"`)
+		has(t, body, "href=\"/dashboard/payments/pay_a2\"", "href=\"/dashboard/payments/pay_a1\"")
+		lacks(t, body, "href=\"/dashboard/payments/pay_b1\"", "href=\"/dashboard/payments/pay_a3\"", `class="next"`)
 
 		// filters
-		for _, c2 := range map[string]struct {
+		for name, c2 := range map[string]struct {
 			query string
 			want  []string
 			not   []string
 		}{
-			"app":       {"?app=" + b.ID, []string{"pay_b1"}, []string{"pay_a1", "pay_a3"}},
-			"status":    {"?status=failed", []string{"pay_a2"}, []string{"pay_a1", "pay_b1"}},
-			"order ref": {"?q=ord-100", []string{"pay_a1"}, []string{"pay_a2"}},
-			"id":        {"?q=pay_b1", []string{"pay_b1"}, []string{"pay_a3"}},
-			"dates":     {"?from=2026-10-02&to=2026-10-03", []string{"pay_a2", "pay_a3"}, []string{"pay_a1", "pay_b1"}},
+			"app":       {"?app=" + b.ID, []string{"href=\"/dashboard/payments/pay_b1\""}, []string{"href=\"/dashboard/payments/pay_a1\"", "href=\"/dashboard/payments/pay_a3\""}},
+			"status":    {"?status=failed", []string{"href=\"/dashboard/payments/pay_a2\""}, []string{"href=\"/dashboard/payments/pay_a1\"", "href=\"/dashboard/payments/pay_b1\""}},
+			"order ref": {"?q=ord-100", []string{"href=\"/dashboard/payments/pay_a1\""}, []string{"href=\"/dashboard/payments/pay_a2\""}},
+			"id":        {"?q=pay_b1", []string{"href=\"/dashboard/payments/pay_b1\""}, []string{"href=\"/dashboard/payments/pay_a3\""}},
+			"dates":     {"?from=2026-10-02&to=2026-10-03", []string{"href=\"/dashboard/payments/pay_a2\"", "href=\"/dashboard/payments/pay_a3\""}, []string{"href=\"/dashboard/payments/pay_a1\"", "href=\"/dashboard/payments/pay_b1\""}},
 		} {
 			body := e.pageOK(c, "/dashboard/payments"+c2.query)
+			t.Log("filter case", name)
 			has(t, body, c2.want...)
 			lacks(t, body, c2.not...)
 		}

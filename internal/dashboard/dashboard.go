@@ -21,7 +21,11 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/internal/auth"
+	"github.com/paymux/paymux/internal/authz"
+	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/secrets"
+	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/web"
 )
@@ -56,6 +60,14 @@ type Options struct {
 	DevSkip2FA bool
 	Logger     *slog.Logger
 	Now        func() time.Time
+
+	Core     *core.Service
+	Settings *settings.Service
+	Outbound *outbound.Service
+	// Location is the time zone of "today" and of date filters (default UTC).
+	Location *time.Location
+	// PageSize is the number of rows per list page (default 25).
+	PageSize int
 }
 
 // Dashboard is the http.Handler for everything under /dashboard/.
@@ -65,8 +77,11 @@ type Dashboard struct {
 	users Users
 	lim   *limiter
 
-	preKey, ticketKey []byte
-	secure            bool
+	preKey, ticketKey, modeKey []byte
+	secure                     bool
+
+	orgMu sync.Mutex
+	org   string
 
 	dummyOnce sync.Once
 	dummyHash string
@@ -74,8 +89,15 @@ type Dashboard struct {
 
 // New builds a Dashboard.
 func New(o Options) (*Dashboard, error) {
-	if o.DB == nil || o.Box == nil || o.Renderer == nil || o.BaseURL == nil || len(o.MasterKey) == 0 {
-		return nil, errors.New("dashboard: DB, Box, Renderer, BaseURL and MasterKey are required")
+	if o.DB == nil || o.Box == nil || o.Renderer == nil || o.BaseURL == nil || len(o.MasterKey) == 0 ||
+		o.Core == nil || o.Settings == nil || o.Outbound == nil {
+		return nil, errors.New("dashboard: DB, Box, Renderer, BaseURL, MasterKey, Core, Settings and Outbound are required")
+	}
+	if o.Location == nil {
+		o.Location = time.UTC
+	}
+	if o.PageSize <= 0 {
+		o.PageSize = 25
 	}
 	if o.Logger == nil {
 		o.Logger = slog.Default()
@@ -87,6 +109,7 @@ func New(o Options) (*Dashboard, error) {
 		users:     Users{DB: o.DB, Now: o.Now},
 		preKey:    derive(o.MasterKey, "dashboard-csrf-pre"),
 		ticketKey: derive(o.MasterKey, "dashboard-login-ticket"),
+		modeKey:   derive(o.MasterKey, "dashboard-mode"),
 		// Cookies are Secure everywhere except plain-http local development.
 		secure: o.BaseURL.Scheme == "https"}
 	d.routes()
@@ -101,30 +124,40 @@ func derive(master []byte, label string) []byte {
 
 // sections are the placeholder pages of the nav shell.
 var sections = []navItem{
-	{"payments", "Payments", prefix + "/payments"}, {"subscriptions", "Subscriptions", prefix + "/subscriptions"},
+	{"subscriptions", "Subscriptions", prefix + "/subscriptions"},
 	{"disputes", "Disputes", prefix + "/disputes"}, {"invoices", "Invoices", prefix + "/invoices"},
-	{"reports", "Reports", prefix + "/reports"}, {"apps", "Apps", prefix + "/apps"},
-	{"providers", "Providers", prefix + "/providers"}, {"settings", "Settings", prefix + "/settings"},
-	{"audit", "Audit", prefix + "/audit"},
+	{"reports", "Reports", prefix + "/reports"}, {"providers", "Providers", prefix + "/providers"},
 }
 
-var navItems = append(append([]navItem{}, sections...), navItem{"users", "Users", prefix + "/users"})
+// navItems is the full menu; the first entries are built pages, the rest of
+// the placeholders come from sections.
+var navItems = func() []navItem {
+	items := []navItem{{"overview", "Overview", prefix + "/overview"}, {"payments", "Payments", prefix + "/payments"}}
+	items = append(items, sections...)
+	return append(items, navItem{"apps", "Apps", prefix + "/apps"}, navItem{"settings", "Settings", prefix + "/settings"},
+		navItem{"audit", "Audit", prefix + "/audit"}, navItem{"users", "Users", prefix + "/users"})
+}()
 
 type navItem struct{ Key, Label, Href string }
 
 func (d *Dashboard) routes() {
 	m := d.mux
-	m.HandleFunc("GET "+prefix+"/{$}", d.authed(RoleViewer, d.root))
+	m.HandleFunc("GET "+prefix+"/{$}", d.authed(authz.PaymentRead, d.root))
 	m.HandleFunc("GET "+prefix+"/login", d.loginPage)
 	m.HandleFunc("POST "+prefix+"/login", d.loginSubmit)
 	m.HandleFunc("GET "+prefix+"/login/totp", d.totpPage)
 	m.HandleFunc("POST "+prefix+"/login/totp", d.totpSubmit)
-	m.HandleFunc("POST "+prefix+"/logout", d.authed(RoleViewer, d.logout))
-	m.HandleFunc("GET "+prefix+"/users", d.authed(RoleViewer, d.usersPage))
-	m.HandleFunc("POST "+prefix+"/users", d.authed(RoleAdmin, d.userCreate))
-	m.HandleFunc("POST "+prefix+"/users/{id}/role", d.authed(RoleAdmin, d.userRole))
-	m.HandleFunc("POST "+prefix+"/users/{id}/disable", d.authed(RoleAdmin, d.userDisable))
-	m.HandleFunc("GET "+prefix+"/{section}", d.authed(RoleViewer, d.section))
+	m.HandleFunc("POST "+prefix+"/logout", d.authed(authz.PaymentRead, d.logout))
+	m.HandleFunc("POST "+prefix+"/mode", d.authed(authz.PaymentRead, d.setMode))
+
+	// Users. The list is visible to everyone who can read settings.
+	m.HandleFunc("GET "+prefix+"/users", d.authed(authz.SettingsRead, d.usersPage))
+	m.HandleFunc("POST "+prefix+"/users", d.authed(authz.UserManage, d.userCreate))
+	m.HandleFunc("POST "+prefix+"/users/{id}/role", d.authed(authz.UserManage, d.userRole))
+	m.HandleFunc("POST "+prefix+"/users/{id}/disable", d.authed(authz.UserManage, d.userDisable))
+
+	d.routesPages()
+	m.HandleFunc("GET "+prefix+"/{section}", d.authed(authz.PaymentRead, d.section))
 }
 
 // ServeHTTP implements http.Handler.
@@ -167,6 +200,11 @@ type view struct {
 	Self      string
 	// section placeholder
 	Section string
+
+	// header: test/live toggle and where to come back to
+	Mode, Path string
+
+	Page // page-specific data of the part-2 pages
 }
 
 type userRow struct {
@@ -356,9 +394,19 @@ func (d *Dashboard) currentSession(r *http.Request) (*session, bool) {
 
 type authedHandler func(w http.ResponseWriter, r *http.Request, s *session)
 
-// authed wraps h: it needs a live session, checks CSRF on POST, then the role.
-func (d *Dashboard) authed(min string, h authedHandler) http.HandlerFunc {
-	h = RequireRole(min, h)
+// actor is the session's user as an authz actor.
+func (s *session) actor() authz.Actor {
+	return authz.Actor{Kind: authz.KindUser, ID: s.User.ID, Role: authz.Role(s.User.Role)}
+}
+
+// can reports whether the session's user may perform action.
+func (s *session) can(action authz.Action) bool {
+	return authz.Can(s.actor(), action, authz.Resource{})
+}
+
+// authed wraps h: it needs a live session, checks CSRF on POST, then asks
+// authz whether the user may perform action.
+func (d *Dashboard) authed(action authz.Action, h authedHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s, ok := d.currentSession(r)
 		if !ok {
@@ -370,15 +418,7 @@ func (d *Dashboard) authed(min string, h authedHandler) http.HandlerFunc {
 			http.Error(w, "invalid CSRF token", http.StatusForbidden)
 			return
 		}
-		h(w, r, s)
-	}
-}
-
-// RequireRole allows the request only for users whose role is at least min.
-// TODO: switch to authz.Can after core merges.
-func RequireRole(min string, h authedHandler) authedHandler {
-	return func(w http.ResponseWriter, r *http.Request, s *session) {
-		if roleRank(s.User.Role) < roleRank(min) {
+		if !s.can(action) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -386,20 +426,21 @@ func RequireRole(min string, h authedHandler) authedHandler {
 	}
 }
 
-func (d *Dashboard) shell(s *session, active, title string) view {
+func (d *Dashboard) shell(r *http.Request, s *session, active, title string) view {
 	u := s.User
-	return view{Title: title, Nav: navItems, Active: active, User: &u, CSRF: s.csrf(), Self: u.ID}
+	return view{Title: title, Nav: navItems, Active: active, User: &u, CSRF: s.csrf(), Self: u.ID,
+		Mode: d.mode(r, s), Path: r.URL.RequestURI()}
 }
 
 func (d *Dashboard) root(w http.ResponseWriter, r *http.Request, s *session) {
-	http.Redirect(w, r, prefix+"/payments", http.StatusSeeOther)
+	http.Redirect(w, r, prefix+"/overview", http.StatusSeeOther)
 }
 
 func (d *Dashboard) section(w http.ResponseWriter, r *http.Request, s *session) {
 	key := r.PathValue("section")
 	for _, it := range sections {
 		if it.Key == key {
-			v := d.shell(s, key, it.Label)
+			v := d.shell(r, s, key, it.Label)
 			v.Section = it.Label
 			d.render(w, http.StatusOK, "dash_section", v)
 			return

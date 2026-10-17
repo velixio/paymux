@@ -23,8 +23,8 @@ import (
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/outbound"
-	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/secrets"
+	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
 	"github.com/paymux/paymux/internal/web"
@@ -56,9 +56,9 @@ type env struct {
 	out  *outbound.Service
 	q    *jobs.Queue
 	d    *Dashboard
-	srv *httptest.Server
-	clk *clock
-	c   *http.Client
+	srv  *httptest.Server
+	clk  *clock
+	c    *http.Client
 }
 
 type envOpt func(*Options)

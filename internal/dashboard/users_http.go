@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/paymux/paymux/internal/authz"
+
 	"github.com/paymux/paymux/internal/store"
 )
 
@@ -25,9 +27,9 @@ func (d *Dashboard) renderUsers(w http.ResponseWriter, r *http.Request, s *sessi
 		d.fail(w, err)
 		return
 	}
-	v := d.shell(s, "users", "Users")
+	v := d.shell(r, s, "users", "Users")
 	v.Error, v.Notice = errMsg, notices[r.URL.Query().Get("n")]
-	v.CanManage = roleRank(s.User.Role) >= roleRank(RoleAdmin)
+	v.CanManage = s.can(authz.UserManage)
 	v.Roles = Roles
 	for _, u := range list {
 		v.Users = append(v.Users, userRow{ID: u.ID, Email: u.Email, Role: u.Role, Disabled: u.Disabled,
