@@ -134,6 +134,86 @@ one produced. It is asked only when two or more accounts are eligible, and not
 when a payment is created, only when the checkout starts. Keep it fast and
 free of I/O: the customer is waiting.
 
+## JavaScript hooks
+
+For small automations (post to Slack, call a webhook, pick a provider) you can
+skip Go: put `.js` files in a folder and Paymux runs them. They are backed by
+the Go hooks above, so they run after commit, get read-only JSON copies of the
+event and cannot move money.
+
+Turn them on by creating the folder. By default it is `<data dir>/hooks`;
+`PAYMUX_JS_HOOKS_DIR` points elsewhere. If the folder does not exist, JavaScript
+hooks are off and cost nothing. Files are loaded in name order.
+
+```js
+// hooks/slack.js
+onPaymentSucceeded(function (e) {
+  fetch("https://hooks.slack.com/services/T000/B000/XXXX", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: "Paid " + e.payment.amount / 100 + " " + e.payment.currency }),
+  });
+});
+
+onRoute(function (req) {
+  // Send large INR payments to Razorpay first.
+  if (req.currency === "INR" && req.amount >= 5000000) return ["razorpay"];
+});
+```
+
+| Register with | Event | Argument |
+|---|---|---|
+| `onPaymentSucceeded(fn)` | `payment.succeeded` | `{event, payment, reason, attempt_id, raw}` |
+| `onRefundSucceeded(fn)` | `refund.succeeded` | `{event, refund, failure_reason, raw}` |
+| `onDisputeOpened(fn)` | `dispute.opened` | `{event, dispute, raw}` |
+| `onSubscriptionRenewed(fn)` | `subscription.renewed` | `{event, subscription, reason, raw}` |
+| `onInvoiceIssued(fn)` | `invoice.issued` | `{event, invoice, raw}` |
+| `onRoute(fn)` | inline, when checkout starts | `{app_id, mode, currency, country, amount, purpose, metadata, accounts: [{id, connector, name}]}` |
+
+Field names are the JSON names of the Go snapshots (`snake_case`), and `raw` is
+the same object your app receives as the webhook's `data.object`. A file can
+register several handlers, and several files can register the same hook; they
+run in order, each with its own copy of the event. For `onRoute` the first
+handler that returns a non-empty array wins; the array holds provider account
+ids or connector names, with the same rules as `OnRoute` in Go.
+
+### What a script can and cannot do
+
+- **No ambient access.** There is no `require`, `import`, `process`,
+  filesystem, `setTimeout` or any other host API. A script can compute, call
+  `console.log` (written to the Paymux log), and call `fetch`.
+- **`fetch(url, {method, headers, body})`** works only for hosts listed in
+  `PAYMUX_JS_HOOKS_ALLOWED_HOSTS` (comma separated; `hooks.slack.com` matches
+  that host only, `*.example.com` matches its subdomains but not
+  `example.com`). Everything else throws. It uses the same SSRF guard as
+  outbound webhooks: loopback, private and link-local addresses are refused
+  even for an allowed host (unless `PAYMUX_ALLOW_PRIVATE_WEBHOOKS` is on),
+  redirects are not followed, and credentials in the URL are refused. Each
+  request has a 5 second timeout, request and response bodies are limited to
+  1 MB, only `GET`, `HEAD`, `POST`, `PUT`, `PATCH` and `DELETE` are allowed,
+  and one hook call may make at most 10 requests.
+- **It is synchronous.** `fetch` returns the response (`status`, `ok`,
+  `headers`, `text()`, `json()`) or throws; there is no event loop. Code written
+  with `await fetch(...)` or `.then(...)` also works, because the value can be
+  awaited and chained.
+- **Two seconds of script time per call.** A script that runs longer
+  (an endless loop, say) is interrupted, its runtime is thrown away, and the
+  hook fails. Time spent waiting for `fetch` does not count against the two
+  seconds. A few runtimes are pooled, so hooks that run at the same time do not
+  share state; do not rely on globals surviving between calls.
+- **Failures are loud but harmless.** A thrown error, a rejected promise or a
+  timeout raises a `hook.failed` ops alert and a log line, exactly like a Go
+  hook error; the payment is unaffected. A script file that does not parse is
+  reported when it is loaded and skipped; an `onRoute` that fails means "no
+  opinion" and routing uses its own order.
+
+### Reloading
+
+Edit the files and they are picked up: Paymux checks the folder every 10
+seconds, and `kill -HUP` reloads at once. A file that no longer parses keeps
+its last working version running and raises an alert. Removing a file removes
+its handlers.
+
 ## Building a custom binary without writing a main
 
 `paymux build` produces a custom binary the way `xcaddy` does: it writes a

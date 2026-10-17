@@ -287,3 +287,22 @@ func TestAllProblemsReported(t *testing.T) {
 		wantErr(t, err, s)
 	}
 }
+
+func TestJSHooksConfig(t *testing.T) {
+	c, err := Load(base("PAYMUX_DATA_DIR", "/var/lib/paymux"))
+	if err != nil || c.JSHooksDir != "/var/lib/paymux/hooks" || len(c.JSHooksAllowedHosts) != 0 {
+		t.Fatalf("defaults: %v %q %v", err, c.JSHooksDir, c.JSHooksAllowedHosts)
+	}
+	c, err = Load(base("PAYMUX_JS_HOOKS_DIR", "/etc/paymux/hooks", "PAYMUX_JS_HOOKS_ALLOWED_HOSTS", " Hooks.Slack.com, *.example.com ,api.example.org "))
+	if err != nil || c.JSHooksDir != "/etc/paymux/hooks" {
+		t.Fatalf("explicit: %v %q", err, c.JSHooksDir)
+	}
+	want := []string{"hooks.slack.com", "*.example.com", "api.example.org"}
+	if len(c.JSHooksAllowedHosts) != 3 || c.JSHooksAllowedHosts[0] != want[0] || c.JSHooksAllowedHosts[1] != want[1] || c.JSHooksAllowedHosts[2] != want[2] {
+		t.Errorf("allowed hosts %v", c.JSHooksAllowedHosts)
+	}
+	for _, bad := range []string{"https://hooks.slack.com", "hooks.slack.com/path", "a b", "*", "host:8443"} {
+		_, err := Load(base("PAYMUX_JS_HOOKS_ALLOWED_HOSTS", bad))
+		wantErr(t, err, "PAYMUX_JS_HOOKS_ALLOWED_HOSTS")
+	}
+}
