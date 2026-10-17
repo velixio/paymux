@@ -1,0 +1,99 @@
+package dashboard
+
+import (
+	"encoding/json"
+	"net/url"
+	"strings"
+	"testing"
+
+	"github.com/paymux/paymux/connectors/simulator"
+	"github.com/paymux/paymux/internal/audit"
+	"github.com/paymux/paymux/internal/connectors"
+	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/store"
+	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/paymux/paymux/pkg/connector"
+)
+
+// simPayment makes a captured payment on a test-mode simulator account, as
+// the simulator knows it and as Paymux stores it.
+func (e *env) simPayment() (store.Payment, store.Attempt, simulator.Controller) {
+	e.t.Helper()
+	app := e.seedApp("sim")
+	pa, err := e.conn.CreateAccount(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, connectors.CreateAccountInput{
+		Connector: simulator.Name, Name: "Simulator", Mode: "test", Config: json.RawMessage(`{}`), AppID: app.ID})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	live, err := e.conn.Get(ctx, pa.ID)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	ctl := live.Connector.(simulator.Controller)
+	if _, err := live.Connector.CreateCheckout(ctx, connector.CheckoutRequest{ProviderRef: "SIMREF0000000000001", Amount: 10000, Currency: "INR"}); err != nil {
+		e.t.Fatal(err)
+	}
+	if err := ctl.Decide(ctx, "SIMREF0000000000001", simulator.ActionSucceed, 0); err != nil {
+		e.t.Fatal(err)
+	}
+	snap, err := live.Connector.FetchPayment(ctx, connector.PaymentRef{ProviderRef: "SIMREF0000000000001"})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	p := e.seedPayment("pay_sim1", app.ID, "test", "succeeded", "ORD-SIM", 10000, e.clk.Now())
+	att := store.Attempt{ID: "att_sim1", Mode: "test", PaymentID: p.ID, ProviderAccountID: pa.ID, ProviderRef: "SIMREF0000000000001", ProviderOrderID: snap.ProviderOrderID,
+		ProviderPaymentID: snap.ProviderPaymentID, Status: "captured", Method: "simulated", AmountReceived: 10000, CurrencyReceived: "INR"}
+	e.seedAttempt(att)
+	return p, att, ctl
+}
+
+func TestSimulateDisputeFromTheDashboard(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		p, att, ctl := e.simPayment()
+		page := "/dashboard/payments/" + p.ID
+		path := page + "/simulate-dispute"
+
+		op := e.roleClient("operator")
+		body := e.pageOK(op, page)
+		has(t, body, "Simulator", "Simulate a dispute", att.ID)
+		tok := csrfOf(t, body)
+
+		viewer := e.roleClient("viewer")
+		if r, _ := e.post(viewer, path, url.Values{"attempt_id": {att.ID}, "csrf": {csrfOf(t, e.pageOK(viewer, page))}}); r.StatusCode != 403 {
+			t.Fatalf("viewer: %d", r.StatusCode)
+		}
+		// Not a simulator attempt, or not this payment's: refused.
+		if r, _ := e.post(op, path, url.Values{"attempt_id": {"att_nope"}, "csrf": {tok}}); r.StatusCode != 400 {
+			t.Errorf("unknown attempt: %d", r.StatusCode)
+		}
+
+		r, out := e.post(op, path, url.Values{"attempt_id": {att.ID}, "reason": {"product_not_received"}, "csrf": {tok}})
+		if r.StatusCode != 200 || !strings.Contains(out, "dispute") {
+			t.Fatalf("simulate: %d\n%s", r.StatusCode, out)
+		}
+		pg, err := ctl.(connector.DisputeReader).ListDisputes(ctx, connector.TimeRange{From: 0}, "")
+		if err != nil || len(pg.Items) != 1 || pg.Items[0].Amount != 10000 || pg.Items[0].Reason != "product_not_received" || pg.Items[0].ProviderPaymentID != att.ProviderPaymentID {
+			t.Fatalf("the simulator's disputes: %+v %v", pg, err)
+		}
+		var aud []store.AuditRow
+		_ = db.Read(ctx, func(q store.Querier) (err error) { aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "simulator.dispute", 10); return })
+		if len(aud) != 1 || aud[0].Target != p.ID {
+			t.Errorf("audit %+v", aud)
+		}
+	})
+}
+
+func TestSimulatorBoxIsOnlyForSimulatorPayments(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		f := e.detailFixture() // a live Razorpay payment
+		body := e.pageOK(e.roleClient("operator"), "/dashboard/payments/"+f.pay.ID)
+		lacks(t, body, "Simulate a dispute")
+		op := e.roleClient("operator")
+		tok := csrfOf(t, body)
+		if r, _ := e.post(op, "/dashboard/payments/"+f.pay.ID+"/simulate-dispute", url.Values{"attempt_id": {"att_ok"}, "csrf": {tok}}); r.StatusCode != 400 {
+			t.Errorf("simulating a dispute on a real provider: %d", r.StatusCode)
+		}
+	})
+}
