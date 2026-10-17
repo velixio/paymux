@@ -15,6 +15,7 @@ import (
 const (
 	goldenSIDetails = `{"billingAmount":"748.50","billingCurrency":"INR","billingCycle":"ADHOC","billingInterval":1,"paymentStartDate":"2027-01-31","paymentEndDate":"2032-01-31"}`
 	goldenSIHash    = "075902a9417c8d323af7b0bc555760774a544467acbdb5e391bd2a3300411cb25afd43d89402826bb8b3d010cba17a9ae0283a1ef2d833c88ab949dafe7cda6b"
+	goldenSIHash499 = "75abf9274c220729dae76bdaaefd4c86c44abfff0ff1b335fb2047b7325fd4fb569a5c2cbd58f9b96119d1d135f74dc0be3e89812c40b4f99f3e2e92bea2037a"
 	goldenPreVar1   = `{"authPayuId":"403993715521","requestId":"DEBITREF01","debitDate":"2027-02-28","invoiceAmount":"499.00"}`
 	goldenPreHash   = "5696bdafe66afffe853752a6a33eb2be0f527249cd7306088e841d056af706566f710ec793cd14d09d5524b184899704709415f5f0974791917819cea5ae69fb"
 	goldenChargeVar = `{"authPayuId":"403993715521","invoiceAmount":"499.00","transactionId":"DEBITREF01"}`
@@ -36,6 +37,9 @@ func mandateConn(t *testing.T, f *fake) connector.MandateManager {
 
 func TestInfoDeclaresMandates(t *testing.T) {
 	i := newConn(t, &fake{}).Info()
+	if i.MandateSetupAmount != 100 {
+		t.Errorf("verification amount = %d", i.MandateSetupAmount)
+	}
 	if !i.Has(connector.CapMandateManager) || len(i.SubscriptionModes) != 1 || i.SubscriptionModes[0] != connector.MerchantTriggered || !i.PreDebitPerAttempt {
 		t.Errorf("info = %+v", i)
 	}
@@ -67,6 +71,13 @@ func TestMandateCheckoutFormAndGoldenSIHash(t *testing.T) {
 		f["udf1"] != "mdt_01" || f["surl"] != "https://pay.example.com/return/acc/MANDREF01" || f["si_details"] != goldenSIDetails || f["hash"] != goldenSIHash {
 		t.Errorf("fields = %+v", f)
 	}
+	// The registration debits the first period itself.
+	first, err := m.CreateMandateCheckout(context.Background(), connector.MandateRequest{MandateID: "mdt_01", ProviderRef: "MANDREF01",
+		Amount: 49900, MaxAmount: 74850, Currency: "INR", Method: "upi", ValidUntil: time.Date(2032, 1, 31, 4, 0, 0, 0, time.UTC).UnixMilli(),
+		Customer: connector.Customer{Name: "Asha", Email: "asha@example.com"}})
+	if err != nil || first.NextAction.Fields["amount"] != "499.00" || first.NextAction.Fields["hash"] != goldenSIHash499 {
+		t.Errorf("first-period registration: %+v %v", first.NextAction.Fields, err)
+	}
 	for method, pg := range map[string]string{"card": "CC", "emandate": "NB"} {
 		r, err := m.CreateMandateCheckout(context.Background(), connector.MandateRequest{ProviderRef: "R", MaxAmount: 100, Currency: "INR", Method: method})
 		if err != nil || r.NextAction.Fields["pg"] != pg {
@@ -93,6 +104,10 @@ func TestFetchMandateByRegistrationRefThenById(t *testing.T) {
 	s, err := m.FetchMandate(context.Background(), connector.MandateRef{ProviderMandateID: "pay_ref_01"})
 	if err != nil || s.Status != "active" || s.ProviderMandateID != "403993715521" {
 		t.Fatalf("by ref: %+v %v", s, err)
+	}
+	// The registration transaction rides along: it is the first period's payment.
+	if sp := s.SetupPayment; sp == nil || sp.Status != connector.PaymentSucceeded || sp.Amount != 49900 || sp.ProviderPaymentID != "403993715521" || sp.ProviderRef != "pay_ref_01" {
+		t.Errorf("setup payment = %+v", s.SetupPayment)
 	}
 	f.verify = verifyBody("failure", "failed")
 	if s, _ := m.FetchMandate(context.Background(), connector.MandateRef{ProviderMandateID: "pay_ref_01"}); s.Status != "failed" {

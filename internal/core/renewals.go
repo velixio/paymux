@@ -13,6 +13,9 @@ import (
 
 // RenewalInput describes the payment of one subscription renewal.
 type RenewalInput struct {
+	// Kind is the payment kind: "renewal" (default) or "mandate_setup" (the
+	// verification debit of a mandate registration, never invoiced).
+	Kind                                           string
 	OrgID, AppID, Mode, SubscriptionID, CustomerID string
 	Description, ReturnURL                         string
 	Metadata                                       map[string]string
@@ -28,6 +31,12 @@ type RenewalInput struct {
 // invoices, refunds) is the ordinary payment machinery. The renewal has no pay
 // page, so its client secret is generated and discarded.
 func (s *Service) CreateRenewalPayment(ctx context.Context, tx store.Tx, in RenewalInput) (store.Payment, store.Attempt, error) {
+	if in.Kind == "" {
+		in.Kind = "renewal"
+	}
+	if in.Kind != "renewal" && in.Kind != "mandate_setup" {
+		return store.Payment{}, store.Attempt{}, newErr(ErrInvalid, "unknown payment kind %q", in.Kind)
+	}
 	if in.Amount <= 0 || in.Amount > maxAmount || in.SubscriptionID == "" {
 		return store.Payment{}, store.Attempt{}, newErr(ErrInvalid, "a renewal needs a subscription and a positive amount")
 	}
@@ -50,7 +59,7 @@ func (s *Service) CreateRenewalPayment(ctx context.Context, tx store.Tx, in Rene
 		return store.Payment{}, store.Attempt{}, err
 	}
 	now := s.nowUTC()
-	p := store.Payment{ID: ids.New("pay"), OrgID: in.OrgID, AppID: in.AppID, Mode: in.Mode, Kind: "renewal",
+	p := store.Payment{ID: ids.New("pay"), OrgID: in.OrgID, AppID: in.AppID, Mode: in.Mode, Kind: in.Kind,
 		SubscriptionID: in.SubscriptionID, Amount: in.Amount, Currency: in.Currency, Status: string(state.PaymentCreated),
 		Description: in.Description, CustomerID: in.CustomerID, Metadata: in.Metadata, ReturnURL: in.ReturnURL,
 		ClientSecretHash: hashSecret(newClientSecret()), ExpiresAt: now.Add(time.Duration(minutes) * time.Minute),

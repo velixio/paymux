@@ -21,10 +21,10 @@ func SampleValues() []any {
 	}
 	mnd := &connector.MandateSnapshot{
 		ProviderMandateID: "m_1", Status: "active", RawStatus: "confirmed", MaxAmount: 1500000,
-		Currency: "INR", Method: "upi", ValidUntil: 1900000000000,
+		Currency: "INR", Method: "upi", ValidUntil: 1900000000000, SetupPayment: pay,
 	}
 	sub := &connector.SubscriptionSnapshot{
-		ProviderSubscriptionID: "sub_1", Status: "active", RawStatus: "active", Amount: 49900,
+		ProviderSubscriptionID: "sub_1", ProviderRef: "REF1", Status: "active", RawStatus: "active", Amount: 49900,
 		Currency: "INR", CurrentPeriodStart: 1, CurrentPeriodEnd: 2,
 	}
 	cust := connector.Customer{Name: "A B", Email: "a@example.com", Phone: "+910000000000"}
@@ -34,8 +34,8 @@ func SampleValues() []any {
 			Capabilities: []connector.Capability{connector.CapRefund}, ConfigSchema: []byte(`{"type":"object"}`),
 			Currencies: []string{"INR"}, Methods: []string{"card"}, MerchantOfRecord: true,
 			SubscriptionModes: []connector.BillingMode{connector.ProviderManaged}, PreDebitPerAttempt: true,
-			MandateLimits: []connector.MandateLimit{{Method: "upi", Currency: "INR", MaxAmount: 1500000}},
-			RateLimit:     connector.RateLimit{RequestsPerSecond: 5, Burst: 10},
+			MandateLimits: []connector.MandateLimit{{Method: "upi", Currency: "INR", MaxAmount: 1500000}}, MandateSetupAmount: 100, RefundsVerificationDebit: true,
+			RateLimit: connector.RateLimit{RequestsPerSecond: 5, Burst: 10},
 		},
 		connector.CheckoutRequest{
 			PaymentID: "p", AttemptID: "a", AppID: "app", ProviderRef: "r", Amount: 100, Currency: "INR",
@@ -71,7 +71,7 @@ func SampleValues() []any {
 		},
 		connector.SubscriptionRef{ProviderSubscriptionID: "s"},
 		*sub,
-		connector.MandateRequest{MandateID: "m", ProviderRef: "r", MaxAmount: 1, Currency: "INR", Method: "upi", ValidUntil: 3, Customer: cust},
+		connector.MandateRequest{MandateID: "m", ProviderRef: "r", Amount: 1, MaxAmount: 1, Currency: "INR", Method: "upi", ValidUntil: 3, Customer: cust},
 		connector.MandateRef{ProviderMandateID: "m"},
 		*mnd,
 		connector.PreDebitRequest{Mandate: connector.MandateRef{ProviderMandateID: "m"}, ProviderRef: "r", Amount: 1, Currency: "INR", DebitDate: 7},

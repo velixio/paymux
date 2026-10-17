@@ -45,6 +45,7 @@ func (s *Service) RegisterJobs(q *jobs.Queue) {
 	q.Register(JobMandateExpiry, s.handleMandateExpiry)
 	q.Register(JobRevokeMandate, s.handleRevokeMandate)
 	q.Register(JobCancelAtProvider, s.handleCancelAtProvider)
+	q.Register(JobPollMandate, s.handlePollMandate)
 }
 
 type cyclePayload struct {
@@ -81,6 +82,10 @@ func (s *Service) enqueueNotify(ctx context.Context, tx store.Tx, sub store.Subs
 	if round > 0 {
 		step = fmt.Sprintf("notify-%d", round)
 	}
+	return s.enqueueNotifyStep(ctx, tx, sub, k, step, runAt)
+}
+
+func (s *Service) enqueueNotifyStep(ctx context.Context, tx store.Tx, sub store.Subscription, k int, step string, runAt time.Time) error {
 	return s.jobs.Enqueue(ctx, tx, jobs.Job{Kind: JobNotifyPreDebit, RunAt: runAt,
 		Payload: cyclePayload{SubscriptionID: sub.ID, Period: k}, DedupeKey: fmt.Sprintf("sub:%s:%d:%s", sub.ID, k, step)})
 }
@@ -109,23 +114,24 @@ func (s *Service) scheduleCycle(ctx context.Context, tx store.Tx, sub store.Subs
 	}
 	cy := store.Cycle{ID: ids.New("cyc"), SubscriptionID: sub.ID, PeriodIndex: k, Amount: amount, State: "scheduled",
 		CreatedAt: now, UpdatedAt: now}
-	if k == 0 {
-		cy.NotifiedAt = chargeAt.Add(-billing.MinNoticeGap)
-	}
 	if err := store.InsertCycle(ctx, tx, cy); err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			return nil // already scheduled
 		}
 		return err
 	}
-	if k > 0 {
-		noticeAt := billing.PreDebitAt(chargeAt, pol.predebitLead)
-		if noticeAt.Before(now) {
-			noticeAt = now
-		}
-		if err := s.enqueueNotify(ctx, tx, sub, k, 0, noticeAt); err != nil {
-			return err
-		}
+	// Every merchant-triggered debit, period 0 included, is announced first and
+	// runs at least 24h after the notice. (The first period normally is not a
+	// merchant-triggered debit at all: the registration transaction pays it.)
+	noticeAt := billing.PreDebitAt(chargeAt, pol.predebitLead)
+	if noticeAt.Before(now) {
+		noticeAt = now
+	}
+	if earliest := noticeAt.Add(billing.MinNoticeGap); chargeAt.Before(earliest) {
+		chargeAt = earliest
+	}
+	if err := s.enqueueNotify(ctx, tx, sub, k, 0, noticeAt); err != nil {
+		return err
 	}
 	if err := s.enqueueCharge(ctx, tx, sub, &cy, pol.snap(m.Method, chargeAt)); err != nil {
 		return err
@@ -157,8 +163,93 @@ func (s *Service) activate(ctx context.Context, tx store.Tx, sub *store.Subscrip
 	if err := s.emitSub(ctx, tx, EvActivated, *sub, eventData{}); err != nil {
 		return err
 	}
-	if sub.BillingMode == string(connector.MerchantTriggered) {
-		return s.scheduleCycle(ctx, tx, *sub, 0)
+	return nil
+}
+
+// startBilling begins billing of a merchant-triggered subscription that just
+// became active (or trialing). The registration transaction already debited
+// the first period with the customer's authentication, so a succeeded setup
+// payment is booked as period 0's renewal Payment and only the later periods
+// are merchant-triggered. Without one (a trial, or a provider that does not
+// report it) period 0 is scheduled like any other debit: notice first.
+func (s *Service) startBilling(ctx context.Context, tx store.Tx, sub *store.Subscription, setup *connector.PaymentSnapshot) error {
+	if sub.BillingMode != string(connector.MerchantTriggered) {
+		return nil
+	}
+	if sub.Status == string(state.SubActive) && setup != nil && setup.Status == connector.PaymentSucceeded {
+		return s.bookSetupCycle(ctx, tx, *sub, setup)
+	}
+	if sub.Status == string(state.SubTrialing) {
+		// Nothing is due yet: the registration debited the verification amount.
+		if err := s.bookVerification(ctx, tx, *sub, setup); err != nil {
+			return err
+		}
+	}
+	if sub.Status != string(state.SubActive) && sub.Status != string(state.SubTrialing) {
+		return nil
+	}
+	return s.scheduleCycle(ctx, tx, *sub, 0)
+}
+
+func (s *Service) bookSetupCycle(ctx context.Context, tx store.Tx, sub store.Subscription, setup *connector.PaymentSnapshot) error {
+	now := s.nowUTC()
+	if _, err := store.GetCycle(ctx, tx, sub.ID, 0); err == nil {
+		return nil // already booked
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
+	p, a, err := s.core.CreateRenewalPayment(ctx, tx, core.RenewalInput{OrgID: sub.OrgID, AppID: sub.AppID, Mode: sub.Mode,
+		SubscriptionID: sub.ID, CustomerID: sub.CustomerID, Description: sub.Description, ReturnURL: sub.ReturnURL,
+		Metadata: sub.Metadata, Amount: sub.Amount, Currency: sub.Currency, ProviderAccountID: sub.ProviderAccountID})
+	if err != nil {
+		return err
+	}
+	return store.InsertCycle(ctx, tx, store.Cycle{ID: ids.New("cyc"), SubscriptionID: sub.ID, PeriodIndex: 0,
+		ProviderPaymentID: setup.ProviderPaymentID, PaymentID: p.ID, AttemptID: a.ID, Amount: sub.Amount, State: "awaiting",
+		NotifiedAt: now, CreatedAt: now, UpdatedAt: now})
+}
+
+// settleSetup captures the registration payment of every subscription on the
+// mandate whose period 0 is waiting for it, then settles the cycle (which
+// invoices the payment and schedules period 1). It is idempotent and runs
+// after the transaction that booked the cycle, so a retried notification
+// finishes a booking an earlier crash left half done.
+func (s *Service) settleSetup(ctx context.Context, mandateID string, setup *connector.PaymentSnapshot) error {
+	if setup == nil || setup.Status != connector.PaymentSucceeded {
+		return nil
+	}
+	var subs []store.Subscription
+	if err := s.db.Read(ctx, func(q store.Querier) (err error) { subs, err = store.SubscriptionsByMandate(ctx, q, mandateID); return }); err != nil {
+		return err
+	}
+	for _, sub := range subs {
+		var cy store.Cycle
+		var att store.Attempt
+		err := s.db.Read(ctx, func(q store.Querier) error {
+			var err error
+			if cy, err = store.GetCycle(ctx, q, sub.ID, 0); err != nil {
+				return err
+			}
+			if cy.State == "awaiting" && cy.AttemptID != "" {
+				att, err = store.GetAttempt(ctx, q, cy.AttemptID)
+			}
+			return err
+		})
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if cy.State != "awaiting" || att.ID == "" || att.Status != string(state.AttemptCreated) || sub.MandateID != mandateID {
+			continue
+		}
+		if _, err := s.core.ApplyAttemptSnapshot(ctx, att.ID, toSnapshot(*setup, cy.Amount, sub.Currency)); err != nil {
+			return err
+		}
+		if err := s.reconcile(ctx, sub.ID, cy.ID); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -253,13 +344,15 @@ func (s *Service) handleNotify(ctx context.Context, raw json.RawMessage) error {
 			return err // retried by the queue
 		}
 	}
-	return s.db.Write(ctx, func(tx store.Tx) error {
+	sent := true
+	err = s.db.Write(ctx, func(tx store.Tx) error {
 		sub, err := s.lockSub(ctx, tx, pl.SubscriptionID)
 		if err != nil {
 			return err
 		}
 		cy, err := store.GetCycle(ctx, tx, sub.ID, pl.Period)
 		if err != nil || !cy.NotifiedAt.IsZero() {
+			sent = false // another run already recorded (and emailed) this notice
 			return err
 		}
 		now := s.nowUTC()
@@ -270,6 +363,13 @@ func (s *Service) handleNotify(ctx context.Context, raw json.RawMessage) error {
 		ca := chargeT
 		return s.emitSub(ctx, tx, EvRenewalUpcoming, sub, eventData{ChargeAt: &ca, RenewalAmount: cy.Amount})
 	})
+	if err != nil {
+		return err
+	}
+	if sent {
+		s.sendPredebitEmail(ctx, pl.SubscriptionID, cy.Amount, chargeT)
+	}
+	return nil
 }
 
 // endsBefore reports whether the subscription ends instead of billing this

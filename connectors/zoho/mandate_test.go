@@ -29,13 +29,14 @@ func TestInfoDeclaresUPIMandates(t *testing.T) {
 
 func TestMandateCheckoutWidgetAndHosted(t *testing.T) {
 	f := newFake("")
-	req := connector.MandateRequest{MandateID: "mdt_1", ProviderRef: "MANDREF01", MaxAmount: 74850, Currency: "INR", Method: "upi",
+	req := connector.MandateRequest{MandateID: "mdt_1", ProviderRef: "MANDREF01", Amount: 49900, MaxAmount: 74850, Currency: "INR", Method: "upi",
 		ValidUntil: time.Date(2032, 1, 31, 4, 0, 0, 0, time.UTC).UnixMilli(), Customer: connector.Customer{Name: "Asha", Email: "a@example.com", Phone: "9999999999"}}
 	res, err := mgr(t, f, widgetCfg).CreateMandateCheckout(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var body struct {
+		Amount    json.Number `json:"amount"`
 		MaxAmount json.Number `json:"max_amount"`
 		Reference string      `json:"reference_number"`
 		ReturnURL string      `json:"return_url"`
@@ -43,7 +44,7 @@ func TestMandateCheckoutWidgetAndHosted(t *testing.T) {
 		Frequency string      `json:"frequency"`
 	}
 	_ = json.Unmarshal(f.bodies["POST /api/v1/mandates"], &body)
-	if body.MaxAmount.String() != "748.50" || body.Reference != "MANDREF01" || body.ReturnURL != "https://pay.example.com/return/acc/MANDREF01" ||
+	if body.Amount.String() != "499.00" || body.MaxAmount.String() != "748.50" || body.Reference != "MANDREF01" || body.ReturnURL != "https://pay.example.com/return/acc/MANDREF01" ||
 		body.EndDate != "2032-01-31" || body.Frequency != "as_presented" {
 		t.Errorf("body = %s", f.bodies["POST /api/v1/mandates"])
 	}
@@ -74,6 +75,13 @@ func TestFetchMandateStatuses(t *testing.T) {
 		s, err := m.FetchMandate(context.Background(), connector.MandateRef{ProviderMandateID: "md_z1"})
 		if err != nil || s.Status != want || s.RawStatus != raw || s.MaxAmount != 74850 || s.ProviderMandateID != "md_z1" || s.Method != "upi" {
 			t.Errorf("%s: %+v %v", raw, s, err)
+		}
+		if raw == "active" {
+			if sp := s.SetupPayment; sp == nil || sp.Status != connector.PaymentSucceeded || sp.Amount != 49900 || sp.ProviderPaymentID != "pay_zreg" || sp.ProviderRef != "MANDREF01" {
+				t.Errorf("setup payment = %+v", s.SetupPayment)
+			}
+		} else if s.SetupPayment != nil {
+			t.Errorf("%s: unexpected setup payment %+v", raw, s.SetupPayment)
 		}
 	}
 	if _, err := m.FetchMandate(context.Background(), connector.MandateRef{ProviderMandateID: "nope"}); !errors.Is(err, connector.ErrNotFound) {

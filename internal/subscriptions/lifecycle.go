@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/billing"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/core/state"
@@ -81,12 +82,26 @@ func (s *Service) mandateEvent(ctx context.Context, tx store.Tx, m *store.Mandat
 
 // ---- cancel ------------------------------------------------------------
 
-// Cancel cancels a subscription now, or at the end of the current period. Now
-// revokes the mandate or cancels at the provider (through a durable job).
+// Cancel is CancelBy attributed to the system.
 func (s *Service) Cancel(ctx context.Context, sc core.Scope, id string, atPeriodEnd bool) (store.Subscription, error) {
+	return s.CancelBy(ctx, sc, id, atPeriodEnd, audit.System)
+}
+
+// CancelBy cancels a subscription now, or at the end of the current period. Now
+// revokes the mandate or cancels at the provider (through a durable job). A
+// cancel that changes something is audited under actor in the same transaction.
+func (s *Service) CancelBy(ctx context.Context, sc core.Scope, id string, atPeriodEnd bool, actor audit.Actor) (store.Subscription, error) {
 	var out store.Subscription
 	err := s.scoped(ctx, sc, id, func(tx store.Tx, sub *store.Subscription) error {
-		defer func() { out = *sub }()
+		before := *sub
+		defer func() {
+			out = *sub
+			if sub.Status != before.Status || sub.CancelAtPeriodEnd != before.CancelAtPeriodEnd {
+				_ = audit.Record(ctx, tx, audit.Entry{OrgID: sub.OrgID, Actor: actor, Action: "subscription.cancel", Target: sub.ID,
+					Before: map[string]any{"status": before.Status, "cancel_at_period_end": before.CancelAtPeriodEnd},
+					After:  map[string]any{"status": sub.Status, "cancel_at_period_end": sub.CancelAtPeriodEnd, "at_period_end": atPeriodEnd}})
+			}
+		}()
 		if terminal(sub.Status) {
 			if sub.Status == string(state.SubCanceled) {
 				return nil // repeating a cancel is harmless
@@ -319,7 +334,7 @@ func (s *Service) newPendingMandate(ctx context.Context, tx store.Tx, sub *store
 		ProviderAccountID: sub.ProviderAccountID, ProviderRef: ids.ProviderRef(), Method: method, Status: "pending",
 		MaxAmount: mx, Currency: sub.Currency, Frequency: sub.Interval, ValidUntil: now.AddDate(pol.validityYears, 0, 0),
 		CreatedAt: now, UpdatedAt: now}
-	if err := store.InsertMandate(ctx, tx, m); err != nil {
+	if err := s.insertMandate(ctx, tx, m); err != nil {
 		return store.Mandate{}, "", err
 	}
 	token, hash := newToken()
@@ -395,6 +410,49 @@ func (s *Service) UpdatePaymentMethod(ctx context.Context, sc core.Scope, id, me
 		}
 		out = Created{Subscription: *sub, CheckoutURL: s.checkoutURL(sub.ID, token)}
 		return s.emitSub(ctx, tx, EvUpdated, *sub, eventData{Reason: "payment_method_change_started", CheckoutURL: out.CheckoutURL})
+	})
+	return out, err
+}
+
+// IssueCheckoutLink issues a new checkout link for a subscription that still
+// needs the customer: an incomplete one, or a merchant-triggered one waiting
+// for a (re-)authorization. Tokens are stored hashed, so an earlier link cannot
+// be shown again; this one replaces it (the old one stops working). A running
+// subscription whose re-authorization lapsed gets a new pending mandate. The
+// action is audited under actor (without the token).
+func (s *Service) IssueCheckoutLink(ctx context.Context, sc core.Scope, id string, actor audit.Actor) (Created, error) {
+	var out Created
+	err := s.scoped(ctx, sc, id, func(tx store.Tx, sub *store.Subscription) error {
+		if terminal(sub.Status) {
+			return newErr(ErrInvalidState, "a %s subscription has no checkout", sub.Status)
+		}
+		var token string
+		switch {
+		case sub.Status == string(state.SubIncomplete) || sub.PendingMandateID != "":
+			var hash string
+			token, hash = newToken()
+			sub.CheckoutTokenHash = hash
+		case reauthRetry(*sub):
+			pol, err := s.loadPolicy(ctx, tx, sub.AppID)
+			if err != nil {
+				return err
+			}
+			cur, err := store.GetMandate(ctx, tx, sub.MandateID)
+			if err != nil {
+				return err
+			}
+			if _, token, err = s.newPendingMandate(ctx, tx, sub, pol, cur.Method, max(sub.Amount, sub.PendingAmount)); err != nil {
+				return err
+			}
+		default:
+			return newErr(ErrInvalidState, "this subscription is not waiting for the customer")
+		}
+		if err := s.saveSub(ctx, tx, sub); err != nil {
+			return err
+		}
+		out = Created{Subscription: *sub, CheckoutURL: s.checkoutURL(sub.ID, token)}
+		return audit.Record(ctx, tx, audit.Entry{OrgID: sub.OrgID, Actor: actor, Action: "subscription.checkout_link", Target: sub.ID,
+			After: map[string]any{"status": sub.Status, "requires_reauthorization": sub.RequiresReauthorization}})
 	})
 	return out, err
 }

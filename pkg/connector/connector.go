@@ -53,7 +53,7 @@ type Canceler interface {
 }
 
 // SubscriptionManager is optional, for provider_managed billing
-// (CapSubscriptionManager). Declared only; no connector implements it yet.
+// (CapSubscriptionManager). Razorpay and Whop implement it.
 type SubscriptionManager interface {
 	CreateSubscriptionCheckout(ctx context.Context, req SubscriptionRequest) (CheckoutResult, error)
 	FetchSubscription(ctx context.Context, ref SubscriptionRef) (SubscriptionSnapshot, error)
@@ -62,8 +62,9 @@ type SubscriptionManager interface {
 }
 
 // MandateManager is optional, for merchant_triggered billing
-// (CapMandateManager). ChargeMandate must pass ChargeRequest.ProviderRef to the
-// provider as the idempotency token. Declared only.
+// (CapMandateManager; PayU and Zoho). ChargeMandate must pass
+// ChargeRequest.ProviderRef to the
+// provider as the idempotency token.
 type MandateManager interface {
 	CreateMandateCheckout(ctx context.Context, req MandateRequest) (CheckoutResult, error)
 	FetchMandate(ctx context.Context, ref MandateRef) (MandateSnapshot, error)

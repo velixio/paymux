@@ -67,13 +67,14 @@ func TestGoldenSignature(t *testing.T) {
 
 // fake is a Whop v1 API.
 type fake struct {
-	mu        sync.Mutex
-	substatus string // "" = no payment yet
-	refunded  string
-	calls     []string
-	bodies    map[string][]byte
-	hdr       map[string]http.Header
-	refundErr int
+	mu           sync.Mutex
+	substatus    string // "" = no payment yet
+	refunded     string
+	calls        []string
+	bodies       map[string][]byte
+	hdr          map[string]http.Header
+	refundErr    int
+	memberStatus string
 }
 
 func newFake(sub string) *fake {
@@ -127,6 +128,11 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		write(w, 200, f.payment())
+	case "GET /api/v1/memberships/mem_w1":
+		write(w, 200, map[string]any{"id": "mem_w1", "status": f.memberStatus, "metadata": map[string]string{"ref": "SUBREF01"},
+			"renewal_period_start": "2026-10-17T11:00:00Z", "renewal_period_end": "2026-11-16T11:00:00Z"})
+	case "POST /api/v1/memberships/mem_w1/cancel":
+		write(w, 200, map[string]any{"id": "mem_w1", "status": "canceled"})
 	case "GET /api/v1/refunds/rfnd_w1":
 		write(w, 200, map[string]any{"id": "rfnd_w1", "payment_id": "pay_w1", "amount": 1.5, "currency": "usd", "status": "succeeded"})
 	default:
@@ -312,7 +318,7 @@ func TestParseWebhook(t *testing.T) {
 		t.Errorf("refund = %+v", ns[0].Refund)
 	}
 	ns, err = c.ParseWebhook(context.Background(), webhook(t, "membership_activated", "msg_2L0", []byte(testSecret), nowUnix))
-	if err != nil || len(ns) != 0 {
+	if err != nil || len(ns) != 1 || ns[0].Kind != connector.NotifySubscription {
 		t.Errorf("membership: %v %v", ns, err)
 	}
 }

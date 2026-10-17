@@ -16,6 +16,9 @@ import (
 
 const hour = time.Hour
 
+// Every test also checks, on exit, that no merchant-triggered debit ever ran
+// without a pre-debit notice at least 24h before it (env_test.go).
+
 // drive moves the clock forward in steps, running due jobs after each step.
 func (e *env) drive(d, step time.Duration) {
 	e.t.Helper()
@@ -31,25 +34,132 @@ func failing(code string) func(connector.ChargeRequest) (connector.PaymentSnapsh
 	}
 }
 
-// The whole merchant-triggered cycle on a month-end anchor: activation charges
-// period 0, the notice goes 48h ahead, the charge runs on the (clamped)
-// boundary with the notice's provider_ref, the renewal Payment is invoiced.
+// Period 0 is the registration transaction itself (AFA, no separate debit);
+// the invoice for it is issued from that payment. Only later periods are
+// merchant-triggered, each after a notice.
+func TestSetupSuccessCreatesThePeriodZeroPaymentAndInvoice(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, t0)
+		c := e.mustCreate(nil)
+		sub := e.activateMandate(c)
+		e.runJobs()
+		if e.r.chargeCount() != 0 {
+			t.Fatalf("the mandate setup was followed by a separate debit (%d)", e.r.chargeCount())
+		}
+		sub = e.sub(sub.ID)
+		if sub.Status != "active" || sub.RenewalsDone != 1 || !sub.CurrentPeriodStart.Equal(t0) || !sub.CurrentPeriodEnd.Equal(utc(2027, 2, 28, 4, 0)) {
+			t.Fatalf("sub = %+v", sub)
+		}
+		pays := e.renewalPayments(sub.ID)
+		if len(pays) != 1 || pays[0].Kind != "renewal" || pays[0].Status != "succeeded" || pays[0].Amount != 49900 || pays[0].AmountReceived != 49900 {
+			t.Fatalf("payments = %+v", pays)
+		}
+		_ = db.Read(ctx, func(q store.Querier) error {
+			atts, _ := store.ListAttempts(ctx, q, pays[0].ID)
+			if len(atts) != 1 || atts[0].Status != "captured" || atts[0].ProviderPaymentID != "setup_pm_"+sub.MandateID || atts[0].ProviderAccountID != "pa_upi" {
+				t.Errorf("attempts = %+v", atts)
+			}
+			invs, _ := store.InvoicesForPayment(ctx, q, pays[0].ID)
+			if len(invs) != 1 || invs[0].Total != 49900 || invs[0].Number != "INV/2627/000001" {
+				t.Errorf("invoice = %+v", invs)
+			}
+			return nil
+		})
+		cy := e.cycles(sub.ID)
+		if len(cy) != 2 || cy[0].PeriodIndex != 0 || cy[0].State != "succeeded" || cy[1].PeriodIndex != 1 || cy[1].State != "scheduled" {
+			t.Errorf("cycles = %+v", cy)
+		}
+		// Re-delivering the confirmation changes nothing.
+		e.activateMandateByID(e.mandate(sub.MandateID), "pm_"+sub.MandateID)
+		e.runJobs()
+		if len(e.renewalPayments(sub.ID)) != 1 || e.sub(sub.ID).RenewalsDone != 1 {
+			t.Error("a repeated confirmation booked period 0 again")
+		}
+	})
+}
+
+// A provider that does not report the registration transaction: the first
+// period is then debited like any other, after a notice.
+func TestWithoutASetupPaymentPeriodZeroWaitsForANotice(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, t0)
+		c := e.mustCreate(nil)
+		sub := e.activateMandateNoSetup(c)
+		e.runJobs()
+		if sub.Status != "active" || e.r.chargeCount() != 0 || len(e.r.notices) != 1 {
+			t.Fatalf("status=%s charges=%d notices=%d", sub.Status, e.r.chargeCount(), len(e.r.notices))
+		}
+		e.advanceTo(t0.Add(23 * hour))
+		if e.r.chargeCount() != 0 {
+			t.Fatal("debited inside 24h of the notice")
+		}
+		e.advanceTo(t0.Add(24 * hour))
+		if e.r.chargeCount() != 1 || e.sub(sub.ID).RenewalsDone != 1 {
+			t.Fatalf("charges=%d sub=%+v", e.r.chargeCount(), e.sub(sub.ID))
+		}
+		pays := e.renewalPayments(sub.ID)
+		if len(pays) != 1 || pays[0].Status != "succeeded" {
+			t.Errorf("payments = %+v", pays)
+		}
+	})
+}
+
+// A trial registers with the verification amount; the first real debit is at
+// the trial's end and has its notice like any other.
+func TestTrialRegistersMinimallyAndChargesAtTrialEndWithNotice(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, t0)
+		c := e.mustCreate(func(i *subscriptions.CreateInput) { i.TrialDays = 14 })
+		co, err := e.subs.OpenCheckout(ctx, c.Subscription.ID, tokenOf(c))
+		if err != nil || co.Kind != subscriptions.CheckoutAction {
+			t.Fatalf("checkout: %+v %v", co, err)
+		}
+		if got := e.r.mandateReqs[len(e.r.mandateReqs)-1]; got.Amount != 100 {
+			t.Errorf("trial registration amount = %d, want the connector's verification amount (100)", got.Amount)
+		}
+		sub := e.activateMandate(c)
+		e.runJobs()
+		if pays := e.renewalPayments(sub.ID); sub.Status != "trialing" || len(pays) != 1 || pays[0].Kind != "mandate_setup" || e.r.chargeCount() != 0 {
+			t.Fatalf("status=%s payments=%+v (only the verification debit may exist)", sub.Status, e.renewalPayments(sub.ID))
+		}
+		e.advanceTo(t0.AddDate(0, 0, 12)) // 48h before the end of the trial
+		if len(e.r.notices) != 1 || e.r.notices[0].DebitDate != t0.AddDate(0, 0, 14).UnixMilli() {
+			t.Fatalf("notices = %+v", e.r.notices)
+		}
+		e.advanceTo(t0.AddDate(0, 0, 13))
+		if e.r.chargeCount() != 0 {
+			t.Fatal("charged during the trial")
+		}
+		e.advanceTo(t0.AddDate(0, 0, 14))
+		got := e.sub(sub.ID)
+		if got.Status != "active" || e.r.chargeCount() != 1 || got.RenewalsDone != 1 || e.r.charges[0].Amount != 49900 {
+			t.Fatalf("after the trial: %+v charges=%d", got, e.r.chargeCount())
+		}
+	})
+}
+
+func tokenOf(c subscriptions.Created) string {
+	u := c.CheckoutURL
+	for i := len(u) - 1; i >= 0; i-- {
+		if u[i] == '=' {
+			return u[i+1:]
+		}
+	}
+	return ""
+}
+
+// The whole merchant-triggered cycle on a month-end anchor: the notice goes 48h
+// ahead, the charge runs on the (clamped) boundary with the notice's
+// provider_ref, the renewal Payment is invoiced.
 func TestRenewalLifecycleMonthEndClampNoticeChargeInvoice(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, t0) // 31 Jan 2027, 09:30 IST
 		c := e.mustCreate(nil)
 		sub := e.activateMandate(c)
-		if sub.Status != "active" {
-			t.Fatalf("status = %s", sub.Status)
-		}
-		e.runJobs() // period 0 is charged right away
+		e.runJobs()
 		sub = e.sub(sub.ID)
-		if e.r.chargeCount() != 1 || sub.RenewalsDone != 1 || !sub.CurrentPeriodStart.Equal(t0) || !sub.CurrentPeriodEnd.Equal(utc(2027, 2, 28, 4, 0)) {
-			t.Fatalf("after period 0: charges=%d sub=%+v", e.r.chargeCount(), sub)
-		}
-		pays := e.renewalPayments(sub.ID)
-		if len(pays) != 1 || pays[0].Kind != "renewal" || pays[0].Status != "succeeded" || pays[0].Amount != 49900 || pays[0].SubscriptionID != sub.ID {
-			t.Fatalf("payments = %+v", pays)
+		if sub.RenewalsDone != 1 || !sub.CurrentPeriodEnd.Equal(utc(2027, 2, 28, 4, 0)) {
+			t.Fatalf("after period 0: %+v", sub)
 		}
 
 		// Nothing happens until 48h before the boundary.
@@ -68,21 +178,21 @@ func TestRenewalLifecycleMonthEndClampNoticeChargeInvoice(t *testing.T) {
 		if notice.Amount != 49900 || notice.Currency != "INR" || notice.DebitDate != utc(2027, 2, 28, 4, 0).UnixMilli() || notice.Mandate.ProviderMandateID == "" {
 			t.Errorf("notice = %+v", notice)
 		}
-		if e.r.chargeCount() != 1 {
+		if e.r.chargeCount() != 0 {
 			t.Fatal("charged at notice time")
 		}
 
 		// The charge runs on 28 Feb (31 Jan clamped) with the notice's reference.
 		e.advanceTo(utc(2027, 2, 28, 3, 59))
-		if e.r.chargeCount() != 1 {
+		if e.r.chargeCount() != 0 {
 			t.Fatal("charged early")
 		}
 		e.advanceTo(utc(2027, 2, 28, 4, 0))
-		if e.r.chargeCount() != 2 {
+		if e.r.chargeCount() != 1 {
 			t.Fatalf("charges = %d", e.r.chargeCount())
 		}
-		if e.r.charges[1].ProviderRef != notice.ProviderRef || e.r.charges[1].Amount != 49900 {
-			t.Errorf("charge %+v does not match notice %+v", e.r.charges[1], notice)
+		if e.r.charges[0].ProviderRef != notice.ProviderRef || e.r.charges[0].Amount != 49900 {
+			t.Errorf("charge %+v does not match notice %+v", e.r.charges[0], notice)
 		}
 		sub = e.sub(sub.ID)
 		if sub.RenewalsDone != 2 || !sub.CurrentPeriodStart.Equal(utc(2027, 2, 28, 4, 0)) || !sub.CurrentPeriodEnd.Equal(utc(2027, 3, 31, 4, 0)) {
@@ -90,7 +200,7 @@ func TestRenewalLifecycleMonthEndClampNoticeChargeInvoice(t *testing.T) {
 		}
 
 		// The renewal payment went through the ordinary machinery: invoice issued.
-		pays = e.renewalPayments(sub.ID)
+		pays := e.renewalPayments(sub.ID)
 		if len(pays) != 2 || pays[1].Status != "succeeded" {
 			t.Fatalf("payments = %+v", pays)
 		}
@@ -121,8 +231,8 @@ func TestChargeWithin24HoursOfTheNoticeIsRefusedAndRescheduled(t *testing.T) {
 		c := e.mustCreate(func(i *subscriptions.CreateInput) { i.Interval = "day" })
 		sub := e.activateMandate(c)
 		e.r.noticeErr = errors.New("notice API down") // the notice cannot go out yet
-		e.runJobs()                                   // period 0 is charged; period 1's notice fails
-		if e.r.chargeCount() != 1 || len(e.r.notices) != 0 {
+		e.runJobs()                                   // period 0 is the registration; period 1's notice fails
+		if e.r.chargeCount() != 0 || len(e.r.notices) != 0 {
 			t.Fatalf("charges=%d notices=%d", e.r.chargeCount(), len(e.r.notices))
 		}
 		// Period 1 is due at t0+24h; its notice only goes out at t0+12h.
@@ -134,8 +244,8 @@ func TestChargeWithin24HoursOfTheNoticeIsRefusedAndRescheduled(t *testing.T) {
 			t.Fatalf("notices = %d", len(e.r.notices))
 		}
 		e.advanceTo(t0.Add(24 * hour)) // the charge is due, but only 12h after the notice
-		if e.r.chargeCount() != 1 {
-			t.Fatalf("charged %dh after the notice", 12)
+		if e.r.chargeCount() != 0 {
+			t.Fatal("debited 12h after the notice")
 		}
 		cy := e.cycles(sub.ID)
 		if len(cy) < 2 || cy[1].State != "scheduled" {
@@ -145,11 +255,11 @@ func TestChargeWithin24HoursOfTheNoticeIsRefusedAndRescheduled(t *testing.T) {
 			t.Fatalf("rescheduled charge = %v, want notice + 24h = %v", got, t0.Add(36*hour))
 		}
 		e.advanceTo(t0.Add(36*hour - time.Minute))
-		if e.r.chargeCount() != 1 {
+		if e.r.chargeCount() != 0 {
 			t.Fatal("charged before the 24h gap passed")
 		}
 		e.advanceTo(t0.Add(36 * hour))
-		if e.r.chargeCount() != 2 {
+		if e.r.chargeCount() != 1 {
 			t.Fatalf("charges = %d, want the rescheduled one", e.r.chargeCount())
 		}
 		if s := e.sub(sub.ID); s.RenewalsDone != 2 {
@@ -171,15 +281,15 @@ func TestChargeWithoutAnyNoticeSendsOneAndWaits(t *testing.T) {
 		e.r.noticeErr = nil
 		e.r.mu.Unlock()
 		e.advanceTo(t0.Add(24 * hour)) // the charge is due and finds no notice
-		if e.r.chargeCount() != 1 {
+		if e.r.chargeCount() != 0 {
 			t.Fatalf("charged without a notice: %d", e.r.chargeCount())
 		}
 		e.drive(23*hour, hour)
-		if e.r.chargeCount() != 1 {
+		if e.r.chargeCount() != 0 {
 			t.Fatalf("charged inside the 24h after the late notice: %d", e.r.chargeCount())
 		}
 		e.drive(2*hour, hour)
-		if e.r.chargeCount() != 2 || e.sub(sub.ID).RenewalsDone != 2 {
+		if e.r.chargeCount() != 1 || e.sub(sub.ID).RenewalsDone != 2 {
 			t.Fatalf("charges=%d notices=%d", e.r.chargeCount(), len(e.r.notices))
 		}
 	})
@@ -191,32 +301,30 @@ func TestUPIChargesSnapOutsidePeakHours(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		peak := utc(2027, 1, 15, 6, 0) // 11:30 IST: inside 10:00-13:00
 		e := newEnv(t, db, peak)
-		c := e.mustCreate(nil) // UPI
-		e.activateMandate(c)
-		if got := e.pendingJobs("subscription.charge_renewal"); len(got) != 1 || !got[0].Equal(utc(2027, 1, 15, 7, 30)) {
-			t.Fatalf("UPI charge job = %v, want 13:00 IST (07:30 UTC)", got)
+		upi := e.mustCreate(func(i *subscriptions.CreateInput) { i.Interval = "day" })
+		card := e.mustCreate(func(i *subscriptions.CreateInput) { i.Interval = "day"; i.Method = "card" })
+		e.activateMandate(upi)
+		e.activateMandate(card)
+		e.runJobs() // period 0 is the registration; the notices for period 1 go out now
+		if len(e.r.notices) != 2 {
+			t.Fatalf("notices = %d", len(e.r.notices))
 		}
-		e.runJobs()
-		if e.r.chargeCount() != 0 {
-			t.Fatal("UPI debit executed during the peak window")
+		// Both are due at 06:00 UTC tomorrow, but only the card one may run then.
+		due := peak.Add(24 * hour)
+		if got := e.pendingJobs("subscription.charge_renewal"); len(got) != 2 || !got[0].Equal(due) || !got[1].Equal(utc(2027, 1, 16, 7, 30)) {
+			t.Fatalf("charge jobs = %v, want 06:00 (card) and 13:00 IST = 07:30 UTC (UPI)", got)
 		}
-		e.advanceTo(utc(2027, 1, 15, 7, 29))
-		if e.r.chargeCount() != 0 {
+		e.advanceTo(due)
+		if e.r.chargeCount() != 1 || e.r.charges[0].Mandate.ProviderMandateID != "pm_"+e.sub(card.Subscription.ID).MandateID {
+			t.Fatalf("charges at 06:00 = %+v (only the card mandate may be debited in the peak window)", e.r.charges)
+		}
+		e.advanceTo(utc(2027, 1, 16, 7, 29))
+		if e.r.chargeCount() != 1 {
 			t.Fatal("UPI debit executed before the window ended")
 		}
-		e.advanceTo(utc(2027, 1, 15, 7, 30))
-		if e.r.chargeCount() != 1 {
+		e.advanceTo(utc(2027, 1, 16, 7, 30))
+		if e.r.chargeCount() != 2 {
 			t.Fatalf("charges = %d", e.r.chargeCount())
-		}
-
-		// A card mandate in the same minute is charged immediately.
-		c2 := e.mustCreate(func(i *subscriptions.CreateInput) { i.Method = "card" })
-		e.setNow(utc(2027, 1, 16, 6, 0))
-		before := e.r.chargeCount()
-		e.activateMandate(c2)
-		e.runJobs()
-		if e.r.chargeCount() != before+1 {
-			t.Errorf("card charge was snapped: %d", e.r.chargeCount()-before)
 		}
 	})
 }
@@ -228,9 +336,9 @@ func TestUPIRetriesAreCappedAtThree(t *testing.T) {
 		e := newEnv(t, db, t0)
 		e.setSetting("dunning_schedule", "[1,2,3,4,5]")
 		e.r.chargeFn = failing("insufficient_funds")
-		upi := e.mustCreate(nil)
+		upi := e.mustCreate(func(i *subscriptions.CreateInput) { i.Interval = "day" })
 		e.activateMandate(upi)
-		e.drive(20*hour, 30*time.Minute)
+		e.drive(48*hour, 30*time.Minute)
 		if got := e.r.chargeCount(); got != 4 {
 			t.Fatalf("UPI charges = %d, want 1 + 3 retries", got)
 		}
@@ -239,11 +347,11 @@ func TestUPIRetriesAreCappedAtThree(t *testing.T) {
 		}
 
 		e.r.mu.Lock()
-		e.r.charges = nil
+		e.r.charges, e.r.chargeTimes = nil, nil
 		e.r.mu.Unlock()
-		card := e.mustCreate(func(i *subscriptions.CreateInput) { i.Method = "card" })
+		card := e.mustCreate(func(i *subscriptions.CreateInput) { i.Interval = "day"; i.Method = "card" })
 		e.activateMandate(card)
-		e.drive(20*hour, 30*time.Minute)
+		e.drive(48*hour, 30*time.Minute)
 		if got := e.r.chargeCount(); got != 6 {
 			t.Fatalf("card charges = %d, want 1 + 5 retries", got)
 		}
@@ -254,11 +362,12 @@ func TestDunningGoesPastDueThenCanceled(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, t0)
 		e.r.chargeFn = failing("card_declined")
-		c := e.mustCreate(func(i *subscriptions.CreateInput) { i.Method = "card" })
+		c := e.mustCreate(func(i *subscriptions.CreateInput) { i.Method = "card"; i.Interval = "day" })
 		sub := e.activateMandate(c)
 		e.runJobs()
+		e.advanceTo(t0.Add(24 * hour)) // period 1 is the first merchant-triggered debit
 		sub = e.sub(sub.ID)
-		if sub.Status != "past_due" || sub.DunningAttempt != 1 || !sub.NextRetryAt.Equal(t0.Add(24*hour)) {
+		if sub.Status != "past_due" || sub.DunningAttempt != 1 || !sub.NextRetryAt.Equal(t0.Add(48*hour)) {
 			t.Fatalf("after the first failure: %+v", sub)
 		}
 		if len(e.eventsOf("subscription.past_due")) != 1 {
@@ -284,11 +393,10 @@ func TestDunningGoesPastDueThenCanceled(t *testing.T) {
 		if len(e.r.revoked) != 1 {
 			t.Errorf("provider revocations = %v", e.r.revoked)
 		}
-		// The failed payment stays failed; nothing was invoiced.
-		for _, p := range e.renewalPayments(sub.ID) {
-			if p.Status != "failed" {
-				t.Errorf("payment %s is %s", p.ID, p.Status)
-			}
+		// Period 0 (the registration) succeeded; the failed renewals stay failed.
+		pays := e.renewalPayments(sub.ID)
+		if len(pays) != 2 || pays[0].Status != "succeeded" || pays[1].Status != "failed" {
+			t.Errorf("payments = %+v", pays)
 		}
 	})
 }
@@ -299,16 +407,12 @@ func TestDunningKeepPastDue(t *testing.T) {
 		e.setSetting("dunning_final_action", `"keep_past_due"`)
 		e.setSetting("dunning_schedule", "[1]")
 		e.r.chargeFn = failing("card_declined")
-		c := e.mustCreate(func(i *subscriptions.CreateInput) { i.Method = "card" })
+		c := e.mustCreate(func(i *subscriptions.CreateInput) { i.Method = "card"; i.Interval = "day" })
 		sub := e.activateMandate(c)
-		e.drive(6*hour, 30*time.Minute)
+		e.drive(30*hour, 30*time.Minute)
 		if s := e.sub(sub.ID); s.Status != "past_due" || e.r.chargeCount() != 2 {
 			t.Errorf("status=%s charges=%d", s.Status, e.r.chargeCount())
 		}
-		// Later success returns it to active.
-		e.r.mu.Lock()
-		e.r.chargeFn = nil
-		e.r.mu.Unlock()
 	})
 }
 
@@ -317,19 +421,19 @@ func TestEachRetryNeedsItsOwnNoticeWhenTheProviderWantsOne(t *testing.T) {
 		e := newEnv(t, db, t0)
 		e.r.perAttempt = true
 		e.r.chargeFn = failing("card_declined")
-		c := e.mustCreate(func(i *subscriptions.CreateInput) { i.Method = "card" })
+		c := e.mustCreate(func(i *subscriptions.CreateInput) { i.Method = "card"; i.Interval = "day" })
 		e.activateMandate(c)
-		e.runJobs() // period 0 fails, retry 1 scheduled for +24h with a fresh notice
-		if len(e.r.notices) != 1 {
-			t.Fatalf("notices after the first failure = %d", len(e.r.notices))
+		e.drive(26*hour, hour) // period 1's debit at +24h fails; its retry is scheduled for +48h
+		if e.r.chargeCount() != 1 || len(e.r.notices) != 2 {
+			t.Fatalf("charges=%d notices=%d (a fresh notice for the retry)", e.r.chargeCount(), len(e.r.notices))
 		}
 		e.drive(24*hour, hour)
 		if e.r.chargeCount() != 2 {
 			t.Fatalf("charges = %d", e.r.chargeCount())
 		}
-		// The retry used the attempt the notice announced.
-		if e.r.charges[1].ProviderRef != e.r.notices[0].ProviderRef {
-			t.Errorf("retry charge %s vs notice %s", e.r.charges[1].ProviderRef, e.r.notices[0].ProviderRef)
+		// Each debit used the attempt its own notice announced.
+		if e.r.charges[0].ProviderRef != e.r.notices[0].ProviderRef || e.r.charges[1].ProviderRef != e.r.notices[1].ProviderRef {
+			t.Errorf("charges %v vs notices %v", e.r.charges, e.r.notices)
 		}
 		if e.r.charges[0].ProviderRef == e.r.charges[1].ProviderRef {
 			t.Error("a retry reused the failed attempt's reference")
@@ -342,28 +446,30 @@ func TestRenewalIsNeverChargedTwiceUnderConcurrentJobs(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, t0)
 		e.r.chargeDelay = 150 * time.Millisecond // widen the race window
-		c := e.mustCreate(nil)
+		c := e.mustCreate(func(i *subscriptions.CreateInput) { i.Interval = "day" })
 		sub := e.activateMandate(c)
-		// A second, differently keyed job for the same cycle: both are claimed
-		// by the same RunOnce and run in parallel.
+		e.runJobs() // the notice for period 1
+		due := t0.Add(24 * hour)
+		// Extra, differently keyed jobs for the same cycle: they are claimed by
+		// the same RunOnce as the real one and run in parallel.
 		for i := 0; i < 3; i++ {
 			err := db.Write(ctx, func(tx store.Tx) error {
-				return e.q.Enqueue(ctx, tx, jobs.Job{Kind: "subscription.charge_renewal", RunAt: t0,
-					Payload:   map[string]any{"subscription_id": sub.ID, "period": 0},
+				return e.q.Enqueue(ctx, tx, jobs.Job{Kind: "subscription.charge_renewal", RunAt: due,
+					Payload:   map[string]any{"subscription_id": sub.ID, "period": 1},
 					DedupeKey: "dup-" + string(rune('a'+i))})
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
 		}
-		e.runJobs()
+		e.advanceTo(due)
 		if got := e.r.chargeCount(); got != 1 {
 			t.Fatalf("charges = %d, want exactly 1", got)
 		}
-		if pays := e.renewalPayments(sub.ID); len(pays) != 1 || pays[0].Status != "succeeded" {
-			t.Fatalf("payments = %+v", pays)
+		if n := e.paidRenewals(sub.ID); n != 2 {
+			t.Fatalf("paid renewal payments = %d", n)
 		}
-		if s := e.sub(sub.ID); s.RenewalsDone != 1 {
+		if s := e.sub(sub.ID); s.RenewalsDone != 2 {
 			t.Errorf("renewals = %d", s.RenewalsDone)
 		}
 	})
@@ -386,10 +492,11 @@ func TestPendingChargeIsPolledUntilSettled(t *testing.T) {
 			}
 			return connector.PaymentSnapshot{Status: connector.PaymentSucceeded, Amount: 49900, Currency: "INR", ProviderPaymentID: "pp_wait"}, nil
 		}
-		c := e.mustCreate(nil)
+		c := e.mustCreate(func(i *subscriptions.CreateInput) { i.Interval = "day" })
 		sub := e.activateMandate(c)
 		e.runJobs()
-		if cy := e.cycles(sub.ID); len(cy) != 1 || cy[0].State != "awaiting" || e.sub(sub.ID).RenewalsDone != 0 {
+		e.advanceTo(t0.Add(24 * hour))
+		if cy := e.cycles(sub.ID); len(cy) != 2 || cy[1].State != "awaiting" || e.sub(sub.ID).RenewalsDone != 1 {
 			t.Fatalf("cycles = %+v", cy)
 		}
 		e.drive(2*hour, 30*time.Minute) // still processing: keeps polling, never recharges
@@ -401,11 +508,11 @@ func TestPendingChargeIsPolledUntilSettled(t *testing.T) {
 		mu.Unlock()
 		e.drive(hour, 30*time.Minute)
 		got := e.sub(sub.ID)
-		if got.RenewalsDone != 1 || got.Status != "active" {
+		if got.RenewalsDone != 2 || got.Status != "active" {
 			t.Fatalf("sub = %+v", got)
 		}
-		if pays := e.renewalPayments(sub.ID); len(pays) != 1 || pays[0].Status != "succeeded" {
-			t.Errorf("payments = %+v", pays)
+		if n := e.paidRenewals(sub.ID); n != 2 {
+			t.Errorf("paid renewal payments = %d", n)
 		}
 	})
 }
@@ -420,9 +527,10 @@ func TestPendingChargeThatFailsEntersDunning(t *testing.T) {
 		e.r.payFn = func(connector.PaymentRef) (connector.PaymentSnapshot, error) {
 			return connector.PaymentSnapshot{Status: connector.PaymentFailed, ErrorCode: "mandate_cancelled"}, nil
 		}
-		c := e.mustCreate(func(i *subscriptions.CreateInput) { i.Method = "card" })
+		c := e.mustCreate(func(i *subscriptions.CreateInput) { i.Method = "card"; i.Interval = "day" })
 		sub := e.activateMandate(c)
 		e.runJobs()
+		e.advanceTo(t0.Add(24 * hour))
 		e.drive(hour, 30*time.Minute)
 		got := e.sub(sub.ID)
 		if got.Status != "past_due" || got.DunningAttempt != 1 {
@@ -442,21 +550,34 @@ func TestChargeTemporaryErrorIsRetriedWithTheSameReference(t *testing.T) {
 			}
 			return connector.PaymentSnapshot{Status: connector.PaymentSucceeded, Amount: req.Amount, Currency: "INR", ProviderPaymentID: "pp_ok"}, nil
 		}
-		c := e.mustCreate(nil)
+		c := e.mustCreate(func(i *subscriptions.CreateInput) { i.Interval = "day" })
 		sub := e.activateMandate(c)
-		e.runJobs() // fails with a temporary error: the job is retried later
-		if e.sub(sub.ID).RenewalsDone != 0 {
+		e.runJobs()
+		e.advanceTo(t0.Add(24 * hour)) // fails with a temporary error: the job is retried later
+		if e.sub(sub.ID).RenewalsDone != 1 {
 			t.Fatal("renewal booked after a temporary error")
 		}
 		e.drive(2*hour, 10*time.Minute)
-		if e.r.chargeCount() != 2 || e.sub(sub.ID).RenewalsDone != 1 {
+		if e.r.chargeCount() != 2 || e.sub(sub.ID).RenewalsDone != 2 {
 			t.Fatalf("charges=%d sub=%+v", e.r.chargeCount(), e.sub(sub.ID))
 		}
 		if e.r.charges[0].ProviderRef != e.r.charges[1].ProviderRef {
 			t.Errorf("retry used a new reference: %s vs %s", e.r.charges[1].ProviderRef, e.r.charges[0].ProviderRef)
 		}
-		if pays := e.renewalPayments(sub.ID); len(pays) != 1 {
-			t.Errorf("payments = %d", len(pays))
+		if n := e.paidRenewals(sub.ID); n != 2 {
+			t.Errorf("paid renewal payments = %d", n)
 		}
 	})
+}
+
+// paidRenewals counts the subscription's succeeded renewal payments (the next
+// period's payment may already exist, unpaid, once its notice went out).
+func (e *env) paidRenewals(subID string) int {
+	n := 0
+	for _, p := range e.renewalPayments(subID) {
+		if p.Status == "succeeded" {
+			n++
+		}
+	}
+	return n
 }
