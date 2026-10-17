@@ -58,6 +58,10 @@ var (
 type Error struct {
 	Kind    error
 	Message string
+	// Key and Args name the message in the i18n catalogs, for the errors a
+	// customer sees on the hosted page (empty for API-only errors).
+	Key  string
+	Args []any
 }
 
 func (e *Error) Error() string { return e.Message }
@@ -65,6 +69,11 @@ func (e *Error) Unwrap() error { return e.Kind }
 
 func newErr(kind error, format string, a ...any) error {
 	return &Error{Kind: kind, Message: fmt.Sprintf(format, a...)}
+}
+
+// newKeyed is an error whose message the hosted page translates from key.
+func newKeyed(kind error, key string, args []any, message string) error {
+	return &Error{Kind: kind, Message: message, Key: key, Args: args}
 }
 
 const (
@@ -505,15 +514,15 @@ func validateWho(in *StartInput) error {
 	in.Name, in.Email, in.Phone = strings.TrimSpace(in.Name), strings.ToLower(strings.TrimSpace(in.Email)), strings.TrimSpace(in.Phone)
 	switch {
 	case in.Name == "" || len(in.Name) > 200 || strings.ContainsFunc(in.Name, unicode.IsControl):
-		return newErr(ErrInvalid, "please enter your name")
+		return newKeyed(ErrInvalid, "link.err.name", nil, "please enter your name")
 	case in.Email == "":
-		return newErr(ErrInvalid, "please enter your email address")
+		return newKeyed(ErrInvalid, "link.err.email", nil, "please enter a valid email address")
 	}
 	if a, err := mail.ParseAddress(in.Email); err != nil || a.Address != in.Email || len(in.Email) > 254 {
-		return newErr(ErrInvalid, "please enter a valid email address")
+		return newKeyed(ErrInvalid, "link.err.email", nil, "please enter a valid email address")
 	}
 	if in.Phone != "" && !phoneRE.MatchString(in.Phone) {
-		return newErr(ErrInvalid, "please enter a valid phone number")
+		return newKeyed(ErrInvalid, "link.err.phone", nil, "please enter a valid phone number")
 	}
 	return nil
 }
@@ -572,7 +581,7 @@ func (s *Service) Start(ctx context.Context, slug string, in StartInput) (Starte
 	if amount == 0 {
 		amount = in.Amount
 		if amount < l.MinAmount || amount <= 0 || l.MaxAmount > 0 && amount > l.MaxAmount || amount > maxAmount {
-			return Started{}, newErr(ErrInvalid, "please enter an amount between %s and %s", s.format(l.MinAmount, l.Currency), s.upper(l))
+			return Started{}, s.amountRangeErr(l)
 		}
 	}
 
@@ -640,9 +649,15 @@ func (s *Service) format(minor int64, currency string) string {
 	return currency + " " + d
 }
 
-func (s *Service) upper(l store.PaymentLink) string {
+// amountRangeErr is the error for an amount outside what the link allows.
+func (s *Service) amountRangeErr(l store.PaymentLink) error {
+	lo := s.format(l.MinAmount, l.Currency)
 	if l.MaxAmount == 0 {
-		return "no limit"
+		return newKeyed(ErrInvalid, "link.err.amount_min", []any{lo}, "please enter an amount of at least "+lo)
 	}
-	return s.format(l.MaxAmount, l.Currency)
+	hi := s.format(l.MaxAmount, l.Currency)
+	return newKeyed(ErrInvalid, "link.err.amount_range", []any{lo, hi}, "please enter an amount between "+lo+" and "+hi)
 }
+
+// FormatAmount renders minor units with the currency code, for pages.
+func (s *Service) FormatAmount(minor int64, currency string) string { return s.format(minor, currency) }

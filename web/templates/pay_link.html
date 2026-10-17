@@ -1,0 +1,20 @@
+{{define "title"}}{{t "link.title" .AppName}}{{end}}
+{{define "content"}}
+{{with .Link}}
+{{with .Description}}<p>{{.}}</p>{{end}}
+{{if .FixedAmount}}<p class="amount"><strong>{{.FixedAmount}}</strong></p>{{end}}
+{{end}}
+<form method="post" action="{{.FormURL}}">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+{{with .Link}}
+{{if .Choose}}<label class="muted" for="amount">{{t "link.amount_input" .Currency}}</label>
+<input class="field" id="amount" name="amount" inputmode="decimal" autocomplete="off" value="{{.Amount}}" required>
+<p class="muted">{{.Hint}}</p>{{end}}
+<input class="field" name="name" placeholder="{{t "link.name"}}" value="{{.Name}}" autocomplete="name" required maxlength="200">
+<input class="field" name="email" type="email" placeholder="{{t "link.email"}}" value="{{.Email}}" autocomplete="email" required maxlength="254">
+<input class="field" name="phone" type="tel" placeholder="{{t "link.phone"}}" value="{{.Phone}}" autocomplete="tel" maxlength="20">
+{{end}}
+<button class="btn" type="submit">{{t "link.continue"}}</button>
+</form>
+{{end}}
