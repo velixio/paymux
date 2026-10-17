@@ -179,7 +179,7 @@ func (e *env) pay(amount int64, currency string, cust *core.CustomerInput, provi
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	if _, err := e.core.ApplyAttemptSnapshot(ctx, a.ID, core.Snapshot{Status: state.AttemptCaptured, Amount: amount, Currency: currency,
+	if _, err := e.core.ApplyAttemptSnapshot(ctx, a.ID, core.Snapshot{Status: state.AttemptCaptured, Amount: res.Payment.Amount, Currency: currency,
 		Method: "upi", ProviderPaymentID: "pp_" + a.ID}); err != nil {
 		e.t.Fatal(err)
 	}

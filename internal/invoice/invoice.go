@@ -345,14 +345,11 @@ func (s *Service) issue(ctx context.Context, tx store.Tx, p store.Payment, a sto
 	}
 	flags = append(flags, cls.Flags...)
 
-	var amts tax.Amounts
-	if prof.PricesIncludeTax {
-		amts, err = tax.FromTotal(received, prof.GSTRateBP, cls.InterState, cls.ZeroRated())
-	} else {
-		// TODO(spec): with tax-exclusive pricing the core must charge
-		// taxable+tax; until it does the invoice total can exceed what was received.
-		amts, err = tax.FromTaxable(received, prof.GSTRateBP, cls.InterState, cls.ZeroRated())
-	}
+	// What was received always includes the tax: with tax-inclusive prices the
+	// price carried it, and with tax-exclusive prices the core charged
+	// taxable + GST (core.chargeAmount). Either way the invoice total is the
+	// amount received and the heads are derived from it.
+	amts, err := tax.FromTotal(received, prof.GSTRateBP, cls.InterState, cls.ZeroRated())
 	if err != nil {
 		return nil, fmt.Errorf("invoice: amounts for payment %s: %w", p.ID, err)
 	}
@@ -404,7 +401,13 @@ func (s *Service) issue(ctx context.Context, tx store.Tx, p store.Payment, a sto
 	line := Line{Description: firstNonEmpty(p.Description, "Payment "+firstNonEmpty(p.OrderRef, p.ID)), SAC: prof.SACCode, Qty: 1,
 		Unit: "service", UnitAmount: amts.Taxable, Taxable: amts.Taxable, CGSTRateBP: cgstBP, SGSTRateBP: sgstBP,
 		IGSTRateBP: igstBP, CGST: amts.CGST, SGST: amts.SGST, IGST: amts.IGST}
-	lines, err := s.prorationLines(ctx, tx, p, line, received, amts, prof.PricesIncludeTax, prof.GSTRateBP, cls.InterState, cls.ZeroRated())
+	// Proration adjustments are in the price's own terms: tax-inclusive, or the
+	// taxable value when prices exclude tax.
+	lineBase := received
+	if !prof.PricesIncludeTax {
+		lineBase = amts.Taxable
+	}
+	lines, err := s.prorationLines(ctx, tx, p, line, lineBase, amts, prof.PricesIncludeTax, prof.GSTRateBP, cls.InterState, cls.ZeroRated())
 	if err != nil {
 		return nil, err
 	}
