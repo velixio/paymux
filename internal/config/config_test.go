@@ -1,7 +1,11 @@
 package config
 
 import (
+	"bytes"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -187,6 +191,68 @@ func TestAllowPrivateWebhooks(t *testing.T) {
 	}
 	_, err := Load(base("PAYMUX_ALLOW_PRIVATE_WEBHOOKS", "yes"))
 	wantErr(t, err, "PAYMUX_ALLOW_PRIVATE_WEBHOOKS must be true or false")
+}
+
+func TestSMTPAndOpsDefaults(t *testing.T) {
+	c, err := Load(base())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.SMTPHost != "" || c.SMTPPort != 587 || len(c.OpsEmails) != 0 || c.OpsWebhookURL != "" {
+		t.Fatalf("%+v", c)
+	}
+}
+
+func TestSMTPAndOpsParsed(t *testing.T) {
+	c, err := Load(base("PAYMUX_SMTP_HOST", "smtp.example.com", "PAYMUX_SMTP_PORT", "2525",
+		"PAYMUX_SMTP_USERNAME", "mailer", "PAYMUX_SMTP_PASSWORD", "hunter2-secret",
+		"PAYMUX_SMTP_FROM", "Paymux <billing@example.com>",
+		"PAYMUX_OPS_EMAILS", "ops@example.com, Oncall <oncall@example.com>",
+		"PAYMUX_OPS_WEBHOOK_URL", "https://hooks.example.com/T/B/x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.SMTPHost != "smtp.example.com" || c.SMTPPort != 2525 || c.SMTPUsername != "mailer" ||
+		c.SMTPPassword.Reveal() != "hunter2-secret" || c.SMTPFrom != "Paymux <billing@example.com>" ||
+		len(c.OpsEmails) != 2 || c.OpsEmails[0] != "ops@example.com" || c.OpsEmails[1] != "oncall@example.com" ||
+		c.OpsWebhookURL != "https://hooks.example.com/T/B/x" {
+		t.Fatalf("%+v", c)
+	}
+}
+
+func TestSMTPPasswordIsRedacted(t *testing.T) {
+	c, err := Load(base("PAYMUX_SMTP_HOST", "smtp.example.com", "PAYMUX_SMTP_FROM", "b@example.com", "PAYMUX_SMTP_PASSWORD", "hunter2-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	l := slog.New(slog.NewJSONHandler(&buf, nil))
+	l.Info("cfg", "cfg", c, "pw", c.SMTPPassword)
+	j, _ := json.Marshal(c.SMTPPassword)
+	for name, s := range map[string]string{"%v": fmt.Sprintf("%v", c), "%+v": fmt.Sprintf("%+v", c),
+		"%#v": fmt.Sprintf("%#v", c), "%s": fmt.Sprintf("%s", c.SMTPPassword), "slog": buf.String(), "json": string(j)} {
+		if strings.Contains(s, "hunter2") {
+			t.Errorf("%s leaks the password: %s", name, s)
+		}
+	}
+}
+
+func TestSMTPAndOpsValidation(t *testing.T) {
+	cases := []struct {
+		kv  []string
+		msg string
+	}{
+		{[]string{"PAYMUX_SMTP_PORT", "abc"}, "PAYMUX_SMTP_PORT must be a port number"},
+		{[]string{"PAYMUX_SMTP_PORT", "70000"}, "PAYMUX_SMTP_PORT must be a port number"},
+		{[]string{"PAYMUX_SMTP_HOST", "smtp.example.com"}, "PAYMUX_SMTP_FROM is required when PAYMUX_SMTP_HOST is set"},
+		{[]string{"PAYMUX_SMTP_HOST", "smtp.example.com", "PAYMUX_SMTP_FROM", "not an address"}, "PAYMUX_SMTP_FROM"},
+		{[]string{"PAYMUX_OPS_EMAILS", "ok@example.com,nope"}, "PAYMUX_OPS_EMAILS"},
+		{[]string{"PAYMUX_OPS_WEBHOOK_URL", "ftp://example.com"}, "PAYMUX_OPS_WEBHOOK_URL must be an absolute http(s) URL"},
+	}
+	for _, tc := range cases {
+		_, err := Load(base(tc.kv...))
+		wantErr(t, err, tc.msg)
+	}
 }
 
 func TestAllProblemsReported(t *testing.T) {
