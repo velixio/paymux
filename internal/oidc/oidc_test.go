@@ -38,7 +38,7 @@ func newFlow(t *testing.T, mod func(*oidctest.IdP)) *flow {
 	if mod != nil {
 		mod(idp)
 	}
-	return &flow{idp: idp, c: oidc.New(oidc.Config{Issuer: idp.Issuer, ClientID: idp.ClientID, ClientSecret: idp.ClientSecret, RedirectURL: redirect})}
+	return &flow{idp: idp, c: oidc.New(oidc.Config{Issuer: idp.Issuer, ClientID: idp.ClientID, ClientSecret: idp.ClientSecret, RedirectURL: redirect, AllowInsecure: true})}
 }
 
 // run does the whole round trip for a user and returns the verified claims.
@@ -107,7 +107,7 @@ func TestPKCEVerifierIsChecked(t *testing.T) {
 		t.Error("an authorization code was accepted twice")
 	}
 	// A wrong client secret is refused by the IdP.
-	bad := oidc.New(oidc.Config{Issuer: f.idp.Issuer, ClientID: f.idp.ClientID, ClientSecret: "wrong", RedirectURL: redirect})
+	bad := oidc.New(oidc.Config{Issuer: f.idp.Issuer, ClientID: f.idp.ClientID, ClientSecret: "wrong", RedirectURL: redirect, AllowInsecure: true})
 	v, ch = oidc.NewPKCE()
 	authURL, _ = bad.AuthURL(context.Background(), "s", "n", ch)
 	if _, err := bad.Exchange(context.Background(), mustCode(t, f.idp.Authorize(t, authURL, alice)), v); !errors.Is(err, oidc.ErrInvalid) {
@@ -206,7 +206,7 @@ func TestKeyRotationAndRefreshLimit(t *testing.T) {
 	now := time.Now()
 	clock := &now
 	idp := oidctest.New(t)
-	c := oidc.New(oidc.Config{Issuer: idp.Issuer, ClientID: "paymux", ClientSecret: "client-secret", RedirectURL: redirect, Now: func() time.Time { return *clock }})
+	c := oidc.New(oidc.Config{Issuer: idp.Issuer, ClientID: "paymux", ClientSecret: "client-secret", RedirectURL: redirect, AllowInsecure: true, Now: func() time.Time { return *clock }})
 	ctx := context.Background()
 	claims := func() map[string]any {
 		return map[string]any{"iss": idp.Issuer, "aud": "paymux", "sub": "u", "exp": now.Add(time.Hour).Unix(), "nonce": "N"}
@@ -250,7 +250,7 @@ func TestES256Tokens(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	c := oidc.New(oidc.Config{Issuer: srv.URL, ClientID: "paymux", ClientSecret: "s", RedirectURL: redirect})
+	c := oidc.New(oidc.Config{Issuer: srv.URL, ClientID: "paymux", ClientSecret: "s", RedirectURL: redirect, AllowInsecure: true})
 	sign := func(key *ecdsa.PrivateKey) string {
 		h, _ := json.Marshal(map[string]string{"alg": "ES256", "kid": "ec1"})
 		b, _ := json.Marshal(map[string]any{"iss": srv.URL, "aud": "paymux", "sub": "u", "exp": time.Now().Add(time.Hour).Unix(), "nonce": "N"})
@@ -276,11 +276,11 @@ func TestDiscoveryMustNameTheConfiguredIssuer(t *testing.T) {
 			"token_endpoint": srv.URL + "/t", "jwks_uri": srv.URL + "/j"})
 	}))
 	defer srv.Close()
-	c := oidc.New(oidc.Config{Issuer: srv.URL, ClientID: "x", ClientSecret: "y", RedirectURL: redirect})
+	c := oidc.New(oidc.Config{Issuer: srv.URL, ClientID: "x", ClientSecret: "y", RedirectURL: redirect, AllowInsecure: true})
 	if _, err := c.AuthURL(context.Background(), "s", "n", "c"); err == nil || !strings.Contains(err.Error(), "issuer") {
 		t.Errorf("a discovery document for another issuer was accepted: %v", err)
 	}
-	down := oidc.New(oidc.Config{Issuer: "http://127.0.0.1:1", ClientID: "x", ClientSecret: "y", RedirectURL: redirect})
+	down := oidc.New(oidc.Config{Issuer: "http://127.0.0.1:1", ClientID: "x", ClientSecret: "y", RedirectURL: redirect, AllowInsecure: true})
 	if _, err := down.AuthURL(context.Background(), "s", "n", "c"); err == nil {
 		t.Error("an unreachable issuer gave an auth URL")
 	}

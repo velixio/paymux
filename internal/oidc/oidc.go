@@ -23,11 +23,14 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/paymux/paymux/pkg/connector"
 )
 
 // Config configures a Client.
@@ -36,9 +39,17 @@ type Config struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
-	// HTTP is the client used for discovery, JWKS and the token endpoint
-	// (default: a client with a 10 second timeout and no redirects).
+	// HTTP is the client used for discovery, JWKS and the token endpoint. The
+	// default has a 10 second timeout, never follows redirects and, unless
+	// AllowInsecure is set, refuses loopback, private and link-local addresses
+	// (the endpoints come from the IdP's discovery document, so they are not
+	// trusted to stay off the internal network).
 	HTTP *http.Client
+	// AllowInsecure permits http endpoints and private addresses, for an IdP on
+	// localhost during development.
+	AllowInsecure bool
+	// LookupIP replaces the system resolver of the default client (tests).
+	LookupIP func(ctx context.Context, host string) ([]net.IP, error)
 	// Now is the clock (default time.Now).
 	Now func() time.Time
 }
@@ -83,7 +94,10 @@ type discovery struct {
 // New returns a Client. Nothing is fetched until first use.
 func New(cfg Config) *Client {
 	if cfg.HTTP == nil {
-		cfg.HTTP = &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		cfg.HTTP = connector.NewHTTPClient(connector.HTTPOptions{Timeout: 10 * time.Second, DenyPrivate: !cfg.AllowInsecure, LookupIP: cfg.LookupIP})
+		if cfg.AllowInsecure {
+			cfg.HTTP.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		}
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -119,6 +133,9 @@ func (c *Client) discover(ctx context.Context) (*discovery, error) {
 	if c.disc != nil && c.cfg.Now().Sub(c.discAt) < discoveryTTL {
 		return c.disc, nil
 	}
+	if !c.cfg.AllowInsecure && !strings.HasPrefix(c.cfg.Issuer, "https://") {
+		return nil, fmt.Errorf("oidc: the issuer %q is not an https URL", c.cfg.Issuer)
+	}
 	var d discovery
 	if err := c.getJSON(ctx, c.cfg.Issuer+"/.well-known/openid-configuration", &d); err != nil {
 		return nil, fmt.Errorf("oidc: discovery: %w", err)
@@ -130,6 +147,15 @@ func (c *Client) discover(ctx context.Context) (*discovery, error) {
 	}
 	if d.AuthorizationEndpoint == "" || d.TokenEndpoint == "" || d.JWKSURI == "" {
 		return nil, errors.New("oidc: discovery document lacks an endpoint")
+	}
+	if !c.cfg.AllowInsecure {
+		// The tokens and keys that sign people in only travel over TLS.
+		for name, u := range map[string]string{"issuer": c.cfg.Issuer, "authorization_endpoint": d.AuthorizationEndpoint,
+			"token_endpoint": d.TokenEndpoint, "jwks_uri": d.JWKSURI} {
+			if !strings.HasPrefix(u, "https://") {
+				return nil, fmt.Errorf("oidc: the %s %q is not an https URL", name, u)
+			}
+		}
 	}
 	c.disc, c.discAt = &d, c.cfg.Now()
 	return c.disc, nil

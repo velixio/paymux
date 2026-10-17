@@ -465,5 +465,6 @@ func (a *App) oidcClient() *oidc.Client {
 		return nil
 	}
 	return oidc.New(oidc.Config{Issuer: a.cfg.OIDCIssuer, ClientID: a.cfg.OIDCClientID, ClientSecret: a.cfg.OIDCClientSecret.Reveal(),
-		RedirectURL: strings.TrimRight(a.cfg.BaseURL.String(), "/") + "/dashboard/login/oidc/callback"})
+		RedirectURL:   strings.TrimRight(a.cfg.BaseURL.String(), "/") + "/dashboard/login/oidc/callback",
+		AllowInsecure: strings.HasPrefix(a.cfg.OIDCIssuer, "http://")}) // config allows http for localhost only
 }
