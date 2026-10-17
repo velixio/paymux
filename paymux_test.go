@@ -245,6 +245,25 @@ func TestFaviconIsServed(t *testing.T) {
 	shutdown(t, r)
 }
 
+func TestRootLeadsToSetupThenDashboard(t *testing.T) {
+	dir := t.TempDir()
+	r := startApp(t, testConfig(t, "sqlite://"+dir+"/paymux.db", dir))
+	waitReady(t, r)
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := noFollow.Get("http://" + r.app.Addr() + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/setup" {
+		t.Fatalf("/ on a new hub -> %d %q, want 303 /setup", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	if code, _ := fetch(t, r.app.Addr(), "/nope"); code != http.StatusNotFound {
+		t.Fatalf("/nope -> %d, want 404", code)
+	}
+	shutdown(t, r)
+}
+
 type okVerifier struct{}
 
 func (okVerifier) Verify(http.Header, []byte) (string, error) { return "ev_1", nil }
