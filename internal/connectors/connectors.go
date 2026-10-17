@@ -124,6 +124,9 @@ func (s *Service) CreateAccount(ctx context.Context, actor audit.Actor, sc core.
 	if in.Mode != "test" && in.Mode != "live" {
 		return store.ProviderAccount{}, invalid("mode must be test or live")
 	}
+	if info.TestOnly && in.Mode != "test" {
+		return store.ProviderAccount{}, invalid("the %s connector can only be used in test mode", in.Connector)
+	}
 	if err := ValidateConfig(info.ConfigSchema, in.Config); err != nil {
 		return store.ProviderAccount{}, invalid("config: %v", err)
 	}
@@ -357,6 +360,9 @@ func (s *Service) Get(ctx context.Context, accountID string) (Live, error) {
 	factory, info, ok := connector.Lookup(pa.Connector)
 	if !ok {
 		return Live{}, fmt.Errorf("connectors: %q is not available in this build", pa.Connector)
+	}
+	if info.TestOnly && pa.Mode != "test" {
+		return Live{}, fmt.Errorf("connectors: %s is a %s-mode account, but the %s connector can only be used in test mode", pa.ID, pa.Mode, pa.Connector)
 	}
 	cfg, err := s.o.Box.Open(pa.ConfigEnc, configAAD(pa.ID))
 	if err != nil {
