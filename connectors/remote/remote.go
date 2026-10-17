@@ -6,6 +6,8 @@
 // implements exactly those interfaces.
 //
 // Account config: {"base_url": "https://connector.example.com/v1", "secret": "whsec_..."}.
+// base_url must be https unless its host is loopback (allow_insecure: true
+// lifts that, for tests).
 //
 // TODO(spec): the registered Info is a placeholder; per-account facts such as
 // merchant_of_record are only known after discovery, so anything that reads the
@@ -24,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -48,6 +51,37 @@ func init() { connector.Register("remote", New, info) }
 type config struct {
 	BaseURL string `json:"base_url"`
 	Secret  string `json:"secret"`
+	// AllowInsecure permits a plain-http base_url on a non-loopback host.
+	// For tests only: the signature authenticates messages but does not
+	// encrypt them, and customer data travels in the bodies.
+	AllowInsecure bool `json:"allow_insecure,omitempty"`
+}
+
+// checkBaseURL requires https, except for a loopback host (a service on the
+// same machine, or a test) or when allowInsecure is set.
+func checkBaseURL(raw string, allowInsecure bool) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return errors.New("remote: base_url must be an https URL")
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if allowInsecure || isLoopback(u.Hostname()) {
+			return nil
+		}
+		return errors.New("remote: base_url must use https (http is only accepted for a loopback host)")
+	}
+	return errors.New("remote: base_url must be an https URL")
+}
+
+func isLoopback(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 type remote struct {
@@ -64,9 +98,8 @@ func New(raw json.RawMessage, deps connector.Deps) (connector.Connector, error) 
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("remote: bad config: %w", err)
 	}
-	u, err := url.Parse(cfg.BaseURL)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return nil, errors.New("remote: base_url must be an http(s) URL")
+	if err := checkBaseURL(cfg.BaseURL, cfg.AllowInsecure); err != nil {
+		return nil, err
 	}
 	signer, err := wire.NewSigner(cfg.Secret)
 	if err != nil {
