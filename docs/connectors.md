@@ -105,7 +105,10 @@ Paymux must respect:
 you exercise the whole flow with no provider account and no keys: add a
 "Simulator" provider account in **test mode** (no configuration needed), link it
 to an app, and send test payments to it (see `docs/quickstart.md`). It cannot be
-linked to a live-mode account.
+linked to a live-mode account. No routing rule is needed: in test mode, a
+payment that no rule routes to any account goes to the app's linked accounts of
+a test-only connector (a rule that matches, or one that rejects, is never
+overridden).
 
 How it works, which also makes it a reference for a connector that needs a
 hosted page or a webhook source:
