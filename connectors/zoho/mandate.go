@@ -27,6 +27,8 @@ type mandateEntity struct {
 	Currency  string `json:"currency"`
 	Reference string `json:"reference_number"`
 	EndDate   string `json:"end_date"`
+	// Payment is the registration transaction, when Zoho reports it.
+	Payment *paymentEntity `json:"payment"`
 }
 
 func mapMandateStatus(raw string) string {
@@ -48,8 +50,19 @@ func (m mandateEntity) snapshot() (connector.MandateSnapshot, error) {
 	if err != nil {
 		return connector.MandateSnapshot{}, fmt.Errorf("zoho: mandate amount: %w", err)
 	}
-	return connector.MandateSnapshot{ProviderMandateID: m.MandateID, Status: mapMandateStatus(m.Status), RawStatus: m.Status,
-		MaxAmount: amt, Currency: firstNonEmpty(m.Currency, "INR"), Method: "upi"}, nil
+	snap := connector.MandateSnapshot{ProviderMandateID: m.MandateID, Status: mapMandateStatus(m.Status), RawStatus: m.Status,
+		MaxAmount: amt, Currency: firstNonEmpty(m.Currency, "INR"), Method: "upi"}
+	if m.Payment != nil {
+		ps, err := m.Payment.snapshot("")
+		if err != nil {
+			return connector.MandateSnapshot{}, err
+		}
+		if ps.ProviderRef == "" {
+			ps.ProviderRef = m.Reference
+		}
+		snap.SetupPayment = &ps
+	}
+	return snap, nil
 }
 
 // CreateMandateCheckout registers a UPI mandate and returns the checkout for
@@ -69,8 +82,17 @@ func (z *zoho) CreateMandateCheckout(ctx context.Context, req connector.MandateR
 	if err != nil {
 		return connector.CheckoutResult{}, err
 	}
+	first := req.Amount
+	if first <= 0 {
+		first = 100 // Info.MandateSetupAmount: the verification debit
+	}
+	firstStr, err := money.FormatDecimal(first, "INR")
+	if err != nil {
+		return connector.CheckoutResult{}, err
+	}
 	in := map[string]any{
-		"max_amount": json.Number(maxStr), "currency": "INR", "frequency": "as_presented",
+		// amount is the registration's own (AFA) debit; max_amount caps later ones.
+		"amount": json.Number(firstStr), "max_amount": json.Number(maxStr), "currency": "INR", "frequency": "as_presented",
 		"reference_number": req.ProviderRef, "return_url": z.deps.URLs.ReturnURL(req.ProviderRef),
 		"customer":  map[string]string{"name": req.Customer.Name, "email": req.Customer.Email, "phone": req.Customer.Phone},
 		"meta_data": []map[string]string{{"key": "mdt", "value": req.MandateID}},

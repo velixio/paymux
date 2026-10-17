@@ -216,6 +216,11 @@ func TestReauthorizationFlow(t *testing.T) {
 		// The customer authorises the bigger mandate: swap, revoke, resume.
 		e.activateMandateByID(pending, "pm_new")
 		e.runJobs()
+		// The new mandate needs its own notice: the resumed debit waits 24h for it.
+		if e.r.chargeCount() != 0 || len(e.r.notices) != 2 || e.r.notices[1].Mandate.ProviderMandateID != "pm_new" {
+			t.Fatalf("charges=%d notices=%+v", e.r.chargeCount(), e.r.notices)
+		}
+		e.advanceTo(e.clock().Add(24 * hour))
 		got = e.sub(sub.ID)
 		if got.MandateID != pending.ID || got.PendingMandateID != "" || got.RequiresReauthorization {
 			t.Fatalf("after swap: %+v", got)
@@ -307,6 +312,10 @@ func TestMandateRevokedByTheCustomer(t *testing.T) {
 		}
 		e.activateMandateByID(e.mandate(got.PendingMandateID), "pm_again")
 		e.runJobs()
+		if e.r.chargeCount() != 0 {
+			t.Fatal("the new mandate was debited without its own notice")
+		}
+		e.advanceTo(e.clock().Add(24 * hour))
 		got = e.sub(sub.ID)
 		if got.Status != "active" || e.r.chargeCount() != 1 || got.RequiresReauthorization {
 			t.Errorf("after re-authorization: %+v charges=%d", got, e.r.chargeCount())

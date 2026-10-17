@@ -22,8 +22,10 @@ import (
 // the command names pre_debit_SI / si_transaction / check_mandate_status /
 // mandate_revoke, and the shape of their JSON var1 and responses.
 
-// setupAmount is what the mandate registration debits (Rs 1, spec 6.8: "may be
-// Rs 0 or Rs 1 per provider"); the first real charge is a normal debit.
+// setupAmount (Rs 1) is the verification amount a registration debits when
+// the request names none (Info.MandateSetupAmount). A registration for a
+// running plan carries the first period's amount instead, as the single AFA
+// transaction (RBI e-mandate framework).
 const setupAmount int64 = 100
 
 // siDetails is the si_details form field (JSON). Field order is part of the
@@ -48,7 +50,7 @@ func siHash(key, salt, txnid, amount, productinfo, firstname, email string, udf 
 func istDate(ms int64) string { return time.UnixMilli(ms).In(ist).Format("2006-01-02") }
 
 // CreateMandateCheckout builds the SI registration form (an auto-submitting
-// form_post like a normal checkout) for a Rs 1 first debit that authorises the
+// form_post like a normal checkout) whose first debit (Amount) authorises the
 // mandate up to MaxAmount per debit. The registration's mihpayid becomes the
 // mandate id (authPayuId) used by every later call.
 func (p *payu) CreateMandateCheckout(_ context.Context, req connector.MandateRequest) (connector.CheckoutResult, error) {
@@ -66,7 +68,14 @@ func (p *payu) CreateMandateCheckout(_ context.Context, req connector.MandateReq
 	if err != nil {
 		return connector.CheckoutResult{}, err
 	}
-	setup, _ := money.FormatDecimal(setupAmount, "INR")
+	first := req.Amount
+	if first <= 0 {
+		first = setupAmount
+	}
+	setup, err := money.FormatDecimal(first, "INR")
+	if err != nil {
+		return connector.CheckoutResult{}, err
+	}
 	end := req.ValidUntil
 	if end == 0 {
 		end = p.deps.Now().AddDate(5, 0, 0).UnixMilli()
@@ -143,7 +152,16 @@ func (p *payu) FetchMandate(ctx context.Context, ref connector.MandateRef) (conn
 		if st == "revoked" || st == "expired" {
 			st = "failed" // a registration that did not succeed
 		}
-		return connector.MandateSnapshot{ProviderMandateID: string(d.MihPayID), Status: st, RawStatus: string(d.Status), Currency: "INR"}, nil
+		snap := connector.MandateSnapshot{ProviderMandateID: string(d.MihPayID), Status: st, RawStatus: string(d.Status), Currency: "INR"}
+		if st == "active" {
+			// The registration transaction is the first period's payment.
+			ps, err := d.snapshot(id)
+			if err != nil {
+				return connector.MandateSnapshot{}, err
+			}
+			snap.SetupPayment = &ps
+		}
+		return snap, nil
 	}
 	v1, _ := json.Marshal(struct {
 		AuthPayuID string `json:"authPayuId"`

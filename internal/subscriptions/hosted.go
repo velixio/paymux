@@ -10,6 +10,7 @@ import (
 	"sort"
 
 	"github.com/paymux/paymux/internal/core/state"
+	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/web"
 	"github.com/paymux/paymux/pkg/connector"
@@ -74,9 +75,16 @@ func (s *Service) OpenCheckout(ctx context.Context, id, token string) (Checkout,
 	case terminal(sub.Status):
 		co.Kind = CheckoutClosed
 		return co, nil
-	case sub.Status != string(state.SubIncomplete) && sub.PendingMandateID == "":
+	case sub.Status != string(state.SubIncomplete) && sub.PendingMandateID == "" && !reauthRetry(sub):
 		co.Kind = CheckoutDone
 		return co, nil
+	}
+	if needsFreshMandate(sub, m) {
+		var err error
+		if sub, m, err = s.freshMandate(ctx, sub.ID, token); err != nil {
+			return Checkout{}, err
+		}
+		co.Subscription = sub
 	}
 	conn, err := s.connectors.Get(ctx, sub.ProviderAccountID)
 	if err != nil {
@@ -106,8 +114,19 @@ func (s *Service) OpenCheckout(ctx context.Context, id, token string) (Checkout,
 		if !ok {
 			return Checkout{}, newErr(ErrUnsupported, "connector cannot manage mandates")
 		}
-		req := connector.MandateRequest{MandateID: m.ID, ProviderRef: m.ProviderRef, MaxAmount: m.MaxAmount, Currency: m.Currency,
-			Method: m.Method, Customer: customer}
+		// The registration transaction pays the first period itself (RBI: the
+		// first debit carries the customer's authentication). With a trial, or
+		// when the subscription is already running (re-authorization, new
+		// payment method), nothing is due yet: the provider's verification amount.
+		amount := conn.Info().MandateSetupAmount
+		if amount <= 0 {
+			amount = defaultSetupAmount
+		}
+		if sub.Status == string(state.SubIncomplete) && sub.TrialEnd.IsZero() {
+			amount = sub.Amount
+		}
+		req := connector.MandateRequest{MandateID: m.ID, ProviderRef: m.ProviderRef, Amount: amount, MaxAmount: m.MaxAmount,
+			Currency: m.Currency, Method: m.Method, Customer: customer}
 		if !m.ValidUntil.IsZero() {
 			req.ValidUntil = m.ValidUntil.UnixMilli()
 		}
@@ -203,4 +222,82 @@ func (s *Service) ServeHosted(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
+}
+
+// defaultSetupAmount (Rs 1) is the registration amount of a connector that
+// declares none.
+const defaultSetupAmount int64 = 100
+
+// reauthRetry: a running merchant-triggered subscription whose
+// re-authorization mandate failed and must be offered again.
+func reauthRetry(sub store.Subscription) bool {
+	return sub.BillingMode == string(connector.MerchantTriggered) && sub.RequiresReauthorization && sub.PendingMandateID == ""
+}
+
+// needsFreshMandate reports whether the mandate to check out has been used up
+// by a failed or expired registration. Providers refuse a reference they have
+// seen, so the retry registers a new mandate on the same subscription.
+func needsFreshMandate(sub store.Subscription, m store.Mandate) bool {
+	if sub.BillingMode != string(connector.MerchantTriggered) {
+		return false
+	}
+	if reauthRetry(sub) {
+		return true
+	}
+	return sub.Status == string(state.SubIncomplete) && (m.Status == string(state.MandateFailed) || m.Status == string(state.MandateExpired))
+}
+
+// freshMandate gives the subscription a new pending mandate (new provider
+// reference, same method and size) for a registration retry. The checkout
+// token stays the same, so the link the customer is on keeps working.
+func (s *Service) freshMandate(ctx context.Context, subID, token string) (store.Subscription, store.Mandate, error) {
+	var sub store.Subscription
+	var m store.Mandate
+	err := s.db.Write(ctx, func(tx store.Tx) error {
+		var err error
+		if sub, err = s.lockSub(ctx, tx, subID); err != nil {
+			return err
+		}
+		if subtle.ConstantTimeCompare([]byte(hashToken(token)), []byte(sub.CheckoutTokenHash)) != 1 {
+			return newErr(ErrNotFound, "checkout not found")
+		}
+		pol, err := s.loadPolicy(ctx, tx, sub.AppID)
+		if err != nil {
+			return err
+		}
+		old, err := store.GetMandate(ctx, tx, firstNonEmpty(sub.MandateID, sub.PendingMandateID))
+		if err != nil {
+			return err
+		}
+		keep := sub.CheckoutTokenHash
+		switch {
+		case reauthRetry(sub):
+			if m, _, err = s.newPendingMandate(ctx, tx, &sub, pol, old.Method, max(sub.Amount, sub.PendingAmount)); err != nil {
+				return err
+			}
+			sub.CheckoutTokenHash = keep
+		case sub.Status == string(state.SubIncomplete) && (old.Status == string(state.MandateFailed) || old.Status == string(state.MandateExpired)) && sub.MandateID == old.ID:
+			now := s.nowUTC()
+			m = store.Mandate{ID: ids.New("mdt"), OrgID: sub.OrgID, Mode: sub.Mode, AppID: sub.AppID, CustomerID: sub.CustomerID,
+				ProviderAccountID: sub.ProviderAccountID, ProviderRef: ids.ProviderRef(), Method: old.Method, Status: string(state.MandatePending),
+				MaxAmount: old.MaxAmount, Currency: old.Currency, Frequency: old.Frequency,
+				ValidUntil: now.AddDate(pol.validityYears, 0, 0), CreatedAt: now, UpdatedAt: now}
+			if err := store.InsertMandate(ctx, tx, m); err != nil {
+				return err
+			}
+			sub.MandateID, sub.CheckoutAction = m.ID, ""
+			if err := s.emitMandate(ctx, tx, EvMandateCreated, m); err != nil {
+				return err
+			}
+		default:
+			// Someone else already replaced it; use the current one.
+			mid := firstNonEmpty(sub.PendingMandateID, sub.MandateID)
+			if m, err = store.GetMandate(ctx, tx, mid); err != nil {
+				return err
+			}
+			return nil
+		}
+		return s.saveSub(ctx, tx, &sub)
+	})
+	return sub, m, err
 }

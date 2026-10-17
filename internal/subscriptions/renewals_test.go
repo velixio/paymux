@@ -466,8 +466,8 @@ func TestRenewalIsNeverChargedTwiceUnderConcurrentJobs(t *testing.T) {
 		if got := e.r.chargeCount(); got != 1 {
 			t.Fatalf("charges = %d, want exactly 1", got)
 		}
-		if pays := e.renewalPayments(sub.ID); len(pays) != 2 || pays[1].Status != "succeeded" {
-			t.Fatalf("payments = %+v", pays)
+		if n := e.paidRenewals(sub.ID); n != 2 {
+			t.Fatalf("paid renewal payments = %d", n)
 		}
 		if s := e.sub(sub.ID); s.RenewalsDone != 2 {
 			t.Errorf("renewals = %d", s.RenewalsDone)
@@ -511,8 +511,8 @@ func TestPendingChargeIsPolledUntilSettled(t *testing.T) {
 		if got.RenewalsDone != 2 || got.Status != "active" {
 			t.Fatalf("sub = %+v", got)
 		}
-		if pays := e.renewalPayments(sub.ID); len(pays) != 2 || pays[1].Status != "succeeded" {
-			t.Errorf("payments = %+v", pays)
+		if n := e.paidRenewals(sub.ID); n != 2 {
+			t.Errorf("paid renewal payments = %d", n)
 		}
 	})
 }
@@ -564,8 +564,20 @@ func TestChargeTemporaryErrorIsRetriedWithTheSameReference(t *testing.T) {
 		if e.r.charges[0].ProviderRef != e.r.charges[1].ProviderRef {
 			t.Errorf("retry used a new reference: %s vs %s", e.r.charges[1].ProviderRef, e.r.charges[0].ProviderRef)
 		}
-		if pays := e.renewalPayments(sub.ID); len(pays) != 2 {
-			t.Errorf("payments = %d", len(pays))
+		if n := e.paidRenewals(sub.ID); n != 2 {
+			t.Errorf("paid renewal payments = %d", n)
 		}
 	})
+}
+
+// paidRenewals counts the subscription's succeeded renewal payments (the next
+// period's payment may already exist, unpaid, once its notice went out).
+func (e *env) paidRenewals(subID string) int {
+	n := 0
+	for _, p := range e.renewalPayments(subID) {
+		if p.Status == "succeeded" {
+			n++
+		}
+	}
+	return n
 }
