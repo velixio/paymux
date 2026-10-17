@@ -116,7 +116,7 @@ func TestAllowedConnectorsAndAccountTargets(t *testing.T) {
 	if !reflect.DeepEqual(ids(r), []string{"pa_payu"}) {
 		t.Fatalf("allowed connectors: %v", ids(r))
 	}
-	cfg = Config{Org: []Rule{{Name: "pin", Action: Rule{}.Action.withAccounts("pa_zoho")}}}
+	cfg = Config{Org: []Rule{{Name: "pin", Action: RouteAccounts("pa_zoho")}}}
 	r, _ = Choose(cfg, Request{Currency: "INR", Amount: 1, Purpose: PurposeOneTime}, accts(), nil)
 	if !reflect.DeepEqual(ids(r), []string{"pa_zoho"}) {
 		t.Fatalf("pinned account: %v", ids(r))
