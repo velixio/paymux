@@ -99,6 +99,7 @@ func (d *Dashboard) routesPages() {
 	m.HandleFunc("GET "+prefix+"/payments", d.authed(authz.PaymentRead, d.paymentsPage))
 	m.HandleFunc("GET "+prefix+"/payments/{id}", d.authed(authz.PaymentRead, d.paymentPage))
 	m.HandleFunc("POST "+prefix+"/payments/{id}/refund", d.authed(authz.RefundCreate, d.refundSubmit))
+	m.HandleFunc("POST "+prefix+"/payments/{id}/simulate-dispute", d.authed(authz.DisputeManage, d.simulateDispute))
 	m.HandleFunc("POST "+prefix+"/deliveries/{id}/replay", d.authed(authz.WebhookReplay, d.replaySubmit))
 	d.routesApps()
 	d.routesSettings()

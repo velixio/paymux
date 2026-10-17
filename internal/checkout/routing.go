@@ -8,11 +8,13 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/routing"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
+	"github.com/paymux/paymux/pkg/connector"
 )
 
 // Routing evaluates the routing setting (app rules, org rules, catch-all)
@@ -226,6 +228,9 @@ func (r *Routing) pick(ctx context.Context, q store.Queryer, req core.RouteReque
 		}
 		return nil, core.NewError(core.ErrCurrencyNotAccepted, "%s", msg)
 	case errors.Is(err, routing.ErrNoRoute):
+		if fb := testOnlyFallback(req, purpose, pas); len(fb) > 0 {
+			return fb, nil
+		}
 		return nil, core.NewError(core.ErrNoRoute, "no payment provider can take %s payments for this app", req.Currency)
 	case err != nil:
 		return nil, err
@@ -241,4 +246,31 @@ func (r *Routing) pick(ctx context.Context, q store.Queryer, req core.RouteReque
 func (r *Routing) CheckRoute(ctx context.Context, q store.Queryer, req core.RouteRequest) error {
 	_, err := r.pick(ctx, q, req)
 	return err
+}
+
+// testOnlyFallback is what takes a test-mode payment that no rule routed to
+// any account: the app's active accounts of test-only connectors (the
+// simulator) that accept the currency and purpose. It makes "link a simulator
+// account" enough to try the whole flow, without writing a routing rule. It is
+// only used when routing found nothing; a rule that matches, or one that
+// rejects, is never overridden.
+func testOnlyFallback(req core.RouteRequest, purpose string, pas []store.ProviderAccount) []store.ProviderAccount {
+	if req.Scope.Mode != "test" {
+		return nil
+	}
+	var out []store.ProviderAccount
+	for _, pa := range pas {
+		_, info, ok := connector.Lookup(pa.Connector)
+		if !ok || !info.TestOnly || pa.Status != "active" || pa.Mode != "test" {
+			continue
+		}
+		if len(req.AllowedConnectors) > 0 && !slices.Contains(req.AllowedConnectors, pa.Connector) {
+			continue
+		}
+		if !slices.ContainsFunc(pa.AcceptedCurrencies, func(c string) bool { return strings.EqualFold(c, req.Currency) }) || !slices.Contains(pa.EnabledPurposes, purpose) {
+			continue
+		}
+		out = append(out, pa)
+	}
+	return out
 }

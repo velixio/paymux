@@ -50,6 +50,15 @@
 <button class="btn" type="submit">Create checkout link</button>
 </form>
 {{end}}
+{{if .CanSimulate}}
+<form method="post" action="/dashboard/subscriptions/{{.ID}}/simulate-renewal" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<h4>Simulator</h4>
+<p class="muted">This subscription is billed by the test-mode simulator. Simulate the provider charging the next period, or failing to.</p>
+<label><input type="checkbox" name="fail" value="1"> The charge fails (the subscription turns past due)</label>
+<button class="btn" type="submit">Simulate a renewal</button>
+</form>
+{{end}}
 {{if .CanCancel}}
 <form method="post" action="/dashboard/subscriptions/{{.ID}}/cancel" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">

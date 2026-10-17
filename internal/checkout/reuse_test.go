@@ -120,6 +120,7 @@ func TestFreshCheckoutStartsANewAttemptEvenWhileOneIsOpen(t *testing.T) {
 		e.sdkCheckouts(nil)
 		p := e.payment2()
 		first, _ := e.flow.StartCheckout(ctx, p.ID)
+		e.clk.Add(time.Second) // attempts are ordered by creation time; the test clock is frozen
 		fresh, err := e.flow.StartFreshCheckout(ctx, p.ID)
 		if err != nil {
 			t.Fatal(err)

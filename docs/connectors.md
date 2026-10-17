@@ -96,6 +96,46 @@ Paymux must respect:
   (`initiated_by=system`, `reason=mandate_verification`).
 * `RateLimit`: requests per second and burst for this provider's API.
 * `ConfigSchema`: a JSON Schema for the account config, used by the dashboard form.
+* `TestOnly`: the connector only makes sense in test mode. Paymux refuses to
+  create a live-mode account for it, and refuses to build one that is live.
+  The simulator sets it.
+
+### The simulator, a built-in connector for test mode
+
+`connectors/simulator` is a provider that exists only on your machine. It lets
+you exercise the whole flow with no provider account and no keys: add a
+"Simulator" provider account in **test mode** (no configuration needed), link it
+to an app, and send test payments to it (see `docs/quickstart.md`). It cannot be
+linked to a live-mode account. No routing rule is needed: in test mode, a
+payment that no rule routes to any account goes to the app's linked accounts of
+a test-only connector (a rule that matches, or one that rejects, is never
+overridden).
+
+How it works, which also makes it a reference for a connector that needs a
+hosted page or a webhook source:
+
+* `CreateCheckout` returns a redirect to Paymux's own page `/sim/{ref}`. The
+  page offers Succeed, Fail, Authorize only (then Capture), Pending then succeed
+  after N seconds, and Late success after expiry. The choice is stored in the
+  account's `KV` (`Controller.Decide`), then the browser goes back through the
+  normal `/return/{account}/{ref}` path, which fetches the truth like for any
+  provider.
+* It posts **signed webhooks** to Paymux's own `/hooks/{account}` (HMAC-SHA256
+  over `timestamp.body`, with a secret it makes up and keeps in `KV`), so the
+  real inbound pipeline, with signature check, dedupe and fetch-the-truth,
+  processes every event. A delayed success is delivered by a timer; if the
+  process restarts first, the poller and `FetchPayment` apply it.
+* Refunds succeed at once, or after `refund_delay_seconds` (config) as
+  pending then succeeded. Disputes are opened from the payment page of the
+  dashboard ("Simulate a dispute"), can be accepted or answered with evidence
+  (under review, then won ten seconds later). Settlements list one entry per
+  day with a flat 2% fee plus 18% GST on it.
+* Subscriptions: provider-managed (authorise on the page, then "Simulate a
+  renewal" on the subscription page, or a failed one to turn it past due) and
+  merchant-triggered through a UPI-style mandate (authorise on the page; later
+  debits are immediate).
+* It declares every capability, `MerchantOfRecord=false`, and the currencies
+  INR, USD and BDT.
 
 ## 3. Types: plain and JSON-serializable
 

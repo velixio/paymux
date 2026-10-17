@@ -51,6 +51,7 @@ func (c *clock) Add(d time.Duration) {
 type env struct {
 	t     *testing.T
 	db    *store.DB
+	conns *connectors.Service
 	core  *core.Service
 	set   *settings.Service
 	fake  *fakeconn.State
@@ -68,6 +69,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 	box, _ := secrets.NewBox(bytes.Repeat([]byte{5}, 32))
 	base, _ := url.Parse("https://pay.example.com")
 	conns := connectors.New(connectors.Options{DB: db, Box: box, BaseURL: base, Now: clk.Now})
+	e.conns = conns
 	br := routing.NewBreaker(clk.Now)
 	rt := checkout.NewRouting(br)
 	e.core = core.NewService(core.Options{DB: db, Settings: e.set, Jobs: q, Router: rt, Now: clk.Now})
@@ -108,6 +110,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 		CSRFKey: bytes.Repeat([]byte{9}, 32), Now: clk.Now})
 	mux := http.NewServeMux()
 	h.Register(paypage.StdMux(mux))
+	h.RegisterSim(paypage.StdMux(mux))
 	router := &domains.Router{BaseHost: "pay.example.com", Lookup: e.core, Base: mux, Customer: mux}
 	e.srv = httptest.NewServer(router)
 	t.Cleanup(e.srv.Close)

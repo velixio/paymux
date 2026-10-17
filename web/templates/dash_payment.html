@@ -53,6 +53,17 @@
 </form>
 {{end}}
 
+{{if .CanSimulate}}
+<form method="post" action="/dashboard/payments/{{.ID}}/simulate-dispute" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<h4>Simulator</h4>
+<p class="muted">This payment went through the test-mode simulator. Simulate a dispute to see the whole dispute flow without a bank.</p>
+<select name="attempt_id" class="field" aria-label="Attempt to dispute">{{range .SimAttempts}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select>
+<select name="reason" class="field" aria-label="Dispute reason"><option value="fraudulent">Fraudulent</option><option value="product_not_received">Product not received</option><option value="duplicate">Duplicate</option><option value="credit_not_processed">Credit not processed</option></select>
+<button class="btn" type="submit">Simulate a dispute</button>
+</form>
+{{end}}
+
 <h3>Webhook deliveries</h3>
 <table class="grid">
 <thead><tr><th>Event</th><th>Endpoint</th><th>Status</th><th>Attempts</th><th>Last result</th><th>Updated</th>{{if .CanReplay}}<th></th>{{end}}</tr></thead>

@@ -308,6 +308,7 @@ func (a *App) Start(ctx context.Context) error {
 
 	api.Register(srv)
 	pay.Register(srv)
+	pay.RegisterSim(srv) // base host only: custom domains serve no /sim
 	srv.HandleFunc("POST /hooks/{provider_account_id}", hooks.ServeHTTP)
 
 	// Custom domains serve the customer routes only; everything else stays on

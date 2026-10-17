@@ -1,0 +1,44 @@
+{{define "title"}}Simulator checkout{{end}}
+{{define "content"}}{{with .Sim}}
+<p class="muted">Simulator, test mode only. Nothing here moves real money.</p>
+<h1>{{.Kind}}</h1>
+<p><strong>{{.Currency}} {{.Amount}}</strong> &middot; status: <code>{{.Status}}</code></p>
+
+{{if .Open}}
+<p>Pick what the "bank" does with this payment.</p>
+<form method="post" action="{{.Action}}">
+<p>
+<button class="btn" type="submit" name="action" value="succeed">Succeed</button>
+<button class="btn" type="submit" name="action" value="fail">Fail</button>
+<button class="btn" type="submit" name="action" value="authorize">Authorize only</button>
+<button class="btn" type="submit" name="action" value="cancel">Cancel</button>
+</p>
+</form>
+<form method="post" action="{{.Action}}">
+<input type="hidden" name="action" value="pending_succeed">
+<p>Pending, then succeed after <input type="number" name="delay" value="10" min="1" max="3600" size="4"> seconds
+<button class="btn" type="submit">Pending &rarr; succeed</button></p>
+</form>
+<form method="post" action="{{.Action}}">
+<input type="hidden" name="action" value="late_succeed">
+<p>Late success after <input type="number" name="delay" value="90" min="1" max="3600" size="4"> seconds
+<button class="btn" type="submit">Late success after expiry</button></p>
+<p class="muted">The customer goes back to the merchant at once. Cancel or expire the payment meanwhile to see how a success that arrives too late is handled.</p>
+</form>
+{{else if .Authorized}}
+<p>The payment is authorised but not captured.</p>
+<form method="post" action="{{.Action}}">
+<p>
+<button class="btn" type="submit" name="action" value="capture">Capture</button>
+<button class="btn" type="submit" name="action" value="cancel">Cancel</button>
+</p>
+</form>
+<p><a href="{{.ReturnURL}}">Back to the merchant</a></p>
+{{else if .Waiting}}
+<p>This payment is pending{{if .Late}} (late success){{end}} and will complete by itself. The merchant is told by webhook.</p>
+<p><a href="{{.ReturnURL}}">Back to the merchant</a></p>
+{{else}}
+<p>This payment is {{.Status}}; nothing is left to choose.</p>
+<p><a class="btn" href="{{.ReturnURL}}">Continue</a></p>
+{{end}}
+{{end}}{{end}}
