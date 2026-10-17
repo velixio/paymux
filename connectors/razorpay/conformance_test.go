@@ -43,7 +43,10 @@ func webhookReq(t *testing.T, name, secret, eventID string) connector.WebhookReq
 	}
 }
 
-func TestConformance(t *testing.T) {
+func TestConformance(t *testing.T) { connectortest.Run(t, New, conformanceFixtures(t)) }
+
+// conformanceFixtures are shared with the remote-connector test.
+func conformanceFixtures(t *testing.T) connectortest.Fixtures {
 	statuses := []struct {
 		raw, wantRaw string
 		want         connector.PaymentStatus
@@ -60,7 +63,7 @@ func TestConformance(t *testing.T) {
 			Raw: s.raw, WantRaw: s.wantRaw, Want: s.want, WantAmount: 49900, Handler: newFake(s.raw),
 		})
 	}
-	connectortest.Run(t, New, connectortest.Fixtures{
+	return connectortest.Fixtures{
 		Config:   testConfig,
 		Now:      time.Unix(1760000100, 0),
 		Ref:      connector.PaymentRef{ProviderOrderID: "order_Nx0"},
@@ -86,7 +89,7 @@ func TestConformance(t *testing.T) {
 			Amount: 49900, Currency: "INR", Customer: connector.Customer{Name: "A B", Email: "a@example.com", Phone: "+919999999999"},
 		},
 		CheckoutHandler: newFake("created"),
-	})
+	}
 }
 
 // Golden values computed independently with Python hmac over the testdata file.
