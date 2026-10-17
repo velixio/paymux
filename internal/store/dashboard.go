@@ -318,6 +318,7 @@ func LedgerTotals(ctx context.Context, q Queryer, orgID, mode string, since time
 // change). From is inclusive, To exclusive; After is an exclusive id cursor.
 type AuditFilter struct {
 	OrgID, Actor, Action, After string
+	Target                      string // exact match
 	From, To                    time.Time
 }
 
@@ -335,6 +336,9 @@ func SearchAudit(ctx context.Context, q Queryer, f AuditFilter, limit int) ([]Au
 	}
 	if f.Action != "" {
 		add(`LOWER(action) LIKE ? ESCAPE '\'`, likeEscape(f.Action)+"%")
+	}
+	if f.Target != "" {
+		add("target = ?", f.Target)
 	}
 	if !f.From.IsZero() {
 		add("at >= ?", ms(f.From))
@@ -435,4 +439,27 @@ func ListPaymentDeliveries(ctx context.Context, q Queryer, paymentID string) ([]
 // ListEndpointDeliveries returns an endpoint's latest deliveries, newest first.
 func ListEndpointDeliveries(ctx context.Context, q Queryer, endpointID string, limit int) ([]DeliveryListRow, error) {
 	return collectDeliveries(q.QueryContext(ctx, deliveryListSelect+" WHERE d.endpoint_id = ? ORDER BY d.created_at DESC, d.id DESC LIMIT ?", endpointID, limit))
+}
+
+// ListObjectEvents returns the org's events about one object (for example a
+// dispute), oldest first.
+func ListObjectEvents(ctx context.Context, q Queryer, orgID, objectType, objectID string) ([]EventRow, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id, org_id, app_id, mode, type, object_type, object_id, object_version, data, created_at
+		FROM events WHERE org_id = ? AND object_type = ? AND object_id = ? ORDER BY created_at, id`, orgID, objectType, objectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []EventRow
+	for rows.Next() {
+		var e EventRow
+		var data string
+		var created int64
+		if err := rows.Scan(&e.ID, &e.OrgID, &e.AppID, &e.Mode, &e.Type, &e.ObjectType, &e.ObjectID, &e.ObjectVersion, &data, &created); err != nil {
+			return nil, err
+		}
+		e.Data, e.CreatedAt = json.RawMessage(data), fromMS(created)
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }

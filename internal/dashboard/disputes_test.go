@@ -100,7 +100,13 @@ func TestDisputeInboxListsByDeadlineWithFilters(t *testing.T) {
 		}
 		// under 72 hours is highlighted
 		row := func(d store.Dispute) string {
-			return regexpFind(t, `(?s)(<tr[^>]*>(?:(?!</tr>).)*`+d.ID+`.*?</tr>)`, body)
+			for _, seg := range strings.Split(body, "<tr") {
+				if strings.Contains(seg, `/disputes/`+d.ID+`"`) {
+					return "<tr" + seg
+				}
+			}
+			t.Fatalf("no row for %s", d.ID)
+			return ""
 		}
 		has(t, row(d1), "due-soon")
 		has(t, row(d4), "due-soon")

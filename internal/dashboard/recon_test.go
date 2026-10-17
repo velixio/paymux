@@ -220,3 +220,12 @@ func TestRunReconciliationNow(t *testing.T) {
 		}
 	})
 }
+
+func (e *env) count(query string, args ...any) int {
+	e.t.Helper()
+	var n int
+	if err := e.db.Read(ctx, func(q store.Querier) error { return q.QueryRowContext(ctx, query, args...).Scan(&n) }); err != nil {
+		e.t.Fatal(err)
+	}
+	return n
+}

@@ -54,3 +54,7 @@ label { display: block; margin: 6px 0; }
 label.inline { display: inline-block; margin-right: 10px; }
 ul.checklist { list-style: none; padding-left: 0; }
 ul.checklist li { margin: 8px 0; }
+tr.due-soon td { background: rgba(220, 38, 38, .12); }
+tr.due-soon td strong { color: var(--color-danger); }
+.portal-note { border-left: 4px solid var(--color-muted); padding: 4px 12px; margin: 12px 0; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }

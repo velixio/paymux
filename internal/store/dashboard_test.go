@@ -350,6 +350,7 @@ func TestSearchAudit(t *testing.T) {
 			"to":               {store.AuditFilter{OrgID: org, To: t0.Add(time.Hour)}, []string{"aud_1"}},
 			"after cursor":     {store.AuditFilter{OrgID: org, After: "aud_3"}, []string{"aud_2", "aud_1"}},
 			"other org":        {store.AuditFilter{OrgID: "org_x"}, nil},
+			"target":           {store.AuditFilter{OrgID: org, Target: "ref_2"}, []string{"aud_3"}},
 		} {
 			if got := ids(c.f, 10); !reflect.DeepEqual(got, c.want) {
 				t.Errorf("%s: got %v want %v", name, got, c.want)
@@ -422,6 +423,37 @@ func TestPaymentEventsAndDeliveries(t *testing.T) {
 		}
 		if len(epDels) != 2 || epDels[0].DeliveryID != "whd_3" || epDels[1].DeliveryID != "whd_2" {
 			t.Fatalf("endpoint deliveries (newest first, limited): %+v", epDels)
+		}
+	})
+}
+
+func TestListObjectEvents(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		seedBase(t, db)
+		err := db.Write(ctx, func(tx store.Tx) error {
+			for _, e := range []store.EventRow{
+				{ID: "evt_2", OrgID: store.DefaultOrgID, Type: "dispute.updated", ObjectType: "dispute", ObjectID: "dsp_1", CreatedAt: t0.Add(time.Second)},
+				{ID: "evt_1", OrgID: store.DefaultOrgID, Type: "dispute.opened", ObjectType: "dispute", ObjectID: "dsp_1", CreatedAt: t0},
+				{ID: "evt_3", OrgID: store.DefaultOrgID, Type: "dispute.opened", ObjectType: "dispute", ObjectID: "dsp_2", CreatedAt: t0},
+				{ID: "evt_4", OrgID: "org_other", Type: "dispute.opened", ObjectType: "dispute", ObjectID: "dsp_1", CreatedAt: t0},
+			} {
+				e.AppID, e.Mode, e.ObjectVersion, e.Data = "app_a", "live", 1, json.RawMessage(`{}`)
+				if err := db.InsertEvent(ctx, tx, e); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var evs []store.EventRow
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			evs, err = store.ListObjectEvents(ctx, q, store.DefaultOrgID, "dispute", "dsp_1")
+			return
+		})
+		if len(evs) != 2 || evs[0].ID != "evt_1" || evs[1].ID != "evt_2" {
+			t.Fatalf("%+v", evs)
 		}
 	})
 }

@@ -142,13 +142,14 @@ func derive(master []byte, label string) []byte {
 
 // sections are the placeholder pages of the nav shell.
 var sections = []navItem{
-	{"subscriptions", "Subscriptions", prefix + "/subscriptions"}, {"disputes", "Disputes", prefix + "/disputes"},
+	{"subscriptions", "Subscriptions", prefix + "/subscriptions"},
 }
 
 // navItems is the full menu; built pages and placeholders interleaved.
 var navItems = []navItem{
 	{"overview", "Overview", prefix + "/overview"}, {"payments", "Payments", prefix + "/payments"},
 	{"subscriptions", "Subscriptions", prefix + "/subscriptions"}, {"disputes", "Disputes", prefix + "/disputes"},
+	{"reconciliation", "Reconciliation", prefix + "/reconciliation"},
 	{"invoices", "Invoices", prefix + "/invoices"}, {"reports", "Reports", prefix + "/reports"},
 	{"apps", "Apps", prefix + "/apps"}, {"providers", "Providers", prefix + "/providers"},
 	{"tax-entities", "Tax entities", prefix + "/tax-entities"}, {"fx", "FX rates", prefix + "/fx"},
@@ -186,7 +187,10 @@ func (d *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.Set("Referrer-Policy", "same-origin")
 	h.Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
 	limit := int64(maxFormBytes)
-	if isUploadPath(r.URL.Path) {
+	switch {
+	case strings.HasPrefix(r.URL.Path, prefix+"/disputes/") && strings.HasSuffix(r.URL.Path, "/evidence"):
+		limit = 3*disputes.MaxEvidenceBytes + 1<<20 // up to three files of 10 MiB
+	case isUploadPath(r.URL.Path):
 		limit = maxUploadBytes + 64<<10
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
