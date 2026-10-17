@@ -143,6 +143,11 @@ type Recipient struct {
 	StateName   string `json:"state_name,omitempty"`
 	Country     string `json:"country"`
 	CountryName string `json:"country_name,omitempty"`
+	// The address as parts, for the e-invoice (Address is these joined).
+	Line1      string `json:"line1,omitempty"`
+	Line2      string `json:"line2,omitempty"`
+	City       string `json:"city,omitempty"`
+	PostalCode string `json:"postal_code,omitempty"`
 }
 
 // Line is one document line (amounts in the document currency's minor units).
@@ -449,6 +454,8 @@ func recipientSnapshot(c store.Customer, rcp tax.Recipient, cls tax.Classificati
 		GSTIN:     rcp.GSTIN,
 		StateCode: rcp.StateCode,
 		Country:   strings.ToUpper(firstNonEmpty(rcp.Country, "IN")),
+		Line1:     strings.TrimSpace(c.Billing.Line1), Line2: strings.TrimSpace(c.Billing.Line2),
+		City: strings.TrimSpace(c.Billing.City), PostalCode: strings.TrimSpace(c.Billing.PostalCode),
 	}
 	var addr []string
 	for _, p := range []string{c.Billing.Line1, c.Billing.Line2, c.Billing.City, c.Billing.PostalCode} {
