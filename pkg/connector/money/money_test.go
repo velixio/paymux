@@ -34,6 +34,10 @@ func TestParseDecimal(t *testing.T) {
 		{"1", "XYZ", 0, ErrUnknownCurrency},
 		{"1", "inr", 0, ErrUnknownCurrency},
 		{"1", "BDT", 100, nil},
+		{"1", "XCG", 100, nil},
+		{"1", "ZWG", 100, nil},
+		{"1", "ANG", 100, nil},
+		{"1", "ZWL", 100, nil},
 	}
 	for _, tc := range tests {
 		got, err := ParseDecimal(tc.in, tc.cur)
