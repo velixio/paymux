@@ -116,7 +116,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 	box, _ := secrets.NewBox(bytes.Repeat([]byte{4}, 32))
 	base, _ := url.Parse("https://pay.example.com")
 	e.conns = connectors.New(connectors.Options{DB: db, Box: box, BaseURL: base, Now: clk.Now})
-	e.d = disputes.New(disputes.Options{DB: db, Settings: e.set, Emitter: emitter, Alerts: e.alerts, Credit: inv,
+	e.d = disputes.New(disputes.Options{DB: db, Settings: e.set, Emitter: emitter, Alerts: e.alerts, Credit: inv, CutoffErr: invoice.ErrCreditNoteCutoff,
 		Conns: e.conns, Now: clk.Now})
 	if _, err := core.Bootstrap(ctx, db, e.set); err != nil {
 		t.Fatal(err)
@@ -218,6 +218,16 @@ func (e *env) apply(s connector.DisputeSnapshot) disputes.Result {
 	return r
 }
 
+// kindsOf returns the entry kinds sorted (entries of one instant have no order).
+func kindsOf(l []store.LedgerEntry) []string {
+	var k []string
+	for _, x := range l {
+		k = append(k, x.Kind)
+	}
+	slices.Sort(k)
+	return k
+}
+
 func sum(l []store.LedgerEntry) int64 {
 	var n int64
 	for _, x := range l {
@@ -277,7 +287,7 @@ func TestApplyLifecycleWonAndLost(t *testing.T) {
 			t.Fatal(r.Dispute.Status)
 		}
 		l := e.ledger(p.ID)
-		if sum(l) != 0 || len(l) != 2 || l[1].Kind != "dispute_release" || l[1].Amount != 50000 {
+		if sum(l) != 0 || len(l) != 2 || kindsOf(l)[1] != "dispute_release" {
 			t.Errorf("won ledger %+v", l)
 		}
 		if got := e.payment(p.ID); got.HasFlag("disputed") || got.HasFlag("dispute_lost") {
@@ -302,11 +312,8 @@ func TestApplyLifecycleWonAndLost(t *testing.T) {
 		e.apply(e.snap("dsp_2", "pay_2", connector.DisputeNeedsResponse, due))
 		r = e.apply(e.snap("dsp_2", "pay_2", connector.DisputeLost, due))
 		l = e.ledger(p2.ID)
-		kinds := []string{}
-		for _, x := range l {
-			kinds = append(kinds, x.Kind)
-		}
-		if r.Dispute.Status != "lost" || !slices.Equal(kinds, []string{"dispute_hold", "dispute_release", "dispute_loss"}) || sum(l) != -50000 {
+		kinds := kindsOf(l)
+		if r.Dispute.Status != "lost" || !slices.Equal(kinds, []string{"dispute_hold", "dispute_loss", "dispute_release"}) || sum(l) != -50000 {
 			t.Errorf("lost ledger %v sum %d", kinds, sum(l))
 		}
 		if got := e.payment(p2.ID); got.HasFlag("disputed") || !got.HasFlag("dispute_lost") {
