@@ -14,15 +14,15 @@ func TestClassify(t *testing.T) {
 	sup := Supplier{GSTIN: "27AAPFU0939F1ZV", StateCode: "27", LUT: lut}
 	day := ist(2026, 10, 17, 12, 0)
 	cases := []struct {
-		name    string
-		sup     Supplier
-		rcp     Recipient
-		fx      bool
-		when    time.Time
-		want    SupplyType
-		pos     string
-		inter   bool
-		flag    string
+		name  string
+		sup   Supplier
+		rcp   Recipient
+		fx    bool
+		when  time.Time
+		want  SupplyType
+		pos   string
+		inter bool
+		flag  string
 	}{
 		{"b2b intra", sup, Recipient{GSTIN: "27AAPFU0939F1ZV", Country: "IN"}, false, day, B2B, "27", false, ""},
 		{"b2c inter", sup, Recipient{StateCode: "29", Country: "IN"}, false, day, B2C, "29", true, ""},

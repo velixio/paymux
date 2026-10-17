@@ -4,12 +4,12 @@ import "testing"
 
 func TestFromTotalInclusive(t *testing.T) {
 	cases := []struct {
-		name       string
-		total      int64
-		rate       int
-		inter      bool
-		zero       bool
-		want       Amounts
+		name  string
+		total int64
+		rate  int
+		inter bool
+		zero  bool
+		want  Amounts
 	}{
 		{"intra 18% 499.00", 49900, 1800, false, false, Amounts{Taxable: 42288, CGST: 3806, SGST: 3806, Total: 49900}},
 		{"inter 18% 499.00", 49900, 1800, true, false, Amounts{Taxable: 42288, IGST: 7612, Total: 49900}},
