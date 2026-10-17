@@ -42,6 +42,7 @@ type fake struct {
 	acceptErr     int              // when set, dispute accept answers this status
 	contestErr    int              // when set, dispute contest answers this status
 	recon         map[string][]any // GET /v1/settlements/recon/combined, keyed "Y-M-D"
+	listReceipt   string           // when set, GET /v1/orders ignores the receipt filter and returns this receipt
 }
 
 func newFake(status string) *fake { return &fake{payStatus: status, refundStatus: "processed"} }
@@ -109,7 +110,11 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		in["id"], in["status"], in["entity"] = "order_Nx0", "created", "order"
 		writeJSON(w, 200, in)
 	case r.Method == "GET" && p == "/v1/orders":
-		writeJSON(w, 200, fakeCollection(map[string]any{"id": "order_Nx0", "receipt": r.URL.Query().Get("receipt"), "amount": 49900, "currency": "INR", "status": "attempted"}))
+		receipt := r.URL.Query().Get("receipt")
+		if f.listReceipt != "" {
+			receipt = f.listReceipt
+		}
+		writeJSON(w, 200, fakeCollection(map[string]any{"id": "order_Nx0", "receipt": receipt, "amount": 49900, "currency": "INR", "status": "attempted"}))
 	case r.Method == "GET" && p == "/v1/orders/order_Nx0":
 		st := "attempted"
 		if f.payStatus == "" {

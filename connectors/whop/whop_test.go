@@ -75,6 +75,7 @@ type fake struct {
 	hdr          map[string]http.Header
 	refundErr    int
 	memberStatus string
+	noOwner      bool // pay_w1 names no checkout configuration and no reference
 }
 
 func newFake(sub string) *fake {
@@ -83,6 +84,10 @@ func newFake(sub string) *fake {
 
 func (f *fake) payment() map[string]any {
 	status := map[string]string{"succeeded": "paid", "refunded": "paid", "failed": "failed", "pending": "open", "draft": "draft"}[f.substatus]
+	if f.noOwner {
+		return map[string]any{"id": "pay_w1", "status": status, "substatus": f.substatus, "total": 4.99, "currency": "usd",
+			"refunded_amount": json.Number(f.refunded), "payment_method_type": "card", "created_at": "2026-10-17T11:59:00Z"}
+	}
 	return map[string]any{"id": "pay_w1", "status": status, "substatus": f.substatus, "total": 4.99, "currency": "usd",
 		"checkout_configuration_id": "ch_1", "refunded_amount": json.Number(f.refunded), "payment_method_type": "card",
 		"metadata": map[string]string{"ref": "pay_ref_01"}, "created_at": "2026-10-17T11:59:00Z"}
@@ -387,5 +392,37 @@ func TestFetchRefund(t *testing.T) {
 	s, _ = c.FetchRefund(context.Background(), connector.RefundRef{ProviderRefundID: "rf_01", ProviderRef: "rf_01", ProviderPaymentID: "pay_w1"})
 	if s.Status != connector.RefundSucceeded || s.Amount != 150 {
 		t.Errorf("refunded: %+v", s)
+	}
+}
+
+// The return URL's payment_id is not signed: a payment id is only used if the
+// payment belongs to the checkout or the reference we are asking about.
+func TestFetchPaymentByIDMustBelongToOurCheckout(t *testing.T) {
+	f := newFake("succeeded") // pay_w1: checkout ch_1, reference pay_ref_01
+	c := newConn(t, f)
+	ctx := context.Background()
+	for name, ref := range map[string]connector.PaymentRef{
+		"another checkout":  {ProviderPaymentID: "pay_w1", ProviderOrderID: "ch_somebody_else"},
+		"another reference": {ProviderPaymentID: "pay_w1", ProviderRef: "somebody_elses_ref"},
+		"both wrong":        {ProviderPaymentID: "pay_w1", ProviderOrderID: "ch_x", ProviderRef: "ref_x"},
+	} {
+		if _, err := c.FetchPayment(ctx, ref); !errors.Is(err, connector.ErrNotFound) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	for name, ref := range map[string]connector.PaymentRef{
+		"our checkout":       {ProviderPaymentID: "pay_w1", ProviderOrderID: "ch_1"},
+		"our reference":      {ProviderPaymentID: "pay_w1", ProviderRef: "pay_ref_01"},
+		"nothing to compare": {ProviderPaymentID: "pay_w1"},
+	} {
+		if snap, err := c.FetchPayment(ctx, ref); err != nil || snap.ProviderPaymentID != "pay_w1" || snap.Status != connector.PaymentSucceeded {
+			t.Errorf("%s: %+v %v", name, snap, err)
+		}
+	}
+	// A payment with no checkout and no reference of ours (bought straight from
+	// the company's own page) is not ours just because our reference is asked for.
+	f.noOwner = true
+	if _, err := c.FetchPayment(ctx, connector.PaymentRef{ProviderPaymentID: "pay_w1", ProviderOrderID: "ch_1", ProviderRef: "pay_ref_01"}); !errors.Is(err, connector.ErrNotFound) {
+		t.Errorf("a payment that names neither our checkout nor our reference: %v", err)
 	}
 }

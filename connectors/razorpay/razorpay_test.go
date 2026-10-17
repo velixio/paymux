@@ -433,3 +433,51 @@ func TestStatusMapTotal(t *testing.T) {
 		t.Error("unknown statuses must map to the safe in-flight value")
 	}
 }
+
+// A payment id that arrives from outside (a return URL, a notification) is
+// only a pointer: the payment is used, and captured, only if it belongs to the
+// order or receipt we are asking about.
+func TestFetchPaymentByIDMustBelongToTheOrderWeAskAbout(t *testing.T) {
+	f := newFake("authorized")
+	c := newConn(t, f)
+	_, err := c.FetchPayment(context.Background(), connector.PaymentRef{ProviderPaymentID: "pay_Nx1", ProviderOrderID: "order_of_somebody_else", ProviderRef: "pay_ref_01"})
+	if !errors.Is(err, connector.ErrNotFound) {
+		t.Fatalf("a payment of another order: %v", err)
+	}
+	if n := len(f.callsTo("POST", "/v1/payments/pay_Nx1/capture")); n != 0 {
+		t.Errorf("a payment that is not ours was captured (%d capture calls)", n)
+	}
+	// By receipt only: the payment's order must carry our receipt.
+	if _, err := c.FetchPayment(context.Background(), connector.PaymentRef{ProviderPaymentID: "pay_Nx1", ProviderRef: "another_receipt"}); !errors.Is(err, connector.ErrNotFound) {
+		t.Errorf("a payment of an order with another receipt: %v", err)
+	}
+	if n := len(f.callsTo("POST", "/v1/payments/pay_Nx1/capture")); n != 0 {
+		t.Errorf("captured through a wrong receipt (%d capture calls)", n)
+	}
+	// Ours: found, and captured.
+	snap, err := c.FetchPayment(context.Background(), connector.PaymentRef{ProviderPaymentID: "pay_Nx1", ProviderOrderID: "order_Nx0", ProviderRef: "pay_ref_01"})
+	if err != nil || snap.Status != connector.PaymentSucceeded || snap.ProviderOrderID != "order_Nx0" {
+		t.Errorf("our payment: %+v %v", snap, err)
+	}
+	// With nothing to compare against, a payment id still works (a dispute lookup, say).
+	f2 := newFake("captured")
+	if snap, err := newConn(t, f2).FetchPayment(context.Background(), connector.PaymentRef{ProviderPaymentID: "pay_Nx1"}); err != nil || snap.Status != connector.PaymentSucceeded {
+		t.Errorf("a bare payment id: %+v %v", snap, err)
+	}
+}
+
+// Razorpay's order list takes a receipt filter; if it is ever ignored, the
+// first order of the list must not be taken for ours.
+func TestFetchPaymentByReceiptChecksTheReceiptOfTheOrderFound(t *testing.T) {
+	f := newFake("captured")
+	f.listReceipt = "somebody_elses_receipt"
+	c := newConn(t, f)
+	if _, err := c.FetchPayment(context.Background(), connector.PaymentRef{ProviderRef: "pay_ref_01"}); !errors.Is(err, connector.ErrNotFound) {
+		t.Fatalf("an order of another receipt: %v", err)
+	}
+	f.listReceipt = ""
+	snap, err := c.FetchPayment(context.Background(), connector.PaymentRef{ProviderRef: "pay_ref_01"})
+	if err != nil || snap.Status != connector.PaymentSucceeded {
+		t.Errorf("the right receipt: %+v %v", snap, err)
+	}
+}
