@@ -82,6 +82,7 @@ type env struct {
 	events  []events.Event
 	linked  []string
 	linkErr error
+	sink    *sinkRec
 }
 
 func (e *env) emitted() []string {
@@ -123,8 +124,10 @@ func newEnv(t *testing.T, db *store.DB) *env {
 		t.Fatal(err)
 	}
 	e.acct = pa.ID
+	e.sink = &sinkRec{}
 	e.rec = reconcile.New(reconcile.Options{DB: db, Core: e.core, Conns: e.conns, Settings: e.set, Alerts: e.alerts, Loc: time.UTC, Now: clk.Now,
 		KnownSubscription: func(_ context.Context, account, id string) bool { return account == pa.ID && id == "sub_known" },
+		Subscriptions:     e.sink,
 		LinkRenewal: func(_ context.Context, account string, pay connector.PaymentSnapshot) error {
 			e.mu.Lock()
 			defer e.mu.Unlock()
@@ -700,5 +703,188 @@ func TestSettlementListingFailureFailsTheRun(t *testing.T) {
 		if err == nil || run.Status != "failed" || !slices.Contains(e.alerts.kinds(), "recon.failed") {
 			t.Errorf("run %+v err %v alerts %v", run, err, e.alerts.kinds())
 		}
+	})
+}
+
+// ---- mandates and provider subscriptions ----
+
+// sinkRec stands in for the subscriptions service: it records the
+// notifications reconciliation hands over.
+type sinkRec struct {
+	mu    sync.Mutex
+	notes []connector.Notification
+	err   error
+}
+
+func (s *sinkRec) HandleNotification(_ context.Context, account string, n connector.Notification) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.notes = append(s.notes, n)
+	return s.err
+}
+
+func (s *sinkRec) calls() []connector.Notification {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]connector.Notification(nil), s.notes...)
+}
+
+func (e *env) mandate(id, providerID, status string) {
+	e.t.Helper()
+	err := e.db.Write(ctx, func(tx store.Tx) error {
+		return store.InsertMandate(ctx, tx, store.Mandate{ID: id, OrgID: store.DefaultOrgID, Mode: "test", AppID: "app_1", CustomerID: "cus_1",
+			ProviderAccountID: e.acct, ProviderRef: "MREF" + id, ProviderMandateID: providerID, Method: "upi", Status: status, MaxAmount: 150000,
+			Currency: "INR", Frequency: "monthly", CreatedAt: e.clk.Now(), UpdatedAt: e.clk.Now()})
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func (e *env) subscription(id, providerID, status, billing string) {
+	e.t.Helper()
+	err := e.db.Write(ctx, func(tx store.Tx) error {
+		return store.InsertSubscription(ctx, tx, store.Subscription{ID: id, OrgID: store.DefaultOrgID, Mode: "test", AppID: "app_1", CustomerID: "cus_1",
+			Status: status, BillingMode: billing, ProviderAccountID: e.acct, ProviderSubscriptionID: providerID, ProviderRef: "SREF" + id, Amount: 49900,
+			Currency: "INR", Interval: "month", IntervalCount: 1, AnchorAt: e.clk.Now(), CurrentPeriodStart: e.clk.Now(), CurrentPeriodEnd: e.clk.Now().Add(720 * time.Hour),
+			CheckoutTokenHash: "h", ExpiresAt: e.clk.Now().Add(time.Hour), Version: 1, CreatedAt: e.clk.Now(), UpdatedAt: e.clk.Now()})
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func TestMandateStatusMismatchesAreAppliedThroughTheSubscriptionsService(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		e.mandate("mdt_pending", "pm_1", "pending") // provider says active
+		e.mandate("mdt_same", "pm_2", "active")     // in sync
+		e.mandate("mdt_revoked", "pm_3", "active")  // provider says revoked
+		e.mandate("mdt_gone", "pm_4", "active")     // the provider does not know it
+		e.mandate("mdt_final", "pm_5", "revoked")   // final: never fetched
+		e.mandate("mdt_nopid", "", "pending")       // not yet at the provider
+		e.fake.Locked(func() {
+			e.fake.Mandates["pm_1"] = connector.MandateSnapshot{ProviderMandateID: "pm_1", Status: "active", RawStatus: "confirmed", MaxAmount: 150000, Currency: "INR"}
+			e.fake.Mandates["pm_2"] = connector.MandateSnapshot{ProviderMandateID: "pm_2", Status: "active"}
+			e.fake.Mandates["pm_3"] = connector.MandateSnapshot{ProviderMandateID: "pm_3", Status: "revoked", RawStatus: "cancelled"}
+			e.fake.Mandates["pm_5"] = connector.MandateSnapshot{ProviderMandateID: "pm_5", Status: "active"}
+		})
+		run, err := e.rec.RunAccount(ctx, e.acct)
+		if err != nil {
+			t.Fatal(err)
+		}
+		notes := e.sink.calls()
+		if len(notes) != 2 {
+			t.Fatalf("notifications %+v", notes)
+		}
+		got := map[string]string{}
+		for _, n := range notes {
+			if n.Kind != connector.NotifyMandate || n.Mandate == nil {
+				t.Fatalf("notification %+v", n)
+			}
+			got[n.Mandate.ProviderMandateID] = n.Mandate.Status
+		}
+		if got["pm_1"] != "active" || got["pm_3"] != "revoked" {
+			t.Errorf("applied %v", got)
+		}
+		items := e.items(run.ID)
+		if items["status_mismatch:pm_1"].State != "fixed" || items["status_mismatch:pm_3"].State != "fixed" || run.Fixed != 2 || run.Items != 2 {
+			t.Errorf("run %+v items %+v", run, items)
+		}
+		e.fake.Locked(func() {
+			fetched := append([]string(nil), e.fake.MandateFetches...)
+			slices.Sort(fetched)
+			if !slices.Equal(fetched, []string{"pm_1", "pm_2", "pm_3", "pm_4"}) {
+				t.Errorf("fetched %v", fetched)
+			}
+		})
+		if len(e.alerts.kinds()) != 0 {
+			t.Errorf("alerts %v", e.alerts.kinds())
+		}
+	})
+}
+
+func TestProviderSubscriptionStatusMismatches(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		e.subscription("sub_incomplete", "ps_1", "incomplete", "provider_managed") // provider: active
+		e.subscription("sub_active_ok", "ps_2", "active", "provider_managed")      // provider: active
+		e.subscription("sub_canceled", "ps_3", "active", "provider_managed")       // provider: canceled
+		e.subscription("sub_pastdue", "ps_4", "active", "provider_managed")        // provider: past_due
+		e.subscription("sub_ended", "ps_5", "ended", "provider_managed")           // final: never fetched
+		e.subscription("sub_merchant", "ps_6", "active", "merchant_triggered")     // ours to trigger: provider has nothing to say
+		e.subscription("sub_trial", "ps_7", "trialing", "provider_managed")        // provider "active" while trialing is not a mismatch
+		e.fake.Locked(func() {
+			for id, st := range map[string]string{"ps_1": "active", "ps_2": "active", "ps_3": "canceled", "ps_4": "past_due", "ps_6": "canceled", "ps_7": "active"} {
+				e.fake.Subs[id] = connector.SubscriptionSnapshot{ProviderSubscriptionID: id, Status: st, RawStatus: st, Amount: 49900, Currency: "INR"}
+			}
+		})
+		run, err := e.rec.RunAccount(ctx, e.acct)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]string{}
+		for _, n := range e.sink.calls() {
+			if n.Kind != connector.NotifySubscription || n.Subscription == nil || n.Payment != nil {
+				t.Fatalf("notification %+v", n)
+			}
+			got[n.Subscription.ProviderSubscriptionID] = n.Subscription.Status
+		}
+		want := map[string]string{"ps_1": "active", "ps_3": "canceled", "ps_4": "past_due"}
+		if len(got) != 3 || got["ps_1"] != want["ps_1"] || got["ps_3"] != want["ps_3"] || got["ps_4"] != want["ps_4"] {
+			t.Errorf("applied %v want %v", got, want)
+		}
+		if run.Fixed != 3 || e.items(run.ID)["status_mismatch:ps_3"].State != "fixed" {
+			t.Errorf("run %+v items %+v", run, e.items(run.ID))
+		}
+		e.fake.Locked(func() {
+			for _, id := range e.fake.SubFetches {
+				if id == "ps_5" || id == "ps_6" {
+					t.Errorf("fetched %s, which is final or not provider managed", id)
+				}
+			}
+		})
+	})
+}
+
+func TestMandateAndSubscriptionFailuresAreAlertedNotFatal(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		e.mandate("mdt_1", "pm_1", "pending")
+		e.fake.Locked(func() {
+			e.fake.Mandates["pm_1"] = connector.MandateSnapshot{ProviderMandateID: "pm_1", Status: "active"}
+		})
+		e.sink.err = errors.New("subscriptions service down")
+		run, err := e.rec.RunAccount(ctx, e.acct)
+		if err != nil || run.Status != "ok" {
+			t.Fatalf("a failing apply must not fail the run: %+v %v", run, err)
+		}
+		if it := e.items(run.ID)["status_mismatch:pm_1"]; it.State != "open" || run.Fixed != 0 {
+			t.Errorf("item %+v", it)
+		}
+		if k := e.alerts.kinds(); !slices.Equal(k, []string{"recon.autofix_failed"}) {
+			t.Errorf("alerts %v", k)
+		}
+		// A provider outage while fetching is logged and skipped.
+		e.sink.err = nil
+		e.fake.Locked(func() { e.fake.ManagerErr = connector.ErrTemporary })
+		if run, err := e.rec.RunAccount(ctx, e.acct); err != nil || run.Status != "ok" {
+			t.Errorf("fetch outage: %+v %v", run, err)
+		}
+	})
+}
+
+func TestNoSubscriptionsServiceMeansMandatesAreNotChecked(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		rec := reconcile.New(reconcile.Options{DB: e.db, Core: e.core, Conns: e.conns, Settings: e.set, Alerts: e.alerts, Loc: time.UTC, Now: e.clk.Now})
+		e.mandate("mdt_1", "pm_1", "pending")
+		e.fake.Locked(func() {
+			e.fake.Mandates["pm_1"] = connector.MandateSnapshot{ProviderMandateID: "pm_1", Status: "active"}
+		})
+		if _, err := rec.RunAccount(ctx, e.acct); err != nil {
+			t.Fatal(err)
+		}
+		e.fake.Locked(func() {
+			if len(e.fake.MandateFetches) != 0 {
+				t.Error("fetched mandates without a service to apply them")
+			}
+		})
 	})
 }

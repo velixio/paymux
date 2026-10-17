@@ -340,3 +340,30 @@ func UpdateCycle(ctx context.Context, tx Tx, c Cycle, now time.Time) error {
 		c.JobSeq, zeroMS(c.NotifiedAt), zeroMS(c.NextRunAt), zeroMS(c.LeaseUntil), ms(now), c.ID)
 	return err
 }
+
+// ListOpenMandates returns the account's mandates that are not final
+// (pending or active) and already have the provider's id.
+func ListOpenMandates(ctx context.Context, q Queryer, accountID string) ([]Mandate, error) {
+	rows, err := q.QueryContext(ctx, "SELECT "+mandateCols+` FROM mandates WHERE provider_account_id = ? AND status IN ('pending','active')
+		AND provider_mandate_id IS NOT NULL ORDER BY created_at, id`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Mandate
+	for rows.Next() {
+		m, err := scanMandate(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// ListOpenProviderSubscriptions returns the account's provider-managed
+// subscriptions that are not final and already have the provider's id.
+func ListOpenProviderSubscriptions(ctx context.Context, q Queryer, accountID string) ([]Subscription, error) {
+	return listSubs(ctx, q, `provider_account_id = ? AND billing_mode = 'provider_managed' AND provider_subscription_id IS NOT NULL
+		AND status IN ('incomplete','trialing','active','past_due') ORDER BY created_at, id`, accountID)
+}
