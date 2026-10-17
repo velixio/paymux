@@ -15,15 +15,26 @@
 
 {{if eq .Tab "keys"}}
 <table class="grid">
-<thead><tr><th>Key</th><th>Mode</th><th>Created</th><th>Last used</th><th></th></tr></thead>
-<tbody>{{range .Keys}}<tr><td><code>{{.Prefix}}&hellip;</code></td><td>{{.Mode}}</td><td>{{.Created}}</td><td>{{.LastUsed}}</td>
-<td>{{if .Revoked}}revoked{{else if $.App.CanKeys}}<form class="inline" method="post" action="/dashboard/apps/{{$.App.ID}}/keys/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="linkbtn" type="submit">Revoke</button></form>{{end}}</td></tr>
-{{else}}<tr><td colspan="5" class="muted">No API keys.</td></tr>{{end}}</tbody>
+<thead><tr><th>Key</th><th>Mode</th><th>Scopes</th><th>Created</th><th>Last used</th><th>Expires</th><th></th></tr></thead>
+<tbody>{{range .Keys}}<tr><td><code>{{.Prefix}}&hellip;</code></td><td>{{.Mode}}</td><td>{{.Scopes}}</td><td>{{.Created}}</td><td>{{.LastUsed}}</td><td>{{if .Expires}}{{.Expires}}{{if .Expired}} (expired){{end}}{{else}}&mdash;{{end}}</td>
+<td>{{if .Revoked}}revoked{{else if .Expired}}expired{{else if $.App.CanKeys}}<form class="inline" method="post" action="/dashboard/apps/{{$.App.ID}}/keys/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="linkbtn" type="submit">Revoke</button></form>{{end}}</td></tr>
+{{else}}<tr><td colspan="7" class="muted">No API keys.</td></tr>{{end}}</tbody>
 </table>
 {{if .CanKeys}}<form method="post" action="/dashboard/apps/{{.ID}}/keys" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <select name="mode" class="field" aria-label="Key mode"><option value="test">test</option><option value="live">live</option></select>
+<fieldset><legend>Scopes (none ticked: full access)</legend>
+{{range .ScopeChoices}}<label><input type="checkbox" name="scope" value="{{.}}"> {{.}}</label>
+{{end}}</fieldset>
 <button class="btn" type="submit">Create API key</button>
+</form>
+<form method="post" action="/dashboard/apps/{{.ID}}/keys/rotate" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<h4>Rotate</h4>
+<p class="muted">Creates a new key (same scopes unless you tick some) and makes the current keys of that mode stop working after the grace period. Both work meanwhile.</p>
+<select name="mode" class="field" aria-label="Mode to rotate"><option value="test">test</option><option value="live">live</option></select>
+<input class="field" name="grace_hours" type="number" min="1" max="2160" value="24" aria-label="Grace period in hours">
+<button class="btn" type="submit">Rotate API key</button>
 </form>{{end}}
 {{end}}
 
