@@ -185,6 +185,9 @@ func (s *Service) ensureOpenAttempt(ctx context.Context, tx store.Tx, sub store.
 		cy.AttemptID = a.ID
 		return a, err
 	}
+	if cy.PeriodIndex >= 1 && sub.PendingAmount > 0 {
+		cy.Amount = sub.PendingAmount // an amount change applies from the next period
+	}
 	p, a, err := s.core.CreateRenewalPayment(ctx, tx, core.RenewalInput{OrgID: sub.OrgID, AppID: sub.AppID, Mode: sub.Mode,
 		SubscriptionID: sub.ID, CustomerID: sub.CustomerID, Description: sub.Description, ReturnURL: sub.ReturnURL,
 		Metadata: sub.Metadata, Amount: cy.Amount, Currency: sub.Currency, ProviderAccountID: sub.ProviderAccountID})
@@ -222,8 +225,9 @@ func (s *Service) handleNotify(ctx context.Context, raw json.RawMessage) error {
 			}
 			return err
 		}
-		if terminal(sub.Status) || cy.State == "succeeded" || cy.State == "exhausted" || !cy.NotifiedAt.IsZero() || sub.MandateID == "" {
-			skip = true
+		if terminal(sub.Status) || cy.State == "succeeded" || cy.State == "exhausted" || !cy.NotifiedAt.IsZero() || sub.MandateID == "" ||
+			endsBefore(sub, cy) {
+			skip = true // nothing will be debited, so there is nothing to announce
 			return nil
 		}
 		if m, err = s.mandateOf(ctx, tx, sub); err != nil {
@@ -266,6 +270,15 @@ func (s *Service) handleNotify(ctx context.Context, raw json.RawMessage) error {
 		ca := chargeT
 		return s.emitSub(ctx, tx, EvRenewalUpcoming, sub, eventData{ChargeAt: &ca, RenewalAmount: cy.Amount})
 	})
+}
+
+// endsBefore reports whether the subscription ends instead of billing this
+// cycle: cancel-at-period-end was requested, or all total_count periods are paid.
+func endsBefore(sub store.Subscription, cy store.Cycle) bool {
+	if cy.PeriodIndex < 1 || cy.PaymentID != "" || cy.Retries != 0 {
+		return false
+	}
+	return sub.CancelAtPeriodEnd || (sub.TotalCount > 0 && sub.RenewalsDone >= sub.TotalCount)
 }
 
 // ---- charging -----------------------------------------------------------
