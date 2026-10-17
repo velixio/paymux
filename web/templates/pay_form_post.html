@@ -1,0 +1,9 @@
+{{define "title"}}Redirecting to payment{{end}}
+{{define "content"}}
+<p class="muted">Taking you to the secure payment page…</p>
+<form id="pay" method="post" action="{{.FormURL}}">
+{{range .Fields}}<input type="hidden" name="{{.Name}}" value="{{.Value}}">
+{{end}}<noscript><button class="btn" type="submit">Continue to payment</button></noscript>
+</form>
+<script>document.getElementById("pay").submit();</script>
+{{end}}

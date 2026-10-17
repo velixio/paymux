@@ -1,0 +1,16 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{block "title" .}}Payment{{end}}</title>
+<link rel="stylesheet" href="/assets/css/app.css">
+{{with .Accent}}<style>:root{--accent: {{.}};}</style>{{end}}
+</head>
+<body>
+<main class="card">
+{{with .AppName}}<div class="brand">{{with $.LogoURL}}<img src="{{.}}" alt="">{{else}}<h2>{{$.AppName}}</h2>{{end}}</div>{{end}}
+{{template "content" .}}
+</main>
+</body>
+</html>{{end}}
