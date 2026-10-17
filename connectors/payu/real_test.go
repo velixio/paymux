@@ -75,6 +75,33 @@ func TestRealInvalidHashIsInvalidCredentials(t *testing.T) {
 	}
 }
 
+// get_Transaction_Details names things differently from verify_payment: the
+// PayU id is "id", the status is the unmapped one ("captured"), and the fee and
+// the tax on it are mer_service_fee and mer_service_tax.
+func TestRealListPayments(t *testing.T) {
+	f := &fake{listing: body(t, "listing_captured")}
+	tr := connector.TimeRange{From: 1792272000000, To: 1792358400000} // 2026-10-18 IST
+	pg, err := newConn(t, f).(connector.Lister).ListPayments(context.Background(), tr, "")
+	if err != nil || len(pg.Items) != 1 {
+		t.Fatalf("%+v %v", pg, err)
+	}
+	p := pg.Items[0]
+	if p.ProviderRef != "pay_ref_01" || p.ProviderPaymentID != "20000063902" || p.Status != connector.PaymentSucceeded || p.Amount != 10050 ||
+		p.Fee != 201 || p.Tax != 36 || p.Method != "card" || p.ErrorCode != "" {
+		t.Errorf("%+v", p)
+	}
+}
+
+func TestStatusMapUnmapped(t *testing.T) {
+	for raw, want := range map[string]connector.PaymentStatus{
+		"captured": connector.PaymentSucceeded, "auth": connector.PaymentAuthorized, "bounced": connector.PaymentFailed, "dropped": connector.PaymentCanceled,
+	} {
+		if got := mapStatus(raw); got != want {
+			t.Errorf("%s -> %s want %s", raw, got, want)
+		}
+	}
+}
+
 func TestRealRefundQueued(t *testing.T) {
 	f := &fake{refund: body(t, "refund_queued")}
 	snap, err := newConn(t, f).(connector.Refunder).Refund(context.Background(), connector.RefundRequest{ProviderRef: "rf_ref_01", ProviderPaymentID: "20000063887", Amount: 1025, Currency: "INR"})

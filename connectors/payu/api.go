@@ -123,6 +123,9 @@ func checkCredentials(msg string) error {
 
 type txnDetail struct {
 	MihPayID       flexStr `json:"mihpayid"`
+	ID             flexStr `json:"id"` // get_Transaction_Details names the PayU id "id"
+	ServiceFee     flexStr `json:"mer_service_fee"`
+	ServiceTax     flexStr `json:"mer_service_tax"`
 	TxnID          flexStr `json:"txnid"`
 	Status         flexStr `json:"status"`
 	UnmappedStatus flexStr `json:"unmappedstatus"`
@@ -145,9 +148,15 @@ func (d txnDetail) snapshot(txnid string) (connector.PaymentSnapshot, error) {
 		}
 	}
 	snap := connector.PaymentSnapshot{
-		ProviderRef: txnid, ProviderPaymentID: string(d.MihPayID),
+		ProviderRef: txnid, ProviderPaymentID: firstNonEmpty(string(d.MihPayID), string(d.ID)),
 		Status: mapStatus(string(d.Status)), RawStatus: string(d.Status),
 		Amount: minor, Currency: "INR", Method: methodOf(string(d.Mode)), CreatedAt: parseAddedOn(string(d.AddedOn)),
+	}
+	if fee, err := money.ParseDecimal(string(d.ServiceFee), "INR"); err == nil {
+		snap.Fee = fee
+	}
+	if tax, err := money.ParseDecimal(string(d.ServiceTax), "INR"); err == nil {
+		snap.Tax = tax
 	}
 	if snap.ProviderPaymentID == "Not Found" {
 		snap.ProviderPaymentID = "" // PayU's placeholder for a txnid it has no payment for

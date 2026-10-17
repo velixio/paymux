@@ -23,11 +23,13 @@ func parseAddedOn(s string) int64 {
 
 func mapStatus(raw string) connector.PaymentStatus {
 	switch raw {
-	case "success":
+	case "success", "captured": // "captured" is the unmapped status (listings)
 		return connector.PaymentSucceeded
+	case "auth":
+		return connector.PaymentAuthorized
 	case "failure", "failed", "bounced":
 		return connector.PaymentFailed
-	case "userCancelled", "usercancelled":
+	case "userCancelled", "usercancelled", "dropped":
 		return connector.PaymentCanceled
 	case "Not Found", "not found":
 		return connector.PaymentRequiresAction
