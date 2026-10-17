@@ -364,3 +364,43 @@ func TestCompareVersions(t *testing.T) {
 		}
 	}
 }
+
+// When the operator asks for signature verification it is mandatory: a
+// stripped signature, a missing cosign or an identity without an issuer must
+// refuse the update instead of falling back to checksums.
+func TestUpdateRequiredSignatureFailsClosed(t *testing.T) {
+	key := filepath.Join(t.TempDir(), "cosign.pub")
+	_ = os.WriteFile(key, []byte("key"), 0o600)
+	cases := map[string]struct {
+		sig    bool
+		cosign bool
+		args   []string
+		want   string
+	}{
+		"unsigned release with --cosign-key":      {sig: false, cosign: true, args: []string{"--cosign-key", key}, want: "not signed"},
+		"unsigned release with --cosign-identity": {sig: false, cosign: true, args: []string{"--cosign-identity", "x", "--cosign-issuer", "y"}, want: "not signed"},
+		"cosign missing with --cosign-key":        {sig: true, cosign: false, args: []string{"--cosign-key", key}, want: "cosign"},
+		"identity without issuer":                 {sig: true, cosign: true, args: []string{"--cosign-identity", "x"}, want: "--cosign-issuer"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newFakeReleases(t, "v1.4.0", "v1.4.0")
+			if c.sig {
+				f.assets["SHA256SUMS.sig"] = []byte("c2ln")
+			}
+			if c.cosign {
+				fakeCosign(t, 0)
+			} else {
+				t.Setenv("PATH", t.TempDir())
+			}
+			dest := updateEnv(t, "v1.3.2")
+			code, _, errs := runUpdateCmd(t, append([]string{"--api-url", f.srv.URL, "--dest", dest}, c.args...)...)
+			if code == 0 || !strings.Contains(errs, c.want) {
+				t.Fatalf("expected refusal mentioning %q: code=%d err=%q", c.want, code, errs)
+			}
+			if b, _ := os.ReadFile(dest); !bytes.Equal(b, newScript("v1.3.2")) {
+				t.Error("binary replaced although the required signature check failed")
+			}
+		})
+	}
+}
