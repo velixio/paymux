@@ -682,6 +682,7 @@ components:
         status: { type: string, enum: [pending, succeeded, failed] }
         reason: { type: string }
         initiated_by: { type: string, enum: [api, dashboard, provider, system] }
+        provider_refund_id: { type: string, description: "The provider's id for the refund; present once the provider has accepted it." }
         created_at: { type: string, format: date-time }
     SubscriptionStatus:
       type: string
