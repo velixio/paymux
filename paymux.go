@@ -20,9 +20,11 @@ import (
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/httpapi"
 	"github.com/paymux/paymux/internal/inbound"
+	"github.com/paymux/paymux/internal/invoice"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/logging"
 	"github.com/paymux/paymux/internal/metrics"
+	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/server"
@@ -145,8 +147,14 @@ func (a *App) Start(ctx context.Context) error {
 		emitter = a.emitter
 	}
 	core.RegisterJobs(q)
-	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter})
-	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log})
+	// GST invoicing: documents are issued by hooks inside the transaction in
+	// which a payment or refund succeeds.
+	inv := invoice.New(invoice.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter, Mailer: notify.New(a.cfg),
+		BaseURL: a.cfg.BaseURL.String()})
+	inv.RegisterJobs(q)
+	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter,
+		OnPaymentSucceeded: inv.OnPaymentSucceeded, OnRefundSucceeded: inv.OnRefundSucceeded})
+	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv})
 	if err != nil {
 		return err
 	}
@@ -213,6 +221,8 @@ func (a *App) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	inv.SetPages(renderer)
+	srv.HandleFunc("GET /i/{id}", inv.ServeHosted)
 	srv.HandleFunc("/dashboard/", dash.ServeHTTP)
 	srv.HandleFunc("GET /assets/", web.AssetHandler(overlay).ServeHTTP)
 

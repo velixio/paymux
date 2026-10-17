@@ -84,6 +84,9 @@ type Service struct {
 	pagesOpt  *web.Renderer
 }
 
+// SetPages sets the HTML renderer of the hosted views (call before serving).
+func (s *Service) SetPages(r *web.Renderer) { s.pagesOpt = r }
+
 // pages returns the HTML renderer (Options.Pages, or the embedded templates).
 func (s *Service) pages() (*web.Renderer, error) {
 	if s.pagesOpt != nil {
