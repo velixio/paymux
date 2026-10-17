@@ -1,0 +1,2 @@
+invoice_number,invoice_date,invoice_value,place_of_supply,rate,taxable_value,igst
+INV/2627/000003,2026-10-07,150000.00,29,18.00,127118.64,22881.36

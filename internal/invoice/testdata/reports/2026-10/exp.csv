@@ -1,0 +1,4 @@
+export_type,invoice_number,invoice_date,invoice_value,rate,taxable_value,igst,currency,foreign_value,fx_rate_inr,lut_number,destination_country
+WOPAY,INV/2627/000004,2026-10-09,4162.50,0.00,4162.50,0.00,USD,50.00,83.2500,AD270226000001A,US
+WPAY,INV/2627/000005,2026-10-10,4175.01,18.00,3537.90,637.11,USD,50.00,83.5000,,US
+WPAY,INV/2627/000006,2026-10-12,,18.00,,,USD,50.00,,,US

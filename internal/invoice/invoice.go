@@ -308,8 +308,10 @@ func (s *Service) IssueForPayment(ctx context.Context, tx store.Tx, p store.Paym
 		FooterNote: ent.FooterNote, LogoBlobID: ent.LogoBlobID, SupportEmail: ent.SupportEmail})
 	rcpJSON, _ := json.Marshal(recipientSnapshot(c, rcp, cls))
 	var cgstBP, sgstBP, igstBP int
+	appliedBP := prof.GSTRateBP
 	switch {
 	case cls.ZeroRated():
+		appliedBP = 0
 	case cls.InterState:
 		igstBP = prof.GSTRateBP
 	default:
@@ -327,7 +329,7 @@ func (s *Service) IssueForPayment(ctx context.Context, tx store.Tx, p store.Paym
 		AttemptID: a.ID, SubscriptionID: p.SubscriptionID, Number: number, SeriesPrefix: prefix, FiscalYear: fy,
 		IssuedAt: issued, SupplyType: string(cls.SupplyType), PlaceOfSupply: cls.PlaceOfSupply, InterState: cls.InterState,
 		Currency: cur, Supplier: supJSON, Recipient: rcpJSON, Lines: linesJSON,
-		Taxable: amts.Taxable, CGST: amts.CGST, SGST: amts.SGST, IGST: amts.IGST, Total: amts.Total, GSTRateBP: prof.GSTRateBP,
+		Taxable: amts.Taxable, CGST: amts.CGST, SGST: amts.SGST, IGST: amts.IGST, Total: amts.Total, GSTRateBP: appliedBP,
 		FXRate: fx, FXSource: fxSource, Flags: flags, PaymentMethod: a.Method, PaymentRef: a.ProviderRef,
 		TemplateVersion: render.Version1, AccessTokenHash: tokenHash,
 	}

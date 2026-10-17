@@ -1,0 +1,5 @@
+flag,document,date
+export_igst,INV/2627/000005,2026-10-10
+export_igst,INV/2627/000006,2026-10-12
+fx_pending,INV/2627/000006,2026-10-12
+pos_defaulted,INV/2627/000007,2026-10-14
