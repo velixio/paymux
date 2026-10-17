@@ -38,7 +38,6 @@ type harness struct {
 	mu     sync.Mutex
 	rt     *jsvm.Runtime
 	client *http.Client
-	hosts  []string
 }
 
 func (h *harness) onError(hook string, err error) {
