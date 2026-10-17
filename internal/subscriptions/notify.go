@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/paymux/paymux/internal/checkout"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/core/state"
 	"github.com/paymux/paymux/internal/ids"
@@ -371,6 +372,15 @@ func (s *Service) applyMandateSnapshot(ctx context.Context, mandateID string, sn
 // a `renewal` Payment with a captured Attempt (deduplicated per provider
 // payment id). It is idempotent.
 func (s *Service) HandleNotification(ctx context.Context, providerAccountID string, n connector.Notification) error {
+	err := s.handleNotification(ctx, providerAccountID, n)
+	if errors.Is(err, ErrNotFound) {
+		// An object we do not know: the payment flow records it as unknown.
+		return fmt.Errorf("%w: %w", checkout.ErrUnknownObject, err)
+	}
+	return err
+}
+
+func (s *Service) handleNotification(ctx context.Context, providerAccountID string, n connector.Notification) error {
 	switch {
 	case n.Subscription != nil:
 		return s.onSubscription(ctx, providerAccountID, *n.Subscription, n.Payment)
@@ -523,6 +533,13 @@ func (s *Service) recordProviderRenewal(ctx context.Context, subID string, ps co
 		return err
 	}
 	return s.reconcile(ctx, subID, cy.ID)
+}
+
+// ReturnRedirect is ApplyReturn for the payment flow: the URL to send the
+// customer to ("" when the app has no return URL).
+func (s *Service) ReturnRedirect(ctx context.Context, providerAccountID, providerRef string) (string, bool, error) {
+	out, handled, err := s.ApplyReturn(ctx, providerAccountID, providerRef)
+	return out.ReturnURL, handled, err
 }
 
 // ---- hosted checkout return (inbound glue) ----------------------------------
