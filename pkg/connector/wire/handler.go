@@ -24,7 +24,12 @@ func (e errBadRequest) Error() string { return "bad request: " + e.err.Error() }
 // not verify under secret get 401; now may be nil for the wall clock. The
 // handler can be mounted under any path prefix: only the last path segment
 // names the method.
-func NewHandler(c connector.Connector, secret string, now func() time.Time) (http.Handler, error) {
+//
+// Each request's message id is accepted once: a replay of a signed request
+// within the tolerance window gets 401. The ids are remembered in memory (see
+// DefaultReplayCacheSize and WithReplayCacheSize); several instances of one
+// service need a shared store to reject a replay sent to another instance.
+func NewHandler(c connector.Connector, secret string, now func() time.Time, opts ...HandlerOption) (http.Handler, error) {
 	s, err := NewSigner(secret)
 	if err != nil {
 		return nil, err
@@ -32,13 +37,26 @@ func NewHandler(c connector.Connector, secret string, now func() time.Time) (htt
 	if now == nil {
 		now = time.Now
 	}
-	return &handler{c: c, signer: s, now: now}, nil
+	h := &handler{c: c, signer: s, now: now}
+	size := DefaultReplayCacheSize
+	for _, o := range opts {
+		o(&size)
+	}
+	h.seen = newReplayCache(size, 2*Tolerance)
+	return h, nil
 }
+
+// HandlerOption configures NewHandler.
+type HandlerOption func(replayCacheSize *int)
+
+// WithReplayCacheSize sets how many message ids the handler remembers.
+func WithReplayCacheSize(n int) HandlerOption { return func(size *int) { *size = n } }
 
 type handler struct {
 	c      connector.Connector
 	signer *Signer
 	now    func() time.Time
+	seen   *replayCache
 }
 
 func (h *handler) reply(w http.ResponseWriter, status int, v any) {
@@ -71,6 +89,11 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	method := path.Base(r.URL.Path)
 	if err := h.signer.VerifyRequest(r.Header, r.Method, method, body, h.now()); err != nil {
 		h.reply(w, http.StatusUnauthorized, Envelope{Error{Code: CodeInvalidCredentials, Message: "request signature missing, wrong, stale or for another method"}})
+		return
+	}
+	// Only a correctly signed id is remembered, so unsigned junk cannot fill the cache.
+	if !h.seen.firstSeen(r.Header.Get(HeaderID), h.now()) {
+		h.reply(w, http.StatusUnauthorized, Envelope{Error{Code: CodeInvalidCredentials, Message: "message id already used (replayed request)"}})
 		return
 	}
 	if r.Method == http.MethodGet && method == MethodInfo {

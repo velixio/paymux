@@ -244,3 +244,69 @@ func TestWireRejectsMethodSwap(t *testing.T) {
 		t.Errorf("the genuine request was refused: %s", rec.Body)
 	}
 }
+
+// A captured signed request is served once: sending the same bytes again,
+// even inside the timestamp tolerance, is refused and never reaches the connector.
+func TestWireRejectsReplay(t *testing.T) {
+	now := now0
+	f := &stub{}
+	h, _ := NewHandler(f, secret, func() time.Time { return now })
+	signer, _ := NewSigner(secret)
+	body := `{"provider_ref":"R1"}`
+	send := func(hdr http.Header) int {
+		req := httptest.NewRequest("POST", "/create_checkout", strings.NewReader(body))
+		req.Header = hdr.Clone()
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	hdr := http.Header{}
+	signer.SignRequest(hdr, "POST", MethodCreateCheckout, []byte(body), now)
+	if code := send(hdr); code != 200 {
+		t.Fatalf("first delivery: %d", code)
+	}
+	for i := 0; i < 3; i++ {
+		now = now.Add(time.Minute)
+		if code := send(hdr); code != 401 {
+			t.Fatalf("replay %d accepted: %d", i, code)
+		}
+	}
+	if len(f.calls) != 1 {
+		t.Errorf("connector saw %d calls", len(f.calls))
+	}
+	// A fresh message is not affected, and a replayed id is refused after the
+	// timestamp tolerance too (by the signature check, once the cache forgets it).
+	fresh := http.Header{}
+	signer.SignRequest(fresh, "POST", MethodCreateCheckout, []byte(body), now)
+	if code := send(fresh); code != 200 {
+		t.Errorf("fresh request: %d", code)
+	}
+	now = now.Add(3 * Tolerance)
+	if code := send(hdr); code != 401 {
+		t.Errorf("old request after the window: %d", code)
+	}
+}
+
+func TestReplayCacheIsBoundedBySizeAndTime(t *testing.T) {
+	c := newReplayCache(3, time.Minute)
+	for _, id := range []string{"a", "b", "c"} {
+		if !c.firstSeen(id, now0) {
+			t.Fatalf("%s seen before", id)
+		}
+	}
+	if c.firstSeen("b", now0) {
+		t.Error("b not remembered")
+	}
+	if !c.firstSeen("d", now0) { // evicts the oldest, a
+		t.Fatal("d seen before")
+	}
+	if c.order.Len() != 3 || len(c.ids) != 3 {
+		t.Errorf("cache grew: %d %d", c.order.Len(), len(c.ids))
+	}
+	if !c.firstSeen("a", now0) {
+		t.Error("the oldest id was not evicted")
+	}
+	if !c.firstSeen("b", now0.Add(2*time.Minute)) || c.order.Len() != 1 {
+		t.Errorf("expired ids are not forgotten: %d", c.order.Len())
+	}
+}

@@ -625,9 +625,11 @@ const (
 	CodeBadRequest         = "bad_request"
 )
 
+const DefaultReplayCacheSize = 10000
+
 var ErrBadSignature = errors.New("wire: missing, wrong or stale signature")
 
-func NewHandler(c connector.Connector, secret string, now func() time.Time) (http.Handler, error)
+func NewHandler(c connector.Connector, secret string, now func() time.Time, opts ...HandlerOption) (http.Handler, error)
 
 type CancelSubscriptionRequest struct {
 	Subscription connector.SubscriptionRef `json:"subscription"`
@@ -655,6 +657,10 @@ type EvidenceRequest struct {
 	Dispute  connector.DisputeRef `json:"dispute"`
 	Evidence connector.Evidence   `json:"evidence"`
 }
+
+type HandlerOption func(replayCacheSize *int)
+
+func WithReplayCacheSize(n int) HandlerOption
 
 type ListRequest struct {
 	Range  connector.TimeRange `json:"range"`
