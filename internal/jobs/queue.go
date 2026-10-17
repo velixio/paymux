@@ -45,9 +45,10 @@ type Queue struct {
 	db   *store.DB
 	opts Options
 
-	mu       sync.RWMutex
-	handlers map[string]Handler
-	running  atomic.Bool
+	mu        sync.RWMutex
+	handlers  map[string]Handler
+	schedules []Schedule
+	running   atomic.Bool
 }
 
 // New builds a Queue.
