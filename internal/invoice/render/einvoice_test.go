@@ -70,9 +70,6 @@ func TestEInvoiceDoesNotBreakLongDocuments(t *testing.T) {
 	for i := 0; i < 28; i++ { // push the totals to the end of the page
 		d.Lines = append(d.Lines, d.Lines[0])
 	}
-	d.Totals = d.Totals.Add(d.Totals) // totals must equal the lines; recompute below
-	var sum = d.Lines[0]
-	_ = sum
 	got := text(t, mustRender(t, fixTotals(d)))
 	wantAll(t, got, "IRN", "112610012345678")
 }
