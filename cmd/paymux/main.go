@@ -7,7 +7,6 @@ import (
 	"syscall"
 	_ "time/tzdata"
 
-	_ "github.com/paymux/paymux/connectors/razorpay" // registers the razorpay connector
 	"github.com/paymux/paymux/internal/cli"
 )
 
