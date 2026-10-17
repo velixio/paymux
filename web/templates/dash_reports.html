@@ -1,0 +1,22 @@
+{{define "title"}}GST reports - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h2>GST reports</h2>
+<p class="muted">Monthly sales register, GSTR-1 style sheets (B2B, B2CL, B2CS, exports, credit and debit notes), SAC summary, document list and exceptions, per tax entity. Months follow the IST calendar.</p>
+{{with .Reports}}
+<form class="filters" method="get" action="/dashboard/reports">
+<select name="entity" aria-label="Tax entity" required><option value="">Choose a tax entity</option>{{range $.Entities}}<option value="{{.ID}}"{{if eq .ID $.Reports.Entity}} selected{{end}}>{{.Name}} ({{.GSTIN}})</option>{{end}}</select>
+<input name="month" type="month" value="{{.Month}}" aria-label="Month" required>
+<button class="btn small" type="submit">Show</button>
+</form>
+{{if .Files}}
+<h3>{{.Month}}</h3>
+<table class="grid">
+<thead><tr><th>File</th></tr></thead>
+<tbody>{{range .Files}}<tr><td><a href="{{.Href}}">{{.Name}}</a></td></tr>{{end}}</tbody>
+</table>
+<p><a class="btn small" href="{{.ZipHref}}">Download all as a zip</a></p>
+{{end}}
+{{end}}
+{{template "dash_close" .}}{{end}}

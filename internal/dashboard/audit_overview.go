@@ -126,6 +126,9 @@ func (d *Dashboard) overviewPage(w http.ResponseWriter, r *http.Request, s *sess
 		return
 	}
 	v := d.shell(r, s, "overview", "Overview")
+	if ents, err := d.listEntities(ctx); err == nil {
+		v.Warnings = d.lutWarnings(ents)
+	}
 	for i, p := range periods {
 		pv := periodView{ID: p.id, Label: p.label}
 		for _, t := range totals[i] {

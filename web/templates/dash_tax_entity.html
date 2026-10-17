@@ -1,0 +1,21 @@
+{{define "title"}}{{.Title}} - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<p><a href="/dashboard/tax-entities">&larr; Tax entities</a></p>
+<h2>{{.Title}}</h2>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+{{if .CanManage}}
+<form method="post" action="/dashboard/tax-entities/{{.TaxForm.ID}}" enctype="multipart/form-data" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+{{template "dash_entity_fields" .}}
+<button class="btn" type="submit">Save</button>
+</form>
+{{else}}
+{{with .TaxForm}}<dl class="facts">
+<dt>Legal name</dt><dd>{{.LegalName}}</dd><dt>GSTIN</dt><dd>{{.GSTIN}} ({{.State}})</dd><dt>Address</dt><dd>{{.Address}}</dd>
+<dt>LUT</dt><dd>{{.LUTNumber}} {{.LUTFrom}} to {{.LUTTo}}</dd><dt>Series</dt><dd>{{.InvoicePrefix}} / {{.CreditNotePrefix}}</dd>
+<dt>Signatory</dt><dd>{{.Signatory}}</dd><dt>Footer</dt><dd>{{.Footer}}</dd>
+</dl>{{end}}
+{{end}}
+{{template "dash_close" .}}{{end}}

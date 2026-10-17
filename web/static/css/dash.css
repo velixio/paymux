@@ -48,3 +48,6 @@ textarea.json { width: 100%; min-height: 90px; font-family: monospace; font-size
 .reveal { border: 2px solid var(--color-accent); border-radius: var(--radius); padding: 8px 14px; margin: 12px 0; }
 .logo-preview { max-height: 48px; max-width: 200px; }
 table.settings pre { margin: 0; white-space: pre-wrap; max-width: 380px; }
+.banner-warning { background: #b45309; color: #fff; padding: 8px 14px; text-align: center; }
+fieldset { border: 1px solid var(--color-line); border-radius: 8px; margin: 8px 0; }
+label { display: block; margin: 6px 0; }

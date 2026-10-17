@@ -44,6 +44,15 @@ type Page struct {
 	FlaggedRefunds []flaggedRefund
 	Doc            *docView
 
+	// reports, tax entities, fx
+	Reports   *reportsView
+	TaxEnts   []taxEntRow
+	TaxForm   *taxEntForm
+	Warnings  []string
+	FXRates   []fxRow
+	FXPending []fxPendingRow
+	FXDate    string
+
 	// audit log and overview
 	AuditRows   []auditRow
 	AuditFilter auditFilter
@@ -63,6 +72,7 @@ func (d *Dashboard) routesPages() {
 	d.routesSettings()
 	d.routesAuditOverview()
 	d.routesInvoices()
+	d.routesTax()
 }
 
 // orgID returns the single org's id (cached once found).
