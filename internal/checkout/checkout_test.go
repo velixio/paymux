@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http/httptest"
 	"net/url"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"github.com/paymux/paymux/internal/checkout"
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/disputes"
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/fakeconn"
 	"github.com/paymux/paymux/internal/inbound"
@@ -1023,6 +1025,60 @@ func TestForgedWebhookGets401AndNoFetch(t *testing.T) {
 		code, _ = e.hook(st.AccountID, "evt_ok", "ok", notes)
 		if code != 200 || e.count("SELECT COUNT(*) FROM jobs WHERE kind = 'provider_event.process'") != 1 {
 			t.Errorf("signed: %d", code)
+		}
+	})
+}
+
+// ---- disputes ----
+
+type stubDisputes struct {
+	err   error
+	calls []string
+}
+
+func (d *stubDisputes) SyncNotification(_ context.Context, account string, n connector.Notification) (disputes.Result, error) {
+	d.calls = append(d.calls, account+"/"+n.Dispute.ProviderDisputeID)
+	return disputes.Result{}, d.err
+}
+
+func TestDisputeNotificationsGoToTheDisputesService(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		stub := &stubDisputes{}
+		flow := checkout.New(checkout.Options{DB: e.db, Core: e.core, Conns: e.conns, Routing: checkout.NewRouting(e.breaker), Breaker: e.breaker,
+			Now: e.clk.Now, Disputes: stub})
+		_, st := startedAttempt(t, e)
+		note := []connector.Notification{{Kind: connector.NotifyDispute, EventID: "d1",
+			Dispute: &connector.DisputeSnapshot{ProviderDisputeID: "dsp_1", ProviderPaymentID: "pay_1"}}}
+		ev := storeEvent(t, e, st.AccountID, true, note)
+		if err := flow.ProcessProviderEvent(ctx, jobPayload(st.AccountID, ev)); err != nil {
+			t.Fatal(err)
+		}
+		if len(stub.calls) != 1 || stub.calls[0] != st.AccountID+"/dsp_1" {
+			t.Errorf("calls %v", stub.calls)
+		}
+		if e.count("SELECT COUNT(*) FROM unknown_provider_objects") != 0 {
+			t.Error("a handled dispute was recorded as unknown")
+		}
+		// A dispute of no known payment, or for a connector that cannot read
+		// disputes, is recorded for an operator instead of failing the job.
+		for i, serr := range []error{disputes.ErrUnknownPayment, disputes.ErrNoReader} {
+			stub.err = serr
+			note[0].Dispute.ProviderDisputeID = fmt.Sprintf("dsp_u%d", i)
+			ev := storeEvent(t, e, st.AccountID, true, note)
+			time.Sleep(time.Millisecond)
+			if err := flow.ProcessProviderEvent(ctx, jobPayload(st.AccountID, ev)); err != nil {
+				t.Fatalf("%v: %v", serr, err)
+			}
+		}
+		if e.count("SELECT COUNT(*) FROM unknown_provider_objects WHERE kind = 'dispute'") != 2 {
+			t.Errorf("unknown disputes recorded: %d", e.count("SELECT COUNT(*) FROM unknown_provider_objects WHERE kind = 'dispute'"))
+		}
+		// Anything else is retried.
+		stub.err = errors.New("db down")
+		note[0].Dispute.ProviderDisputeID = "dsp_retry"
+		ev = storeEvent(t, e, st.AccountID, true, note)
+		if err := flow.ProcessProviderEvent(ctx, jobPayload(st.AccountID, ev)); err == nil {
+			t.Error("a transient failure must make the job retry")
 		}
 	})
 }
