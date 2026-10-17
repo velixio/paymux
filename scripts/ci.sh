@@ -30,6 +30,9 @@ make test
 step "make test-pg (Postgres required)"
 PAYMUX_REQUIRE_PG=1 make test-pg
 
+step "smoke test of the real binary (SQLite; scripts/smoke.sh runs PostgreSQL too when asked)"
+PAYMUX_SMOKE_SQLITE_ONLY=1 bash scripts/smoke.sh
+
 step "cross builds (CGO_ENABLED=0)"
 mkdir -p dist
 for arch in amd64 arm64; do
