@@ -43,6 +43,9 @@ type taxEntForm struct {
 	LUTNumber, LUTFrom, LUTTo, InvoicePrefix, CreditNotePrefix, Signatory string
 	Footer, SupportEmail, TurnoverBand                                    string
 	HasLogo, Editing                                                      bool
+	// The digital signature certificate that signs the entity's PDFs, if any.
+	DSCSubject, DSCNotAfter string
+	DSCSoon                 bool // expires within 30 days
 }
 
 type fxRow struct{ Currency, Date, Rate, Source string }
@@ -70,6 +73,8 @@ func (d *Dashboard) routesTax() {
 	m.HandleFunc("GET "+prefix+"/tax-entities/{id}", d.authed(authz.SettingsRead, d.taxEntityPage))
 	m.HandleFunc("GET "+prefix+"/tax-entities/{id}/logo", d.authed(authz.SettingsRead, d.taxEntityLogo))
 	m.HandleFunc("POST "+prefix+"/tax-entities/{id}", d.authed(authz.SettingsWrite, d.taxEntityUpdate))
+	m.HandleFunc("POST "+prefix+"/tax-entities/{id}/dsc", d.authed(authz.SettingsWrite, d.taxEntityDSCSet))
+	m.HandleFunc("POST "+prefix+"/tax-entities/{id}/dsc/remove", d.authed(authz.SettingsWrite, d.taxEntityDSCRemove))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/tax", d.authed(authz.SettingsWrite, d.appTaxSave))
 	m.HandleFunc("GET "+prefix+"/fx", d.authed(authz.SettingsRead, d.fxPage))
 	m.HandleFunc("POST "+prefix+"/fx", d.authed(authz.SettingsWrite, d.fxSave))
@@ -256,6 +261,10 @@ func entForm(e store.TaxEntity) taxEntForm {
 		InvoicePrefix: e.InvoicePrefix, CreditNotePrefix: e.CreditNotePrefix, Signatory: e.SignatoryName, Footer: e.FooterNote,
 		SupportEmail: e.SupportEmail, TurnoverBand: e.TurnoverBand, HasLogo: e.LogoBlobID != "", Editing: true}
 	f.State, _ = tax.StateName(e.StateCode)
+	f.DSCSubject = e.DSCSubject
+	if !e.DSCNotAfter.IsZero() {
+		f.DSCNotAfter = e.DSCNotAfter.In(tax.IST).Format("2006-01-02")
+	}
 	if !e.LUTValidFrom.IsZero() {
 		f.LUTFrom = e.LUTValidFrom.In(tax.IST).Format("2006-01-02")
 	}
@@ -417,6 +426,7 @@ func (d *Dashboard) renderTaxEntity(w http.ResponseWriter, r *http.Request, s *s
 		return
 	}
 	form := entForm(e)
+	form.DSCSoon = !e.DSCNotAfter.IsZero() && e.DSCNotAfter.Before(d.o.Now().AddDate(0, 0, 30))
 	if echo != nil {
 		form.LegalName, form.TradeName, form.PAN, form.Address = echo.LegalName, echo.TradeName, echo.PAN, echo.Address
 		form.LUTNumber, form.LUTFrom, form.LUTTo = echo.LUTNumber, echo.LUTFrom, echo.LUTTo
@@ -462,6 +472,59 @@ func (d *Dashboard) taxEntityUpdate(w http.ResponseWriter, r *http.Request, s *s
 	default:
 		d.fail(w, err)
 	}
+}
+
+// maxDSCBytes bounds the uploaded PKCS#12 file; the service refuses more than 64 KB.
+const maxDSCBytes = 64 << 10
+
+// taxEntityDSCSet uploads the digital signature certificate (PKCS#12) of an
+// entity. The file and its password are validated, then stored sealed; neither
+// is ever shown again.
+func (d *Dashboard) taxEntityDSCSet(w http.ResponseWriter, r *http.Request, s *session) {
+	e, ok := d.loadEntity(w, r)
+	if !ok {
+		return
+	}
+	var data []byte
+	if r.MultipartForm != nil {
+		if fhs := r.MultipartForm.File["dsc"]; len(fhs) > 0 && fhs[0].Filename != "" {
+			fh, err := fhs[0].Open()
+			if err != nil {
+				d.fail(w, err)
+				return
+			}
+			defer fh.Close()
+			if data, err = io.ReadAll(io.LimitReader(fh, maxDSCBytes+1)); err != nil {
+				d.fail(w, err)
+				return
+			}
+		}
+	}
+	if len(data) == 0 {
+		d.renderTaxEntity(w, r, s, http.StatusBadRequest, "Choose the PKCS#12 (.p12 or .pfx) file of the certificate.", nil)
+		return
+	}
+	_, err := d.o.Invoice.SetTaxEntityDSC(r.Context(), s.auditActor(), e.ID, data, r.PostForm.Get("dsc_password"))
+	switch {
+	case err == nil:
+		http.Redirect(w, r, prefix+"/tax-entities/"+e.ID, http.StatusSeeOther)
+	case errors.Is(err, invoice.ErrInvalid):
+		d.renderTaxEntity(w, r, s, http.StatusBadRequest, trimInvalid(err), nil)
+	default:
+		d.fail(w, err)
+	}
+}
+
+func (d *Dashboard) taxEntityDSCRemove(w http.ResponseWriter, r *http.Request, s *session) {
+	e, ok := d.loadEntity(w, r)
+	if !ok {
+		return
+	}
+	if err := d.o.Invoice.ClearTaxEntityDSC(r.Context(), s.auditActor(), e.ID); err != nil {
+		d.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, prefix+"/tax-entities/"+e.ID, http.StatusSeeOther)
 }
 
 func (d *Dashboard) taxEntityLogo(w http.ResponseWriter, r *http.Request, s *session) {

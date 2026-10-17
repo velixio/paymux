@@ -18,4 +18,17 @@
 <dt>Signatory</dt><dd>{{.Signatory}}</dd><dt>Footer</dt><dd>{{.Footer}}</dd>
 </dl>{{end}}
 {{end}}
+{{with .TaxForm}}<h3 id="dsc">Digital signature</h3>
+{{if .DSCSubject}}<p>PDFs of this entity are digitally signed (PAdES) with the certificate of <strong>{{.DSCSubject}}</strong>, valid until {{.DSCNotAfter}}.</p>
+{{if .DSCSoon}}<p class="error" role="alert">This certificate expires within 30 days. After that, documents go out with the signatory note only, until a new one is uploaded.</p>{{end}}
+{{else}}<p class="muted">Without a digital signature certificate (DSC), invoices carry only the authorised signatory's name and the line &ldquo;This is a computer-generated document&rdquo;. We recommend a digital signature: it is the route the IT Act gives for signing an electronic invoice.</p>{{end}}
+{{if $.CanManage}}<form method="post" action="/dashboard/tax-entities/{{.ID}}/dsc" enctype="multipart/form-data" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Certificate file (PKCS#12, .p12 or .pfx)<input class="field" type="file" name="dsc" accept=".p12,.pfx" required></label>
+<label>Password of the file<input class="field" type="password" name="dsc_password" autocomplete="off" required></label>
+<p class="muted">The file is kept encrypted and is never shown again. It must use the older 3DES encryption most certifying authorities issue; if Paymux says it cannot read it, export it again with <code>openssl pkcs12 -export -legacy</code>.</p>
+<button class="btn" type="submit">{{if .DSCSubject}}Replace{{else}}Upload{{end}} certificate</button>
+</form>
+{{if .DSCSubject}}<form method="post" action="/dashboard/tax-entities/{{.ID}}/dsc/remove"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn danger" type="submit">Remove certificate</button></form>{{end}}{{end}}
+{{end}}
 {{template "dash_close" .}}{{end}}
