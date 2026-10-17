@@ -133,9 +133,9 @@ func (s *Service) handleNotification(ctx context.Context, ev store.ProviderEvent
 			return
 		})
 		if errors.Is(err, store.ErrNotFound) {
-			// TODO(spec): provider-initiated refunds (initiated_by=provider) are
-			// created by the disputes/refunds lane; until then they are recorded.
-			return s.recordUnknown(ctx, ev, "refund", firstNonEmpty(rs.ProviderRefundID, rs.ProviderRef), n)
+			// A refund made at the provider (its dashboard, a resolution
+			// centre): fetch it and book it as initiated_by=provider.
+			return s.importProviderRefund(ctx, ev, n)
 		}
 		if err != nil {
 			return err
@@ -214,6 +214,9 @@ func (s *Service) SubmitRefund(ctx context.Context, payload json.RawMessage) err
 	}
 	if r.Status != string(state.RefundPending) {
 		return nil // finished (or failed) already
+	}
+	if r.InitiatedBy == "provider" {
+		return nil // the provider made this refund itself: never send it again
 	}
 	a, err := s.o.Core.GetAttempt(ctx, r.AttemptID)
 	if err != nil {
