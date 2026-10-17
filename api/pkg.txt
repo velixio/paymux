@@ -22,6 +22,10 @@ var (
 	ErrMandateLimit       = errors.New("connector: amount exceeds mandate limit")
 )
 
+var ErrPrivateAddress = errors.New("connector: target is a private or special-use address")
+
+func IsPrivateIP(ip net.IP) bool
+
 func Lookup(name string) (Factory, Info, bool)
 
 func NewHTTPClient(o HTTPOptions) *http.Client
@@ -162,16 +166,18 @@ type Evidence struct {
 type Factory func(cfg json.RawMessage, deps Deps) (Connector, error)
 
 type HTTPOptions struct {
-	Timeout    time.Duration
-	MaxRetries int
-	Backoff    time.Duration
-	Logger     *slog.Logger
-	Secrets    []string
-	RateLimit  RateLimit
-	Observer   Observer
-	Base       http.RoundTripper
-	Now        func() time.Time
-	Sleep      func(ctx context.Context, d time.Duration) error
+	Timeout     time.Duration
+	MaxRetries  int
+	Backoff     time.Duration
+	Logger      *slog.Logger
+	Secrets     []string
+	RateLimit   RateLimit
+	Observer    Observer
+	DenyPrivate bool
+	LookupIP    func(ctx context.Context, host string) ([]net.IP, error)
+	Base        http.RoundTripper
+	Now         func() time.Time
+	Sleep       func(ctx context.Context, d time.Duration) error
 }
 
 type Info struct {
@@ -185,6 +191,7 @@ type Info struct {
 	MerchantOfRecord         bool            `json:"merchant_of_record"`
 	SubscriptionModes        []BillingMode   `json:"subscription_modes"`
 	PreDebitPerAttempt       bool            `json:"pre_debit_per_attempt"`
+	DenyPrivateNetwork       bool            `json:"deny_private_network,omitempty"`
 	MandateLimits            []MandateLimit  `json:"mandate_limits"`
 	MandateSetupAmount       int64           `json:"mandate_setup_amount,omitempty"`
 	RefundsVerificationDebit bool            `json:"refunds_verification_debit,omitempty"`
