@@ -168,3 +168,79 @@ func TestUserManagementIsAudited(t *testing.T) {
 		}
 	})
 }
+
+// otherOrg inserts a second org with an app, a payment and ledger, invoice
+// and audit rows of its own.
+func (e *env) otherOrg() {
+	e.t.Helper()
+	now := e.clk.Now()
+	err := e.db.Write(ctx, func(tx store.Tx) error {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO orgs (id, name, created_at) VALUES ('org_other', 'Other', ?)`, now.Add(time.Hour).UnixMilli()); err != nil {
+			return err
+		}
+		if err := store.InsertApp(ctx, tx, store.App{ID: "app_foreign", OrgID: "org_other", Name: "Foreign App", Slug: "foreign", CreatedAt: now}); err != nil {
+			return err
+		}
+		p := store.Payment{ID: "pay_foreign", OrgID: "org_other", AppID: "app_foreign", Mode: "live", Kind: "one_time", Amount: 987654, Currency: "INR",
+			AmountReceived: 987654, Status: "succeeded", OrderRef: "FOREIGN-ORDER", Metadata: map[string]string{}, ClientSecretHash: "h", ExpiresAt: now.Add(time.Hour),
+			Version: 1, Flags: []string{}, CreatedAt: now, UpdatedAt: now}
+		if err := store.InsertPayment(ctx, tx, p); err != nil {
+			return err
+		}
+		if err := store.InsertLedgerEntry(ctx, tx, store.LedgerEntry{ID: "led_foreign", OrgID: "org_other", Mode: "live", Kind: "charge", Amount: 987654,
+			Currency: "INR", PaymentID: "pay_foreign", OccurredAt: now.Add(-time.Hour)}); err != nil {
+			return err
+		}
+		return store.InsertAudit(ctx, tx, store.AuditRow{ID: "aud_zz_foreign", OrgID: "org_other", ActorType: "system", Action: "foreign.action", Target: "tgt_foreign", At: now})
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func TestOverviewIgnoresOtherOrgLedger(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		alpha := e.seedApp("alpha")
+		now := e.clk.Now()
+		e.seedPayment("pay_a", alpha.ID, "live", "succeeded", "", 1, now)
+		err := db.Write(ctx, func(tx store.Tx) error {
+			return store.InsertLedgerEntry(ctx, tx, store.LedgerEntry{ID: "led_mine", OrgID: store.DefaultOrgID, Mode: "live", Kind: "charge", Amount: 10000,
+				Currency: "INR", PaymentID: "pay_a", OccurredAt: now.Add(-time.Hour)})
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.otherOrg()
+		body := e.pageOK(e.roleClient("viewer"), "/dashboard/overview")
+		has(t, body, "Alpha", "100.00 INR")
+		lacks(t, body, "Foreign App", "9876.54", "app_foreign")
+	})
+}
+
+func TestDashboardNeverShowsAnotherOrgsRows(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		e.seedApp("alpha")
+		e.otherOrg()
+		admin := e.roleClient("admin")
+		// lists
+		lacks(t, e.pageOK(admin, "/dashboard/payments"), "pay_foreign", "FOREIGN-ORDER")
+		lacks(t, e.pageOK(admin, "/dashboard/payments?q=FOREIGN"), "pay_foreign")
+		lacks(t, e.pageOK(admin, "/dashboard/apps"), "Foreign App")
+		lacks(t, e.pageOK(admin, "/dashboard/audit"), "tgt_foreign", "foreign.action")
+		lacks(t, e.pageOK(admin, "/dashboard/invoices"), "INV/")
+		// direct links to another org's objects are plain 404s
+		tok := csrfOf(t, e.pageOK(admin, "/dashboard/payments"))
+		for _, path := range []string{"/dashboard/payments/pay_foreign", "/dashboard/apps/app_foreign", "/dashboard/apps/app_foreign?tab=settings"} {
+			if r, _ := e.get(admin, path); r.StatusCode != 404 {
+				t.Errorf("GET %s: %d", path, r.StatusCode)
+			}
+		}
+		for _, path := range []string{"/dashboard/payments/pay_foreign/refund", "/dashboard/apps/app_foreign/keys", "/dashboard/apps/app_foreign/settings/payment_ttl"} {
+			if r, _ := e.post(admin, path, url.Values{"csrf": {tok}, "mode": {"test"}, "value": {"30"}}); r.StatusCode != 404 {
+				t.Errorf("POST %s: %d", path, r.StatusCode)
+			}
+		}
+	})
+}

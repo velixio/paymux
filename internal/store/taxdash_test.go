@@ -95,6 +95,11 @@ func TestSearchInvoicesAndCreditNotes(t *testing.T) {
 				inv("inv_2", "te_a", "app_b", "live", "INV/2627/000002", oct.Add(time.Hour), "fx_pending"),
 				inv("inv_3", "te_b", "app_a", "live", "INV/2627/000003", nov, "pos_defaulted", "export_igst"),
 				inv("inv_4", "te_a", "app_a", "test", "TEST/2627/000001", nov),
+				func() store.Invoice {
+					i := inv("inv_x", "te_a", "app_a", "live", "INV/2627/000099", nov)
+					i.OrgID = "org_other"
+					return i
+				}(),
 			} {
 				if err := store.InsertInvoice(ctx, tx, i); err != nil {
 					return err
@@ -104,6 +109,9 @@ func TestSearchInvoicesAndCreditNotes(t *testing.T) {
 				{ID: "crn_1", OrgID: store.DefaultOrgID, Mode: "live", AppID: "app_a", TaxEntityID: "te_a", InvoiceID: "inv_1", PaymentID: "pay_inv_1", RefundID: "ref_1",
 					Number: "CN/2627/000001", SeriesPrefix: "CN", FiscalYear: "2627", IssuedAt: nov, Reason: "r", Currency: "INR", Lines: json.RawMessage(`[]`), Total: 10,
 					TemplateVersion: "v1", AccessTokenHash: "hc1"},
+				{ID: "crn_x", OrgID: "org_other", Mode: "live", AppID: "app_a", TaxEntityID: "te_a", InvoiceID: "inv_1", PaymentID: "pay_inv_1", RefundID: "ref_x",
+					Number: "CN/2627/000099", SeriesPrefix: "CN", FiscalYear: "2627", IssuedAt: nov, Reason: "r", Currency: "INR", Lines: json.RawMessage(`[]`), Total: 10,
+					TemplateVersion: "v1", AccessTokenHash: "hcx"},
 			} {
 				if err := store.InsertCreditNote(ctx, tx, c); err != nil {
 					return err
@@ -132,28 +140,28 @@ func TestSearchInvoicesAndCreditNotes(t *testing.T) {
 			f    store.DocFilter
 			want []string
 		}{
-			"live all":     {store.DocFilter{Mode: "live"}, []string{"inv_3", "inv_2", "inv_1"}},
-			"test mode":    {store.DocFilter{Mode: "test"}, []string{"inv_4"}},
-			"entity":       {store.DocFilter{Mode: "live", EntityID: "te_a"}, []string{"inv_2", "inv_1"}},
-			"app":          {store.DocFilter{Mode: "live", AppID: "app_a"}, []string{"inv_3", "inv_1"}},
-			"month":        {store.DocFilter{Mode: "live", From: oct.AddDate(0, 0, -9), To: oct.AddDate(0, 1, -9)}, []string{"inv_2", "inv_1"}},
-			"flag":         {store.DocFilter{Mode: "live", Flag: "fx_pending"}, []string{"inv_2"}},
-			"flag export":  {store.DocFilter{Mode: "live", Flag: "export_igst"}, []string{"inv_3"}},
-			"flag no such": {store.DocFilter{Mode: "live", Flag: "pos"}, nil},
+			"live all":     {store.DocFilter{OrgID: store.DefaultOrgID, Mode: "live"}, []string{"inv_3", "inv_2", "inv_1"}},
+			"test mode":    {store.DocFilter{OrgID: store.DefaultOrgID, Mode: "test"}, []string{"inv_4"}},
+			"entity":       {store.DocFilter{OrgID: store.DefaultOrgID, Mode: "live", EntityID: "te_a"}, []string{"inv_2", "inv_1"}},
+			"app":          {store.DocFilter{OrgID: store.DefaultOrgID, Mode: "live", AppID: "app_a"}, []string{"inv_3", "inv_1"}},
+			"month":        {store.DocFilter{OrgID: store.DefaultOrgID, Mode: "live", From: oct.AddDate(0, 0, -9), To: oct.AddDate(0, 1, -9)}, []string{"inv_2", "inv_1"}},
+			"flag":         {store.DocFilter{OrgID: store.DefaultOrgID, Mode: "live", Flag: "fx_pending"}, []string{"inv_2"}},
+			"flag export":  {store.DocFilter{OrgID: store.DefaultOrgID, Mode: "live", Flag: "export_igst"}, []string{"inv_3"}},
+			"flag no such": {store.DocFilter{OrgID: store.DefaultOrgID, Mode: "live", Flag: "pos"}, nil},
 		} {
 			if got := ids(c.f, "", 10); !reflect.DeepEqual(got, c.want) {
 				t.Errorf("%s: got %v want %v", name, got, c.want)
 			}
 		}
-		if got := ids(store.DocFilter{Mode: "live"}, "inv_3", 10); !reflect.DeepEqual(got, []string{"inv_2", "inv_1"}) {
+		if got := ids(store.DocFilter{OrgID: store.DefaultOrgID, Mode: "live"}, "inv_3", 10); !reflect.DeepEqual(got, []string{"inv_2", "inv_1"}) {
 			t.Errorf("cursor: %v", got)
 		}
-		if got := ids(store.DocFilter{Mode: "live"}, "", 2); len(got) != 2 {
+		if got := ids(store.DocFilter{OrgID: store.DefaultOrgID, Mode: "live"}, "", 2); len(got) != 2 {
 			t.Errorf("limit: %v", got)
 		}
 		var cns []store.CreditNote
 		_ = db.Read(ctx, func(q store.Querier) (err error) {
-			cns, err = store.SearchCreditNotes(ctx, q, store.DocFilter{Mode: "live", EntityID: "te_a"}, "", 10)
+			cns, err = store.SearchCreditNotes(ctx, q, store.DocFilter{OrgID: store.DefaultOrgID, Mode: "live", EntityID: "te_a"}, "", 10)
 			return
 		})
 		if len(cns) != 1 || cns[0].ID != "crn_1" {

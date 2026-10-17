@@ -184,6 +184,9 @@ func pay(id, app, mode, status, orderRef, cust string, created time.Time) store.
 		Version: 1, Flags: []string{}, CreatedAt: created, UpdatedAt: created}
 }
 
+// orgPay moves a payment into another org.
+func orgPay(p store.Payment) store.Payment { p.OrgID = "org_other"; return p }
+
 func TestSearchPayments(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		seedBase(t, db)
@@ -196,6 +199,7 @@ func TestSearchPayments(t *testing.T) {
 				pay("pay_02", "app_a", "test", "failed", "ORD-200", "", t0.Add(24*time.Hour)),
 				pay("pay_03", "app_b", "test", "succeeded", "ORD_300", "", t0.Add(48*time.Hour)),
 				pay("pay_04", "app_a", "live", "succeeded", "ORD-400", "", t0.Add(72*time.Hour)),
+				orgPay(pay("pay_05", "app_x", "test", "succeeded", "ORD-500", "", t0.Add(96*time.Hour))),
 			} {
 				if err := store.InsertPayment(ctx, tx, p); err != nil {
 					return err
@@ -225,27 +229,27 @@ func TestSearchPayments(t *testing.T) {
 			f    store.PaymentFilter
 			want []string
 		}{
-			{"mode only", store.PaymentFilter{Mode: "test"}, []string{"pay_03", "pay_02", "pay_01"}},
-			{"app", store.PaymentFilter{AppID: "app_a", Mode: "test"}, []string{"pay_02", "pay_01"}},
-			{"status", store.PaymentFilter{Mode: "test", Status: "succeeded"}, []string{"pay_03", "pay_01"}},
-			{"from", store.PaymentFilter{Mode: "test", From: t0.Add(12 * time.Hour)}, []string{"pay_03", "pay_02"}},
-			{"to exclusive", store.PaymentFilter{Mode: "test", To: t0.Add(24 * time.Hour)}, []string{"pay_01"}},
-			{"search id prefix", store.PaymentFilter{Mode: "test", Search: "pay_02"}, []string{"pay_02"}},
-			{"search order ref", store.PaymentFilter{Mode: "test", Search: "ord-100"}, []string{"pay_01"}},
-			{"search email", store.PaymentFilter{Mode: "test", Search: "pri.ya@example"}, []string{"pay_01"}},
-			{"like wildcard is literal", store.PaymentFilter{Mode: "test", Search: "ORD_300"}, []string{"pay_03"}},
-			{"percent is literal", store.PaymentFilter{Mode: "test", Search: "%"}, nil},
-			{"underscore is literal", store.PaymentFilter{Mode: "test", Search: "ORD_"}, []string{"pay_03"}},
+			{"mode only", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test"}, []string{"pay_03", "pay_02", "pay_01"}},
+			{"app", store.PaymentFilter{OrgID: store.DefaultOrgID, AppID: "app_a", Mode: "test"}, []string{"pay_02", "pay_01"}},
+			{"status", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Status: "succeeded"}, []string{"pay_03", "pay_01"}},
+			{"from", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", From: t0.Add(12 * time.Hour)}, []string{"pay_03", "pay_02"}},
+			{"to exclusive", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", To: t0.Add(24 * time.Hour)}, []string{"pay_01"}},
+			{"search id prefix", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "pay_02"}, []string{"pay_02"}},
+			{"search order ref", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "ord-100"}, []string{"pay_01"}},
+			{"search email", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "pri.ya@example"}, []string{"pay_01"}},
+			{"like wildcard is literal", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "ORD_300"}, []string{"pay_03"}},
+			{"percent is literal", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "%"}, nil},
+			{"underscore is literal", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "ORD_"}, []string{"pay_03"}},
 		}
 		for _, c := range cases {
 			if got := search(c.f, "", 10); !reflect.DeepEqual(got, c.want) {
 				t.Errorf("%s: got %v want %v", c.name, got, c.want)
 			}
 		}
-		if got := search(store.PaymentFilter{Mode: "test"}, "pay_03", 10); !reflect.DeepEqual(got, []string{"pay_02", "pay_01"}) {
+		if got := search(store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test"}, "pay_03", 10); !reflect.DeepEqual(got, []string{"pay_02", "pay_01"}) {
 			t.Errorf("cursor: %v", got)
 		}
-		if got := search(store.PaymentFilter{Mode: "test"}, "", 2); len(got) != 2 {
+		if got := search(store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test"}, "", 2); len(got) != 2 {
 			t.Errorf("limit: %v", got)
 		}
 	})
@@ -284,7 +288,7 @@ func TestLedgerTotals(t *testing.T) {
 		}
 		var got []store.LedgerTotal
 		_ = db.Read(ctx, func(q store.Querier) (err error) {
-			got, err = store.LedgerTotals(ctx, q, "test", t0.Add(-time.Hour))
+			got, err = store.LedgerTotals(ctx, q, store.DefaultOrgID, "test", t0.Add(-time.Hour))
 			return
 		})
 		want := []store.LedgerTotal{
