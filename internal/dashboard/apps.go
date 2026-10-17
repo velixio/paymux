@@ -310,7 +310,7 @@ func (d *Dashboard) keyRevoke(w http.ResponseWriter, r *http.Request, s *session
 			return err
 		}
 		return audit.Record(r.Context(), tx, audit.Entry{OrgID: org, Actor: s.auditActor(), Action: "api_key.revoke", Target: kid,
-			After: map[string]string{"app_id": app.ID}, IP: clientIP(r)})
+			After: map[string]string{"app_id": app.ID}, IP: d.clientIP(r)})
 	})
 	if err != nil {
 		d.fail(w, err)
@@ -470,7 +470,7 @@ func (d *Dashboard) brandingSave(w http.ResponseWriter, r *http.Request, s *sess
 		}
 		return audit.Record(ctx, tx, audit.Entry{OrgID: app.OrgID, Actor: s.auditActor(), Action: "app.update", Target: app.ID,
 			Before: map[string]any{"branding": before, "default_return_url": app.DefaultReturnURL},
-			After:  map[string]any{"branding": after, "default_return_url": ret}, IP: clientIP(r)})
+			After:  map[string]any{"branding": after, "default_return_url": ret}, IP: d.clientIP(r)})
 	})
 	if err != nil {
 		d.fail(w, err)
@@ -547,7 +547,7 @@ func (d *Dashboard) providersSave(w http.ResponseWriter, r *http.Request, s *ses
 			return err
 		}
 		return audit.Record(ctx, tx, audit.Entry{OrgID: app.OrgID, Actor: s.auditActor(), Action: "app.providers.update", Target: app.ID,
-			Before: map[string]any{"provider_accounts": before}, After: map[string]any{"provider_accounts": want}, IP: clientIP(r)})
+			Before: map[string]any{"provider_accounts": before}, After: map[string]any{"provider_accounts": want}, IP: d.clientIP(r)})
 	})
 	if err != nil {
 		d.fail(w, err)

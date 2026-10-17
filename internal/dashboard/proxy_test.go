@@ -135,7 +135,10 @@ func TestSessionAndAuditRowsRecordTheForwardedClient(t *testing.T) {
 		tok := e.authedCSRF(c)
 		withXFF("/dashboard/users", url.Values{"email": {"new@example.com"}, "role": {"viewer"}, "password": {goodPW}, "csrf": {tok}})
 		var aud []store.AuditRow
-		_ = db.Read(ctx, func(q store.Querier) (err error) { aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "user.create", 5); return })
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "user.create", 5)
+			return
+		})
 		if len(aud) != 1 || aud[0].IP != "203.0.113.50" {
 			t.Fatalf("audit %+v", aud)
 		}

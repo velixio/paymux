@@ -116,7 +116,7 @@ func (d *Dashboard) record(ctx context.Context, r *http.Request, s *session, act
 	}
 	return d.o.DB.Write(ctx, func(tx store.Tx) error {
 		return audit.Record(ctx, tx, audit.Entry{OrgID: org, Actor: s.auditActor(), Action: action, Target: target,
-			Before: before, After: after, IP: clientIP(r)})
+			Before: before, After: after, IP: d.clientIP(r)})
 	})
 }
 

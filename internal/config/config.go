@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -37,6 +38,10 @@ type Config struct {
 	SMTPHost, SMTPUsername, SMTPFrom string
 	SMTPPort                         int // default 587 (STARTTLS)
 	SMTPPassword                     Secret
+
+	// TrustedProxies are the reverse proxies whose X-Forwarded-For header is
+	// believed (PAYMUX_TRUSTED_PROXIES, CIDRs or addresses; default none).
+	TrustedProxies []netip.Prefix
 
 	OpsEmails     []string // PAYMUX_OPS_EMAILS, bare addresses
 	OpsWebhookURL string   // PAYMUX_OPS_WEBHOOK_URL, Slack-compatible
@@ -138,6 +143,17 @@ func Load(lookupEnv func(string) (string, bool)) (Config, error) {
 			bad("PAYMUX_SMTP_FROM is not a valid email address")
 		}
 	}
+	for _, raw := range strings.Split(get("PAYMUX_TRUSTED_PROXIES", ""), ",") {
+		if raw = strings.TrimSpace(raw); raw == "" {
+			continue
+		}
+		pfx, err := parseProxy(raw)
+		if err != nil {
+			bad("PAYMUX_TRUSTED_PROXIES: %v", err)
+			continue
+		}
+		c.TrustedProxies = append(c.TrustedProxies, pfx)
+	}
 	for _, raw := range strings.Split(get("PAYMUX_OPS_EMAILS", ""), ",") {
 		if raw = strings.TrimSpace(raw); raw == "" {
 			continue
@@ -161,6 +177,28 @@ func Load(lookupEnv func(string) (string, bool)) (Config, error) {
 		return Config{}, errors.Join(errs...)
 	}
 	return c, nil
+}
+
+// parseProxy reads a CIDR block or a single address. A /0 block would trust
+// every client, which defeats the setting, so it is refused.
+func parseProxy(raw string) (netip.Prefix, error) {
+	var p netip.Prefix
+	if strings.Contains(raw, "/") {
+		var err error
+		if p, err = netip.ParsePrefix(raw); err != nil {
+			return p, fmt.Errorf("%q is not a CIDR block", raw)
+		}
+	} else {
+		a, err := netip.ParseAddr(raw)
+		if err != nil {
+			return p, fmt.Errorf("%q is not an IP address or CIDR block", raw)
+		}
+		p = netip.PrefixFrom(a, a.BitLen())
+	}
+	if p.Bits() == 0 {
+		return p, fmt.Errorf("%q would trust every client", raw)
+	}
+	return p, nil
 }
 
 func isLocalHost(h string) bool {

@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -62,6 +63,10 @@ type Options struct {
 	DevSkip2FA bool
 	Logger     *slog.Logger
 	Now        func() time.Time
+
+	// TrustedProxies are the reverse proxies whose X-Forwarded-For is
+	// believed when working out the client address.
+	TrustedProxies []netip.Prefix
 
 	Core       *core.Service
 	Settings   *settings.Service
@@ -249,13 +254,48 @@ func (d *Dashboard) setCookie(w http.ResponseWriter, name, value string, maxAge 
 
 func (d *Dashboard) clearCookie(w http.ResponseWriter, name string) { d.setCookie(w, name, "", -1) }
 
-func clientIP(r *http.Request) string {
-	// TODO(spec §12): honour a trusted proxy header once deployment config has one.
-	h, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
+// trusted reports whether addr is one of the configured reverse proxies.
+func (d *Dashboard) trusted(addr netip.Addr) bool {
+	for _, p := range d.o.TrustedProxies {
+		if p.Contains(addr) {
+			return true
+		}
 	}
-	return h
+	return false
+}
+
+// clientIP is the address of the browser. X-Forwarded-For counts only when
+// the connection comes from a trusted proxy; the list is then read from the
+// right, skipping trusted proxies, so entries the client made up on the left
+// are never believed.
+func (d *Dashboard) clientIP(r *http.Request) string {
+	host := r.RemoteAddr
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	peer, err := netip.ParseAddr(strings.Trim(host, "[]"))
+	if err != nil {
+		return host
+	}
+	peer = peer.Unmap()
+	if !d.trusted(peer) {
+		return peer.String()
+	}
+	hops := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
+	for i := len(hops) - 1; i >= 0; i-- {
+		hop := strings.TrimSpace(hops[i])
+		if hop == "" && len(hops) == 1 {
+			break
+		}
+		a, err := netip.ParseAddr(hop)
+		if err != nil {
+			break // not an address: do not guess
+		}
+		if a = a.Unmap(); !d.trusted(a) {
+			return a.String()
+		}
+	}
+	return peer.String()
 }
 
 // ---- anonymous CSRF (login forms) ----
@@ -371,7 +411,7 @@ func (d *Dashboard) createSession(ctx context.Context, w http.ResponseWriter, r 
 		ua = ua[:300]
 	}
 	row := store.SessionRow{ID: sessionID(), UserID: u.ID, TokenHash: hash, CSRFKey: key, CreatedAt: now, LastSeenAt: now,
-		ExpiresAt: now.Add(MaxSessionAge), IP: clientIP(r), UserAgent: ua}
+		ExpiresAt: now.Add(MaxSessionAge), IP: d.clientIP(r), UserAgent: ua}
 	if err := d.o.DB.InsertSession(ctx, row); err != nil {
 		return err
 	}
