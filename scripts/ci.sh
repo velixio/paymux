@@ -13,6 +13,7 @@ test -z "$(git ls-files -z "*.go" | xargs -0 gofmt -l)" || { git ls-files -z "*.
 
 step "go vet"
 go vet ./...
+go vet -tags loadtest ./...
 
 step "API snapshot (pkg/... exported API == api/pkg.txt)"
 go run ./scripts/apisnap -check
