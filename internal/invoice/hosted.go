@@ -65,6 +65,9 @@ func (s *Service) ServeHosted(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Robots-Tag", "noindex")
 	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 	id := r.PathValue("id")
 	wantPDF := strings.HasSuffix(id, ".pdf")
 	id = strings.TrimSuffix(id, ".pdf")
@@ -144,7 +147,7 @@ func (s *Service) ServeHosted(w http.ResponseWriter, r *http.Request) {
 		themed := look.Resolve(r.Context(), s.settings, pages, appID, "").Bind(pages)
 		if err = themed.Render(&buf, "invoice", page); err == nil {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:")
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'")
 			_, _ = w.Write(buf.Bytes())
 			return
 		}

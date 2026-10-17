@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/paymux/paymux/internal/audit"
@@ -172,6 +173,12 @@ func (s *Service) upsert(ctx context.Context, tx store.Tx, a store.Attempt, p st
 	target := state.DisputeStatus(snap.Status)
 	if !slices.Contains(state.AllDisputeStatuses, target) {
 		return res, nil, invalid("unknown dispute status %q", snap.Status)
+	}
+	// A dispute holds money back from this payment: it cannot be for more than
+	// we received, nor in another currency.
+	if snap.Amount > a.AmountReceived || (snap.Currency != "" && a.CurrencyReceived != "" && !strings.EqualFold(snap.Currency, a.CurrencyReceived)) {
+		return res, nil, invalid("dispute %s (%d %s) cannot be of payment %s (%d %s received)", snap.ProviderDisputeID,
+			snap.Amount, snap.Currency, p.ID, a.AmountReceived, a.CurrencyReceived)
 	}
 	now := s.now()
 	d, err := store.FindDispute(ctx, tx, a.ProviderAccountID, snap.ProviderDisputeID)

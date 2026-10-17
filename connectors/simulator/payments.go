@@ -309,6 +309,10 @@ type Controller interface {
 	Decide(ctx context.Context, ref string, a Action, delay time.Duration) error
 	// SimulateDispute opens a dispute on a captured payment.
 	SimulateDispute(ctx context.Context, providerPaymentID, reason string) (connector.DisputeSnapshot, error)
+	// SimulateProviderRefund makes the "provider" refund a captured payment on
+	// its own, as if done in its dashboard: Paymux did not ask for it. amount 0
+	// refunds what is left. It sends the refund.processed webhook.
+	SimulateProviderRefund(ctx context.Context, providerPaymentID string, amount int64) (connector.RefundSnapshot, error)
 	// SimulateRenewal makes a provider-managed subscription charge its next
 	// period (or fail to, which turns it past due).
 	SimulateRenewal(ctx context.Context, providerSubscriptionID string, fail bool) error

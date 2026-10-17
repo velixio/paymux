@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net"
 	"net/url"
 	"strings"
 	"sync"
@@ -377,3 +380,37 @@ func (e *env) count(query string, args ...any) int {
 	}
 	return n
 }
+
+// A request that died in transit may have reached the provider. Only an answer
+// from the provider can say the payout was refused; a timeout, a cut connection
+// or a cancelled context says nothing, and failing the payout then would let a
+// caller send it again while the first is paid.
+func TestPayoutIsNotFailedByAnAmbiguousTransportError(t *testing.T) {
+	cases := map[string]error{
+		"deadline":    fmt.Errorf("payu: POST: %w", context.DeadlineExceeded),
+		"cancelled":   fmt.Errorf("razorpay: %w", context.Canceled),
+		"eof":         &url.Error{Op: "Post", URL: "https://x.example.com", Err: io.ErrUnexpectedEOF},
+		"net timeout": &net.OpError{Op: "read", Err: timeoutErr{}},
+	}
+	for name, cause := range cases {
+		storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+			e := newEnv(t, db, []string{"payout"})
+			e.fake.Locked(func() {
+				e.fake.PayoutFn = func(connector.PayoutRequest) (connector.PayoutSnapshot, error) {
+					return connector.PayoutSnapshot{}, cause
+				}
+			})
+			p, _ := e.create(nil)
+			e.run()
+			if got := e.get(p.ID); got.Status != "pending" {
+				t.Errorf("%s: payout is %s after an ambiguous error, want pending (retried)", name, got.Status)
+			}
+		})
+	}
+}
+
+type timeoutErr struct{}
+
+func (timeoutErr) Error() string   { return "i/o timeout" }
+func (timeoutErr) Timeout() bool   { return true }
+func (timeoutErr) Temporary() bool { return true }

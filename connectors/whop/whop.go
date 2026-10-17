@@ -571,6 +571,16 @@ func rank(p paymentEntity) int {
 }
 
 func (w *whop) withRef(p paymentEntity, ref connector.PaymentRef) (connector.PaymentSnapshot, error) {
+	// A payment id may come from outside (the return URL carries one, unsigned).
+	// When the caller names a checkout or a reference, only a payment that
+	// belongs to it counts; another payment of the company never does.
+	if ref.ProviderOrderID != "" || ref.ProviderRef != "" {
+		ours := (ref.ProviderOrderID != "" && p.CheckoutConfig == ref.ProviderOrderID) ||
+			(ref.ProviderRef != "" && p.Metadata["ref"] == ref.ProviderRef)
+		if !ours {
+			return connector.PaymentSnapshot{}, fmt.Errorf("%w: payment %s is not of the checkout or reference asked about", connector.ErrNotFound, p.ID)
+		}
+	}
 	s, err := p.snapshot()
 	if s.ProviderRef == "" {
 		s.ProviderRef = ref.ProviderRef

@@ -96,6 +96,7 @@ func (h *Handler) simDecide(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10) // three small fields; Go's own default is 10 MiB
 	if err := r.ParseForm(); err != nil {
 		h.result(w, http.StatusBadRequest, "", "result.link_invalid.title", "result.link_invalid.msg", "")
 		return

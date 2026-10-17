@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/paymux/paymux/internal/core"
@@ -133,9 +134,9 @@ func (s *Service) handleNotification(ctx context.Context, ev store.ProviderEvent
 			return
 		})
 		if errors.Is(err, store.ErrNotFound) {
-			// TODO(spec): provider-initiated refunds (initiated_by=provider) are
-			// created by the disputes/refunds lane; until then they are recorded.
-			return s.recordUnknown(ctx, ev, "refund", firstNonEmpty(rs.ProviderRefundID, rs.ProviderRef), n)
+			// A refund made at the provider (its dashboard, a resolution
+			// centre): fetch it and book it as initiated_by=provider.
+			return s.importProviderRefund(ctx, ev, n)
 		}
 		if err != nil {
 			return err
@@ -215,6 +216,9 @@ func (s *Service) SubmitRefund(ctx context.Context, payload json.RawMessage) err
 	if r.Status != string(state.RefundPending) {
 		return nil // finished (or failed) already
 	}
+	if r.InitiatedBy == "provider" {
+		return nil // the provider made this refund itself: never send it again
+	}
 	a, err := s.o.Core.GetAttempt(ctx, r.AttemptID)
 	if err != nil {
 		return jobs.Permanent(err)
@@ -282,7 +286,34 @@ func (s *Service) syncRefund(ctx context.Context, refundID, providerRefundID str
 	if err != nil {
 		return core.RefundApplyResult{}, err
 	}
+	if err := refundIsOurs(r, a, snap); err != nil {
+		s.o.Logger.Warn("checkout: the provider returned a refund that is not this refund's; ignored", "refund", r.ID,
+			"account", a.ProviderAccountID, "provider_refund", snap.ProviderRefundID, "err", err)
+		return core.RefundApplyResult{Refund: r}, err
+	}
 	return s.o.Core.ApplyRefundSnapshot(ctx, r.ID, toRefundSnapshot(snap))
+}
+
+// ErrNotOurs means the provider returned an object that does not match the
+// Paymux object it was fetched for.
+var ErrNotOurs = errors.New("checkout: the provider's object does not match ours")
+
+// refundIsOurs checks that a refund fetched from the provider is the refund r:
+// where both sides say, the payment, the receipt, the amount and the currency
+// agree. A refund the provider reports with another amount is not applied
+// silently: it stays pending and loud for a person to look at.
+func refundIsOurs(r store.Refund, a store.Attempt, snap connector.RefundSnapshot) error {
+	switch {
+	case snap.ProviderPaymentID != "" && a.ProviderPaymentID != "" && snap.ProviderPaymentID != a.ProviderPaymentID:
+		return fmt.Errorf("%w: it is a refund of payment %s, ours is of %s", ErrNotOurs, snap.ProviderPaymentID, a.ProviderPaymentID)
+	case snap.ProviderRef != "" && snap.ProviderRef != r.ProviderRef && r.InitiatedBy != "provider": // a provider refund carries the provider's receipt, not our token
+		return fmt.Errorf("%w: its receipt is %q, ours is %q", ErrNotOurs, snap.ProviderRef, r.ProviderRef)
+	case snap.Amount > 0 && snap.Amount != r.Amount:
+		return fmt.Errorf("%w: the provider refunded %d, we asked for %d", ErrNotOurs, snap.Amount, r.Amount)
+	case snap.Currency != "" && !strings.EqualFold(snap.Currency, r.Currency):
+		return fmt.Errorf("%w: the provider refunded in %s, we asked in %s", ErrNotOurs, snap.Currency, r.Currency)
+	}
+	return nil
 }
 
 // ---- poller ----

@@ -170,6 +170,9 @@ func connectorName(c connector.Connector) string { return c.Info().Name }
 func (s *Service) ServeHosted(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY") // the page carries a payment form: no clickjacking
+	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 	co, err := s.OpenCheckout(r.Context(), r.PathValue("id"), r.URL.Query().Get("t"))
 	switch {
 	case errors.Is(err, ErrNotFound):

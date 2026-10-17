@@ -373,6 +373,11 @@ func (z *zoho) FetchPayment(ctx context.Context, ref connector.PaymentRef) (conn
 		if err := z.api.do(ctx, "GET", "/api/v1/payments/"+url.PathEscape(ref.ProviderPaymentID), nil, nil, &out); err != nil {
 			return connector.PaymentSnapshot{}, err
 		}
+		// The payment id may have come from outside (the return URL): a
+		// payment that names another reference is not the one we asked about.
+		if got := out.Payment.Reference; got != "" && ref.ProviderRef != "" && got != ref.ProviderRef {
+			return connector.PaymentSnapshot{}, fmt.Errorf("%w: payment %s belongs to another reference", connector.ErrNotFound, ref.ProviderPaymentID)
+		}
 		return out.Payment.snapshot(ref.ProviderOrderID)
 	case ref.ProviderOrderID != "":
 		var out struct {

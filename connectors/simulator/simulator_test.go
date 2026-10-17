@@ -640,3 +640,46 @@ func TestConfigAndInfo(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+func TestProviderRefundsAreMadeBehindPaymuxsBack(t *testing.T) {
+	h := newHarness(t, `{}`)
+	h.checkout("ref_pr", 10000)
+	_ = h.c.Decide(ctx, "ref_pr", ActionSucceed, 0)
+	h.next("payment.captured")
+	pid := h.fetch("ref_pr").ProviderPaymentID
+
+	snap, err := h.c.SimulateProviderRefund(ctx, pid, 2500)
+	if err != nil || snap.Status != connector.RefundSucceeded || snap.Amount != 2500 || snap.ProviderPaymentID != pid || snap.ProviderRef != "" {
+		t.Fatalf("refund %+v %v", snap, err)
+	}
+	n := h.next("refund.processed")
+	if n.Refund.ProviderRefundID != snap.ProviderRefundID || n.Refund.ProviderRef != "" {
+		t.Errorf("webhook %+v", n.Refund)
+	}
+	// It is the provider's truth now: fetchable by its id, counted on the payment, listed.
+	got, err := h.c.FetchRefund(ctx, connector.RefundRef{ProviderRefundID: snap.ProviderRefundID})
+	if err != nil || got.Status != connector.RefundSucceeded || got.Amount != 2500 {
+		t.Errorf("FetchRefund %+v %v", got, err)
+	}
+	if p := h.fetch("ref_pr"); p.AmountRefunded != 2500 {
+		t.Errorf("payment %+v", p)
+	}
+	// Amount 0 refunds what is left; more than that is refused; so is an uncaptured payment.
+	if _, err := h.c.SimulateProviderRefund(ctx, pid, 7501); err == nil {
+		t.Error("more than is left was refunded")
+	}
+	rest, err := h.c.SimulateProviderRefund(ctx, pid, 0)
+	if err != nil || rest.Amount != 7500 {
+		t.Errorf("the rest: %+v %v", rest, err)
+	}
+	h.next("refund.processed")
+	h.checkout("ref_unpaid2", 100)
+	if _, err := h.c.SimulateProviderRefund(ctx, "nope", 1); !errors.Is(err, connector.ErrNotFound) {
+		t.Errorf("unknown payment: %v", err)
+	}
+	// Our own refund of what is left is now impossible.
+	var nr connector.ErrNotRefundable
+	if _, err := h.c.Refund(ctx, connector.RefundRequest{ProviderRef: "late", ProviderPaymentID: pid, Amount: 1, Currency: "INR"}); !errors.As(err, &nr) {
+		t.Errorf("refund after the provider refunded everything: %v", err)
+	}
+}

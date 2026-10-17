@@ -134,3 +134,24 @@ func TestReadAPIScopesToAppAndMode(t *testing.T) {
 		}
 	})
 }
+
+func TestHostedInvoiceRefusesToBeFramedOrSniffed(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /i/{id}", e.inv.ServeHosted)
+		p, _ := e.pay(118000, "INR", intraB2C, "pa_1")
+		only(t, e, p.ID)
+		hosted, pdf := urlsOf(t, e.eventsOf("invoice.issued")[0].Data)
+		e.runJobs()
+		for name, u := range map[string]string{"html": hosted, "pdf": pdf, "404": "/i/inv_nosuch?t=x"} {
+			res, _ := get(t, mux, u)
+			if res.Header.Get("X-Content-Type-Options") != "nosniff" {
+				t.Errorf("%s: nosniff missing: %v", name, res.Header)
+			}
+			if res.Header.Get("X-Frame-Options") != "DENY" || !strings.Contains(res.Header.Get("Content-Security-Policy"), "frame-ancestors 'none'") {
+				t.Errorf("%s: can be framed: %v", name, res.Header)
+			}
+		}
+	})
+}

@@ -359,16 +359,63 @@ func TestRefundsAreReconciledToo(t *testing.T) {
 			t.Fatal(err)
 		}
 		items := e.items(run.ID)
-		if items["status_mismatch:rfnd_1"].State != "fixed" || items["unknown_provider_object:rfnd_stray"].State != "open" {
+		// The stray refund is a refund of one of our payments that the provider
+		// made on its own (and whose webhook was missed): it is booked, not left open.
+		if items["status_mismatch:rfnd_1"].State != "fixed" || items["unknown_provider_object:rfnd_stray"].State != "fixed" {
 			t.Fatalf("items %+v", items)
 		}
 		got, _ := e.core.GetRefund(ctx, e.scope, r.ID)
 		pay, _ := e.core.GetPaymentByID(ctx, p.ID)
-		if got.Status != "succeeded" || got.ProviderRefundID != "rfnd_1" || pay.AmountRefunded != 10000 {
+		if got.Status != "succeeded" || got.ProviderRefundID != "rfnd_1" || pay.AmountRefunded != 10500 {
 			t.Errorf("refund %+v payment %+v", got, pay)
+		}
+		var imported store.Refund
+		_ = e.db.Read(ctx, func(q store.Querier) (err error) {
+			imported, err = store.FindRefundByProviderID(ctx, q, a.ID, "rfnd_stray")
+			return
+		})
+		if imported.InitiatedBy != "provider" || imported.Amount != 500 || imported.Status != "succeeded" {
+			t.Errorf("imported refund %+v", imported)
+		}
+		if slices.Contains(e.alerts.kinds(), "recon.unknown_provider_object") {
+			t.Errorf("a booked refund still alerted: %v", e.alerts.kinds())
+		}
+		// A second pass finds nothing to do and books nothing twice.
+		if _, err := e.rec.RunAccount(ctx, e.acct); err != nil {
+			t.Fatal(err)
+		}
+		if e.count("SELECT COUNT(*) FROM refunds") != 2 {
+			t.Errorf("%d refunds after a second pass", e.count("SELECT COUNT(*) FROM refunds"))
+		}
+		if pay2, _ := e.core.GetPaymentByID(ctx, p.ID); pay2.AmountRefunded != 10500 {
+			t.Errorf("refunded %d after a second pass", pay2.AmountRefunded)
+		}
+	})
+}
+
+func TestAProviderRefundOfSomeoneElsesPaymentStaysAnOpenItem(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		_, a := e.attempt("order_1")
+		if _, err := e.core.ApplyAttemptSnapshot(ctx, a.ID, core.Snapshot{Status: state.AttemptCaptured, Amount: 50000, Currency: "INR", ProviderPaymentID: "pay_1"}); err != nil {
+			t.Fatal(err)
+		}
+		e.provider("r1", paid("order_1", "pay_1", 50000, "INR"))
+		e.fake.Locked(func() {
+			e.fake.Refunds["stray"] = connector.RefundSnapshot{ProviderRefundID: "rfnd_stray", ProviderPaymentID: "pay_not_ours",
+				Status: connector.RefundSucceeded, Amount: 500, Currency: "INR", CreatedAt: e.clk.Now().UnixMilli()}
+		})
+		run, err := e.rec.RunAccount(ctx, e.acct)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := e.items(run.ID)["unknown_provider_object:rfnd_stray"].State; got != "open" {
+			t.Fatalf("items %+v", e.items(run.ID))
 		}
 		if !slices.Contains(e.alerts.kinds(), "recon.unknown_provider_object") {
 			t.Errorf("alerts %v", e.alerts.kinds())
+		}
+		if e.count("SELECT COUNT(*) FROM refunds") != 0 {
+			t.Error("a refund of someone else's payment was booked")
 		}
 	})
 }

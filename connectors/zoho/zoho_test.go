@@ -421,3 +421,22 @@ func TestRefundFlow(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// A payment id from outside (the return URL) must not bring in a payment that
+// names another reference.
+func TestFetchPaymentByIDRefusesAPaymentOfAnotherReference(t *testing.T) {
+	c := newConn(t, newFake("succeeded"), widgetCfg) // pay_z1: session ps_1, reference pay_ref_01
+	ctx := context.Background()
+	if _, err := c.FetchPayment(ctx, connector.PaymentRef{ProviderPaymentID: "pay_z1", ProviderRef: "somebody_elses_ref"}); !errors.Is(err, connector.ErrNotFound) {
+		t.Errorf("another reference: %v", err)
+	}
+	for name, ref := range map[string]connector.PaymentRef{
+		"our reference":      {ProviderPaymentID: "pay_z1", ProviderRef: "pay_ref_01"},
+		"our session":        {ProviderPaymentID: "pay_z1", ProviderOrderID: "ps_1"},
+		"nothing to compare": {ProviderPaymentID: "pay_z1"},
+	} {
+		if snap, err := c.FetchPayment(ctx, ref); err != nil || snap.ProviderPaymentID != "pay_z1" || snap.Status != connector.PaymentSucceeded {
+			t.Errorf("%s: %+v %v", name, snap, err)
+		}
+	}
+}

@@ -62,6 +62,13 @@
 <select name="reason" class="field" aria-label="Dispute reason"><option value="fraudulent">Fraudulent</option><option value="product_not_received">Product not received</option><option value="duplicate">Duplicate</option><option value="credit_not_processed">Credit not processed</option></select>
 <button class="btn" type="submit">Simulate a dispute</button>
 </form>
+<form method="post" action="/dashboard/payments/{{.ID}}/simulate-refund" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<p class="muted">Or refund it the way a person would in the provider's own dashboard: Paymux is not asked, and books the refund when it hears of it.</p>
+<select name="attempt_id" class="field" aria-label="Attempt to refund">{{range .SimAttempts}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select>
+<input class="field" name="amount" inputmode="decimal" placeholder="Amount in {{.Currency}} (blank = what is left)">
+<button class="btn" type="submit">Refund from the provider's dashboard</button>
+</form>
 {{end}}
 
 <h3>Webhook deliveries</h3>

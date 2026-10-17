@@ -43,6 +43,12 @@ func (r *razorpay) FetchPayment(ctx context.Context, ref connector.PaymentRef) (
 		if err := r.api.do(ctx, "GET", "/v1/payments/"+url.PathEscape(ref.ProviderPaymentID), nil, nil, &p, nil); err != nil {
 			return connector.PaymentSnapshot{}, err
 		}
+		// The payment id may have come from outside (a return URL, a
+		// notification): use, and above all capture, only a payment of the
+		// order or receipt we are asking about.
+		if err := r.paymentIsOurs(ctx, p, ref); err != nil {
+			return connector.PaymentSnapshot{}, err
+		}
 		return r.captureIfAuthorized(ctx, p, ref.ProviderRef)
 	case ref.ProviderOrderID != "" || ref.ProviderRef != "":
 		orderID := ref.ProviderOrderID
@@ -52,14 +58,46 @@ func (r *razorpay) FetchPayment(ctx context.Context, ref connector.PaymentRef) (
 			if err := r.api.do(ctx, "GET", "/v1/orders", q, nil, &c, nil); err != nil {
 				return connector.PaymentSnapshot{}, err
 			}
-			if len(c.Items) == 0 {
+			// The filter is Razorpay's to apply; an order of another receipt is
+			// not ours whatever the list says.
+			for _, o := range c.Items {
+				if o.Receipt == ref.ProviderRef {
+					orderID = o.ID
+					break
+				}
+			}
+			if orderID == "" {
 				return connector.PaymentSnapshot{}, connector.ErrNotFound
 			}
-			orderID = c.Items[0].ID
 		}
 		return r.fetchOrder(ctx, orderID, ref.ProviderRef)
 	}
 	return connector.PaymentSnapshot{}, errors.New("razorpay: PaymentRef has no id")
+}
+
+// paymentIsOurs says whether a payment fetched by id belongs to ref: to its
+// order when ref names one, else to an order whose receipt is ref's. With
+// neither to compare it accepts the payment (a lookup by payment id alone).
+func (r *razorpay) paymentIsOurs(ctx context.Context, p paymentEntity, ref connector.PaymentRef) error {
+	notOurs := fmt.Errorf("%w: payment %s is not of the order or receipt asked about", connector.ErrNotFound, p.ID)
+	switch {
+	case ref.ProviderOrderID != "":
+		if p.OrderID != ref.ProviderOrderID {
+			return notOurs
+		}
+	case ref.ProviderRef != "":
+		if p.OrderID == "" {
+			return notOurs
+		}
+		var o orderEntity
+		if err := r.api.do(ctx, "GET", "/v1/orders/"+url.PathEscape(p.OrderID), nil, nil, &o, nil); err != nil {
+			return err
+		}
+		if o.Receipt != ref.ProviderRef {
+			return notOurs
+		}
+	}
+	return nil
 }
 
 func (r *razorpay) fetchOrder(ctx context.Context, orderID, providerRef string) (connector.PaymentSnapshot, error) {

@@ -2,6 +2,8 @@ package simulator
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/paymux/paymux/pkg/connector"
@@ -34,6 +36,9 @@ func (r refRec) snapshot() connector.RefundSnapshot {
 func (c *conn) putRefund(ctx context.Context, r *refRec) error {
 	if err := c.save(ctx, "ref:"+r.ID, r); err != nil {
 		return err
+	}
+	if r.Ref == "" {
+		return nil // a refund the provider made itself has no reference of ours
 	}
 	return c.saveString(ctx, "ixrefund:"+r.Ref, r.ID)
 }
@@ -200,4 +205,46 @@ func (c *conn) ListRefunds(ctx context.Context, tr connector.TimeRange, cur conn
 		}
 	}
 	return page(all, cur), nil
+}
+
+// SimulateProviderRefund refunds a captured payment as the provider's own
+// dashboard would: at once, with no reference of ours (so Paymux can only learn
+// of it from the webhook or from reconciliation). amount 0 refunds the rest.
+func (c *conn) SimulateProviderRefund(ctx context.Context, providerPaymentID string, amount int64) (connector.RefundSnapshot, error) {
+	mu.Lock()
+	p, err := c.findPay(ctx, connector.PaymentRef{ProviderPaymentID: providerPaymentID})
+	if err != nil {
+		mu.Unlock()
+		return connector.RefundSnapshot{}, err
+	}
+	if p.Status != stCaptured {
+		mu.Unlock()
+		return connector.RefundSnapshot{}, errors.New("simulator: only a captured payment can be refunded")
+	}
+	left := p.Amount - p.Refunded - c.pendingRefunds(ctx, p.Key)
+	if amount == 0 {
+		amount = left
+	}
+	if amount <= 0 || amount > left {
+		mu.Unlock()
+		return connector.RefundSnapshot{}, fmt.Errorf("simulator: %d is more than the %d left to refund", amount, left)
+	}
+	r := &refRec{ID: newID("sim_rfnd_"), PaymentID: p.PaymentID, PayKey: p.Key, Amount: amount, Currency: p.Currency, Status: "pending",
+		SettleAt: c.ms(), CreatedAt: c.ms()}
+	if err := c.putRefund(ctx, r); err != nil {
+		mu.Unlock()
+		return connector.RefundSnapshot{}, err
+	}
+	if err := c.appendList(ctx, "list:refund", r.ID); err != nil {
+		mu.Unlock()
+		return connector.RefundSnapshot{}, err
+	}
+	if _, err := c.settleRefund(ctx, r); err != nil {
+		mu.Unlock()
+		return connector.RefundSnapshot{}, err
+	}
+	snap := r.snapshot()
+	mu.Unlock()
+	c.emit(event{Type: "refund.processed", Refund: &snap})
+	return snap, nil
 }
