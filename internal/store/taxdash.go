@@ -121,7 +121,7 @@ func ListFXRates(ctx context.Context, q Queryer, orgID string, limit int) ([]FXR
 // ListDomains lists an app's custom domains, oldest first.
 func ListDomains(ctx context.Context, q Queryer, appID string) ([]Domain, error) {
 	rows, err := q.QueryContext(ctx, `SELECT id, org_id, app_id, host, is_primary, status, token, last_check_at,
-		COALESCE(last_error,''), created_at FROM app_domains WHERE app_id = ? ORDER BY created_at, id`, appID)
+		COALESCE(last_error,''), created_at FROM app_domains WHERE app_id = ? ORDER BY is_primary DESC, created_at, id`, appID)
 	if err != nil {
 		return nil, err
 	}

@@ -52,3 +52,5 @@ table.settings pre { margin: 0; white-space: pre-wrap; max-width: 380px; }
 fieldset { border: 1px solid var(--color-line); border-radius: 8px; margin: 8px 0; }
 label { display: block; margin: 6px 0; }
 label.inline { display: inline-block; margin-right: 10px; }
+ul.checklist { list-style: none; padding-left: 0; }
+ul.checklist li { margin: 8px 0; }

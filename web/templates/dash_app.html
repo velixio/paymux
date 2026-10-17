@@ -78,6 +78,24 @@
 </form>
 {{end}}
 
+{{if eq .Tab "domains"}}
+<p class="muted">Custom domains serve this app's customer-facing pages (pay page, return page, invoices). Point the domain's DNS at this server; it becomes active once <code>/.well-known/paymux/&lt;token&gt;</code> answers.</p>
+<table class="grid">
+<thead><tr><th>Domain</th><th>Status</th><th>Activation URL</th><th>Last check</th></tr></thead>
+<tbody>{{range .Domains}}<tr><td>{{.Host}}{{if .Primary}} <span class="flag">primary</span>{{end}}</td><td>{{.Status}}</td>
+<td><code class="wrap">{{.WellKnown}}</code><br><small class="muted">token {{.Token}}</small></td><td>{{.LastCheck}} {{.LastError}}</td></tr>
+{{else}}<tr><td colspan="4" class="muted">No custom domains.</td></tr>{{end}}</tbody>
+</table>
+{{if .CanSettings}}<form method="post" action="/dashboard/apps/{{.ID}}/domains" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<input class="field" name="host" placeholder="pay.example.com" required>
+<button class="btn" type="submit">Add domain</button>
+</form>{{end}}
+{{if .Checklist}}<h3>Register the domain with each provider</h3>
+<p class="muted">Providers only accept payments from websites they know. Tick each off when done.</p>
+<ul class="checklist">{{range .Checklist}}<li><label><input type="checkbox"> <strong>{{.Provider}}</strong>: {{.Hint}} <small class="muted">({{.Hosts}})</small></label></li>{{end}}</ul>{{end}}
+{{end}}
+
 {{if eq .Tab "tax"}}
 {{with .Tax}}
 <p class="muted">Which legal entity invoices this app's payments, and the GST treatment. {{if not .Exists}}No tax profile yet: nothing is invoiced until one is saved.{{end}}</p>

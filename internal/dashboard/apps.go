@@ -30,7 +30,7 @@ const (
 	appTabKeys   = "keys"
 )
 
-var appTabs = []string{"keys", "webhooks", "branding", "providers", "tax", "settings"}
+var appTabs = []string{"keys", "webhooks", "branding", "providers", "domains", "tax", "settings"}
 
 type appRow struct{ ID, Name, Slug, ReturnURL, Created string }
 
@@ -79,6 +79,8 @@ type appView struct {
 	Brand              brandView
 	Accounts           []accountRow
 	Tax                *taxProfileView
+	Domains            []domainRow
+	Checklist          []checklistItem
 
 	CanKeys, CanEndpoints, CanBrand, CanProviders, CanSettings, CanReplay bool
 }
@@ -252,6 +254,10 @@ func (d *Dashboard) renderApp(w http.ResponseWriter, r *http.Request, s *session
 			av.Accounts = append(av.Accounts, accountRow{ID: a.ID, Name: a.Name, Connector: a.Connector, Mode: a.Mode, Status: a.Status,
 				Currencies: strings.Join(a.Currencies, ", "), Allowed: slices.Contains(allowed, a.ID)})
 		}
+	case "domains":
+		var ds []store.Domain
+		err = d.o.DB.Read(ctx, func(q store.Querier) (err error) { ds, err = store.ListDomains(ctx, q, app.ID); return })
+		av.Domains, av.Checklist = d.domainRows(ds)
 	case "tax":
 		av.Tax, err = d.taxProfileFor(ctx, app.ID)
 	case "settings":

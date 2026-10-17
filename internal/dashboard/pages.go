@@ -79,6 +79,7 @@ func (d *Dashboard) routesPages() {
 	d.routesInvoices()
 	d.routesTax()
 	d.routesProviders()
+	d.routesDomains()
 }
 
 // orgID returns the single org's id (cached once found).

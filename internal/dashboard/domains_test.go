@@ -69,7 +69,10 @@ func TestDomainsTab(t *testing.T) {
 			t.Errorf("another org's app: %d", r.StatusCode)
 		}
 		var aud []store.AuditRow
-		_ = db.Read(ctx, func(q store.Querier) (err error) { aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "domain.add", 10); return })
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "domain.add", 10)
+			return
+		})
 		if len(aud) != 2 || aud[0].ActorType != "user" || aud[0].ActorID != "usr_admin" {
 			t.Errorf("audit %+v", aud)
 		}
