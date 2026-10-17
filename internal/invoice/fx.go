@@ -18,7 +18,7 @@ import (
 func parseRate(s string) (*big.Rat, error) {
 	r, ok := new(big.Rat).SetString(s)
 	if !ok || r.Sign() <= 0 || len(s) > 20 {
-		return nil, fmt.Errorf("invoice: %q is not a positive decimal rate", s)
+		return nil, invalid("%q is not a positive decimal rate", s)
 	}
 	return r, nil
 }
@@ -80,16 +80,16 @@ func inrAmounts(a tax.Amounts, currency, rate string) (tax.Amounts, bool, error)
 // with fx_pending get the rate, lose the flag and are rendered again.
 func (s *Service) SetFXRate(ctx context.Context, actor audit.Actor, currency, date, rate, source string) error {
 	if _, err := money.Exponent(currency); err != nil || currency == "INR" {
-		return fmt.Errorf("invoice: %q is not a foreign currency", currency)
+		return invalid("%q is not a foreign currency", currency)
 	}
 	if _, err := time.Parse("2006-01-02", date); err != nil {
-		return fmt.Errorf("invoice: date %q must be YYYY-MM-DD", date)
+		return invalid("date %q must be YYYY-MM-DD", date)
 	}
 	if _, err := parseRate(rate); err != nil {
 		return err
 	}
 	if source != "manual" && source != "provider" {
-		return fmt.Errorf("invoice: source %q must be manual or provider", source)
+		return invalid("source %q must be manual or provider", source)
 	}
 	return s.db.Write(ctx, func(tx store.Tx) error {
 		now := s.now().UTC()
