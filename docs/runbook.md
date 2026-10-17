@@ -2,7 +2,7 @@
 
 How to install, run, back up and recover a Paymux hub. Commands assume Linux with systemd; a Docker variant is given where it differs. Everything is one static binary, `paymux`, plus a database (SQLite by default, Postgres optional) and a reverse proxy for TLS.
 
-Contents: [Layout](#layout) · [Install](#install) · [First admin and 2FA](#first-admin-and-2fa) · [Apps and provider accounts](#apps-and-provider-accounts) · [Payment links](#payment-links) · [Themes and languages](#themes-and-languages) · [Webhook URLs](#webhook-urls-to-register-at-each-provider) · [Configuration reference](#configuration-reference) · [Backups and restore](#backups-and-restore) · [Upgrades](#upgrades) · [Monitoring](#monitoring) · [If the hub is down](#if-the-hub-is-down)
+Contents: [Layout](#layout) · [Install](#install) · [First admin and 2FA](#first-admin-and-2fa) · [Apps and provider accounts](#apps-and-provider-accounts) · [Payment links](#payment-links) · [GST e-invoice](#gst-e-invoice-offline-mode) · [Alerts](#alerts) · [Themes and languages](#themes-and-languages) · [Webhook URLs](#webhook-urls-to-register-at-each-provider) · [Configuration reference](#configuration-reference) · [Backups and restore](#backups-and-restore) · [Upgrades](#upgrades) · [Monitoring](#monitoring) · [If the hub is down](#if-the-hub-is-down)
 
 ## Layout
 
@@ -145,6 +145,32 @@ A payment link is a page you can send to a customer (`https://pay.example.com/l/
 - **Limits.** Anyone can open a link, so each link allows at most 60 new payments a minute (a "please wait" page after that) and the form is protected against cross-site posting. The page uses the app's theme and `customer_language`.
 
 The API reference for these and all other endpoints is served by the hub itself at `https://pay.example.com/docs` (the spec: `/docs/openapi.yaml`).
+
+## GST e-invoice (offline mode)
+
+Businesses above the e-invoicing turnover threshold must register their B2B and export invoices with the government's Invoice Registration Portal (IRP) and print the IRN and a QR code on them. (The threshold has been lowered several times; check the current rule for your turnover. The tax entity's *turnover band* is only a note.) Paymux does not talk to the IRP; it prepares the file and records the answer, so you can do it by hand:
+
+1. **Download.** Open a B2B or export invoice in the dashboard and press *Download e-invoice JSON*, or on *GST reports* choose the tax entity and month and press *Export month as e-invoice JSON* (a JSON array, for the portal's bulk upload; consumer invoices are skipped and invoices that already have an IRN are left out unless you ask for them). The files are in the portal's INV-01 version 1.1 format and are checked against the committed schema `internal/invoice/einvoice/schema/einvoice-1.1.json` and the portal's arithmetic before you get them.
+2. **Upload** the file in the IRP's offline tool or bulk upload page. The portal returns, per invoice, the IRN (64 characters), the acknowledgement number and date and the signed QR code.
+3. **Record** them on the invoice's page under *e-Invoice*: IRN, Ack No, Ack Date (as the portal prints it, IST) and the signed QR code text. Paymux refuses a QR code that is not the portal's token for *this* invoice (it must name the same IRN, document number and seller GSTIN) and an IRN that is already on another invoice. The invoice PDF is rendered again with the IRN, the acknowledgement and the QR code; the customer's hosted page shows them too; the API invoice carries `irn`, `ack_no` and `ack_date`. A wrong entry can be corrected by recording again; every change is audited.
+
+When the file cannot be built, the page says why, in plain words, for example: the seller's address must end with a 6-digit PIN code ("1 Marine Drive, Mumbai 400020": fix it on the tax entity), the buyer needs a GSTIN, an address line, a city and a PIN, the document number may be at most 16 characters (shorten the invoice prefix), or the FX rate of an export is not set yet.
+
+What to know:
+
+- Invoices issued before this feature keep their address as one line of text; Paymux takes the PIN from it and the last comma-separated part as the locality, which is right for ordinary Indian addresses. New invoices keep the address in parts.
+- Exports under LUT are sent as `EXPWOP`, exports with IGST as `EXPWP`, buyer `URP`, place of supply 96, PIN 999999, the foreign currency and country in `ExpDtls`; all rupee values use the same FX rate as the PDF. `RefClm` is always `N`.
+- Credit notes are not covered: the credit note JSON (`CRN`) is not generated yet.
+- The schema was written from the portal's published field list and is **not verified against the portal's own schema file**, and the signature of the signed QR code is not verified; both are marked `TODO(spec)` in the code. Upload one invoice first and watch the portal's validation messages.
+
+## Alerts
+
+*Alerts* in the dashboard lists everything Paymux raised for the operator: provider accounts that went silent, failed reconciliations, dispute deadlines, failing custom domains, failing hooks and unusable themes. Each alert is still sent by email and webhook as before (`PAYMUX_OPS_EMAILS`, `PAYMUX_OPS_WEBHOOK_URL`); the page keeps it, so nothing is lost with a mail that went to spam.
+
+- The nav shows the number of open alerts, in red when one is critical.
+- A condition that happens again while its alert is open (same kind and same ids) adds to the alert's count and updates its message instead of adding a row; the email and webhook keep their own 10-minute rate limit.
+- Operators and admins press *Acknowledge* once somebody has looked; it is audited (`alert.acknowledge`). If the condition returns later it opens a new alert. Filter by open, acknowledged or all, severity and kind.
+- Alerts are kept indefinitely; there is no pruning yet.
 
 ## Themes and languages
 

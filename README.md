@@ -47,6 +47,9 @@ app C ─┘ ◄─ signed webhooks ─┘          ├─ Zoho Payments
 - **Webhooks to your apps** in the [Standard Webhooks](https://www.standardwebhooks.com) format, with retries, an SSRF guard, delivery history and replay. Events include `payment.*`, `refund.*`, `dispute.*`, `subscription.*`, `invoice.issued`, `credit_note.issued` and `payment_link.*`.
 - **Themes and languages.** Two bundled themes (`default`, `minimal-dark`) and your own in `<data>/themes/`, applied without a restart; customer pages and the pre-debit e-mail in English and Hindi, with your own catalogs in `custom/i18n/`.
 - **Health and metrics.** `/healthz`, `/readyz`, Prometheus `/metrics`, structured logs with secret and PII redaction, ops alerts by e-mail and webhook.
+- **GST e-invoice export (offline).** B2B and export invoices as the government's INV-01 JSON, per invoice or per month, checked against a committed schema; record the IRN, acknowledgement and signed QR code the portal returns and they are printed (with a QR code) on the PDF and the hosted page.
+- **Alerts center.** Every ops alert is kept and listed in the dashboard with a count in the nav and an acknowledge button, as well as being sent by email and webhook.
+- **Phone-friendly pages.** The dashboard and the customer pages are checked at 360px wide by tests: scrolling tables, stacked navigation, full-width forms.
 - **API reference** rendered by the hub itself at `/docs` (the raw spec at `/docs/openapi.yaml`), no JavaScript.
 
 **Databases and deployment**
