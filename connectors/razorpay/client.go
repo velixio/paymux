@@ -117,7 +117,9 @@ func classify(resp *http.Response, raw []byte) error {
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		return fmt.Errorf("%w: %w", connector.ErrInvalidCredentials, ae)
-	case resp.StatusCode == http.StatusNotFound:
+	case resp.StatusCode == http.StatusNotFound,
+		// Razorpay reports unknown ids as 400 BAD_REQUEST_ERROR (seen in the sandbox).
+		resp.StatusCode == http.StatusBadRequest && strings.Contains(strings.ToLower(ae.Description), "does not exist"):
 		return fmt.Errorf("%w: %w", connector.ErrNotFound, ae)
 	case resp.StatusCode == http.StatusTooManyRequests:
 		after := 5 * time.Second
