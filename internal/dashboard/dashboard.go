@@ -168,7 +168,11 @@ func (d *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Referrer-Policy", "same-origin")
 	h.Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
-	r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
+	limit := int64(maxFormBytes)
+	if strings.HasSuffix(r.URL.Path, "/branding") {
+		limit = maxUploadBytes + 64<<10
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	d.mux.ServeHTTP(w, r)
 }
 
@@ -277,11 +281,23 @@ func (d *Dashboard) validPre(r *http.Request) bool {
 	return auth.ValidCSRF(d.preKey, c.Value, formCSRF(r))
 }
 
+// maxUploadBytes bounds the multipart branding form (a logo of up to 512 KB
+// plus overhead, with room to report an oversize logo instead of failing).
+const maxUploadBytes = 3 << 20
+
+// parseForm parses urlencoded and multipart bodies alike into r.PostForm.
+func parseForm(r *http.Request) error {
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		return r.ParseMultipartForm(maxUploadBytes)
+	}
+	return r.ParseForm()
+}
+
 func formCSRF(r *http.Request) string {
 	if t := r.Header.Get("X-CSRF-Token"); t != "" {
 		return t
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := parseForm(r); err != nil {
 		return ""
 	}
 	return r.PostForm.Get("csrf")
@@ -414,9 +430,20 @@ func (d *Dashboard) authed(action authz.Action, h authedHandler) http.HandlerFun
 			http.Redirect(w, r, prefix+"/login", http.StatusSeeOther)
 			return
 		}
-		if r.Method == http.MethodPost && !auth.ValidCSRF(s.CSRFKey, s.ID, formCSRF(r)) {
-			http.Error(w, "invalid CSRF token", http.StatusForbidden)
-			return
+		if r.Method == http.MethodPost {
+			if err := parseForm(r); err != nil {
+				var tooBig *http.MaxBytesError
+				if errors.As(err, &tooBig) {
+					http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
+				} else {
+					http.Error(w, "bad request", http.StatusBadRequest)
+				}
+				return
+			}
+			if !auth.ValidCSRF(s.CSRFKey, s.ID, formCSRF(r)) {
+				http.Error(w, "invalid CSRF token", http.StatusForbidden)
+				return
+			}
 		}
 		if !s.can(action) {
 			http.Error(w, "forbidden", http.StatusForbidden)

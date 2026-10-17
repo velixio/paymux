@@ -24,6 +24,14 @@ type Page struct {
 
 	// payment detail
 	Pay *payDetail
+
+	// apps
+	Apps   []appRow
+	App    *appView
+	Reveal *secretReveal // a secret shown once
+
+	// settings (app tab and org page)
+	Table *settingsTable
 }
 
 type appOpt struct{ ID, Name string }
@@ -35,6 +43,7 @@ func (d *Dashboard) routesPages() {
 	m.HandleFunc("GET "+prefix+"/payments/{id}", d.authed(authz.PaymentRead, d.paymentPage))
 	m.HandleFunc("POST "+prefix+"/payments/{id}/refund", d.authed(authz.RefundCreate, d.refundSubmit))
 	m.HandleFunc("POST "+prefix+"/deliveries/{id}/replay", d.authed(authz.WebhookReplay, d.replaySubmit))
+	d.routesApps()
 }
 
 // orgID returns the single org's id (cached once found).

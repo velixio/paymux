@@ -96,7 +96,10 @@ func TestAppListAndCreate(t *testing.T) {
 			t.Errorf("redirect %s", r.Header.Get("Location"))
 		}
 		var aud []store.AuditRow
-		_ = db.Read(ctx, func(q store.Querier) (err error) { aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "app.create", 10); return })
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "app.create", 10)
+			return
+		})
 		found := false
 		for _, a := range aud {
 			found = found || a.ActorType == "user" && a.ActorID == "usr_admin" && a.Target == app.ID
@@ -181,7 +184,10 @@ func TestAPIKeysShownOnceAndRevocable(t *testing.T) {
 		has(t, e.pageOK(admin, page+"?tab=keys"), "revoked")
 		var aud []store.AuditRow
 		for _, act := range []string{"api_key.create", "api_key.revoke"} {
-			_ = db.Read(ctx, func(q store.Querier) (err error) { aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, act, 10); return })
+			_ = db.Read(ctx, func(q store.Querier) (err error) {
+				aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, act, 10)
+				return
+			})
 			if len(aud) != 1 || aud[0].ActorID != "usr_admin" {
 				t.Errorf("%s audit: %+v", act, aud)
 			}
@@ -250,7 +256,10 @@ func TestWebhookEndpointsFromDashboard(t *testing.T) {
 		has(t, e.pageOK(admin, page+"?tab=webhooks"), "disabled")
 		var aud []store.AuditRow
 		for _, act := range []string{"webhook_endpoint.create", "webhook_endpoint.disable"} {
-			_ = db.Read(ctx, func(q store.Querier) (err error) { aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, act, 10); return })
+			_ = db.Read(ctx, func(q store.Querier) (err error) {
+				aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, act, 10)
+				return
+			})
 			if len(aud) != 1 || aud[0].ActorID != "usr_admin" || strings.Contains(aud[0].After+aud[0].Before, "whsec_") {
 				t.Errorf("%s audit: %+v", act, aud)
 			}
@@ -352,7 +361,10 @@ func TestBrandingAndLogoUpload(t *testing.T) {
 			t.Errorf("operator: %d", r.StatusCode)
 		}
 		var aud []store.AuditRow
-		_ = db.Read(ctx, func(q store.Querier) (err error) { aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "app.update", 20); return })
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "app.update", 20)
+			return
+		})
 		if len(aud) < 3 || aud[0].ActorID != "usr_admin" {
 			t.Errorf("app.update audit: %+v", aud)
 		}
@@ -420,7 +432,7 @@ func TestAppSettingsTab(t *testing.T) {
 		row := regexpFind(t, `(?s)(<tr[^>]*id="setting-payment_ttl".*?</tr>)`, body)
 		has(t, row, ">60<", "org") // inherited from the org
 		sacRow := regexpFind(t, `(?s)(<tr[^>]*id="setting-sac_code".*?</tr>)`, body)
-		has(t, sacRow, "998315", "default")
+		has(t, sacRow, "998315", "org") // seeded into the org values like every default
 
 		// override
 		if r, _ := e.post(admin, page+"/settings/payment_ttl", url.Values{"value": {"30"}, "csrf": {tok}}); r.StatusCode != 303 {
@@ -474,7 +486,10 @@ func TestAppSettingsTab(t *testing.T) {
 			t.Errorf("viewer write: %d", r.StatusCode)
 		}
 		var aud []store.AuditRow
-		_ = db.Read(ctx, func(q store.Querier) (err error) { aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "setting.update", 10); return })
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "setting.update", 10)
+			return
+		})
 		if len(aud) != 1 || aud[0].ActorType != "user" || aud[0].ActorID != "usr_admin" {
 			t.Errorf("setting.update audit: %+v", aud)
 		}
