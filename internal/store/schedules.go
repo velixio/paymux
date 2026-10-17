@@ -43,3 +43,21 @@ func (db *DB) SetScheduleNext(ctx context.Context, tx Tx, name string, next, now
 	}
 	return nil
 }
+
+// ScheduleUpdatedAt returns when the named schedule row was last written
+// (registration or the most recent firing). ok is false if it does not exist.
+func (db *DB) ScheduleUpdatedAt(ctx context.Context, name string) (at time.Time, ok bool, err error) {
+	err = db.Read(ctx, func(q Querier) error {
+		var ms int64
+		e := q.QueryRowContext(ctx, "SELECT updated_at FROM schedules WHERE name = ?", name).Scan(&ms)
+		if errors.Is(e, sql.ErrNoRows) {
+			return nil
+		}
+		if e != nil {
+			return e
+		}
+		at, ok = time.UnixMilli(ms), true
+		return nil
+	})
+	return at, ok, err
+}
