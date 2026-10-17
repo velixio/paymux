@@ -373,12 +373,11 @@ func (s *Service) issue(ctx context.Context, tx store.Tx, p store.Payment, a sto
 		case err == nil:
 			fx, fxSource = r.Rate, r.Source
 		case errors.Is(err, store.ErrNotFound):
-			flags = append(flags, FlagFXPending) // TODO(spec): ops alert (alerts for tax exceptions are not wired)
+			flags = append(flags, FlagFXPending) // alerted after the invoice is stored (alertInvoiceFlags)
 		default:
 			return nil, err
 		}
 	}
-	// TODO(spec): raise an ops alert for pos_defaulted and export_igst.
 
 	fy := tax.FiscalYear(issued)
 	prefix := firstNonEmpty(prof.InvoicePrefix, ent.InvoicePrefix, "INV")
