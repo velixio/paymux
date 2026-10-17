@@ -31,7 +31,15 @@ func TestServeRunsSetupFunctionsOnTheAppBeforeStarting(t *testing.T) {
 			order = append(order, "first")
 			a.OnPaymentSucceeded(nil) // the hooks API is reachable from setup
 		},
-		func(*paymux.App) { order = append(order, "second"); cancel() }, // stop as soon as the app would start
+		func(a *paymux.App) {
+			order = append(order, "second")
+			go func() { // stop once the app is listening
+				for a.Addr() == "" {
+					time.Sleep(20 * time.Millisecond)
+				}
+				cancel()
+			}()
+		},
 	})
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%q", code, errb.String())
