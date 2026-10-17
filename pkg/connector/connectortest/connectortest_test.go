@@ -42,7 +42,7 @@ func (m *mock) sign(b []byte) string {
 
 func (m *mock) VerifyWebhook(_ context.Context, r connector.WebhookRequest) error {
 	if !hmac.Equal([]byte(r.Header("X-Sig")), []byte(m.sign(r.Body))) {
-		return connector.ErrUnsigned
+		return connector.ErrInvalidSignature
 	}
 	return nil
 }

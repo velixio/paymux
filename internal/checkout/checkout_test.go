@@ -1013,11 +1013,13 @@ func TestForgedWebhookGets401AndNoFetch(t *testing.T) {
 
 		// A genuinely unsigned event type (the provider never signs it) still
 		// takes the fetch-only path.
+		notes[0].EventID = "evt_unsigned"
 		code, _ := e.hook(st.AccountID, "evt_unsigned", "unsigned", notes)
 		if code != 200 || e.count("SELECT COUNT(*) FROM jobs WHERE kind = 'provider_event.fetch_only'") != 1 {
 			t.Errorf("unsigned event type: %d", code)
 		}
 		// A signed one is processed normally.
+		notes[0].EventID = "evt_ok" // dedupe is per provider event id
 		code, _ = e.hook(st.AccountID, "evt_ok", "ok", notes)
 		if code != 200 || e.count("SELECT COUNT(*) FROM jobs WHERE kind = 'provider_event.process'") != 1 {
 			t.Errorf("signed: %d", code)

@@ -120,12 +120,17 @@ func (c *Conn) HandleReturn(_ context.Context, req connector.ReturnRequest) (con
 		ProviderOrderID: req.Param("order_id")}, nil
 }
 
-// VerifyWebhook implements connector.Connector: header X-Fake-Sig must be "ok".
+// VerifyWebhook implements connector.Connector: header X-Fake-Sig "ok" is
+// valid, "unsigned" stands for an event type the provider never signs, and
+// anything else (including no header) is an invalid signature.
 func (c *Conn) VerifyWebhook(_ context.Context, req connector.WebhookRequest) error {
-	if req.Header("X-Fake-Sig") != "ok" {
+	switch req.Header("X-Fake-Sig") {
+	case "ok":
+		return nil
+	case "unsigned":
 		return connector.ErrUnsigned
 	}
-	return nil
+	return connector.ErrInvalidSignature
 }
 
 // ParseWebhook implements connector.Connector: the body is a JSON array of

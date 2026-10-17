@@ -123,7 +123,7 @@ func (d disputeEntity) snapshot() connector.DisputeSnapshot {
 func (r *razorpay) VerifyWebhook(_ context.Context, req connector.WebhookRequest) error {
 	sig := req.Header("X-Razorpay-Signature")
 	if sig == "" || !validHMAC(r.cfg.WebhookSecret, req.Body, sig) {
-		return connector.ErrUnsigned
+		return connector.ErrInvalidSignature
 	}
 	return nil
 }

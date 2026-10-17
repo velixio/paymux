@@ -429,10 +429,9 @@ func TestFullPaymentFlow(t *testing.T) {
 			t.Fatalf("early return: %d %q", code, hdr.Get("Location"))
 		}
 
-		// 4. A forged webhook claims success before anything was paid. The
-		//    connector reports it as unsigned, so it is stored and only
-		//    triggers a fetch of the provider's truth, which says "unpaid".
-		fetchesBefore := rzp.called("GET /v1/payments/pay_123")
+		// 4. A forged webhook (wrong signature) claims success before anything was
+		//    paid: 401, stored unverified, and it never triggers a fetch.
+		fetchesBefore := rzp.called("GET /v1/payments/pay_123") + rzp.called("GET /v1/orders/"+orderID+"/payments")
 		hook := func(event, extra string, sign bool) int {
 			body := fmt.Sprintf(`{"entity":"event","account_id":"acc_test","event":%q,"contains":["payment"],"payload":{%s},"created_at":%d}`,
 				event, extra, time.Now().Unix())
@@ -450,13 +449,13 @@ func TestFullPaymentFlow(t *testing.T) {
 			return c
 		}
 		payEntity := fmt.Sprintf(`"payment":{"entity":{"id":"pay_123","entity":"payment","amount":49900,"currency":"INR","status":"captured","order_id":%q,"method":"upi","amount_refunded":0,"fee":1178,"tax":180,"created_at":%d}}`, orderID, time.Now().Unix())
-		if got := hook("payment.captured", payEntity, false); got != 200 {
-			t.Fatalf("forged webhook = %d, want 200 (fetch-only path)", got)
+		if got := hook("payment.captured", payEntity, false); got != http.StatusUnauthorized {
+			t.Fatalf("forged webhook = %d, want 401", got)
 		}
-		waitFor(t, "the fetch triggered by the forged webhook", func() bool {
-			return rzp.called("GET /v1/payments/pay_123") > fetchesBefore
-		})
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(2500 * time.Millisecond) // longer than the job poll interval
+		if n := rzp.called("GET /v1/payments/pay_123") + rzp.called("GET /v1/orders/"+orderID+"/payments"); n != fetchesBefore {
+			t.Fatalf("a forged webhook triggered %d provider fetches", n-fetchesBefore)
+		}
 		if _, p := api("GET", "/v1/payments/"+id, nil); p["status"] == "succeeded" {
 			t.Fatal("an unsigned webhook changed state")
 		}

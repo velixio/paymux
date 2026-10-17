@@ -515,8 +515,9 @@ func checkType(key, typ string, minLen int, raw json.RawMessage) error {
 }
 
 // Verifiers returns the inbound.VerifierFunc backed by each account's
-// connector: Verify runs VerifyWebhook, maps connector.ErrUnsigned to
-// inbound.ErrUnsigned, and takes the event id from ParseWebhook.
+// connector: Verify runs VerifyWebhook, maps connector.ErrUnsigned (an event type the
+// provider never signs) to inbound.ErrUnsigned and ErrInvalidSignature to a
+// hard failure (401), and takes the event id from ParseWebhook.
 func (s *Service) Verifiers() inbound.VerifierFunc {
 	return func(ctx context.Context, accountID string) (inbound.Verifier, error) {
 		live, err := s.Get(ctx, accountID)
@@ -541,6 +542,11 @@ func (v *verifier) Verify(headers http.Header, body []byte) (string, error) {
 	req := connector.WebhookRequest{Method: http.MethodPost, Headers: map[string][]string(headers), Body: body,
 		ReceivedAt: v.now().UnixMilli()}
 	verr := v.conn.VerifyWebhook(ctx, req)
+	if errors.Is(verr, connector.ErrInvalidSignature) {
+		// Missing, wrong or stale signature: reject (401). Nothing is parsed
+		// and nothing is fetched on behalf of this request.
+		return "", connector.ErrInvalidSignature
+	}
 	var eventID string
 	if verr == nil || errors.Is(verr, connector.ErrUnsigned) {
 		if ns, err := v.conn.ParseWebhook(ctx, req); err == nil {
