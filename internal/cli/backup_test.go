@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/migrations"
@@ -55,6 +56,16 @@ func TestDBCopyCommand(t *testing.T) {
 	lookup := migrateDir(t, src)
 	migrateDir(t, dst)
 	from, to := "sqlite://"+filepath.Join(src, "paymux.db"), "sqlite://"+filepath.Join(dst, "paymux.db")
+	seed, err := store.Open(context.Background(), from, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.Write(context.Background(), func(tx store.Tx) error {
+		return store.SeedOrg(context.Background(), tx, "Acme", time.UnixMilli(1_700_000_000_000))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	seed.Close()
 	var out, errb bytes.Buffer
 	if code := Run(context.Background(), []string{"db", "copy", "--from", from, "--to", to}, lookup, &out, &errb); code != 0 {
 		t.Fatalf("empty target: code=%d stderr=%q", code, errb.String())
@@ -66,7 +77,7 @@ func TestDBCopyCommand(t *testing.T) {
 	}
 	out.Reset()
 	errb.Reset()
-	// The first copy put the seeded org in the target, so a second is refused.
+	// The first copy put the org in the target, so a second is refused.
 	code := Run(context.Background(), []string{"db", "copy", "--from", from, "--to", to}, lookup, &out, &errb)
 	if code != 1 || !strings.Contains(errb.String(), "--force") {
 		t.Fatalf("non-empty target: code=%d stderr=%q", code, errb.String())

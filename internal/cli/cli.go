@@ -13,7 +13,7 @@ import (
 	"github.com/paymux/paymux/migrations"
 )
 
-const usage = "usage: paymux <serve|migrate|app|provider|domain|tax-entity|report|fx|endpoint|version>"
+const usage = "usage: paymux <serve|migrate|backup|db|app|provider|domain|tax-entity|report|fx|endpoint|version>"
 
 // Run executes the CLI and returns the process exit code.
 func Run(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer) int {
@@ -25,6 +25,8 @@ func Run(ctx context.Context, args []string, lookupEnv func(string) (string, boo
 	case "version":
 		fmt.Fprintf(stdout, "paymux %s\n", paymux.Version)
 		return 0
+	case "db":
+		return runDB(ctx, args[1:], stdout, stderr)
 	case "user":
 		env, err := envWithDotEnv(lookupEnv)
 		if err != nil {
@@ -52,7 +54,7 @@ func Run(ctx context.Context, args []string, lookupEnv func(string) (string, boo
 			return runReport(ctx, args[1:], env, stdout, stderr)
 		}
 		return runFX(ctx, args[1:], env, stdout, stderr)
-	case "serve", "migrate", "app", "provider", "domain":
+	case "serve", "migrate", "backup", "app", "provider", "domain":
 		env, err := envWithDotEnv(lookupEnv)
 		if err != nil {
 			fmt.Fprintf(stderr, "paymux %s: %v\n", args[0], err)
@@ -61,6 +63,8 @@ func Run(ctx context.Context, args []string, lookupEnv func(string) (string, boo
 		switch args[0] {
 		case "migrate":
 			return runMigrate(ctx, env, stdout, stderr)
+		case "backup":
+			return runBackup(ctx, args[1:], env, stdout, stderr)
 		case "app":
 			return runApp(ctx, args[1:], env, stdout, stderr)
 		case "provider":
