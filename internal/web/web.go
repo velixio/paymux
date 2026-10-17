@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"path"
 	"sort"
@@ -163,4 +164,13 @@ type PayPage struct {
 	StateRequired, AddressRequired bool
 	// result
 	Title, Message, ReturnURL string
+}
+
+// AssetHandler serves static/ from fsys under /assets/.
+func AssetHandler(fsys fs.FS) http.Handler {
+	static, err := fs.Sub(fsys, "static")
+	if err != nil {
+		return http.NotFoundHandler()
+	}
+	return http.StripPrefix("/assets/", http.FileServerFS(static))
 }
