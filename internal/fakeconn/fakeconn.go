@@ -44,6 +44,9 @@ type State struct {
 	DisputeErr, AcceptErr, EvidenceErr error
 	// ListErr fails ListPayments and ListRefunds.
 	ListErr error
+	// Settlements is the provider's view; ListSettlements returns those settled in the range.
+	Settlements []connector.SettlementSnapshot
+	SettleErr   error
 	// AcceptFn and EvidenceFn run after the call is recorded, so a test can
 	// move the provider's dispute (for example to under_review).
 	AcceptFn   func(connector.DisputeRef)
@@ -76,7 +79,7 @@ func Register(prefix string) *State {
 	info := connector.Info{
 		Version: "test", DisplayName: "Fake", ConfigSchema: json.RawMessage(schema),
 		Currencies:   []string{"INR", "USD", "BDT"},
-		Capabilities: []connector.Capability{connector.CapRefund, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapList},
+		Capabilities: []connector.Capability{connector.CapRefund, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapList, connector.CapSettle},
 		RateLimit:    connector.RateLimit{RequestsPerSecond: 100, Burst: 100},
 	}
 	connector.Register(st.Name, func(cfg json.RawMessage, deps connector.Deps) (connector.Connector, error) {
@@ -319,7 +322,24 @@ func (c *Conn) ListRefunds(_ context.Context, tr connector.TimeRange, _ connecto
 	return connector.Page[connector.RefundSnapshot]{Items: items}, nil
 }
 
+// ListSettlements implements connector.Settler.
+func (c *Conn) ListSettlements(_ context.Context, tr connector.TimeRange) ([]connector.SettlementSnapshot, error) {
+	c.st.mu.Lock()
+	defer c.st.mu.Unlock()
+	if c.st.SettleErr != nil {
+		return nil, c.st.SettleErr
+	}
+	var out []connector.SettlementSnapshot
+	for _, s := range c.st.Settlements {
+		if inRange(tr, s.SettledAt) {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
 var (
+	_ connector.Settler          = (*Conn)(nil)
 	_ connector.Lister           = (*Conn)(nil)
 	_ connector.Connector        = (*Conn)(nil)
 	_ connector.Refunder         = (*Conn)(nil)

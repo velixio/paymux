@@ -477,3 +477,228 @@ func TestResolveItemIsAudited(t *testing.T) {
 		}
 	})
 }
+
+// ---- settlements ----
+
+// capturedAttempt creates a captured attempt with provider payment id payID.
+func (e *env) capturedAttempt(payID string, amount int64) (store.Payment, store.Attempt) {
+	e.t.Helper()
+	res, err := e.core.CreatePayment(ctx, core.CreatePaymentInput{Scope: e.scope, Amount: amount, Currency: "INR"})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	a, err := e.core.CreateAttempt(ctx, res.Payment.ID, e.acct)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if _, err := e.core.ApplyAttemptSnapshot(ctx, a.ID, core.Snapshot{Status: state.AttemptCaptured, Amount: amount, Currency: "INR", ProviderPaymentID: payID}); err != nil {
+		e.t.Fatal(err)
+	}
+	p, _ := e.core.GetPaymentByID(ctx, res.Payment.ID)
+	return p, a
+}
+
+func (e *env) settlement(s connector.SettlementSnapshot) {
+	if s.SettledAt == 0 {
+		s.SettledAt = e.clk.Now().Add(-2 * time.Hour).UnixMilli()
+	}
+	if s.Currency == "" {
+		s.Currency = "INR"
+	}
+	e.fake.Locked(func() {
+		for i, x := range e.fake.Settlements {
+			if x.ProviderSettlementID == s.ProviderSettlementID {
+				e.fake.Settlements[i] = s
+				return
+			}
+		}
+		e.fake.Settlements = append(e.fake.Settlements, s)
+	})
+}
+
+type attemptFees struct {
+	fee, tax, net int64
+	settlement    string
+}
+
+func (e *env) fees(attemptID string) attemptFees {
+	var f attemptFees
+	var fee, tax, net *int64
+	var sid *string
+	_ = e.db.Read(ctx, func(q store.Querier) error {
+		return q.QueryRowContext(ctx, "SELECT fee, fee_tax, net, settlement_id FROM payment_attempts WHERE id = ?", attemptID).Scan(&fee, &tax, &net, &sid)
+	})
+	if fee != nil {
+		f.fee, f.tax, f.net = *fee, *tax, *net
+	}
+	if sid != nil {
+		f.settlement = *sid
+	}
+	return f
+}
+
+func payLine(payID string, amount, fee, tax int64) connector.SettlementItem {
+	return connector.SettlementItem{Kind: "payment", ProviderPaymentID: payID, Amount: amount, Fee: fee, Tax: tax}
+}
+
+func TestSettlementAttachesFeesAndWritesLedgerEntries(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p1, a1 := e.capturedAttempt("pay_1", 50000)
+		_, a2 := e.capturedAttempt("pay_2", 30000)
+		e.settlement(connector.SettlementSnapshot{ProviderSettlementID: "setl_1", Amount: 78000, Fees: 1500, Tax: 270, Status: "processed", UTR: "UTR1",
+			Items: []connector.SettlementItem{payLine("pay_1", 50000, 900, 162), payLine("pay_2", 30000, 600, 108),
+				{Kind: "refund", ProviderRefundID: "rfnd_x", Amount: -1000}}})
+		run, err := e.rec.RunAccount(ctx, e.acct)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if run.Status != "ok" || run.Items != 0 {
+			t.Fatalf("run %+v", run)
+		}
+		var sid string
+		_ = e.db.Read(ctx, func(q store.Querier) error {
+			return q.QueryRowContext(ctx, "SELECT id FROM settlements WHERE provider_settlement_id = 'setl_1'").Scan(&sid)
+		})
+		if sid == "" || e.fees(a1.ID) != (attemptFees{900, 162, 50000 - 900 - 162, sid}) || e.fees(a2.ID) != (attemptFees{600, 108, 30000 - 600 - 108, sid}) {
+			t.Fatalf("fees a1=%+v a2=%+v settlement %q", e.fees(a1.ID), e.fees(a2.ID), sid)
+		}
+		var row struct {
+			amount, fees, tax, mismatch int64
+			status, utr                 string
+		}
+		_ = e.db.Read(ctx, func(q store.Querier) error {
+			return q.QueryRowContext(ctx, "SELECT amount, fees, fee_tax, fee_mismatch, status, utr FROM settlements WHERE id = ?", sid).
+				Scan(&row.amount, &row.fees, &row.tax, &row.mismatch, &row.status, &row.utr)
+		})
+		if row.amount != 78000 || row.fees != 1500 || row.tax != 270 || row.mismatch != 0 || row.status != "processed" || row.utr != "UTR1" {
+			t.Errorf("settlement row %+v", row)
+		}
+		var l []store.LedgerEntry
+		_ = e.db.Read(ctx, func(q store.Querier) (err error) { l, err = store.ListLedgerEntries(ctx, q, p1.ID); return })
+		kinds := kindsOf(l)
+		if !slices.Equal(kinds, []string{"charge", "fee", "fee_tax"}) {
+			t.Fatalf("ledger of pay_1: %v", kinds)
+		}
+		for _, x := range l {
+			switch x.Kind {
+			case "fee":
+				if x.Amount != -900 || x.Currency != "INR" {
+					t.Errorf("fee entry %+v", x)
+				}
+			case "fee_tax":
+				if x.Amount != -162 {
+					t.Errorf("fee_tax entry %+v", x)
+				}
+			}
+		}
+		if e.count("SELECT COUNT(*) FROM ledger_entries WHERE kind = 'payout' AND settlement_id = ? AND amount = -78000 AND payment_id IS NULL", sid) != 1 {
+			t.Error("payout entry missing")
+		}
+		// Reconciling again changes nothing.
+		if _, err := e.rec.RunAccount(ctx, e.acct); err != nil {
+			t.Fatal(err)
+		}
+		if e.count("SELECT COUNT(*) FROM ledger_entries WHERE kind IN ('fee','fee_tax','payout')") != 5 || e.count("SELECT COUNT(*) FROM settlements") != 1 {
+			t.Errorf("not idempotent: %d ledger entries", e.count("SELECT COUNT(*) FROM ledger_entries WHERE kind IN ('fee','fee_tax','payout')"))
+		}
+		if len(e.alerts.kinds()) != 0 {
+			t.Errorf("alerts %v", e.alerts.kinds())
+		}
+	})
+}
+
+func kindsOf(l []store.LedgerEntry) []string {
+	var k []string
+	for _, x := range l {
+		k = append(k, x.Kind)
+	}
+	slices.Sort(k)
+	return k
+}
+
+func TestSettlementFeeTotalsThatDifferAreFlagged(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		e.capturedAttempt("pay_1", 50000)
+		e.settlement(connector.SettlementSnapshot{ProviderSettlementID: "setl_1", Amount: 49000, Fees: 1000, Tax: 180, Status: "processed",
+			Items: []connector.SettlementItem{payLine("pay_1", 50000, 800, 144)}})
+		run, err := e.rec.RunAccount(ctx, e.acct)
+		if err != nil {
+			t.Fatal(err)
+		}
+		it := e.items(run.ID)["fee_mismatch:setl_1"]
+		if it.State != "open" || run.Items != 1 {
+			t.Fatalf("items %+v", e.items(run.ID))
+		}
+		if k := e.alerts.kinds(); !slices.Equal(k, []string{"recon.fee_mismatch"}) {
+			t.Errorf("alerts %v", k)
+		}
+		if e.count("SELECT COUNT(*) FROM settlements WHERE fee_mismatch = 1") != 1 {
+			t.Error("settlement not marked")
+		}
+		// Found again: no new item, no new alert.
+		_, _ = e.rec.RunAccount(ctx, e.acct)
+		if e.count("SELECT COUNT(*) FROM recon_items WHERE kind = 'fee_mismatch'") != 1 || len(e.alerts.kinds()) != 1 {
+			t.Error("fee mismatch duplicated")
+		}
+		// The provider corrects the settlement: the flag clears.
+		e.settlement(connector.SettlementSnapshot{ProviderSettlementID: "setl_1", Amount: 49056, Fees: 800, Tax: 144, Status: "processed",
+			Items: []connector.SettlementItem{payLine("pay_1", 50000, 800, 144)}})
+		_, _ = e.rec.RunAccount(ctx, e.acct)
+		if e.count("SELECT COUNT(*) FROM settlements WHERE fee_mismatch = 1") != 0 {
+			t.Error("corrected settlement still flagged")
+		}
+	})
+}
+
+func TestSettlementWithUnknownPaymentsAndNoLines(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		e.capturedAttempt("pay_1", 50000)
+		// One of the lines is a payment Paymux does not know: its fee cannot be attached, so the totals differ.
+		e.settlement(connector.SettlementSnapshot{ProviderSettlementID: "setl_u", Amount: 1, Fees: 1500, Tax: 270, Status: "processed",
+			Items: []connector.SettlementItem{payLine("pay_1", 50000, 900, 162), payLine("pay_other", 30000, 600, 108)}})
+		// A settlement the connector reports without lines cannot be checked.
+		e.settlement(connector.SettlementSnapshot{ProviderSettlementID: "setl_n", Amount: 5, Fees: 99, Tax: 9, Status: "processed"})
+		run, err := e.rec.RunAccount(ctx, e.acct)
+		if err != nil {
+			t.Fatal(err)
+		}
+		items := e.items(run.ID)
+		if items["fee_mismatch:setl_u"].State != "open" || items["fee_mismatch:setl_n"].ProviderID != "" {
+			t.Errorf("items %+v", items)
+		}
+		if e.count("SELECT COUNT(*) FROM settlements") != 2 {
+			t.Error("both settlements are stored")
+		}
+	})
+}
+
+func TestPayoutIsRecordedOnceWhenTheSettlementIsProcessed(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		e.capturedAttempt("pay_1", 50000)
+		s := connector.SettlementSnapshot{ProviderSettlementID: "setl_1", Amount: 49000, Fees: 900, Tax: 100, Status: "created",
+			Items: []connector.SettlementItem{payLine("pay_1", 50000, 900, 100)}}
+		e.settlement(s)
+		_, _ = e.rec.RunAccount(ctx, e.acct)
+		if e.count("SELECT COUNT(*) FROM ledger_entries WHERE kind = 'payout'") != 0 {
+			t.Fatal("payout recorded before the settlement was processed")
+		}
+		s.Status = "processed"
+		e.settlement(s)
+		for i := 0; i < 2; i++ {
+			_, _ = e.rec.RunAccount(ctx, e.acct)
+		}
+		if e.count("SELECT COUNT(*) FROM ledger_entries WHERE kind = 'payout'") != 1 || e.count("SELECT COUNT(*) FROM ledger_entries WHERE kind = 'fee'") != 1 {
+			t.Errorf("payouts=%d fees=%d", e.count("SELECT COUNT(*) FROM ledger_entries WHERE kind = 'payout'"), e.count("SELECT COUNT(*) FROM ledger_entries WHERE kind = 'fee'"))
+		}
+	})
+}
+
+func TestSettlementListingFailureFailsTheRun(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		e.fake.Locked(func() { e.fake.SettleErr = connector.ErrTemporary })
+		run, err := e.rec.RunAccount(ctx, e.acct)
+		if err == nil || run.Status != "failed" || !slices.Contains(e.alerts.kinds(), "recon.failed") {
+			t.Errorf("run %+v err %v alerts %v", run, err, e.alerts.kinds())
+		}
+	})
+}
