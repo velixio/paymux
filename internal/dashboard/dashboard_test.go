@@ -289,9 +289,11 @@ func TestWrongPasswordIsGenericAndCreatesNoSession(t *testing.T) {
 		if !strings.Contains(b1, "Invalid email or password") || !strings.Contains(b2, "Invalid email or password") {
 			t.Fatal("no generic error")
 		}
-		// same visible message for unknown and known accounts
-		strip := func(s string) string { return csrfRE.ReplaceAllString(s, "") }
-		if strip(b1) != strip(b2) && strings.Contains(b1, "alice") != strings.Contains(b2, "alice") {
+		// identical page for unknown and known accounts (apart from the echoed email)
+		strip := func(s, email string) string {
+			return strings.ReplaceAll(csrfRE.ReplaceAllString(s, ""), email, "EMAIL")
+		}
+		if strip(b1, "alice@example.com") != strip(b2, "nobody@example.com") {
 			t.Error("response differs for a known account")
 		}
 		// the TOTP page cannot be reached without the password step

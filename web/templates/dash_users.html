@@ -1,0 +1,42 @@
+{{define "title"}}Users - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h2>Users</h2>
+{{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<table class="grid">
+<thead><tr><th>Email</th><th>Role</th><th>Status</th><th>2FA</th><th>Created</th>{{if .CanManage}}<th>Actions</th>{{end}}</tr></thead>
+<tbody>
+{{range .Users}}<tr>
+<td>{{.Email}}{{if .IsSelf}} <span class="muted">(you)</span>{{end}}</td>
+<td>{{.Role}}</td>
+<td>{{if .Disabled}}disabled{{else}}active{{end}}</td>
+<td>{{if .Enrolled}}enrolled{{else}}pending{{end}}</td>
+<td>{{.Created}}</td>
+{{if $.CanManage}}<td>{{if not .IsSelf}}
+<form class="inline" method="post" action="/dashboard/users/{{.ID}}/role">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<select name="role" aria-label="Role for {{.Email}}">{{$row := .}}{{range $.Roles}}<option value="{{.}}"{{if eq . $row.Role}} selected{{end}}>{{.}}</option>{{end}}</select>
+<button class="linkbtn" type="submit">Set role</button>
+</form>
+<form class="inline" method="post" action="/dashboard/users/{{.ID}}/disable">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<input type="hidden" name="action" value="{{if .Disabled}}enable{{else}}disable{{end}}">
+<button class="linkbtn" type="submit">{{if .Disabled}}Enable{{else}}Disable{{end}}</button>
+</form>
+{{end}}</td>{{end}}
+</tr>{{end}}
+</tbody>
+</table>
+{{if .CanManage}}
+<h3>Add a user</h3>
+<form method="post" action="/dashboard/users" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<input class="field" name="email" type="email" placeholder="Email" required>
+<select class="field" name="role" aria-label="Role">{{range .Roles}}<option value="{{.}}">{{.}}</option>{{end}}</select>
+<input class="field" name="password" type="password" placeholder="Initial password (12+ characters)" autocomplete="new-password" minlength="12" required>
+<button class="btn" type="submit">Create user</button>
+</form>
+{{end}}
+{{template "dash_close" .}}{{end}}
