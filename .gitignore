@@ -2,3 +2,4 @@
 /dist/
 .env
 /.claude/
+/.playwright-mcp/

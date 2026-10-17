@@ -289,6 +289,10 @@ func (a *App) Start(ctx context.Context) error {
 	srv.HandleFunc("GET /s/{id}", subs.ServeHosted)
 	srv.HandleFunc("/dashboard/", dash.ServeHTTP)
 	srv.HandleFunc("GET /assets/", web.AssetHandler(overlay).ServeHTTP)
+	// Browsers ask for /favicon.ico whatever the page says.
+	srv.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/assets/favicon.svg", http.StatusMovedPermanently)
+	})
 
 	ln, err := net.Listen("tcp", a.cfg.Listen)
 	if err != nil {
