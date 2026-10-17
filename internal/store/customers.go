@@ -166,3 +166,15 @@ func ListAppProviderAccounts(ctx context.Context, q Queryer, appID, mode string)
 	}
 	return out, rows.Err()
 }
+
+// UpdateCustomer writes all mutable fields of c.
+func UpdateCustomer(ctx context.Context, tx Tx, c Customer, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `UPDATE customers SET name = ?, email = ?, phone = ?, billing_legal_name = ?,
+		billing_gstin = ?, billing_line1 = ?, billing_line2 = ?, billing_city = ?, billing_state_code = ?,
+		billing_postal_code = ?, billing_country = ?, updated_at = ? WHERE id = ?`,
+		nullIfEmpty(c.Name), nullIfEmpty(c.Email), nullIfEmpty(c.Phone), nullIfEmpty(c.Billing.LegalName),
+		nullIfEmpty(c.Billing.GSTIN), nullIfEmpty(c.Billing.Line1), nullIfEmpty(c.Billing.Line2),
+		nullIfEmpty(c.Billing.City), nullIfEmpty(c.Billing.StateCode), nullIfEmpty(c.Billing.PostalCode),
+		nullIfEmpty(c.Billing.Country), ms(now), c.ID)
+	return err
+}

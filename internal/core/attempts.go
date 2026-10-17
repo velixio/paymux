@@ -59,6 +59,7 @@ type Snapshot struct {
 	Amount                      int64
 	Currency                    string
 	Method, ProviderPaymentID   string
+	ProviderOrderID             string
 	FailureCode, FailureMessage string
 }
 
@@ -161,6 +162,7 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 		a.Status = string(snap.Status)
 		a.Method = firstNonEmpty(snap.Method, a.Method)
 		a.ProviderPaymentID = firstNonEmpty(snap.ProviderPaymentID, a.ProviderPaymentID)
+		a.ProviderOrderID = firstNonEmpty(snap.ProviderOrderID, a.ProviderOrderID)
 		if snap.Status == state.AttemptFailed {
 			a.FailureCode, a.FailureMessage = snap.FailureCode, snap.FailureMessage
 		}
