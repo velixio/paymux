@@ -22,7 +22,7 @@ func migrated(t *testing.T, db *store.DB) {
 func TestWebhookEndpointCRUD(t *testing.T) {
 	storetest.Each(t, func(t *testing.T, db *store.DB) {
 		migrated(t, db)
-		now := time.UnixMilli(1_700_000_000_000)
+		now := time.UnixMilli(1_700_000_000_000).UTC()
 		ep := store.EndpointRow{ID: "whe_1", OrgID: "org_1", AppID: "app_1", URL: "https://example.com/h",
 			SigningSecretEnc: []byte{1, 2, 3}, EventTypes: []string{"payment.succeeded"}, Enabled: true, CreatedAt: now, UpdatedAt: now}
 		off := ep
@@ -78,7 +78,7 @@ func TestWebhookEndpointCRUD(t *testing.T) {
 func TestEventAndDeliveryRows(t *testing.T) {
 	storetest.Each(t, func(t *testing.T, db *store.DB) {
 		migrated(t, db)
-		now := time.UnixMilli(1_700_000_000_000)
+		now := time.UnixMilli(1_700_000_000_000).UTC()
 		ev := store.EventRow{ID: "evt_1", OrgID: "org_1", AppID: "app_1", Mode: "test", Type: "payment.succeeded",
 			ObjectType: "payment", ObjectID: "pay_1", ObjectVersion: 3, Data: json.RawMessage(`{"id":"pay_1"}`), CreatedAt: now}
 		ep := store.EndpointRow{ID: "whe_1", OrgID: "org_1", AppID: "app_1", URL: "https://example.com/h",
@@ -150,7 +150,7 @@ func TestEventAndDeliveryRows(t *testing.T) {
 func TestInsertProviderEvent(t *testing.T) {
 	storetest.Each(t, func(t *testing.T, db *store.DB) {
 		migrated(t, db)
-		now := time.UnixMilli(1_700_000_000_000)
+		now := time.UnixMilli(1_700_000_000_000).UTC()
 		row := store.ProviderEventRow{ID: "pe_1", ProviderAccountID: "pa_1", ProviderEventID: "ev_1",
 			Headers: json.RawMessage(`{"X-A":["b"]}`), Body: []byte("raw\x00body"), Verified: true, ReceivedAt: now}
 		insert := func(r store.ProviderEventRow) bool {
