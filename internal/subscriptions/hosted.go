@@ -11,6 +11,7 @@ import (
 
 	"github.com/paymux/paymux/internal/core/state"
 	"github.com/paymux/paymux/internal/ids"
+	"github.com/paymux/paymux/internal/look"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/web"
 	"github.com/paymux/paymux/pkg/connector"
@@ -183,13 +184,17 @@ func (s *Service) ServeHosted(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	// The app's theme and customer language; ?lang= may pick an installed one.
+	lk := look.Resolve(r.Context(), s.settings, pages, co.Subscription.AppID, r.URL.Query().Get("lang"))
+	tr := func(key string) string { return pages.T(lk.Lang, key) }
+	pages = lk.Bind(pages)
 	page := web.PayPage{AppName: co.AppName}
 	tmpl := "pay_result"
 	switch co.Kind {
 	case CheckoutClosed:
-		page.Title, page.Message = "Subscription closed", "This subscription is no longer open for setup."
+		page.Title, page.Message = tr("subscription.closed.title"), tr("subscription.closed.msg")
 	case CheckoutDone:
-		page.Title, page.Message = "Subscription active", "This subscription is already set up."
+		page.Title, page.Message = tr("subscription.active.title"), tr("subscription.active.msg")
 	default:
 		switch co.Action.Kind {
 		case connector.ActionRedirect:
