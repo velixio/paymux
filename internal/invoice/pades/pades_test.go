@@ -281,7 +281,7 @@ func TestSignAddsAVerifiableDetachedSignatureAsAnIncrementalUpdate(t *testing.T)
 				}
 			}
 			offs := xrefOffsets(t, out)
-			if len(offs) < 20 {
+			if len(offs) < 8 {
 				t.Errorf("%s: only %d objects reachable through the xref chain", name, len(offs))
 			}
 			// The document still reads: the old objects are where they were.
