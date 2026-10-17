@@ -425,6 +425,16 @@ func (s *Service) onSubscription(ctx context.Context, accountID string, snap con
 	var subID string
 	err := s.db.Write(ctx, func(tx store.Tx) error {
 		found, err := store.GetSubscriptionByProviderID(ctx, tx, accountID, snap.ProviderSubscriptionID)
+		linked := false
+		if errors.Is(err, store.ErrNotFound) && snap.ProviderRef != "" {
+			// A provider that creates the subscription after the checkout (Whop
+			// memberships) names it by our reference; remember its id.
+			found, err = store.GetSubscriptionByProviderRef(ctx, tx, snap.ProviderRef)
+			if err == nil && found.ProviderAccountID != accountID {
+				err = store.ErrNotFound
+			}
+			linked = err == nil
+		}
 		if err != nil {
 			return mapNotFound(err, "subscription")
 		}
@@ -432,6 +442,12 @@ func (s *Service) onSubscription(ctx context.Context, accountID string, snap con
 		sub, err := s.lockSub(ctx, tx, found.ID)
 		if err != nil {
 			return err
+		}
+		if linked && sub.ProviderSubscriptionID != snap.ProviderSubscriptionID && snap.ProviderSubscriptionID != "" {
+			sub.ProviderSubscriptionID = snap.ProviderSubscriptionID
+			if err := s.saveSub(ctx, tx, &sub); err != nil {
+				return err
+			}
 		}
 		return s.applyProviderStatus(ctx, tx, &sub, snap)
 	})
@@ -642,17 +658,22 @@ func (s *Service) ApplyReturn(ctx context.Context, providerAccountID, providerRe
 			return Outcome{}, true, newErr(ErrInvalidState, "no provider subscription to check")
 		}
 		snap, err := mgr.FetchSubscription(ctx, connector.SubscriptionRef{ProviderSubscriptionID: sub.ProviderSubscriptionID})
-		if err != nil {
+		switch {
+		case errors.Is(err, connector.ErrNotFound):
+			// The provider has no subscription yet (the customer has not
+			// completed the checkout, or it only appears on its webhook).
+		case err != nil:
 			return Outcome{}, true, err
-		}
-		if err := s.db.Write(ctx, func(tx store.Tx) error {
-			locked, err := s.lockSub(ctx, tx, sub.ID)
-			if err != nil {
-				return err
+		default:
+			if err := s.db.Write(ctx, func(tx store.Tx) error {
+				locked, err := s.lockSub(ctx, tx, sub.ID)
+				if err != nil {
+					return err
+				}
+				return s.applyProviderStatus(ctx, tx, &locked, snap)
+			}); err != nil {
+				return Outcome{}, true, err
 			}
-			return s.applyProviderStatus(ctx, tx, &locked, snap)
-		}); err != nil {
-			return Outcome{}, true, err
 		}
 	}
 	if err := s.db.Read(ctx, func(q store.Querier) (err error) { sub, err = store.GetSubscription(ctx, q, sub.ID); return }); err != nil {

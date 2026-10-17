@@ -245,7 +245,7 @@ func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 		return nil
 	})
 	e.inv = invoice.New(invoice.Options{DB: db, Settings: e.set, Jobs: e.q, Emitter: emitter, BaseURL: "https://pay.example.com", Now: e.clock,
-		IsMerchantOfRecord: func(string) bool { return false }})
+		IsMerchantOfRecord: func(name string) bool { return name == "whop" }})
 	e.inv.RegisterJobs(e.q)
 	e.core = core.NewService(core.Options{DB: db, Settings: e.set, Jobs: e.q, Emitter: emitter, Now: e.clock,
 		OnPaymentSucceeded: e.inv.OnPaymentSucceeded, OnRefundSucceeded: e.inv.OnRefundSucceeded})
@@ -253,6 +253,7 @@ func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 		"pa_upi":     mandateConn{base{name: "payu", modes: mandateMod, limits: allMethods, r: e.r}},
 		"pa_enach":   mandateConn{base{name: "zoho", modes: mandateMod, limits: []connector.MandateLimit{{Method: "emandate", Currency: "INR"}}, r: e.r}},
 		"pa_managed": managedConn{base{name: "razorpay", modes: managedMod, r: e.r}},
+		"pa_whop":    managedConn{base{name: "whop", modes: managedMod, r: e.r}},
 	}
 	e.subs = subscriptions.New(subscriptions.Options{DB: db, Core: e.core, Settings: e.set, Jobs: e.q, Emitter: emitter, BaseURL: "https://pay.example.com", Mailer: e.mailer,
 		Now: e.clock, Connectors: subscriptions.ConnectorsFunc(func(_ context.Context, id string) (connector.Connector, error) {
@@ -272,7 +273,7 @@ func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 			DefaultReturnURL: "https://app.example.com/done", CreatedAt: start}); err != nil {
 			return err
 		}
-		for _, a := range [][2]string{{"pa_upi", "payu"}, {"pa_enach", "zoho"}, {"pa_managed", "razorpay"}} {
+		for _, a := range [][2]string{{"pa_upi", "payu"}, {"pa_enach", "zoho"}, {"pa_managed", "razorpay"}, {"pa_whop", "whop"}} {
 			if err := store.InsertProviderAccount(ctx, tx, store.ProviderAccount{ID: a[0], OrgID: store.DefaultOrgID, Mode: "live",
 				Connector: a[1], Name: a[0], Status: "active", CreatedAt: start}); err != nil {
 				return err

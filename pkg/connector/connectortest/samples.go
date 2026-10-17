@@ -24,7 +24,7 @@ func SampleValues() []any {
 		Currency: "INR", Method: "upi", ValidUntil: 1900000000000, SetupPayment: pay,
 	}
 	sub := &connector.SubscriptionSnapshot{
-		ProviderSubscriptionID: "sub_1", Status: "active", RawStatus: "active", Amount: 49900,
+		ProviderSubscriptionID: "sub_1", ProviderRef: "REF1", Status: "active", RawStatus: "active", Amount: 49900,
 		Currency: "INR", CurrentPeriodStart: 1, CurrentPeriodEnd: 2,
 	}
 	cust := connector.Customer{Name: "A B", Email: "a@example.com", Phone: "+910000000000"}

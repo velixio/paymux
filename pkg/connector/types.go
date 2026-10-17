@@ -388,12 +388,17 @@ type SubscriptionRef struct {
 // SubscriptionSnapshot is the provider's view of a subscription.
 type SubscriptionSnapshot struct {
 	ProviderSubscriptionID string `json:"provider_subscription_id"`
-	Status                 string `json:"status"`
-	RawStatus              string `json:"raw_status"`
-	Amount                 int64  `json:"amount"`
-	Currency               string `json:"currency"`
-	CurrentPeriodStart     int64  `json:"current_period_start,omitempty"`
-	CurrentPeriodEnd       int64  `json:"current_period_end,omitempty"`
+	// ProviderRef is the subscription's provider_ref, when the provider hands
+	// it back (for example from checkout metadata). It lets a notification
+	// about a subscription the provider created after the checkout (Whop
+	// memberships) be linked to its Paymux subscription.
+	ProviderRef        string `json:"provider_ref,omitempty"`
+	Status             string `json:"status"`
+	RawStatus          string `json:"raw_status"`
+	Amount             int64  `json:"amount"`
+	Currency           string `json:"currency"`
+	CurrentPeriodStart int64  `json:"current_period_start,omitempty"`
+	CurrentPeriodEnd   int64  `json:"current_period_end,omitempty"`
 }
 
 // MandateRequest creates a merchant-triggered mandate checkout.
