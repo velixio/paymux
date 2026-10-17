@@ -21,7 +21,11 @@ type Payment struct {
 	ExpiresAt                                    time.Time
 	Version                                      int64
 	Flags                                        []string
-	CreatedAt, UpdatedAt                         time.Time
+	// AllowedConnectors and Country are the routing restrictions the payment was
+	// created with; every routing decision for the payment honours them.
+	AllowedConnectors    []string
+	Country              string
+	CreatedAt, UpdatedAt time.Time
 }
 
 // HasFlag reports whether the payment carries flag f.
