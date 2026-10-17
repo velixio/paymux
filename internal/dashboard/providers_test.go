@@ -279,7 +279,7 @@ func TestProviderListWebhookURLAndAppLinking(t *testing.T) {
 		}
 		admin := e.roleClient("admin")
 		list := e.pageOK(admin, "/dashboard/providers")
-		hook := "https://pay.example.com/hooks/" + pa.ID
+		hook := "http://localhost:8080/hooks/" + pa.ID
 		has(t, list, pa.Name, st.Name, hook, `data-copy="`+hook+`"`, "Copy")
 		lacks(t, list, "pa_foreign", "Foreign account")
 		if r, _ := e.get(admin, "/dashboard/providers/pa_foreign"); r.StatusCode != 404 {
