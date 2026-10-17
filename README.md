@@ -34,6 +34,8 @@ app C ─┘ ◄─ signed webhooks ─┘          ├─ Zoho Payments
 
 ## Quick start
 
+New here? [`docs/quickstart.md`](docs/quickstart.md) takes you from nothing to a test payment, a signed webhook, an invoice and a refund in ten minutes, with no provider account: it uses the built-in simulator. The short version follows.
+
 You need a Go toolchain of version 1.21 or later. `go.mod` pins `toolchain go1.27.2`, and Go downloads it automatically.
 
 ```bash
