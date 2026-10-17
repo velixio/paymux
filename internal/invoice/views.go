@@ -31,6 +31,10 @@ type InvoiceView struct {
 	Flags           []string        `json:"flags"`
 	TemplateVersion string          `json:"template_version"`
 	PDFReady        bool            `json:"pdf_ready"`
+	// E-invoice (GST IRP) registration, once the operator has recorded it.
+	IRN     string     `json:"irn,omitempty"`
+	AckNo   string     `json:"ack_no,omitempty"`
+	AckDate *time.Time `json:"ack_date,omitempty"`
 }
 
 // ViewInvoice renders i.
@@ -43,7 +47,15 @@ func ViewInvoice(i store.Invoice) InvoiceView {
 		IssuedAt: i.IssuedAt, SupplyType: i.SupplyType, PlaceOfSupply: i.PlaceOfSupply, Currency: i.Currency,
 		Supplier: i.Supplier, Recipient: i.Recipient, Lines: i.Lines, Taxable: i.Taxable, CGST: i.CGST, SGST: i.SGST,
 		IGST: i.IGST, Total: i.Total, FXRateINR: i.FXRate, Flags: flags, TemplateVersion: i.TemplateVersion,
-		PDFReady: i.PDFBlobID != ""}
+		PDFReady: i.PDFBlobID != "", IRN: i.IRN, AckNo: i.AckNo, AckDate: ackDate(i)}
+}
+
+func ackDate(i store.Invoice) *time.Time {
+	if i.AckDate.IsZero() {
+		return nil
+	}
+	t := i.AckDate.UTC()
+	return &t
 }
 
 // CreditNoteView is the public JSON shape of a credit note.
