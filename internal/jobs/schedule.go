@@ -1,9 +1,13 @@
 package jobs
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
+
+	"github.com/paymux/paymux/internal/store"
 )
 
 // Schedule enqueues a job of Kind repeatedly. Set exactly one of Every
@@ -101,4 +105,44 @@ func NextRun(s Schedule, after time.Time) time.Time {
 		}
 	}
 	return after.Add(24 * time.Hour) // unreachable for sane zones
+}
+
+// enqueueDueSchedules enqueues a job for every due schedule and advances its
+// next run, all in one transaction. A schedule seen for the first time first
+// runs at its next slot, not immediately. After downtime a schedule fires once
+// and resumes from now, so there is no catch-up burst.
+func (q *Queue) enqueueDueSchedules(ctx context.Context) error {
+	q.mu.RLock()
+	scheds := append([]Schedule(nil), q.schedules...)
+	q.mu.RUnlock()
+	if len(scheds) == 0 {
+		return nil
+	}
+	sort.Slice(scheds, func(i, j int) bool { return scheds[i].Name < scheds[j].Name }) // stable lock order
+	now := q.opts.Clock()
+	return q.db.Write(ctx, func(tx store.Tx) error {
+		for _, s := range scheds {
+			next := NextRun(s, now)
+			due, runAt, err := q.db.ClaimDueSchedule(ctx, tx, s.Name, now, next)
+			if err != nil {
+				return err
+			}
+			if !due {
+				continue
+			}
+			err = q.Enqueue(ctx, tx, Job{
+				Kind:      s.Kind,
+				Payload:   struct{}{},
+				RunAt:     runAt,
+				DedupeKey: fmt.Sprintf("sched:%s:%d", s.Name, runAt.UnixMilli()),
+			})
+			if err != nil {
+				return err
+			}
+			if err := q.db.SetScheduleNext(ctx, tx, s.Name, next, now); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

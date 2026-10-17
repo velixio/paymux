@@ -112,6 +112,9 @@ func (q *Queue) RunOnce(ctx context.Context) (int, error) {
 // runOnce claims with claimCtx but processes with workCtx, so shutdown can
 // let in-flight jobs finish.
 func (q *Queue) runOnce(claimCtx, workCtx context.Context) (int, error) {
+	if err := q.enqueueDueSchedules(claimCtx); err != nil {
+		return 0, err
+	}
 	rows, err := q.db.ClaimJobs(claimCtx, q.opts.Clock(), q.opts.Lease, q.opts.Workers)
 	if err != nil {
 		return 0, err
