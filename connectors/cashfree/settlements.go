@@ -3,135 +3,170 @@ package cashfree
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/paymux/paymux/pkg/connector"
 )
 
-// Settlements come from the PG settlements API: POST /settlements lists them
-// and POST /settlement/recon lists the lines of one.
+// Settlements are read from POST /settlement/recon: one item per event (a
+// payment, a refund, an adjustment) carrying the settlement it was paid out in,
+// so the items are grouped by cf_settlement_id.
 //
-// TODO(spec): the whole of this file is from documentation and unverified:
-// the request filters (start_date, end_date, cf_settlement_ids), the cursor
-// pagination, the field names (amount_settled, service_charge, event_type,
-// event_service_charge, event_service_tax) and the status strings. Re-check
-// each against the sandbox before relying on it.
+// Verified against the sandbox (api version 2023-08-01): the date filters are
+// start_date / end_date, a window may span at most 30 days, cf_settlement_ids
+// must be integers, and at least one filter is required. The item schema is
+// Cashfree's published one; the sandbox account has no settlements, so a
+// populated response has not been seen.
+//
+// TODO(spec): confirm with a real settled payment that amount_settled is the
+// net payout of the whole settlement, and how event_settlement_amount relates to
+// event_amount minus event_service_charge and event_service_tax.
 
 const (
-	settlementPage = 100
-	maxPages       = 50
+	reconPage   = 100
+	maxPages    = 50
+	maxWindow   = 30 * 24 * time.Hour
+	defaultSpan = 30 * 24 * time.Hour
 )
 
-type settlementWire struct {
-	CFSettlementID json.Number `json:"cf_settlement_id"`
-	UTR            string      `json:"settlement_utr"`
-	Status         string      `json:"status"`
-	Amount         amount      `json:"amount_settled"`
-	Date           string      `json:"settlement_date"`
-	ChargesTotal   amount      `json:"service_charge"`
-	TaxTotal       amount      `json:"service_tax"`
+var ist = time.FixedZone("IST", 5*3600+30*60)
+
+type reconItem struct {
+	Event struct {
+		Type             string `json:"event_type"`
+		Amount           amount `json:"event_amount"`
+		SettlementAmount amount `json:"event_settlement_amount"`
+		ServiceCharge    amount `json:"event_service_charge"`
+		ServiceTax       amount `json:"event_service_tax"`
+		SaleType         string `json:"sale_type"`
+		Currency         string `json:"event_currency"`
+	} `json:"event_details"`
+	Order struct {
+		ID string `json:"order_id"`
+	} `json:"order_details"`
+	Payment struct {
+		CFPaymentID json.Number `json:"cf_payment_id"`
+	} `json:"payment_details"`
+	Refunds []struct {
+		RefundID string `json:"refund_id"`
+	} `json:"refund_details"`
+	Settlement struct {
+		ID     json.Number `json:"cf_settlement_id"`
+		UTR    string      `json:"settlement_utr"`
+		Date   string      `json:"settlement_date"`
+		Amount amount      `json:"amount_settled"`
+	} `json:"settlement_details"`
 }
 
-type reconWire struct {
-	EventType string      `json:"event_type"`
-	OrderID   string      `json:"order_id"`
-	CFPayment json.Number `json:"cf_payment_id"`
-	RefundID  string      `json:"refund_id"`
-	Amount    amount      `json:"event_amount"`
-	Charge    amount      `json:"event_service_charge"`
-	Tax       amount      `json:"event_service_tax"`
+type reconPageWire struct {
+	Cursor string      `json:"cursor"`
+	Data   []reconItem `json:"data"`
 }
 
-type pageOf[T any] struct {
-	Cursor string `json:"cursor"`
-	Data   []T    `json:"data"`
-}
-
-// ListSettlements returns the settlements made in the range, each with its lines.
+// ListSettlements returns the settlements paid out in the range, each with its
+// lines. The API reads at most 30 days at a time, so a longer range is read in
+// windows and merged; with no range the last 30 days are read.
 func (c *cashfree) ListSettlements(ctx context.Context, tr connector.TimeRange) ([]connector.SettlementSnapshot, error) {
-	filters := map[string]any{}
-	if tr.From > 0 {
-		filters["start_date"] = time.UnixMilli(tr.From).UTC().Format(time.RFC3339)
-	}
+	to := c.deps.Now()
 	if tr.To > 0 {
-		filters["end_date"] = time.UnixMilli(tr.To).UTC().Format(time.RFC3339)
+		to = time.UnixMilli(tr.To)
 	}
-	var out []connector.SettlementSnapshot
-	cursor := ""
-	for page := 0; ; page++ {
-		if page >= maxPages {
-			return nil, fmt.Errorf("cashfree: more than %d pages of settlements", maxPages)
+	from := to.Add(-defaultSpan)
+	if tr.From > 0 {
+		from = time.UnixMilli(tr.From)
+	}
+	byID := map[string]*connector.SettlementSnapshot{}
+	var order []string
+	for start := from; start.Before(to); start = start.Add(maxWindow) {
+		end := start.Add(maxWindow)
+		if end.After(to) {
+			end = to
 		}
-		pg := map[string]any{"limit": settlementPage}
-		if cursor != "" {
-			pg["cursor"] = cursor
-		}
-		var res pageOf[settlementWire]
-		if err := c.api.do(ctx, "POST", "/settlements", map[string]any{"pagination": pg, "filters": filters}, &res, ""); err != nil {
+		if err := c.readWindow(ctx, start, end, byID, &order); err != nil {
 			return nil, err
 		}
-		for _, s := range res.Data {
-			snap, err := c.settlement(ctx, s)
-			if err != nil {
-				return nil, err
+	}
+	out := make([]connector.SettlementSnapshot, 0, len(order))
+	for _, id := range order {
+		out = append(out, *byID[id])
+	}
+	return out, nil
+}
+
+func (c *cashfree) readWindow(ctx context.Context, start, end time.Time, byID map[string]*connector.SettlementSnapshot, order *[]string) error {
+	filters := map[string]any{"start_date": start.In(ist).Format(time.RFC3339), "end_date": end.In(ist).Format(time.RFC3339)}
+	cursor := ""
+	for page := 0; ; page++ {
+		if page >= maxPages {
+			return fmt.Errorf("cashfree: more than %d pages of settlement events", maxPages)
+		}
+		pg := map[string]any{"limit": reconPage}
+		if cursor != "" {
+			pg["cursor"] = cursor
+		}
+		var res reconPageWire
+		if err := c.api.do(ctx, "POST", "/settlement/recon", map[string]any{"pagination": pg, "filters": filters}, &res, ""); err != nil {
+			return err
+		}
+		for _, it := range res.Data {
+			id := string(it.Settlement.ID)
+			if id == "" {
+				continue // not settled yet
 			}
-			out = append(out, snap)
+			snap, ok := byID[id]
+			if !ok {
+				snap = &connector.SettlementSnapshot{ProviderSettlementID: id, Currency: "INR", UTR: it.Settlement.UTR, SettledAt: parseTime(it.Settlement.Date), Status: "initiated"}
+				if it.Settlement.Date != "" {
+					snap.Status = "settled"
+				}
+				byID[id] = snap
+				*order = append(*order, id)
+			}
+			addItem(snap, it)
 		}
 		if res.Cursor == "" || res.Cursor == cursor || len(res.Data) == 0 {
-			return out, nil
+			return nil
 		}
 		cursor = res.Cursor
 	}
 }
 
-func (c *cashfree) settlement(ctx context.Context, s settlementWire) (connector.SettlementSnapshot, error) {
-	id := string(s.CFSettlementID)
-	if id == "" {
-		return connector.SettlementSnapshot{}, errors.New("cashfree: settlement without cf_settlement_id")
-	}
-	amt, _ := s.Amount.minor("INR")
-	fees, _ := s.ChargesTotal.minor("INR")
-	tax, _ := s.TaxTotal.minor("INR")
-	snap := connector.SettlementSnapshot{ProviderSettlementID: id, Amount: amt, Fees: fees, Tax: tax, Currency: "INR",
-		Status: s.Status, UTR: s.UTR, SettledAt: parseTime(s.Date)}
-	cursor := ""
-	for page := 0; ; page++ {
-		if page >= maxPages {
-			return snap, fmt.Errorf("cashfree: more than %d pages of lines in settlement %s", maxPages, id)
-		}
-		pg := map[string]any{"limit": settlementPage}
-		if cursor != "" {
-			pg["cursor"] = cursor
-		}
-		var res pageOf[reconWire]
-		in := map[string]any{"pagination": pg, "filters": map[string]any{"cf_settlement_ids": []string{id}}}
-		if err := c.api.do(ctx, "POST", "/settlement/recon", in, &res, ""); err != nil {
-			return snap, err
-		}
-		for _, r := range res.Data {
-			a, _ := r.Amount.minor("INR")
-			f, _ := r.Charge.minor("INR")
-			t, _ := r.Tax.minor("INR")
-			it := connector.SettlementItem{Amount: a, Fee: f, Tax: t}
-			switch r.EventType {
-			case "PAYMENT":
-				it.Kind, it.ProviderPaymentID = "payment", paymentID(r.OrderID, r.CFPayment)
-			case "REFUND":
-				it.Kind, it.ProviderRefundID = "refund", r.RefundID
-				if it.Amount > 0 {
-					it.Amount = -it.Amount
-				}
-			default:
-				it.Kind = "adjustment"
+// addItem adds one event to its settlement and keeps the totals: the net amount
+// is the sum of the events' settled amounts (debits negative), unless the API
+// states amount_settled.
+func addItem(s *connector.SettlementSnapshot, r reconItem) {
+	amt, _ := r.Event.Amount.minor("INR")
+	fee, _ := r.Event.ServiceCharge.minor("INR")
+	tax, _ := r.Event.ServiceTax.minor("INR")
+	net, _ := r.Event.SettlementAmount.minor("INR")
+	it := connector.SettlementItem{Amount: amt, Fee: fee, Tax: tax}
+	debit := r.Event.SaleType == "DEBIT"
+	switch r.Event.Type {
+	case "PAYMENT":
+		it.Kind, it.ProviderPaymentID = "payment", paymentID(r.Order.ID, r.Payment.CFPaymentID)
+	case "REFUND", "REFUND_REVERSAL":
+		it.Kind = "refund"
+		for _, rf := range r.Refunds {
+			if rf.RefundID != "" {
+				it.ProviderRefundID = rf.RefundID
+				break
 			}
-			snap.Items = append(snap.Items, it)
 		}
-		if res.Cursor == "" || res.Cursor == cursor || len(res.Data) == 0 {
-			return snap, nil
-		}
-		cursor = res.Cursor
+		debit = r.Event.Type == "REFUND"
+	default:
+		it.Kind = "adjustment"
+	}
+	if debit {
+		it.Amount, net = -it.Amount, -net
+	}
+	s.Items = append(s.Items, it)
+	s.Fees += fee
+	s.Tax += tax
+	if stated, _ := r.Settlement.Amount.minor("INR"); r.Settlement.Amount != "" {
+		s.Amount = stated
+	} else {
+		s.Amount += net
 	}
 }
 

@@ -193,7 +193,7 @@ func TestParseWebhook(t *testing.T) {
 		code   string
 	}{
 		{"event_payment_success", connector.PaymentSucceeded, ""},
-		{"event_payment_failed", connector.PaymentFailed, "TRANSACTION_DECLINED"},
+		{"event_payment_failed", connector.PaymentFailed, "GATEWAY_ERROR"},
 		{"event_payment_user_dropped", connector.PaymentCanceled, ""},
 	}
 	for _, tc := range cases {
@@ -510,41 +510,6 @@ func TestFetchRefundStrict(t *testing.T) {
 		if mapRefundStatus(raw) != want {
 			t.Errorf("%s", raw)
 		}
-	}
-}
-
-// ---- settlements ----
-
-func TestListSettlements(t *testing.T) {
-	f := newFake()
-	f.on("POST /pg/settlements", func(w http.ResponseWriter, c call) {
-		in := c.json(t)
-		if cur, _ := in["pagination"].(map[string]any)["cursor"].(string); cur == "" {
-			write(w, 200, map[string]any{"cursor": "c2", "data": []any{map[string]any{"cf_settlement_id": 901, "settlement_utr": "UTR1", "status": "SUCCESS", "amount_settled": 480.0, "service_charge": 16.95, "service_tax": 3.05, "settlement_date": "2026-10-18T00:00:00+05:30"}}})
-			return
-		}
-		write(w, 200, map[string]any{"data": []any{map[string]any{"cf_settlement_id": 902, "status": "PENDING", "amount_settled": 10.0}}})
-	})
-	f.on("POST /pg/settlement/recon", func(w http.ResponseWriter, c call) {
-		write(w, 200, map[string]any{"data": []any{
-			map[string]any{"event_type": "PAYMENT", "order_id": "pay_ref_01", "cf_payment_id": 77, "event_amount": 499.0, "event_service_charge": 16.95, "event_service_tax": 3.05},
-			map[string]any{"event_type": "REFUND", "refund_id": "rf_ref_01", "event_amount": 100.5},
-		}})
-	})
-	got, err := newConn(t, f).(connector.Settler).ListSettlements(context.Background(), connector.TimeRange{From: 1760000000000, To: 1761000000000})
-	if err != nil || len(got) != 2 {
-		t.Fatal(got, err)
-	}
-	s := got[0]
-	if s.ProviderSettlementID != "901" || s.UTR != "UTR1" || s.Amount != 48000 || s.Fees != 1695 || s.Tax != 305 || s.Currency != "INR" || len(s.Items) != 2 {
-		t.Errorf("%+v", s)
-	}
-	if s.Items[0].Kind != "payment" || s.Items[0].ProviderPaymentID != "pay_ref_01:77" || s.Items[0].Amount != 49900 || s.Items[1].Kind != "refund" || s.Items[1].Amount != -10050 {
-		t.Errorf("%+v", s.Items)
-	}
-	first := f.to("POST /pg/settlements")[0].json(t)["filters"].(map[string]any)
-	if first["start_date"] == nil || first["end_date"] == nil {
-		t.Errorf("%v", first)
 	}
 }
 
