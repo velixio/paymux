@@ -264,6 +264,31 @@ def main():
     notes = wait_for("the credit note", lambda: json.loads(call("GET", "/v1/credit_notes?payment_id=" + pid, expect_status=200)[2])["data"])
     expect(len(notes) == 1, f"credit notes: {notes}")
 
+    step("a refund made in the provider's own dashboard is booked as a provider refund")
+    st, _, page = c.get("/dashboard/payments/" + pid)
+    expect(st == 200 and b"Refund from the provider" in page, f"the payment page has no provider-refund button: {st}")
+    html = page.decode()
+    att = re.search(r'<option value="(att_[0-9a-z]+)"', html)
+    expect(att, "the payment page lists no simulator attempt")
+    st, _, out = c.post(f"/dashboard/payments/{pid}/simulate-refund", {"csrf": csrf_of(html), "attempt_id": att.group(1), "amount": "50.00"})
+    expect(st == 200 and b"Refund made at the simulated provider" in out, f"simulate-refund: {st}\n{out.decode(errors='replace')[:400]}")
+    wait_for("the provider refund to be booked", lambda: payment(pid)["amount_refunded"] == 15000)
+
+    def provider_refund_event():
+        with Receiver.lock:
+            for headers, body in Receiver.events:
+                j = json.loads(body)
+                if j.get("type") == "refund.succeeded" and j["data"]["object"].get("initiated_by") == "provider":
+                    return headers, body
+        return None
+
+    headers, body = wait_for("refund.succeeded (initiated_by=provider) at the webhook receiver", provider_refund_event)
+    expect(verify_signature(secret, headers, body), "the provider refund webhook signature does not verify")
+    obj = json.loads(body)["data"]["object"]
+    expect(obj["amount"] == 5000 and obj["provider_refund_id"].startswith("sim_rfnd_"), f"provider refund object: {obj}")
+    notes = wait_for("the second credit note", lambda: (lambda d: d if len(d) == 2 else None)(json.loads(call("GET", "/v1/credit_notes?payment_id=" + pid, expect_status=200)[2])["data"]))
+    expect(len(notes) == 2, f"credit notes after a provider refund: {notes}")
+
     step("pending, then success by webhook alone")
     pid2, checkout2 = create_payment(25000)
     _, hdr, _ = c.get(checkout2.path + "?" + checkout2.query)
