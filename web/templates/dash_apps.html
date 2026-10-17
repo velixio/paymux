@@ -4,10 +4,10 @@
 {{define "content"}}{{template "dash_open" .}}
 <h2>Apps</h2>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Name</th><th>Slug</th><th>Default return URL</th><th>Created</th></tr></thead>
 <tbody>{{range .Apps}}<tr><td><a href="/dashboard/apps/{{.ID}}">{{.Name}}</a></td><td>{{.Slug}}</td><td>{{.ReturnURL}}</td><td>{{.Created}}</td></tr>{{else}}<tr><td colspan="4" class="muted">No apps yet.</td></tr>{{end}}</tbody>
-</table>
+</table></div>
 {{if .CanManage}}
 <h3>Create an app</h3>
 <form method="post" action="/dashboard/apps" class="stack">

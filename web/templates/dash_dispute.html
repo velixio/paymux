@@ -50,10 +50,10 @@
 
 <h3>Evidence</h3>
 {{if .Notes}}<p>{{.Notes}}</p>{{end}}
-<table class="grid"><thead><tr><th>File</th><th>Type</th><th>Size</th><th>Uploaded</th></tr></thead>
-<tbody>{{range .Evidence}}<tr><td><a href="{{.Href}}">{{.ID}}</a></td><td>{{.ContentType}}</td><td>{{.Size}}</td><td>{{.At}}</td></tr>{{else}}<tr><td colspan="4" class="muted">No evidence uploaded.</td></tr>{{end}}</tbody></table>
+<div class="table-scroll"><table class="grid"><thead><tr><th>File</th><th>Type</th><th>Size</th><th>Uploaded</th></tr></thead>
+<tbody>{{range .Evidence}}<tr><td><a href="{{.Href}}">{{.ID}}</a></td><td>{{.ContentType}}</td><td>{{.Size}}</td><td>{{.At}}</td></tr>{{else}}<tr><td colspan="4" class="muted">No evidence uploaded.</td></tr>{{end}}</tbody></table></div>
 
 <h3>Timeline</h3>
-<table class="grid"><tbody>{{range .Timeline}}<tr><td>{{.At}}</td><td>{{.Text}}</td></tr>{{end}}</tbody></table>
+<div class="table-scroll"><table class="grid"><tbody>{{range .Timeline}}<tr><td>{{.At}}</td><td>{{.Text}}</td></tr>{{end}}</tbody></table></div>
 {{end}}
 {{template "dash_close" .}}{{end}}

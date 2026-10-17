@@ -24,6 +24,10 @@ type Invoice struct {
 	Flags                                                                     []string
 	PaymentMethod, PaymentRef, LUTNumber                                      string
 	TemplateVersion, PDFBlobID, AccessTokenHash                               string
+	// E-invoice (offline mode): what the Invoice Registration Portal returned
+	// after the operator uploaded the invoice JSON. Empty until recorded.
+	IRN, AckNo, SignedQR string
+	AckDate, EInvoiceAt  time.Time
 }
 
 // HasFlag reports whether the invoice carries flag f.
@@ -41,21 +45,24 @@ func hasFlag(flags []string, f string) bool {
 const invoiceCols = `id, org_id, mode, app_id, tax_entity_id, payment_id, attempt_id, COALESCE(subscription_id,''), number,
 	series_prefix, fiscal_year, seq, issued_at, supply_type, place_of_supply, inter_state, currency, supplier, recipient, lines,
 	taxable, cgst, sgst, igst, total, gst_rate_bp, COALESCE(fx_rate_inr,''), COALESCE(fx_source,''), flags, payment_method,
-	payment_ref, COALESCE(lut_number,''), template_version, COALESCE(pdf_blob_id,''), access_token_hash`
+	payment_ref, COALESCE(lut_number,''), template_version, COALESCE(pdf_blob_id,''), access_token_hash,
+	COALESCE(irn,''), COALESCE(ack_no,''), COALESCE(ack_date,0), COALESCE(signed_qr,''), COALESCE(einvoice_at,0)`
 
 func scanInvoice(row interface{ Scan(...any) error }) (Invoice, error) {
 	var i Invoice
-	var issued int64
+	var issued, ackDate, einvAt int64
 	var inter int
 	var sup, rcp, lines, flags string
 	err := row.Scan(&i.ID, &i.OrgID, &i.Mode, &i.AppID, &i.TaxEntityID, &i.PaymentID, &i.AttemptID, &i.SubscriptionID,
 		&i.Number, &i.SeriesPrefix, &i.FiscalYear, &i.Seq, &issued, &i.SupplyType, &i.PlaceOfSupply, &inter, &i.Currency,
 		&sup, &rcp, &lines, &i.Taxable, &i.CGST, &i.SGST, &i.IGST, &i.Total, &i.GSTRateBP, &i.FXRate, &i.FXSource, &flags,
-		&i.PaymentMethod, &i.PaymentRef, &i.LUTNumber, &i.TemplateVersion, &i.PDFBlobID, &i.AccessTokenHash)
+		&i.PaymentMethod, &i.PaymentRef, &i.LUTNumber, &i.TemplateVersion, &i.PDFBlobID, &i.AccessTokenHash,
+		&i.IRN, &i.AckNo, &ackDate, &i.SignedQR, &einvAt)
 	if err != nil {
 		return Invoice{}, notFound(err)
 	}
 	i.IssuedAt, i.InterState = fromMS(issued), inter == 1
+	i.AckDate, i.EInvoiceAt = fromMSZero(ackDate), fromMSZero(einvAt)
 	i.Supplier, i.Recipient, i.Lines = json.RawMessage(sup), json.RawMessage(rcp), json.RawMessage(lines)
 	if err := json.Unmarshal([]byte(flags), &i.Flags); err != nil {
 		return Invoice{}, fmt.Errorf("invoice %s flags: %w", i.ID, err)
@@ -131,6 +138,31 @@ func SetInvoiceFX(ctx context.Context, tx Tx, id, rate, source string, flags []s
 func SetInvoicePDF(ctx context.Context, tx Tx, id, blobID string) error {
 	_, err := tx.ExecContext(ctx, "UPDATE invoices SET pdf_blob_id = ? WHERE id = ?", blobID, id)
 	return err
+}
+
+// ClearInvoicePDF forgets the stored PDF of an invoice so that it is rendered
+// again, for example after the e-invoice QR code was recorded.
+func ClearInvoicePDF(ctx context.Context, tx Tx, id string) error {
+	_, err := tx.ExecContext(ctx, "UPDATE invoices SET pdf_blob_id = NULL WHERE id = ?", id)
+	return err
+}
+
+// SetInvoiceEInvoice records the IRN, acknowledgement and signed QR code of an
+// invoice (replacing earlier values). An IRN already on another invoice is
+// ErrConflict; an unknown invoice is ErrNotFound.
+func SetInvoiceEInvoice(ctx context.Context, tx Tx, id, irn, ackNo string, ackDate time.Time, signedQR string, now time.Time) error {
+	res, err := tx.ExecContext(ctx, `UPDATE invoices SET irn = ?, ack_no = ?, ack_date = ?, signed_qr = ?, einvoice_at = ? WHERE id = ?`,
+		irn, ackNo, ms(ackDate), signedQR, ms(now), id)
+	if IsUniqueViolation(err) {
+		return ErrConflict
+	}
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // CreditNote is a row of credit_notes.

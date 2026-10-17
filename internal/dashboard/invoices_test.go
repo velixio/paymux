@@ -48,7 +48,7 @@ func (e *env) taxApp(slug, entityGSTIN string) (store.App, store.TaxEntity) {
 	ent, err := e.inv.FindTaxEntity(ctx, entityGSTIN)
 	if err != nil {
 		ent, err = e.inv.AddTaxEntity(ctx, audit.System, invoice.TaxEntityInput{LegalName: "Legal " + slug, TradeName: "Trade " + slug, GSTIN: entityGSTIN,
-			Address: "1 MG Road, Mumbai", LUTNumber: "AD270226000001A", LUTFrom: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+			Address: "1 MG Road, Mumbai 400001", LUTNumber: "AD270226000001A", LUTFrom: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
 			LUTTo: time.Date(2027, 3, 31, 0, 0, 0, 0, time.UTC), SignatoryName: "A. Signatory", SupportEmail: "help@example.com"})
 		if err != nil {
 			e.t.Fatal(err)

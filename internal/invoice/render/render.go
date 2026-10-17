@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-pdf/fpdf"
 
+	"github.com/paymux/paymux/internal/qrcode"
 	"github.com/paymux/paymux/internal/tax"
 )
 
@@ -377,7 +378,65 @@ func (r *renderer) notes() {
 		}
 		r.y += r.para(marginX, r.y, contentW, "", 8.5, s) + 1
 	}
+	r.eInvoice()
 	r.y += 4
+}
+
+// qrModule is the side of one QR module in millimetres. The portal's signed
+// code is about 120 modules wide, so this keeps it near 42 mm and scannable.
+const qrModule = 0.34
+
+// eInvoice prints the IRN and acknowledgement of a registered e-invoice with
+// its QR code, drawn as filled rectangles (vector, no image).
+func (r *renderer) eInvoice() {
+	e := r.d.EInvoice
+	if e == nil || r.d.Kind != KindInvoice {
+		return
+	}
+	code, err := qrcode.New(e.QR)
+	if err != nil {
+		code = nil // too long for a QR code: the IRN text still identifies the invoice
+	}
+	qrMM := 0.0
+	if code != nil {
+		qrMM = float64(code.ViewBox()) * qrModule
+	}
+	h := max(qrMM, 24)
+	if r.y+h+8 > pageLimit {
+		r.p.AddPage()
+		r.y = 12
+	}
+	r.y += 2
+	r.font("B", 9)
+	r.p.SetXY(marginX, r.y)
+	r.p.CellFormat(contentW, 5, "e-Invoice", "", 0, "L", false, 0, "")
+	y0 := r.y + 6
+	textX := float64(marginX)
+	if code != nil {
+		r.p.SetFillColor(0, 0, 0)
+		const qz = 4
+		for y := 0; y < code.Size; y++ {
+			for x := 0; x < code.Size; {
+				if !code.Black(x, y) {
+					x++
+					continue
+				}
+				start := x
+				for x < code.Size && code.Black(x, y) {
+					x++
+				}
+				r.p.Rect(marginX+float64(start+qz)*qrModule, y0+float64(y+qz)*qrModule, float64(x-start)*qrModule, qrModule, "F")
+			}
+		}
+		r.p.SetFillColor(255, 255, 255)
+		textX = marginX + qrMM + 4
+	}
+	w := marginX + contentW - textX
+	th := r.para(textX, y0, w, "B", 8, "IRN (Invoice Reference Number)")
+	th += r.para(textX, y0+th, w, "", 8, e.IRN)
+	th += r.para(textX, y0+th, w, "", 8, "Ack No: "+e.AckNo)
+	th += r.para(textX, y0+th, w, "", 8, "Ack Date: "+e.AckDate.In(tax.IST).Format("02-01-2006 15:04:05"))
+	r.y = y0 + max(qrMM, th) + 2
 }
 
 func (r *renderer) signature() {

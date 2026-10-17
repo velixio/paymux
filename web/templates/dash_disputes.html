@@ -11,13 +11,13 @@
 <select name="provider" aria-label="Provider"><option value="">Any provider</option>{{range .ProviderOpts}}<option value="{{.}}"{{if eq . $.DispFilter.Provider}} selected{{end}}>{{.}}</option>{{end}}</select>
 <button class="btn small" type="submit">Filter</button>
 </form>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Dispute</th><th>App</th><th>Provider</th><th>Status</th><th>Amount</th><th>Reason</th><th>Respond by</th></tr></thead>
 <tbody>{{range .DispRows}}<tr{{if .DueSoon}} class="due-soon"{{end}}>
 <td><a href="/dashboard/disputes/{{.ID}}">{{.ID}}</a>{{if eq .Source "manual"}} <span class="flag">manual</span>{{end}}</td><td>{{.App}}</td><td>{{.Provider}}</td><td>{{.Status}}</td><td>{{.Amount}}</td><td>{{.Reason}}{{if .Stage}} <small class="muted">({{.Stage}})</small>{{end}}</td>
 <td>{{if .Due}}{{.Due}}{{else}}<span class="muted">none</span>{{end}}{{if .DueSoon}} <strong>due soon</strong>{{end}}</td></tr>
 {{else}}<tr><td colspan="7" class="muted">No disputes match.</td></tr>{{end}}</tbody>
-</table>
+</table></div>
 {{if .CanManage}}
 <h3>Record a dispute by hand</h3>
 <p class="muted">For providers that do not report disputes (Zoho Payments) or any the provider never sent. Enter the payment, the amount and the deadline shown in the provider's portal.</p>

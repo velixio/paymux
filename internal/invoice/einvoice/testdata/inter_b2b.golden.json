@@ -1,0 +1,60 @@
+{
+  "Version": "1.1",
+  "TranDtls": {
+    "TaxSch": "GST",
+    "SupTyp": "B2B",
+    "RegRev": "N",
+    "IgstOnIntra": "N"
+  },
+  "DocDtls": {
+    "Typ": "INV",
+    "No": "INV/2627/000002",
+    "Dt": "17/10/2026"
+  },
+  "SellerDtls": {
+    "Gstin": "27AAPFU0939F1ZV",
+    "LglNm": "Voice Studio Pvt Ltd",
+    "TrdNm": "Voicestudio",
+    "Addr1": "1 Marine Drive, Churchgate",
+    "Loc": "Mumbai",
+    "Pin": 400020,
+    "Stcd": "27",
+    "Ph": "919820012345",
+    "Em": "help@example.com"
+  },
+  "BuyerDtls": {
+    "Gstin": "29AAGCB7383J1Z4",
+    "LglNm": "Bangalore Bytes Pvt Ltd",
+    "Pos": "29",
+    "Addr1": "5 Residency Road",
+    "Addr2": "Ashok Nagar",
+    "Loc": "Bengaluru",
+    "Pin": 560025,
+    "Stcd": "29"
+  },
+  "ItemList": [
+    {
+      "SlNo": "1",
+      "PrdDesc": "Pro plan, annual",
+      "IsServc": "Y",
+      "HsnCd": "998315",
+      "Qty": 1,
+      "Unit": "OTH",
+      "UnitPrice": 1000.00,
+      "TotAmt": 1000.00,
+      "AssAmt": 1000.00,
+      "GstRt": 18,
+      "IgstAmt": 180.00,
+      "CgstAmt": 0.00,
+      "SgstAmt": 0.00,
+      "TotItemVal": 1180.00
+    }
+  ],
+  "ValDtls": {
+    "AssVal": 1000.00,
+    "CgstVal": 0.00,
+    "SgstVal": 0.00,
+    "IgstVal": 180.00,
+    "TotInvVal": 1180.00
+  }
+}

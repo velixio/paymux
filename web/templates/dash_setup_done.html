@@ -5,10 +5,10 @@
 <p>The administrator <strong>{{.Email}}</strong> was created{{with .SetupOrg}} for <strong>{{.}}</strong>{{end}}.</p>
 {{if .SetupKeys}}<h4>API keys for {{.SetupApp}}</h4>
 <p class="error" role="alert">Copy these keys now. They are shown only once and cannot be recovered; you can create new ones later on the app's page.</p>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Mode</th><th>Key</th></tr></thead>
 <tbody>{{range .SetupKeys}}<tr><td>{{.Mode}}</td><td><code class="wrap">{{.Token}}</code></td></tr>{{end}}</tbody>
-</table>
+</table></div>
 <p class="muted">Use the test key while you build; switch to the live key when you go live. Keep both out of source control.</p>
 {{end}}
 {{if .SetupSignedIn}}<p><a class="btn" href="/dashboard/">Open the dashboard</a></p>

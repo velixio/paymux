@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/paymux/paymux/internal/alertcenter"
 	"github.com/paymux/paymux/internal/auth"
 	"github.com/paymux/paymux/internal/authz"
 	"github.com/paymux/paymux/internal/connectors"
@@ -99,6 +100,8 @@ type Options struct {
 	OIDCDefaultRole    string
 	// PaymentLinks serves the payment links page.
 	PaymentLinks *paylinks.Service
+	// Alerts keeps the ops alerts shown on the Alerts page and in the nav badge.
+	Alerts *alertcenter.Service
 	// Location is the time zone of "today" and of date filters (default UTC).
 	Location *time.Location
 	// PageSize is the number of rows per list page (default 25).
@@ -133,8 +136,8 @@ type Dashboard struct {
 // New builds a Dashboard.
 func New(o Options) (*Dashboard, error) {
 	if o.DB == nil || o.Box == nil || o.Renderer == nil || o.BaseURL == nil || len(o.MasterKey) == 0 ||
-		o.Core == nil || o.Settings == nil || o.Outbound == nil || o.Invoice == nil || o.Connectors == nil || o.Disputes == nil || o.Recon == nil || o.Jobs == nil || o.PaymentLinks == nil {
-		return nil, errors.New("dashboard: DB, Box, Renderer, BaseURL, MasterKey, Core, Settings, Outbound, Invoice, Connectors, Disputes, Recon, Jobs and PaymentLinks are required")
+		o.Core == nil || o.Settings == nil || o.Outbound == nil || o.Invoice == nil || o.Connectors == nil || o.Disputes == nil || o.Recon == nil || o.Jobs == nil || o.PaymentLinks == nil || o.Alerts == nil {
+		return nil, errors.New("dashboard: DB, Box, Renderer, BaseURL, MasterKey, Core, Settings, Outbound, Invoice, Connectors, Disputes, Recon, Jobs, PaymentLinks and Alerts are required")
 	}
 	if o.Location == nil {
 		o.Location = time.UTC
@@ -182,7 +185,7 @@ var navItems = []navItem{
 	{"invoices", "Invoices", prefix + "/invoices"}, {"reports", "Reports", prefix + "/reports"},
 	{"apps", "Apps", prefix + "/apps"}, {"providers", "Providers", prefix + "/providers"},
 	{"tax-entities", "Tax entities", prefix + "/tax-entities"}, {"fx", "FX rates", prefix + "/fx"},
-	{"settings", "Settings", prefix + "/settings"}, {"appearance", "Appearance", prefix + "/appearance"}, {"audit", "Audit", prefix + "/audit"}, {"users", "Users", prefix + "/users"},
+	{"settings", "Settings", prefix + "/settings"}, {"appearance", "Appearance", prefix + "/appearance"}, {"alerts", "Alerts", prefix + "/alerts"}, {"audit", "Audit", prefix + "/audit"}, {"users", "Users", prefix + "/users"},
 	{"roles", "Roles", prefix + "/roles"},
 }
 
@@ -276,6 +279,9 @@ type view struct {
 	Self      string
 	// section placeholder
 	Section string
+
+	// header: the count of open alerts in the nav badge
+	AlertsOpen, AlertsCritical int
 
 	// header: test/live toggle and where to come back to
 	Mode, Path string
@@ -584,8 +590,10 @@ func (d *Dashboard) authed(action authz.Action, h authedHandler) http.HandlerFun
 
 func (d *Dashboard) shell(r *http.Request, s *session, active, title string) view {
 	u := s.User
-	return view{Title: title, Nav: navItems, Active: active, User: &u, CSRF: s.csrf(), Self: u.ID,
+	v := view{Title: title, Nav: navItems, Active: active, User: &u, CSRF: s.csrf(), Self: u.ID,
 		Mode: d.mode(r, s), Path: r.URL.RequestURI()}
+	v.AlertsOpen, v.AlertsCritical = d.alertCounts(r)
+	return v
 }
 
 func (d *Dashboard) root(w http.ResponseWriter, r *http.Request, s *session) {

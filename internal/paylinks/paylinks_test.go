@@ -235,17 +235,23 @@ func TestGetAndListAreScopedToAppAndMode(t *testing.T) {
 			}
 			return
 		}
+		// Links created in the same millisecond have no time order, so the
+		// expectation follows the ids, which is what the list sorts by.
+		newer, older := a.ID, b.ID
+		if older > newer {
+			newer, older = older, newer
+		}
 		ls, err := e.links.List(ctx, e.scope, paylinks.ListParams{})
-		if err != nil || strings.Join(ids(ls), ",") != b.ID+","+a.ID {
+		if err != nil || strings.Join(ids(ls), ",") != newer+","+older {
 			t.Fatalf("list: %v %v", ids(ls), err)
 		}
 		on := true
 		ls, _ = e.links.List(ctx, e.scope, paylinks.ListParams{Active: &on})
-		if strings.Join(ids(ls), ",") != a.ID {
+		if strings.Join(ids(ls), ",") != a.ID { // b was deactivated
 			t.Errorf("active only: %v", ids(ls))
 		}
-		ls, _ = e.links.List(ctx, e.scope, paylinks.ListParams{Limit: 1, StartingAfter: b.ID})
-		if strings.Join(ids(ls), ",") != a.ID {
+		ls, _ = e.links.List(ctx, e.scope, paylinks.ListParams{Limit: 1, StartingAfter: newer})
+		if strings.Join(ids(ls), ",") != older {
 			t.Errorf("cursor: %v", ids(ls))
 		}
 		// The dashboard asks per org.

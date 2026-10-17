@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/docs"
+	"github.com/paymux/paymux/internal/alertcenter"
 	"github.com/paymux/paymux/internal/apidocs"
 	"github.com/paymux/paymux/internal/checkout"
 	"github.com/paymux/paymux/internal/config"
@@ -182,7 +183,10 @@ func (a *App) Start(ctx context.Context) error {
 	inv.RegisterJobs(q)
 	// Ops alerts (PAYMUX_OPS_EMAILS and PAYMUX_OPS_WEBHOOK_URL) go through one
 	// rate-limited sender shared by every component that raises them.
-	alerts := notify.NewAlerts(notify.AlertsOptions{Mailer: mailer, Emails: a.cfg.OpsEmails, WebhookURL: a.cfg.OpsWebhookURL})
+	// Every alert is also kept in the alerts table, for the dashboard's Alerts page.
+	alertCenter := alertcenter.New(db, nil)
+	alerts := notify.NewAlerts(notify.AlertsOptions{Mailer: mailer, Emails: a.cfg.OpsEmails, WebhookURL: a.cfg.OpsWebhookURL,
+		Recorder: alertCenter, Logger: a.log})
 	a.registerHookJob(q, alerts)
 	// A payment that succeeds issues its invoice and spends the single-use
 	// payment link it came from, in the same transaction.
@@ -331,7 +335,7 @@ func (a *App) Start(ctx context.Context) error {
 	dash, err := dashboard.New(dashboard.Options{DB: db, Box: box, Renderer: renderer, Themes: themes, MasterKey: a.cfg.MasterKey,
 		BaseURL: a.cfg.BaseURL, DevSkip2FA: a.cfg.DevSkip2FA, Logger: a.log,
 		TrustedProxies: a.cfg.TrustedProxies, Core: svc, Settings: set, Outbound: out, Invoice: inv, Connectors: conns, Disputes: disp, Recon: rec, Jobs: q,
-		Subscriptions: subs, PaymentLinks: links, Location: a.cfg.Location,
+		Subscriptions: subs, PaymentLinks: links, Alerts: alertCenter, Location: a.cfg.Location,
 		OIDC: a.oidcClient(), OIDCAllowedDomains: a.cfg.OIDCAllowedDomains, OIDCDefaultRole: a.cfg.OIDCDefaultRole})
 	if err != nil {
 		return err

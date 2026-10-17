@@ -9,7 +9,7 @@
 <input name="q" type="search" value="{{.SubFilter.Q}}" placeholder="Subscription id or customer email" aria-label="Search" size="34">
 <button class="btn small" type="submit">Filter</button>
 </form>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Subscription</th><th>App</th><th>Customer</th><th>Status</th><th>Amount</th><th>Billing</th><th>Period ends</th><th>Created</th></tr></thead>
 <tbody>
 {{range .Subs}}<tr>
@@ -18,6 +18,6 @@
 <td>{{.Amount}}</td><td>{{.Billing}}</td><td>{{.PeriodEnd}}</td><td>{{.Created}}</td>
 </tr>{{else}}<tr><td colspan="8" class="muted">No subscriptions match.</td></tr>{{end}}
 </tbody>
-</table>
+</table></div>
 {{with .SubNext}}<p><a class="next" href="{{.}}">Older subscriptions &rarr;</a></p>{{end}}
 {{template "dash_close" .}}{{end}}

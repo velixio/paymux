@@ -4,12 +4,12 @@
 {{define "content"}}{{template "dash_open" .}}
 <h2>Provider accounts</h2>
 <p class="muted">Payment provider accounts, one per legal entity or provider login. Register each account's webhook URL in the provider's dashboard.</p>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Account</th><th>Connector</th><th>Mode</th><th>Status</th><th>Currencies</th><th>Purposes</th><th>Webhook URL</th></tr></thead>
 <tbody>{{range .Providers}}<tr><td><a href="/dashboard/providers/{{.ID}}">{{.Name}}</a></td><td>{{.Display}}</td><td>{{.Mode}}</td><td>{{.Status}}</td><td>{{.Currencies}}</td><td>{{.Purposes}}</td>
 <td><code class="wrap">{{.Webhook}}</code> <button type="button" class="linkbtn" data-copy="{{.Webhook}}">Copy</button></td></tr>
 {{else}}<tr><td colspan="7" class="muted">No provider accounts yet.</td></tr>{{end}}</tbody>
-</table>
+</table></div>
 {{if .CanManage}}
 <h3>Add an account</h3>
 <ul>{{range .ConnOpts}}<li><a href="/dashboard/providers/new?connector={{.Name}}">{{.Display}}</a> <small class="muted">{{.Name}}</small></li>{{else}}<li class="muted">No connectors are built into this binary.</li>{{end}}</ul>

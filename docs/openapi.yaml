@@ -1181,6 +1181,9 @@ components:
             examples: [pos_defaulted, fx_pending, export_igst, recipient_invalid]
         template_version: { type: string }
         pdf_ready: { type: boolean }
+        irn: { type: string, pattern: "^[0-9a-f]{64}$", description: "E-invoice Invoice Reference Number, once the operator has registered the invoice at the GST portal and recorded the answer." }
+        ack_no: { type: string, description: Acknowledgement number from the portal. }
+        ack_date: { type: string, format: date-time, description: Acknowledgement date from the portal. }
     InvoiceList:
       type: object
       required: [object, data, has_more]

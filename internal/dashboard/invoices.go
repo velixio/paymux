@@ -51,6 +51,7 @@ type docView struct {
 	ReissueOpen                                            bool
 	Billing                                                store.Billing
 	ReissueReason                                          string
+	EInvoice                                               *eInvoiceView
 }
 
 func (d *Dashboard) routesInvoices() {
@@ -254,6 +255,9 @@ type docMessage struct {
 	reissue bool
 	billing store.Billing
 	reason  string
+	// the e-invoice record form as typed, after a mistake
+	einv     invoice.EInvoiceRecord
+	einvOpen bool
 }
 
 func (d *Dashboard) invoicePage(w http.ResponseWriter, r *http.Request, s *session) {
@@ -311,6 +315,7 @@ func (d *Dashboard) renderInvoice(w http.ResponseWriter, r *http.Request, s *ses
 	if m.reissue {
 		doc.Billing, doc.ReissueReason, doc.ReissueOpen = m.billing, m.reason, true
 	}
+	d.fillEInvoice(doc, inv, s, m)
 	v := d.shell(r, s, "invoices", "Invoice "+inv.Number)
 	v.Doc, v.Error, v.Notice = doc, m.err, m.notice
 	d.render(w, firstStatus(m.status), "dash_invoice", v)

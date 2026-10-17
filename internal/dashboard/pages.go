@@ -55,6 +55,11 @@ type Page struct {
 	// reconciliation
 	ReconAccounts []reconAcct
 
+	// alerts
+	AlertRows   []alertRow
+	AlertFilter alertFilter
+	AlertKinds  []string
+
 	// payment links
 	LinkRows   []linkRow
 	LinkFilter linkFilter
@@ -110,6 +115,8 @@ func (d *Dashboard) routesPages() {
 	d.routesDomains()
 	d.routesDisputes()
 	d.routesRecon()
+	d.routesAlerts()
+	d.routesEInvoice()
 	d.routesPaymentLinks()
 	d.routesAppearance()
 }

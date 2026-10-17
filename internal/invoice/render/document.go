@@ -92,6 +92,20 @@ type Document struct {
 	SignatoryName   string
 	FooterNote      string
 	TemplateVersion string
+
+	// EInvoice is what the Invoice Registration Portal returned for the
+	// invoice; nil until the operator has recorded it. Credit notes ignore it.
+	EInvoice *EInvoiceInfo
+}
+
+// EInvoiceInfo is the portal's answer for one invoice.
+type EInvoiceInfo struct {
+	IRN     string
+	AckNo   string
+	AckDate time.Time // printed in IST
+	// QR is the signed QR code token; it is drawn as a QR code, or left out
+	// when it is too long for one.
+	QR string
 }
 
 // Signer signs a finished PDF (PAdES with the tax entity's DSC).
