@@ -79,11 +79,11 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func apiError(w http.ResponseWriter, code int, desc string) {
+func writeAPIError(w http.ResponseWriter, code int, desc string) {
 	writeJSON(w, code, map[string]any{"error": map[string]any{"code": "BAD_REQUEST_ERROR", "description": desc}})
 }
 
-func collection(items ...any) map[string]any {
+func fakeCollection(items ...any) map[string]any {
 	return map[string]any{"entity": "collection", "count": len(items), "items": items}
 }
 
@@ -101,7 +101,7 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		in["id"], in["status"], in["entity"] = "order_Nx0", "created", "order"
 		writeJSON(w, 200, in)
 	case r.Method == "GET" && p == "/v1/orders":
-		writeJSON(w, 200, collection(map[string]any{"id": "order_Nx0", "receipt": r.URL.Query().Get("receipt"), "amount": 49900, "currency": "INR", "status": "attempted"}))
+		writeJSON(w, 200, fakeCollection(map[string]any{"id": "order_Nx0", "receipt": r.URL.Query().Get("receipt"), "amount": 49900, "currency": "INR", "status": "attempted"}))
 	case r.Method == "GET" && p == "/v1/orders/order_Nx0":
 		st := "attempted"
 		if f.payStatus == "" {
@@ -110,15 +110,15 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"id": "order_Nx0", "amount": 49900, "currency": "INR", "status": st, "receipt": "pay_ref_01"})
 	case r.Method == "GET" && p == "/v1/orders/order_Nx0/payments":
 		if f.payStatus == "" {
-			writeJSON(w, 200, collection())
+			writeJSON(w, 200, fakeCollection())
 			return
 		}
-		writeJSON(w, 200, collection(payJSON(f.payStatus)))
+		writeJSON(w, 200, fakeCollection(payJSON(f.payStatus)))
 	case r.Method == "GET" && p == "/v1/payments/pay_Nx1":
 		writeJSON(w, 200, payJSON(f.payStatus))
 	case r.Method == "POST" && p == "/v1/payments/pay_Nx1/capture":
 		if f.captureFails {
-			apiError(w, 400, "This payment has already been captured")
+			writeAPIError(w, 400, "This payment has already been captured")
 			return
 		}
 		f.mu.Lock()
@@ -127,12 +127,12 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, payJSON("captured"))
 	case r.Method == "POST" && p == "/v1/payments/pay_Nx1/refund":
 		if f.refundErrCode != 0 {
-			apiError(w, f.refundErrCode, "The refund amount provided is greater than amount captured")
+			writeAPIError(w, f.refundErrCode, "The refund amount provided is greater than amount captured")
 			return
 		}
 		writeJSON(w, 200, refundJSON(f.refundStatus))
 	case r.Method == "GET" && p == "/v1/payments/pay_Nx1/refunds":
-		writeJSON(w, 200, collection(refundJSON(f.refundStatus)))
+		writeJSON(w, 200, fakeCollection(refundJSON(f.refundStatus)))
 	case r.Method == "GET" && p == "/v1/refunds/rfnd_Nx2":
 		writeJSON(w, 200, refundJSON(f.refundStatus))
 	case r.Method == "GET" && (p == "/v1/payments" || p == "/v1/refunds"):
@@ -150,15 +150,15 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				items = append(items, refundJSON("processed"))
 			}
 		}
-		writeJSON(w, 200, collection(items...))
+		writeJSON(w, 200, fakeCollection(items...))
 	case r.Method == "GET" && p == "/v1/disputes":
-		writeJSON(w, 200, collection(disputeJSON("open")))
+		writeJSON(w, 200, fakeCollection(disputeJSON("open")))
 	case r.Method == "GET" && p == "/v1/disputes/disp_Nx3":
 		writeJSON(w, 200, disputeJSON("under_review"))
 	case strings.HasPrefix(p, "/v1/missing"):
-		apiError(w, 404, "not found")
+		writeAPIError(w, 404, "not found")
 	default:
-		apiError(w, 404, "The requested URL was not found on the server")
+		writeAPIError(w, 404, "The requested URL was not found on the server")
 	}
 }
 
