@@ -44,6 +44,15 @@ type State struct {
 	DisputeErr, AcceptErr, EvidenceErr error
 	// ListErr fails ListPayments and ListRefunds.
 	ListErr error
+	// Settlements is the provider's view; ListSettlements returns those settled in the range.
+	Settlements []connector.SettlementSnapshot
+	// Mandates and Subs are the provider's view (FetchMandate, FetchSubscription), keyed by provider id.
+	Mandates map[string]connector.MandateSnapshot
+	Subs     map[string]connector.SubscriptionSnapshot
+	// ManagerErr fails FetchMandate and FetchSubscription.
+	ManagerErr                 error
+	MandateFetches, SubFetches []string
+	SettleErr                  error
 	// AcceptFn and EvidenceFn run after the call is recorded, so a test can
 	// move the provider's dispute (for example to under_review).
 	AcceptFn   func(connector.DisputeRef)
@@ -76,12 +85,14 @@ func Register(prefix string) *State { return RegisterSchema(prefix, schema) }
 // than the default the fake accepts any config object.
 func RegisterSchema(prefix, configSchema string) *State {
 	st := &State{Name: fmt.Sprintf("%s%d", prefix, seq.Add(1)), Payments: map[string]connector.PaymentSnapshot{},
-		Refunds: map[string]connector.RefundSnapshot{}, Disputes: map[string]connector.DisputeSnapshot{}}
+		Refunds: map[string]connector.RefundSnapshot{}, Disputes: map[string]connector.DisputeSnapshot{},
+		Mandates: map[string]connector.MandateSnapshot{}, Subs: map[string]connector.SubscriptionSnapshot{}}
 	info := connector.Info{
 		Version: "test", DisplayName: "Fake", ConfigSchema: json.RawMessage(configSchema),
-		Currencies:   []string{"INR", "USD", "BDT"},
-		Capabilities: []connector.Capability{connector.CapRefund, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapList},
-		RateLimit:    connector.RateLimit{RequestsPerSecond: 100, Burst: 100},
+		Currencies: []string{"INR", "USD", "BDT"},
+		Capabilities: []connector.Capability{connector.CapRefund, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapList, connector.CapSettle,
+			connector.CapMandateManager, connector.CapSubscriptionManager},
+		RateLimit: connector.RateLimit{RequestsPerSecond: 100, Burst: 100},
 	}
 	connector.Register(st.Name, func(cfg json.RawMessage, deps connector.Deps) (connector.Connector, error) {
 		var c struct {
@@ -323,10 +334,83 @@ func (c *Conn) ListRefunds(_ context.Context, tr connector.TimeRange, _ connecto
 	return connector.Page[connector.RefundSnapshot]{Items: items}, nil
 }
 
+// ListSettlements implements connector.Settler.
+func (c *Conn) ListSettlements(_ context.Context, tr connector.TimeRange) ([]connector.SettlementSnapshot, error) {
+	c.st.mu.Lock()
+	defer c.st.mu.Unlock()
+	if c.st.SettleErr != nil {
+		return nil, c.st.SettleErr
+	}
+	var out []connector.SettlementSnapshot
+	for _, s := range c.st.Settlements {
+		if inRange(tr, s.SettledAt) {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+// FetchMandate implements connector.MandateManager.
+func (c *Conn) FetchMandate(_ context.Context, ref connector.MandateRef) (connector.MandateSnapshot, error) {
+	c.st.mu.Lock()
+	defer c.st.mu.Unlock()
+	c.st.MandateFetches = append(c.st.MandateFetches, ref.ProviderMandateID)
+	if c.st.ManagerErr != nil {
+		return connector.MandateSnapshot{}, c.st.ManagerErr
+	}
+	m, ok := c.st.Mandates[ref.ProviderMandateID]
+	if !ok {
+		return connector.MandateSnapshot{}, connector.ErrNotFound
+	}
+	return m, nil
+}
+
+// FetchSubscription implements connector.SubscriptionManager.
+func (c *Conn) FetchSubscription(_ context.Context, ref connector.SubscriptionRef) (connector.SubscriptionSnapshot, error) {
+	c.st.mu.Lock()
+	defer c.st.mu.Unlock()
+	c.st.SubFetches = append(c.st.SubFetches, ref.ProviderSubscriptionID)
+	if c.st.ManagerErr != nil {
+		return connector.SubscriptionSnapshot{}, c.st.ManagerErr
+	}
+	s, ok := c.st.Subs[ref.ProviderSubscriptionID]
+	if !ok {
+		return connector.SubscriptionSnapshot{}, connector.ErrNotFound
+	}
+	return s, nil
+}
+
+// The remaining manager methods are not scripted.
+
+func (c *Conn) CreateMandateCheckout(context.Context, connector.MandateRequest) (connector.CheckoutResult, error) {
+	return connector.CheckoutResult{}, connector.ErrUnsupported
+}
+func (c *Conn) NotifyPreDebit(context.Context, connector.PreDebitRequest) error {
+	return connector.ErrUnsupported
+}
+func (c *Conn) ChargeMandate(context.Context, connector.ChargeRequest) (connector.PaymentSnapshot, error) {
+	return connector.PaymentSnapshot{}, connector.ErrUnsupported
+}
+func (c *Conn) RevokeMandate(context.Context, connector.MandateRef) error {
+	return connector.ErrUnsupported
+}
+func (c *Conn) CreateSubscriptionCheckout(context.Context, connector.SubscriptionRequest) (connector.CheckoutResult, error) {
+	return connector.CheckoutResult{}, connector.ErrUnsupported
+}
+func (c *Conn) CancelSubscription(context.Context, connector.SubscriptionRef, bool) error {
+	return connector.ErrUnsupported
+}
+func (c *Conn) UpdateSubscriptionAmount(context.Context, connector.SubscriptionRef, int64) error {
+	return connector.ErrUnsupported
+}
+
 var (
-	_ connector.Lister           = (*Conn)(nil)
-	_ connector.Connector        = (*Conn)(nil)
-	_ connector.Refunder         = (*Conn)(nil)
-	_ connector.DisputeReader    = (*Conn)(nil)
-	_ connector.DisputeResponder = (*Conn)(nil)
+	_ connector.MandateManager      = (*Conn)(nil)
+	_ connector.SubscriptionManager = (*Conn)(nil)
+	_ connector.Settler             = (*Conn)(nil)
+	_ connector.Lister              = (*Conn)(nil)
+	_ connector.Connector           = (*Conn)(nil)
+	_ connector.Refunder            = (*Conn)(nil)
+	_ connector.DisputeReader       = (*Conn)(nil)
+	_ connector.DisputeResponder    = (*Conn)(nil)
 )

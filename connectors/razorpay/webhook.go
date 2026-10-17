@@ -13,11 +13,13 @@ import (
 
 // Wire entities (only the fields Paymux reads). Timestamps are unix seconds.
 type paymentEntity struct {
-	ID               string `json:"id"`
-	OrderID          string `json:"order_id"`
-	Status           string `json:"status"`
-	Method           string `json:"method"`
-	Currency         string `json:"currency"`
+	ID       string `json:"id"`
+	OrderID  string `json:"order_id"`
+	Status   string `json:"status"`
+	Method   string `json:"method"`
+	Currency string `json:"currency"`
+	// SubscriptionID is set by Razorpay on payments that charge a subscription.
+	SubscriptionID   string `json:"subscription_id"`
 	ErrorCode        string `json:"error_code"`
 	ErrorDescription string `json:"error_description"`
 	Amount           int64  `json:"amount"`
@@ -94,7 +96,7 @@ func mapDisputeStatus(raw string) connector.DisputeStatus {
 
 func (p paymentEntity) snapshot() connector.PaymentSnapshot {
 	return connector.PaymentSnapshot{
-		ProviderOrderID: p.OrderID, ProviderPaymentID: p.ID,
+		ProviderOrderID: p.OrderID, ProviderPaymentID: p.ID, SubscriptionID: p.SubscriptionID,
 		Status: mapPaymentStatus(p.Status), RawStatus: p.Status,
 		Amount: p.Amount, Currency: p.Currency, Method: p.Method,
 		Fee: p.Fee, Tax: p.Tax, AmountRefunded: p.AmountRefunded,
@@ -173,6 +175,9 @@ func (r *razorpay) ParseWebhook(ctx context.Context, req connector.WebhookReques
 			// A renewal: the same notification carries the captured payment, so
 			// the consumer can link it to the subscription without guessing.
 			ps := ev.Payload.Payment.Entity.snapshot()
+			if ps.SubscriptionID == "" {
+				ps.SubscriptionID = s.ProviderSubscriptionID
+			}
 			n.Payment = &ps
 		}
 		return []connector.Notification{n}, nil

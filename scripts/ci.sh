@@ -14,6 +14,9 @@ test -z "$(git ls-files -z "*.go" | xargs -0 gofmt -l)" || { git ls-files -z "*.
 step "go vet"
 go vet ./...
 
+step "API snapshot (pkg/... exported API == api/pkg.txt)"
+go run ./scripts/apisnap -check
+
 step "staticcheck ${STATICCHECK_VERSION}"
 go run "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}" ./...
 

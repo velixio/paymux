@@ -46,7 +46,7 @@ func TestCancelNowRevokesTheMandate(t *testing.T) {
 			t.Errorf("second cancel: %v", err)
 		}
 		e.drive(70*24*hour, 24*hour)
-		if e.r.chargeCount() != 1 {
+		if e.r.chargeCount() != 0 {
 			t.Errorf("charges after cancel = %d", e.r.chargeCount())
 		}
 		// Scoped to its app and mode.
@@ -72,7 +72,7 @@ func TestCancelAtPeriodEnd(t *testing.T) {
 		}
 		e.advanceTo(utc(2027, 2, 28, 4, 0))
 		got = e.sub(sub.ID)
-		if got.Status != "canceled" || e.r.chargeCount() != 1 {
+		if got.Status != "canceled" || e.r.chargeCount() != 0 {
 			t.Fatalf("at the boundary: status=%s charges=%d", got.Status, e.r.chargeCount())
 		}
 		if ev := e.eventsOf("subscription.canceled"); len(ev) != 1 {
@@ -110,32 +110,11 @@ func TestTotalCountEndsTheSubscription(t *testing.T) {
 		e.advanceTo(t0.AddDate(0, 0, 12))
 		e.advanceTo(t0.AddDate(0, 0, 14))
 		got := e.sub(sub.ID)
-		if got.Status != "ended" || e.r.chargeCount() != 2 || got.EndedAt.IsZero() {
+		if got.Status != "ended" || e.r.chargeCount() != 1 || got.EndedAt.IsZero() {
 			t.Fatalf("status=%s charges=%d", got.Status, e.r.chargeCount())
 		}
 		if len(e.eventsOf("subscription.ended")) != 1 {
 			t.Errorf("events = %v", e.eventTypes())
-		}
-	})
-}
-
-func TestTrialChargesAtTrialEnd(t *testing.T) {
-	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
-		e := newEnv(t, db, t0)
-		c := e.mustCreate(func(i *subscriptions.CreateInput) { i.TrialDays = 14 })
-		sub := e.activateMandate(c)
-		e.runJobs()
-		if sub.Status != "trialing" || e.r.chargeCount() != 0 {
-			t.Fatalf("status=%s charges=%d", sub.Status, e.r.chargeCount())
-		}
-		e.advanceTo(t0.AddDate(0, 0, 13))
-		if e.r.chargeCount() != 0 {
-			t.Fatal("charged during the trial")
-		}
-		e.advanceTo(t0.AddDate(0, 0, 14))
-		got := e.sub(sub.ID)
-		if got.Status != "active" || e.r.chargeCount() != 1 || got.RenewalsDone != 1 {
-			t.Fatalf("after the trial: %+v charges=%d", got, e.r.chargeCount())
 		}
 	})
 }
@@ -154,8 +133,8 @@ func TestUpdateAmountAppliesFromTheNextPeriod(t *testing.T) {
 		}
 		e.advanceTo(utc(2027, 2, 28, 4, 0))
 		got := e.sub(sub.ID)
-		if got.Amount != 60000 || got.PendingAmount != 0 || e.r.charges[1].Amount != 60000 {
-			t.Errorf("sub=%+v charge=%+v", got, e.r.charges[1])
+		if got.Amount != 60000 || got.PendingAmount != 0 || e.r.charges[0].Amount != 60000 {
+			t.Errorf("sub=%+v charge=%+v", got, e.r.charges[0])
 		}
 		if pays := e.renewalPayments(sub.ID); pays[0].Amount != 49900 || pays[1].Amount != 60000 {
 			t.Errorf("the old period must keep its price: %+v", pays)
@@ -230,13 +209,18 @@ func TestReauthorizationFlow(t *testing.T) {
 		e.advanceTo(utc(2027, 2, 26, 4, 0))
 		e.advanceTo(utc(2027, 2, 28, 4, 0))
 		got = e.sub(sub.ID)
-		if e.r.chargeCount() != 1 || got.Status != "past_due" {
+		if e.r.chargeCount() != 0 || got.Status != "past_due" {
 			t.Fatalf("charges=%d status=%s", e.r.chargeCount(), got.Status)
 		}
 
 		// The customer authorises the bigger mandate: swap, revoke, resume.
 		e.activateMandateByID(pending, "pm_new")
 		e.runJobs()
+		// The new mandate needs its own notice: the resumed debit waits 24h for it.
+		if e.r.chargeCount() != 0 || len(e.r.notices) != 2 || e.r.notices[1].Mandate.ProviderMandateID != "pm_new" {
+			t.Fatalf("charges=%d notices=%+v", e.r.chargeCount(), e.r.notices)
+		}
+		e.advanceTo(e.clock().Add(24 * hour))
 		got = e.sub(sub.ID)
 		if got.MandateID != pending.ID || got.PendingMandateID != "" || got.RequiresReauthorization {
 			t.Fatalf("after swap: %+v", got)
@@ -247,7 +231,7 @@ func TestReauthorizationFlow(t *testing.T) {
 		if len(e.r.revoked) != 1 || e.r.revoked[0] != "pm_"+oldMandate.ID {
 			t.Errorf("provider revocations = %v", e.r.revoked)
 		}
-		if e.r.chargeCount() != 2 || e.r.charges[1].Amount != 100000 || e.r.charges[1].Mandate.ProviderMandateID != "pm_new" {
+		if e.r.chargeCount() != 1 || e.r.charges[0].Amount != 100000 || e.r.charges[0].Mandate.ProviderMandateID != "pm_new" {
 			t.Fatalf("resumed charge = %+v", e.r.charges)
 		}
 		if got.Status != "active" || got.Amount != 100000 || got.RenewalsDone != 2 {
@@ -323,13 +307,17 @@ func TestMandateRevokedByTheCustomer(t *testing.T) {
 		e.advanceTo(utc(2027, 2, 26, 4, 0))
 		e.advanceTo(utc(2027, 2, 28, 4, 0))
 		got = e.sub(sub.ID)
-		if got.Status != "past_due" || e.r.chargeCount() != 1 {
+		if got.Status != "past_due" || e.r.chargeCount() != 0 {
 			t.Fatalf("status=%s charges=%d (a revoked mandate must not be debited)", got.Status, e.r.chargeCount())
 		}
 		e.activateMandateByID(e.mandate(got.PendingMandateID), "pm_again")
 		e.runJobs()
+		if e.r.chargeCount() != 0 {
+			t.Fatal("the new mandate was debited without its own notice")
+		}
+		e.advanceTo(e.clock().Add(24 * hour))
 		got = e.sub(sub.ID)
-		if got.Status != "active" || e.r.chargeCount() != 2 || got.RequiresReauthorization {
+		if got.Status != "active" || e.r.chargeCount() != 1 || got.RequiresReauthorization {
 			t.Errorf("after re-authorization: %+v charges=%d", got, e.r.chargeCount())
 		}
 	})

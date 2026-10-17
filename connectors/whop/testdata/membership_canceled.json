@@ -1,0 +1,1 @@
+{"id":"msg_m2","api_version":"v1","type":"membership.deactivated","timestamp":"2026-10-17T12:00:00Z","data":{"id":"mem_w1","status":"canceled","metadata":{"sub":"sub_x","ref":"SUBREF01"},"plan":{"id":"plan_w1"},"renewal_period_start":"2026-10-17T11:00:00Z","renewal_period_end":"2026-11-16T11:00:00Z","cancel_at_period_end":false}}

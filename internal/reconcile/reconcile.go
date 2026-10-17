@@ -60,12 +60,19 @@ type Options struct {
 	Loc    *time.Location
 	Logger *slog.Logger
 	Now    func() time.Time
-	// SubscriptionOf returns the provider subscription id a payment belongs
-	// to (renewals), "" for none; KnownSubscription says whether Paymux has
-	// that subscription. A payment of a known subscription that Paymux does
-	// not have is stored as renewal_to_link for the subscriptions lane.
-	SubscriptionOf    func(connector.PaymentSnapshot) string
-	KnownSubscription func(string) bool
+	// KnownSubscription says whether Paymux has the provider subscription
+	// (of this provider account). A payment of a known subscription that
+	// Paymux does not have is a provider-managed renewal that was missed.
+	KnownSubscription func(ctx context.Context, accountID, providerSubscriptionID string) bool
+	// LinkRenewal records such a renewal payment on its subscription (the
+	// subscriptions service creates the renewal payment). Without it, or when
+	// it fails, the renewal is stored as renewal_to_link and retried by the
+	// next run.
+	LinkRenewal func(ctx context.Context, accountID string, pay connector.PaymentSnapshot) error
+	// Subscriptions applies the provider's mandate and subscription status
+	// to Paymux's (the subscriptions service). Without it mandates and
+	// subscriptions are not reconciled.
+	Subscriptions SubscriptionSink
 }
 
 // Service runs reconciliations.
@@ -275,7 +282,13 @@ func (s *Service) reconcile(ctx context.Context, pa store.ProviderAccount, run *
 	if err := s.reconcilePayments(ctx, pa, run, theirsPay); err != nil {
 		return err
 	}
-	return s.reconcileRefunds(ctx, pa, run, theirsRef)
+	if err := s.reconcileRefunds(ctx, pa, run, theirsRef); err != nil {
+		return err
+	}
+	if err := s.reconcileSettlements(ctx, pa, run, live.Connector); err != nil {
+		return err
+	}
+	return s.reconcileMandatesAndSubscriptions(ctx, pa, run, live.Connector)
 }
 
 // ---- payments ----
@@ -302,7 +315,7 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 			byOrder[t.ProviderOrderID] = t.ProviderPaymentID
 		}
 		theirRecs = append(theirRecs, recon.Record{ProviderID: t.ProviderPaymentID, Status: string(checkout.ToSnapshot(t).Status),
-			Amount: t.Amount, Currency: t.Currency, SubscriptionID: s.subscriptionOf(t)})
+			Amount: t.Amount, Currency: t.Currency, SubscriptionID: t.SubscriptionID})
 	}
 	for i := range theirRecs {
 		theirRecs[i].Status = openStatus(theirRecs[i].Status)
@@ -322,33 +335,36 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 		}
 		ours = append(ours, rec)
 	}
-	items := recon.Diff(ours, theirRecs, s.o.KnownSubscription)
+	var known func(string) bool
+	if s.o.KnownSubscription != nil {
+		known = func(id string) bool { return s.o.KnownSubscription(ctx, pa.ID, id) }
+	}
+	items := recon.Diff(ours, theirRecs, known)
 	for _, it := range items {
 		snap := byPayID[it.ProviderID]
 		fixed := false
-		if it.AutoFix {
-			if err := s.fixPayment(ctx, pa, snap); err != nil {
-				s.o.Logger.Warn("reconcile: auto-fix failed", "account", pa.ID, "payment", it.ProviderID, "err", err)
-				it.AutoFix = false
-				s.raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: "recon.autofix_failed",
-					Message: fmt.Sprintf("Reconciliation could not apply the provider's state of payment %s: %v", it.ProviderID, err),
-					Refs:    map[string]string{"provider_account": pa.ID, "provider_id": it.ProviderID}})
+		var note recordNote
+		if it.Kind == recon.KindRenewalToLink && s.o.LinkRenewal != nil {
+			if err := s.o.LinkRenewal(ctx, pa.ID, snap); err != nil {
+				s.o.Logger.Warn("reconcile: linking a renewal failed; it stays to be linked", "account", pa.ID, "payment", it.ProviderID, "err", err)
 			} else {
 				fixed = true
 			}
 		}
-		if err := s.record(ctx, pa, run, it, fixed); err != nil {
+		if it.AutoFix {
+			if err := s.fixPayment(ctx, pa, snap); err != nil {
+				s.o.Logger.Warn("reconcile: auto-fix failed", "account", pa.ID, "payment", it.ProviderID, "err", err)
+				it.AutoFix = false
+				note = failedFix("payment", it.ProviderID, err)
+			} else {
+				fixed = true
+			}
+		}
+		if err := s.record(ctx, pa, run, it, fixed, note); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func (s *Service) subscriptionOf(t connector.PaymentSnapshot) string {
-	if s.o.SubscriptionOf == nil {
-		return ""
-	}
-	return s.o.SubscriptionOf(t)
 }
 
 func (s *Service) fixPayment(ctx context.Context, pa store.ProviderAccount, snap connector.PaymentSnapshot) error {
@@ -405,20 +421,19 @@ func (s *Service) reconcileRefunds(ctx context.Context, pa store.ProviderAccount
 	}
 	for _, it := range recon.Diff(ours, theirRecs, nil) {
 		fixed := false
+		var note recordNote
 		if it.AutoFix {
 			snap := byID[it.ProviderID]
 			_, err := s.o.Core.ApplyRefundSnapshot(ctx, ourByProviderID[it.ProviderID], core.RefundSnapshot{
 				Status: state.RefundStatus(snap.Status), ProviderRefundID: snap.ProviderRefundID, FailureReason: snap.RawStatus})
 			if err != nil {
 				s.o.Logger.Warn("reconcile: refund auto-fix failed", "account", pa.ID, "refund", it.ProviderID, "err", err)
-				s.raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: "recon.autofix_failed",
-					Message: fmt.Sprintf("Reconciliation could not apply the provider's state of refund %s: %v", it.ProviderID, err),
-					Refs:    map[string]string{"provider_account": pa.ID, "provider_id": it.ProviderID}})
+				note = failedFix("refund", it.ProviderID, err)
 			} else {
 				fixed = true
 			}
 		}
-		if err := s.record(ctx, pa, run, it, fixed); err != nil {
+		if err := s.record(ctx, pa, run, it, fixed, note); err != nil {
 			return err
 		}
 	}
@@ -427,9 +442,18 @@ func (s *Service) reconcileRefunds(ctx context.Context, pa store.ProviderAccount
 
 // ---- recording ----
 
+// recordNote customises the alert of a recorded item: a message of its own
+// and an alert kind other than "recon.<item kind>".
+type recordNote struct{ detail, kind string }
+
+func failedFix(what, id string, err error) recordNote {
+	return recordNote{kind: "recon.autofix_failed",
+		detail: fmt.Sprintf("Reconciliation could not apply the provider's state of %s %s: %v", what, id, err)}
+}
+
 // record stores an item. Auto-fixed items are always stored. Anything else is
 // stored and alerted once per object and kind while it stays open.
-func (s *Service) record(ctx context.Context, pa store.ProviderAccount, run *store.ReconRun, it recon.Item, fixed bool) error {
+func (s *Service) record(ctx context.Context, pa store.ProviderAccount, run *store.ReconRun, it recon.Item, fixed bool, note recordNote) error {
 	ours := ""
 	if it.Ours != nil {
 		b, _ := json.Marshal(it.Ours)
@@ -447,7 +471,12 @@ func (s *Service) record(ctx context.Context, pa store.ProviderAccount, run *sto
 	var existing store.ReconItem
 	var seen bool
 	err := s.o.DB.Write(ctx, func(tx store.Tx) (err error) {
-		if !fixed {
+		if fixed {
+			// A fixed item supersedes any earlier open item of the same object.
+			if err := store.CloseReconItems(ctx, tx, pa.ID, it.Kind, it.ProviderID); err != nil {
+				return err
+			}
+		} else {
 			if existing, seen, err = store.FindOpenReconItem(ctx, tx, pa.ID, it.Kind, it.ProviderID); err != nil {
 				return err
 			}
@@ -468,12 +497,19 @@ func (s *Service) record(ctx context.Context, pa store.ProviderAccount, run *sto
 	if seen || item.State == "to_link" {
 		return nil
 	}
-	s.raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: "recon." + it.Kind,
-		Message: describe(it, pa), Refs: map[string]string{"provider_account": pa.ID, "provider_id": it.ProviderID, "run": run.ID}})
+	kind := "recon." + it.Kind
+	if note.kind != "" {
+		kind = note.kind
+	}
+	s.raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: kind,
+		Message: describe(it, pa, note.detail), Refs: map[string]string{"provider_account": pa.ID, "provider_id": it.ProviderID, "run": run.ID}})
 	return nil
 }
 
-func describe(it recon.Item, pa store.ProviderAccount) string {
+func describe(it recon.Item, pa store.ProviderAccount, detail string) string {
+	if detail != "" {
+		return detail
+	}
 	switch it.Kind {
 	case recon.KindAmountMismatch, recon.KindCurrencyMismatch:
 		return fmt.Sprintf("%s account %s: %s differs for %s: ours %d %s, provider %d %s", pa.Connector, pa.Name, it.Kind, it.ProviderID,

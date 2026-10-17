@@ -107,6 +107,13 @@ func InsertReconItem(ctx context.Context, tx Tx, i ReconItem) error {
 	return err
 }
 
+// CloseReconItems marks the open items of one object and kind as fixed.
+func CloseReconItems(ctx context.Context, tx Tx, accountID, kind, providerID string) error {
+	_, err := tx.ExecContext(ctx, "UPDATE recon_items SET state = 'fixed' WHERE provider_account_id = ? AND kind = ? AND provider_id = ? AND state IN ('open','to_link')",
+		accountID, kind, providerID)
+	return err
+}
+
 // TouchReconItem points an existing open item at the latest run that saw it.
 func TouchReconItem(ctx context.Context, tx Tx, id, runID string) error {
 	_, err := tx.ExecContext(ctx, "UPDATE recon_items SET run_id = ? WHERE id = ?", runID, id)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/paymux/paymux/internal/billing"
 	"github.com/paymux/paymux/internal/checkout"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/core/state"
@@ -194,7 +195,7 @@ func (s *Service) handleMandateExpiry(ctx context.Context, raw json.RawMessage) 
 			if m.ValidUntil.After(now) {
 				return nil
 			}
-			return s.applyMandateEvent(ctx, tx, &m, subs, state.MandateExpiredEv)
+			return s.applyMandateEvent(ctx, tx, &m, subs, state.MandateExpiredEv, nil)
 		}
 		return nil
 	})
@@ -222,7 +223,7 @@ func (s *Service) lockMandateSubs(ctx context.Context, tx store.Tx, mandateID st
 
 // applyMandateEvent applies a mandate event and its consequences for the
 // subscriptions that use the mandate. subs must be locked by the caller.
-func (s *Service) applyMandateEvent(ctx context.Context, tx store.Tx, m *store.Mandate, subs []store.Subscription, ev state.MandateEvent) error {
+func (s *Service) applyMandateEvent(ctx context.Context, tx store.Tx, m *store.Mandate, subs []store.Subscription, ev state.MandateEvent, setup *connector.PaymentSnapshot) error {
 	changed, err := s.mandateEvent(ctx, tx, m, ev)
 	if err != nil || !changed {
 		return err
@@ -246,8 +247,14 @@ func (s *Service) applyMandateEvent(ctx context.Context, tx store.Tx, m *store.M
 				if err := s.swapMandate(ctx, tx, sub, m); err != nil {
 					return err
 				}
+				if err := s.bookVerification(ctx, tx, *sub, setup); err != nil {
+					return err
+				}
 			case sub.MandateID == m.ID && sub.Status == string(state.SubIncomplete):
 				if err := s.activate(ctx, tx, sub); err != nil {
+					return err
+				}
+				if err := s.startBilling(ctx, tx, sub, setup); err != nil {
 					return err
 				}
 			}
@@ -297,21 +304,32 @@ func (s *Service) swapMandate(ctx context.Context, tx store.Tx, sub *store.Subsc
 			}
 		}
 	}
-	// Resume the latest renewal that failed for want of a usable mandate.
+	// The next debit is on a different mandate than any notice announced, so
+	// it needs a fresh notice (RBI): reset the latest unpaid renewal and
+	// announce it again. A renewal that failed for want of a usable mandate is
+	// resumed, but not before 24h after that notice.
 	cys, err := store.ListCycles(ctx, tx, sub.ID)
 	if err != nil {
 		return err
 	}
+	now := s.nowUTC()
 	for i := len(cys) - 1; i >= 0; i-- {
 		cy := cys[i]
-		if cy.PeriodIndex < 0 || (cy.State != "failed" && cy.State != "exhausted") {
+		if cy.PeriodIndex < 0 || (cy.State != "scheduled" && cy.State != "failed" && cy.State != "exhausted") {
 			continue
 		}
-		cy.State, cy.Retries = "scheduled", 0
-		if err := s.enqueueCharge(ctx, tx, *sub, &cy, s.nowUTC()); err != nil {
+		resumed := cy.State != "scheduled"
+		cy.State, cy.NotifiedAt = "scheduled", time.Time{}
+		if resumed {
+			cy.Retries = 0
+			if err := s.enqueueCharge(ctx, tx, *sub, &cy, now.Add(billing.MinNoticeGap)); err != nil {
+				return err
+			}
+		}
+		if err := s.enqueueNotifyStep(ctx, tx, *sub, cy.PeriodIndex, "notify-mandate-"+nm.ID, now); err != nil {
 			return err
 		}
-		if err := store.UpdateCycle(ctx, tx, cy, s.nowUTC()); err != nil {
+		if err := store.UpdateCycle(ctx, tx, cy, now); err != nil {
 			return err
 		}
 		break
@@ -335,7 +353,7 @@ func mandateEventFor(status string) (state.MandateEvent, bool) {
 
 // applyMandateSnapshot applies a provider's view of a mandate.
 func (s *Service) applyMandateSnapshot(ctx context.Context, mandateID string, snap connector.MandateSnapshot) error {
-	return s.db.Write(ctx, func(tx store.Tx) error {
+	err := s.db.Write(ctx, func(tx store.Tx) error {
 		subs, err := s.lockMandateSubs(ctx, tx, mandateID)
 		if err != nil {
 			return err
@@ -357,8 +375,15 @@ func (s *Service) applyMandateSnapshot(ctx context.Context, mandateID string, sn
 		if !ok {
 			return nil
 		}
-		return s.applyMandateEvent(ctx, tx, &m, subs, ev)
+		return s.applyMandateEvent(ctx, tx, &m, subs, ev, snap.SetupPayment)
 	})
+	if err != nil {
+		return err
+	}
+	if err := s.settleSetup(ctx, mandateID, snap.SetupPayment); err != nil {
+		return err
+	}
+	return s.settleVerification(ctx, mandateID, snap.SetupPayment)
 }
 
 // ---- provider notifications (inbound glue) --------------------------------
@@ -400,6 +425,16 @@ func (s *Service) onSubscription(ctx context.Context, accountID string, snap con
 	var subID string
 	err := s.db.Write(ctx, func(tx store.Tx) error {
 		found, err := store.GetSubscriptionByProviderID(ctx, tx, accountID, snap.ProviderSubscriptionID)
+		linked := false
+		if errors.Is(err, store.ErrNotFound) && snap.ProviderRef != "" {
+			// A provider that creates the subscription after the checkout (Whop
+			// memberships) names it by our reference; remember its id.
+			found, err = store.GetSubscriptionByProviderRef(ctx, tx, snap.ProviderRef)
+			if err == nil && found.ProviderAccountID != accountID {
+				err = store.ErrNotFound
+			}
+			linked = err == nil
+		}
 		if err != nil {
 			return mapNotFound(err, "subscription")
 		}
@@ -407,6 +442,12 @@ func (s *Service) onSubscription(ctx context.Context, accountID string, snap con
 		sub, err := s.lockSub(ctx, tx, found.ID)
 		if err != nil {
 			return err
+		}
+		if linked && sub.ProviderSubscriptionID != snap.ProviderSubscriptionID && snap.ProviderSubscriptionID != "" {
+			sub.ProviderSubscriptionID = snap.ProviderSubscriptionID
+			if err := s.saveSub(ctx, tx, &sub); err != nil {
+				return err
+			}
 		}
 		return s.applyProviderStatus(ctx, tx, &sub, snap)
 	})
@@ -617,21 +658,102 @@ func (s *Service) ApplyReturn(ctx context.Context, providerAccountID, providerRe
 			return Outcome{}, true, newErr(ErrInvalidState, "no provider subscription to check")
 		}
 		snap, err := mgr.FetchSubscription(ctx, connector.SubscriptionRef{ProviderSubscriptionID: sub.ProviderSubscriptionID})
-		if err != nil {
+		switch {
+		case errors.Is(err, connector.ErrNotFound):
+			// The provider has no subscription yet (the customer has not
+			// completed the checkout, or it only appears on its webhook).
+		case err != nil:
 			return Outcome{}, true, err
-		}
-		if err := s.db.Write(ctx, func(tx store.Tx) error {
-			locked, err := s.lockSub(ctx, tx, sub.ID)
-			if err != nil {
-				return err
+		default:
+			if err := s.db.Write(ctx, func(tx store.Tx) error {
+				locked, err := s.lockSub(ctx, tx, sub.ID)
+				if err != nil {
+					return err
+				}
+				return s.applyProviderStatus(ctx, tx, &locked, snap)
+			}); err != nil {
+				return Outcome{}, true, err
 			}
-			return s.applyProviderStatus(ctx, tx, &locked, snap)
-		}); err != nil {
-			return Outcome{}, true, err
 		}
 	}
 	if err := s.db.Read(ctx, func(q store.Querier) (err error) { sub, err = store.GetSubscription(ctx, q, sub.ID); return }); err != nil {
 		return Outcome{}, true, err
 	}
 	return Outcome{SubscriptionID: sub.ID, Status: sub.Status, ReturnURL: returnURL(sub)}, true, nil
+}
+
+// MandatePollWindow is how long a pending mandate is polled: the 24h an
+// incomplete subscription may stay incomplete.
+const MandatePollWindow = IncompleteTTL
+
+// insertMandate stores a new mandate and, while it is pending, starts polling
+// the provider for it: customers do not always come back from the provider's
+// page (PayU only completes a registration on the return), so the outcome is
+// fetched on the ladder 1m, 2m, 5m, 15m, 1h, 6h, 24h until it settles or the
+// window ends.
+func (s *Service) insertMandate(ctx context.Context, tx store.Tx, m store.Mandate) error {
+	if err := store.InsertMandate(ctx, tx, m); err != nil {
+		return err
+	}
+	if m.Status != string(state.MandatePending) {
+		return nil
+	}
+	return s.enqueueMandatePoll(ctx, tx, m, 0)
+}
+
+// enqueueMandatePoll schedules poll number n+1 of the mandate, if it still
+// falls inside the window.
+func (s *Service) enqueueMandatePoll(ctx context.Context, tx store.Tx, m store.Mandate, n int) error {
+	at := s.nowUTC().Add(checkout.PollDelay(n))
+	if !at.Before(m.CreatedAt.Add(MandatePollWindow)) {
+		return nil
+	}
+	return s.jobs.Enqueue(ctx, tx, jobs.Job{Kind: JobPollMandate, RunAt: at,
+		Payload:   map[string]any{"mandate_id": m.ID, "n": n + 1},
+		DedupeKey: fmt.Sprintf("mandate:%s:poll:%d", m.ID, n+1)})
+}
+
+// handlePollMandate fetches a pending mandate from the provider and applies
+// what it finds; if the provider still has nothing final, the next poll is
+// queued.
+func (s *Service) handlePollMandate(ctx context.Context, raw json.RawMessage) error {
+	var pl struct {
+		MandateID string `json:"mandate_id"`
+		N         int    `json:"n"`
+	}
+	if err := json.Unmarshal(raw, &pl); err != nil {
+		return jobs.Permanent(err)
+	}
+	var m store.Mandate
+	if err := s.db.Read(ctx, func(q store.Querier) (err error) { m, err = store.GetMandate(ctx, q, pl.MandateID); return }); err != nil {
+		return err
+	}
+	if m.Status != string(state.MandatePending) {
+		return nil // settled by the return, a webhook, or expiry
+	}
+	conn, err := s.connectors.Get(ctx, m.ProviderAccountID)
+	if err != nil {
+		return err
+	}
+	mm, ok := conn.(connector.MandateManager)
+	if !ok {
+		return jobs.Permanent(errors.New("connector cannot fetch mandates"))
+	}
+	snap, err := mm.FetchMandate(ctx, connector.MandateRef{ProviderMandateID: firstNonEmpty(m.ProviderMandateID, m.ProviderRef)})
+	switch {
+	case errors.Is(err, connector.ErrNotFound):
+		snap = connector.MandateSnapshot{Status: "pending"} // the customer has not got that far
+	case err != nil:
+		return err
+	}
+	if snap.Status != "pending" {
+		return s.applyMandateSnapshot(ctx, m.ID, snap)
+	}
+	return s.db.Write(ctx, func(tx store.Tx) error {
+		cur, err := store.GetMandate(ctx, tx, m.ID)
+		if err != nil || cur.Status != string(state.MandatePending) {
+			return err
+		}
+		return s.enqueueMandatePoll(ctx, tx, cur, pl.N)
+	})
 }

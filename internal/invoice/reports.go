@@ -129,7 +129,8 @@ func (d doc) b2cl() bool { return d.inrOK && tax.IsB2CL(d.class(), d.inr.Total, 
 
 // Reports builds the monthly GST report CSVs of a tax entity: sales register,
 // B2B, B2CL, B2CS, EXP, CDNR, CDNUR, SAC summary, documents issued and
-// exceptions. month is YYYY-MM in IST. Foreign-currency documents count in INR
+// exceptions, then the settlement report and the provider fee input-tax-credit
+// register. month is YYYY-MM in IST. Foreign-currency documents count in INR
 // at their invoice's FX rate; those still fx_pending appear with blank INR
 // values and in the exceptions sheet.
 func (s *Service) Reports(ctx context.Context, taxEntityID, month string) (ReportSet, error) {
@@ -142,6 +143,7 @@ func (s *Service) Reports(ctx context.Context, taxEntityID, month string) (Repor
 		invs    []store.Invoice
 		cns     []store.CreditNote
 		flagged []store.RefundFlag
+		fees    []store.SettlementFees
 		origin  = map[string]store.Invoice{}
 	)
 	err = s.db.Read(ctx, func(q store.Querier) error {
@@ -167,7 +169,10 @@ func (s *Service) Reports(ctx context.Context, taxEntityID, month string) (Repor
 				origin[i.ID] = i
 			}
 		}
-		flagged, err = store.RefundFlagsInRange(ctx, q, ent.ID, from, to)
+		if flagged, err = store.RefundFlagsInRange(ctx, q, ent.ID, from, to); err != nil {
+			return err
+		}
+		fees, err = store.SettlementFeesForEntity(ctx, q, ent.ID, from, to)
 		return err
 	})
 	if err != nil {
@@ -211,6 +216,8 @@ func (s *Service) Reports(ctx context.Context, taxEntityID, month string) (Repor
 		sacSummary(invDocs, cnDocs),
 		documentsSheet(invs, cns),
 		exceptionsSheet(invDocs, flagged, istDate),
+		settlementsSheet(fees),
+		itcSheet(ent, fees),
 	}
 	set := ReportSet{Entity: ent, Month: month}
 	for _, t := range tables {

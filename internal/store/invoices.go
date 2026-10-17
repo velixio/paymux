@@ -12,6 +12,7 @@ import (
 type Invoice struct {
 	ID, OrgID, Mode, AppID, TaxEntityID, PaymentID, AttemptID, SubscriptionID string
 	Number, SeriesPrefix, FiscalYear                                          string
+	Seq                                                                       int64 // the numeric part of Number: a stable listing order
 	IssuedAt                                                                  time.Time
 	SupplyType, PlaceOfSupply                                                 string
 	InterState                                                                bool
@@ -38,7 +39,7 @@ func hasFlag(flags []string, f string) bool {
 }
 
 const invoiceCols = `id, org_id, mode, app_id, tax_entity_id, payment_id, attempt_id, COALESCE(subscription_id,''), number,
-	series_prefix, fiscal_year, issued_at, supply_type, place_of_supply, inter_state, currency, supplier, recipient, lines,
+	series_prefix, fiscal_year, seq, issued_at, supply_type, place_of_supply, inter_state, currency, supplier, recipient, lines,
 	taxable, cgst, sgst, igst, total, gst_rate_bp, COALESCE(fx_rate_inr,''), COALESCE(fx_source,''), flags, payment_method,
 	payment_ref, COALESCE(lut_number,''), template_version, COALESCE(pdf_blob_id,''), access_token_hash`
 
@@ -48,7 +49,7 @@ func scanInvoice(row interface{ Scan(...any) error }) (Invoice, error) {
 	var inter int
 	var sup, rcp, lines, flags string
 	err := row.Scan(&i.ID, &i.OrgID, &i.Mode, &i.AppID, &i.TaxEntityID, &i.PaymentID, &i.AttemptID, &i.SubscriptionID,
-		&i.Number, &i.SeriesPrefix, &i.FiscalYear, &issued, &i.SupplyType, &i.PlaceOfSupply, &inter, &i.Currency,
+		&i.Number, &i.SeriesPrefix, &i.FiscalYear, &i.Seq, &issued, &i.SupplyType, &i.PlaceOfSupply, &inter, &i.Currency,
 		&sup, &rcp, &lines, &i.Taxable, &i.CGST, &i.SGST, &i.IGST, &i.Total, &i.GSTRateBP, &i.FXRate, &i.FXSource, &flags,
 		&i.PaymentMethod, &i.PaymentRef, &i.LUTNumber, &i.TemplateVersion, &i.PDFBlobID, &i.AccessTokenHash)
 	if err != nil {
@@ -66,12 +67,12 @@ func scanInvoice(row interface{ Scan(...any) error }) (Invoice, error) {
 func InsertInvoice(ctx context.Context, tx Tx, i Invoice) error {
 	flags, _ := json.Marshal(nonNilSlice(i.Flags))
 	_, err := tx.ExecContext(ctx, `INSERT INTO invoices (id, org_id, mode, app_id, tax_entity_id, payment_id, attempt_id,
-		subscription_id, number, series_prefix, fiscal_year, issued_at, supply_type, place_of_supply, inter_state, currency,
+		subscription_id, number, series_prefix, fiscal_year, seq, issued_at, supply_type, place_of_supply, inter_state, currency,
 		supplier, recipient, lines, taxable, cgst, sgst, igst, total, gst_rate_bp, fx_rate_inr, fx_source, flags,
 		payment_method, payment_ref, lut_number, template_version, pdf_blob_id, access_token_hash)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		i.ID, i.OrgID, i.Mode, i.AppID, i.TaxEntityID, i.PaymentID, i.AttemptID, nullIfEmpty(i.SubscriptionID), i.Number,
-		i.SeriesPrefix, i.FiscalYear, ms(i.IssuedAt), i.SupplyType, i.PlaceOfSupply, boolInt(i.InterState), i.Currency,
+		i.SeriesPrefix, i.FiscalYear, i.Seq, ms(i.IssuedAt), i.SupplyType, i.PlaceOfSupply, boolInt(i.InterState), i.Currency,
 		string(i.Supplier), string(i.Recipient), string(i.Lines), i.Taxable, i.CGST, i.SGST, i.IGST, i.Total, i.GSTRateBP,
 		nullIfEmpty(i.FXRate), nullIfEmpty(i.FXSource), string(flags), i.PaymentMethod, i.PaymentRef, nullIfEmpty(i.LUTNumber),
 		i.TemplateVersion, nullIfEmpty(i.PDFBlobID), i.AccessTokenHash)
@@ -102,7 +103,7 @@ func listInvoices(ctx context.Context, q Queryer, where string, args ...any) ([]
 
 // InvoicesForPayment lists a payment's invoices, oldest first.
 func InvoicesForPayment(ctx context.Context, q Queryer, paymentID string) ([]Invoice, error) {
-	return listInvoices(ctx, q, "payment_id = ? ORDER BY issued_at, id", paymentID)
+	return listInvoices(ctx, q, "payment_id = ? ORDER BY issued_at, seq, id", paymentID)
 }
 
 // InvoicesInRange lists a tax entity's invoices issued in [from, to) ordered
@@ -114,7 +115,7 @@ func InvoicesInRange(ctx context.Context, q Queryer, entityID string, from, to t
 
 // InvoicesPendingFX lists invoices flagged fx_pending for a currency.
 func InvoicesPendingFX(ctx context.Context, q Queryer, orgID, currency string) ([]Invoice, error) {
-	return listInvoices(ctx, q, "org_id = ? AND currency = ? AND fx_rate_inr IS NULL AND flags LIKE '%fx_pending%' ORDER BY issued_at",
+	return listInvoices(ctx, q, "org_id = ? AND currency = ? AND fx_rate_inr IS NULL AND flags LIKE '%fx_pending%' ORDER BY issued_at, seq",
 		orgID, currency)
 }
 
@@ -136,6 +137,7 @@ func SetInvoicePDF(ctx context.Context, tx Tx, id, blobID string) error {
 type CreditNote struct {
 	ID, OrgID, Mode, AppID, TaxEntityID, InvoiceID, PaymentID, RefundID, DisputeID string
 	Number, SeriesPrefix, FiscalYear                                               string
+	Seq                                                                            int64
 	IssuedAt                                                                       time.Time
 	Reason, Currency                                                               string
 	Lines                                                                          json.RawMessage
@@ -145,7 +147,7 @@ type CreditNote struct {
 }
 
 const creditNoteCols = `id, org_id, mode, app_id, tax_entity_id, invoice_id, payment_id, COALESCE(refund_id,''),
-	COALESCE(dispute_id,''), number, series_prefix, fiscal_year, issued_at, reason, currency, lines, taxable, cgst, sgst,
+	COALESCE(dispute_id,''), number, series_prefix, fiscal_year, seq, issued_at, reason, currency, lines, taxable, cgst, sgst,
 	igst, total, flags, template_version, COALESCE(pdf_blob_id,''), access_token_hash`
 
 func scanCreditNote(row interface{ Scan(...any) error }) (CreditNote, error) {
@@ -153,7 +155,7 @@ func scanCreditNote(row interface{ Scan(...any) error }) (CreditNote, error) {
 	var issued int64
 	var lines, flags string
 	err := row.Scan(&c.ID, &c.OrgID, &c.Mode, &c.AppID, &c.TaxEntityID, &c.InvoiceID, &c.PaymentID, &c.RefundID, &c.DisputeID,
-		&c.Number, &c.SeriesPrefix, &c.FiscalYear, &issued, &c.Reason, &c.Currency, &lines, &c.Taxable, &c.CGST, &c.SGST,
+		&c.Number, &c.SeriesPrefix, &c.FiscalYear, &c.Seq, &issued, &c.Reason, &c.Currency, &lines, &c.Taxable, &c.CGST, &c.SGST,
 		&c.IGST, &c.Total, &flags, &c.TemplateVersion, &c.PDFBlobID, &c.AccessTokenHash)
 	if err != nil {
 		return CreditNote{}, notFound(err)
@@ -170,11 +172,11 @@ func scanCreditNote(row interface{ Scan(...any) error }) (CreditNote, error) {
 func InsertCreditNote(ctx context.Context, tx Tx, c CreditNote) error {
 	flags, _ := json.Marshal(nonNilSlice(c.Flags))
 	_, err := tx.ExecContext(ctx, `INSERT INTO credit_notes (id, org_id, mode, app_id, tax_entity_id, invoice_id, payment_id,
-		refund_id, dispute_id, number, series_prefix, fiscal_year, issued_at, reason, currency, lines, taxable, cgst, sgst,
+		refund_id, dispute_id, number, series_prefix, fiscal_year, seq, issued_at, reason, currency, lines, taxable, cgst, sgst,
 		igst, total, flags, template_version, pdf_blob_id, access_token_hash)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.ID, c.OrgID, c.Mode, c.AppID, c.TaxEntityID, c.InvoiceID, c.PaymentID, nullIfEmpty(c.RefundID),
-		nullIfEmpty(c.DisputeID), c.Number, c.SeriesPrefix, c.FiscalYear, ms(c.IssuedAt), c.Reason, c.Currency,
+		nullIfEmpty(c.DisputeID), c.Number, c.SeriesPrefix, c.FiscalYear, c.Seq, ms(c.IssuedAt), c.Reason, c.Currency,
 		string(c.Lines), c.Taxable, c.CGST, c.SGST, c.IGST, c.Total, string(flags), c.TemplateVersion,
 		nullIfEmpty(c.PDFBlobID), c.AccessTokenHash)
 	if IsUniqueViolation(err) {
@@ -207,12 +209,12 @@ func listCreditNotes(ctx context.Context, q Queryer, where string, args ...any) 
 
 // CreditNotesForInvoice lists an invoice's credit notes, oldest first.
 func CreditNotesForInvoice(ctx context.Context, q Queryer, invoiceID string) ([]CreditNote, error) {
-	return listCreditNotes(ctx, q, "invoice_id = ? ORDER BY issued_at, id", invoiceID)
+	return listCreditNotes(ctx, q, "invoice_id = ? ORDER BY issued_at, seq, id", invoiceID)
 }
 
 // CreditNotesForPayment lists a payment's credit notes, oldest first.
 func CreditNotesForPayment(ctx context.Context, q Queryer, paymentID string) ([]CreditNote, error) {
-	return listCreditNotes(ctx, q, "payment_id = ? ORDER BY issued_at, id", paymentID)
+	return listCreditNotes(ctx, q, "payment_id = ? ORDER BY issued_at, seq, id", paymentID)
 }
 
 // CreditNotesInRange lists a tax entity's credit notes issued in [from, to).

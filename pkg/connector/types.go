@@ -58,7 +58,15 @@ type Info struct {
 	SubscriptionModes  []BillingMode   `json:"subscription_modes"`
 	PreDebitPerAttempt bool            `json:"pre_debit_per_attempt"`
 	MandateLimits      []MandateLimit  `json:"mandate_limits"`
-	RateLimit          RateLimit       `json:"rate_limit"`
+	// MandateSetupAmount is what a mandate registration debits when no real
+	// charge is due yet (a trial): the provider's minimal or verification
+	// amount, in minor units. 0 means the provider default of 100 (Rs 1).
+	MandateSetupAmount int64 `json:"mandate_setup_amount,omitempty"`
+	// RefundsVerificationDebit says the provider reverses that verification
+	// debit by itself. When false, Paymux refunds it (initiated_by=system,
+	// reason=mandate_verification).
+	RefundsVerificationDebit bool      `json:"refunds_verification_debit,omitempty"`
+	RateLimit                RateLimit `json:"rate_limit"`
 }
 
 // Has reports whether the capability is declared.
@@ -239,20 +247,23 @@ func (s PaymentStatus) Valid() bool {
 
 // PaymentSnapshot is the provider's view of a payment.
 type PaymentSnapshot struct {
-	ProviderRef       string        `json:"provider_ref,omitempty"`
-	ProviderOrderID   string        `json:"provider_order_id,omitempty"`
-	ProviderPaymentID string        `json:"provider_payment_id,omitempty"`
-	Status            PaymentStatus `json:"status"`
-	RawStatus         string        `json:"raw_status"`
-	Amount            int64         `json:"amount"`
-	Currency          string        `json:"currency"`
-	Method            string        `json:"method,omitempty"`
-	Fee               int64         `json:"fee,omitempty"`
-	Tax               int64         `json:"tax,omitempty"`
-	AmountRefunded    int64         `json:"amount_refunded,omitempty"`
-	ErrorCode         string        `json:"error_code,omitempty"`
-	ErrorMessage      string        `json:"error_message,omitempty"`
-	CreatedAt         int64         `json:"created_at,omitempty"` // unix ms
+	ProviderRef       string `json:"provider_ref,omitempty"`
+	ProviderOrderID   string `json:"provider_order_id,omitempty"`
+	ProviderPaymentID string `json:"provider_payment_id,omitempty"`
+	// SubscriptionID is the provider subscription a payment belongs to (a
+	// provider-managed renewal), empty for one-time payments.
+	SubscriptionID string        `json:"subscription_id,omitempty"`
+	Status         PaymentStatus `json:"status"`
+	RawStatus      string        `json:"raw_status"`
+	Amount         int64         `json:"amount"`
+	Currency       string        `json:"currency"`
+	Method         string        `json:"method,omitempty"`
+	Fee            int64         `json:"fee,omitempty"`
+	Tax            int64         `json:"tax,omitempty"`
+	AmountRefunded int64         `json:"amount_refunded,omitempty"`
+	ErrorCode      string        `json:"error_code,omitempty"`
+	ErrorMessage   string        `json:"error_message,omitempty"`
+	CreatedAt      int64         `json:"created_at,omitempty"` // unix ms
 }
 
 // RefundStatus is the SDK-level refund status.
@@ -355,6 +366,19 @@ type SettlementSnapshot struct {
 	Status               string `json:"status"`
 	UTR                  string `json:"utr,omitempty"`
 	SettledAt            int64  `json:"settled_at,omitempty"`
+	// Items are the lines of the settlement: per-payment fees and the GST on
+	// them, which Paymux attaches to its attempts.
+	Items []SettlementItem `json:"items,omitempty"`
+}
+
+// SettlementItem is one line of a settlement.
+type SettlementItem struct {
+	Kind              string `json:"kind"` // payment | refund | adjustment
+	ProviderPaymentID string `json:"provider_payment_id,omitempty"`
+	ProviderRefundID  string `json:"provider_refund_id,omitempty"`
+	Amount            int64  `json:"amount"` // gross, minor units; negative for refunds
+	Fee               int64  `json:"fee"`
+	Tax               int64  `json:"tax"` // GST charged on the fee
 }
 
 // SubscriptionRequest creates a provider-managed subscription checkout.
@@ -380,23 +404,32 @@ type SubscriptionRef struct {
 // SubscriptionSnapshot is the provider's view of a subscription.
 type SubscriptionSnapshot struct {
 	ProviderSubscriptionID string `json:"provider_subscription_id"`
-	Status                 string `json:"status"`
-	RawStatus              string `json:"raw_status"`
-	Amount                 int64  `json:"amount"`
-	Currency               string `json:"currency"`
-	CurrentPeriodStart     int64  `json:"current_period_start,omitempty"`
-	CurrentPeriodEnd       int64  `json:"current_period_end,omitempty"`
+	// ProviderRef is the subscription's provider_ref, when the provider hands
+	// it back (for example from checkout metadata). It lets a notification
+	// about a subscription the provider created after the checkout (Whop
+	// memberships) be linked to its Paymux subscription.
+	ProviderRef        string `json:"provider_ref,omitempty"`
+	Status             string `json:"status"`
+	RawStatus          string `json:"raw_status"`
+	Amount             int64  `json:"amount"`
+	Currency           string `json:"currency"`
+	CurrentPeriodStart int64  `json:"current_period_start,omitempty"`
+	CurrentPeriodEnd   int64  `json:"current_period_end,omitempty"`
 }
 
 // MandateRequest creates a merchant-triggered mandate checkout.
 type MandateRequest struct {
-	MandateID   string   `json:"mandate_id"`
-	ProviderRef string   `json:"provider_ref"`
-	MaxAmount   int64    `json:"max_amount"`
-	Currency    string   `json:"currency"`
-	Method      string   `json:"method,omitempty"`
-	ValidUntil  int64    `json:"valid_until,omitempty"`
-	Customer    Customer `json:"customer"`
+	MandateID   string `json:"mandate_id"`
+	ProviderRef string `json:"provider_ref"`
+	// Amount is what the registration transaction debits (with the customer's
+	// authentication): the first period's amount, or Info.MandateSetupAmount for
+	// a trial. Every later debit is merchant-triggered with a prior notice.
+	Amount     int64    `json:"amount"`
+	MaxAmount  int64    `json:"max_amount"`
+	Currency   string   `json:"currency"`
+	Method     string   `json:"method,omitempty"`
+	ValidUntil int64    `json:"valid_until,omitempty"`
+	Customer   Customer `json:"customer"`
 }
 
 // MandateRef identifies a mandate at the provider.
@@ -413,6 +446,9 @@ type MandateSnapshot struct {
 	Currency          string `json:"currency"`
 	Method            string `json:"method,omitempty"`
 	ValidUntil        int64  `json:"valid_until,omitempty"`
+	// SetupPayment is the registration transaction, when the provider reports
+	// it with the mandate: its success is the first period's payment.
+	SetupPayment *PaymentSnapshot `json:"setup_payment,omitempty"`
 }
 
 // PreDebitRequest announces an upcoming mandate debit.

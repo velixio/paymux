@@ -47,7 +47,7 @@ const configSchema = `{
 var info = connector.Info{
 	Version:      "0.1.0",
 	DisplayName:  "Whop",
-	Capabilities: []connector.Capability{connector.CapRefund},
+	Capabilities: []connector.Capability{connector.CapRefund, connector.CapSubscriptionManager},
 	ConfigSchema: json.RawMessage(configSchema),
 	// Two-decimal currencies only; Whop settles in the organisation currency,
 	// so the core records the FX separately.
@@ -55,8 +55,8 @@ var info = connector.Info{
 		"CZK", "BRL", "MXN", "ZAR", "AED", "SAR", "TRY", "THB", "MYR", "PHP", "IDR", "INR", "BDT", "PKR", "NGN", "KES", "EGP"},
 	Methods:          []string{"card", "wallet"},
 	MerchantOfRecord: true,
-	// TODO(spec): provider_managed memberships are a later milestone;
-	// SubscriptionModes stays empty until SubscriptionManager exists.
+	// Recurring billing is Whop's: memberships on renewal plans (subscriptions.go).
+	SubscriptionModes: []connector.BillingMode{connector.ProviderManaged},
 	// TODO(spec): dispute evidence API is not built.
 	RateLimit: connector.RateLimit{RequestsPerSecond: 2, Burst: 10},
 }
@@ -236,9 +236,13 @@ type paymentEntity struct {
 	RefundedAmount number            `json:"refunded_amount"`
 	Metadata       map[string]string `json:"metadata"`
 	CheckoutConfig string            `json:"checkout_configuration_id"`
-	PaymentMethod  string            `json:"payment_method_type"`
-	CreatedAt      string            `json:"created_at"`
-	FailureMessage string            `json:"failure_message"`
+	MembershipID   string            `json:"membership_id"`
+	Membership     *struct {
+		ID string `json:"id"`
+	} `json:"membership"`
+	PaymentMethod  string `json:"payment_method_type"`
+	CreatedAt      string `json:"created_at"`
+	FailureMessage string `json:"failure_message"`
 }
 
 type refundEntity struct {
@@ -428,7 +432,34 @@ func (w *whop) ParseWebhook(_ context.Context, req connector.WebhookRequest) ([]
 		if err != nil {
 			return nil, err
 		}
+		if p.Metadata["sub"] != "" {
+			// A payment of a subscription checkout (the first charge or a
+			// renewal): reported as a subscription notification carrying it.
+			mid := p.MembershipID
+			if mid == "" && p.Membership != nil {
+				mid = p.Membership.ID
+			}
+			st := "active"
+			if s.Status == connector.PaymentFailed {
+				st = "past_due"
+			}
+			n.Kind = connector.NotifySubscription
+			n.Subscription = &connector.SubscriptionSnapshot{ProviderSubscriptionID: mid, ProviderRef: p.Metadata["ref"], Status: st,
+				RawStatus: s.RawStatus, Amount: s.Amount, Currency: s.Currency}
+			n.Payment = &s
+			break
+		}
 		n.Kind, n.Payment = connector.NotifyPayment, &s
+	case strings.HasPrefix(ev.Type, "membership."):
+		var m membershipEntity
+		if err := json.Unmarshal(ev.Data, &m); err != nil {
+			return nil, fmt.Errorf("whop: %s data: %w", ev.Type, err)
+		}
+		if m.ID == "" {
+			return nil, fmt.Errorf("whop: %s without a membership id", ev.Type)
+		}
+		snap := m.snapshot()
+		n.Kind, n.Subscription = connector.NotifySubscription, &snap
 	case strings.HasPrefix(ev.Type, "refund."):
 		var r refundEntity
 		if err := json.Unmarshal(ev.Data, &r); err != nil {

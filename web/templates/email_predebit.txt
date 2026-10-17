@@ -1,0 +1,15 @@
+Subject: Upcoming automatic payment of {{.Amount}} to {{.Merchant}} on {{.DebitDate}}
+
+Hello {{.CustomerName}},
+
+This is a reminder from {{.Merchant}}. An automatic payment will be debited from your account under the mandate you set up.
+
+  Merchant:        {{.Merchant}}
+  Amount:          {{.Amount}}
+  Debit date:      {{.DebitDate}}
+  Mandate reference: {{.MandateRef}}
+  Reason:          {{.Reason}}
+
+You do not need to do anything. To stop this payment, cancel the mandate in your UPI app or bank app before the debit date, or ask {{.Merchant}}{{with .SupportEmail}} at {{.}}{{end}} to cancel your subscription.
+
+This message is sent in addition to the notice from your payment provider.

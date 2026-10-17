@@ -335,7 +335,7 @@ func (s *Service) issue(ctx context.Context, tx store.Tx, p store.Payment, a sto
 	token, tokenHash := newToken()
 	inv := store.Invoice{
 		ID: ids.New("inv"), OrgID: p.OrgID, Mode: p.Mode, AppID: p.AppID, TaxEntityID: ent.ID, PaymentID: p.ID,
-		AttemptID: a.ID, SubscriptionID: p.SubscriptionID, Number: number, SeriesPrefix: prefix, FiscalYear: fy,
+		AttemptID: a.ID, SubscriptionID: p.SubscriptionID, Number: number, Seq: seq, SeriesPrefix: prefix, FiscalYear: fy,
 		IssuedAt: issued, SupplyType: string(cls.SupplyType), PlaceOfSupply: cls.PlaceOfSupply, InterState: cls.InterState,
 		Currency: cur, Supplier: supJSON, Recipient: rcpJSON, Lines: linesJSON,
 		Taxable: amts.Taxable, CGST: amts.CGST, SGST: amts.SGST, IGST: amts.IGST, Total: amts.Total, GSTRateBP: appliedBP,
@@ -535,7 +535,7 @@ func (s *Service) insertCreditNote(ctx context.Context, tx store.Tx, inv store.I
 	token, tokenHash := newToken()
 	cn := store.CreditNote{
 		ID: ids.New("crn"), OrgID: inv.OrgID, Mode: inv.Mode, AppID: inv.AppID, TaxEntityID: ent.ID, InvoiceID: inv.ID,
-		PaymentID: refs.PaymentID, RefundID: refs.RefundID, DisputeID: refs.DisputeID, Number: number, SeriesPrefix: prefix, FiscalYear: fy, IssuedAt: now,
+		PaymentID: refs.PaymentID, RefundID: refs.RefundID, DisputeID: refs.DisputeID, Number: number, Seq: seq, SeriesPrefix: prefix, FiscalYear: fy, IssuedAt: now,
 		Reason: reason, Currency: inv.Currency, Lines: linesJSON,
 		Taxable: split.Taxable, CGST: split.CGST, SGST: split.SGST, IGST: split.IGST, Total: split.Total,
 		TemplateVersion: render.Version1, AccessTokenHash: tokenHash,

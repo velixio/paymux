@@ -31,7 +31,7 @@ func TestRunUnknownCommand(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("code=%d", code)
 	}
-	for _, want := range []string{`unknown command "bogus"`, "usage: paymux <serve|migrate|app|provider|domain|tax-entity|report|fx|endpoint|version>"} {
+	for _, want := range []string{`unknown command "bogus"`, "usage: paymux <serve|migrate|backup|db|app|provider|domain|tax-entity|report|fx|endpoint|version>"} {
 		if !strings.Contains(errs, want) {
 			t.Errorf("stderr %q missing %q", errs, want)
 		}
@@ -40,7 +40,7 @@ func TestRunUnknownCommand(t *testing.T) {
 
 func TestRunNoArgs(t *testing.T) {
 	code, _, errs := run()
-	if code != 2 || !strings.Contains(errs, "usage: paymux <serve|migrate|app|provider|domain|tax-entity|report|fx|endpoint|version>") {
+	if code != 2 || !strings.Contains(errs, "usage: paymux <serve|migrate|backup|db|app|provider|domain|tax-entity|report|fx|endpoint|version>") {
 		t.Fatalf("code=%d stderr=%q", code, errs)
 	}
 }

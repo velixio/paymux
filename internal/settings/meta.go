@@ -57,6 +57,7 @@ var metas = map[string]Meta{
 		Help: "Retry a failed renewal this many hours after the failure; up to 6 retries, comma separated. Empty means no retries."},
 	"dunning_final_action": {Kind: KindEnum, Options: []string{"cancel", "keep_past_due"},
 		Help: "What to do with a subscription when every retry has failed."},
+	"predebit_email": {Kind: KindBool, Help: "Also email the customer a pre-debit notice before each automatic charge."},
 	"predebit_lead": {Kind: KindInt, Unit: "hours", Min: 25, Max: 7 * 24,
 		Help: "How long before a mandate debit the customer is notified (at least 25 hours)."},
 	"mandate_headroom": {Kind: KindFloat, Unit: "x", Min: 1, Max: 5,

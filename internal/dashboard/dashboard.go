@@ -33,6 +33,7 @@ import (
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
+	"github.com/paymux/paymux/internal/subscriptions"
 	"github.com/paymux/paymux/internal/web"
 )
 
@@ -82,6 +83,8 @@ type Options struct {
 	Jobs interface {
 		Enqueue(ctx context.Context, tx store.Tx, j jobs.Job) error
 	}
+	// Subscriptions serves the subscription pages; nil answers 404 there.
+	Subscriptions *subscriptions.Service
 	// Location is the time zone of "today" and of date filters (default UTC).
 	Location *time.Location
 	// PageSize is the number of rows per list page (default 25).
@@ -175,6 +178,7 @@ func (d *Dashboard) routes() {
 	m.HandleFunc("POST "+prefix+"/users/{id}/disable", d.authed(authz.UserManage, d.userDisable))
 
 	d.routesPages()
+	d.routesSubscriptions()
 	m.HandleFunc("GET "+prefix+"/{section}", d.authed(authz.PaymentRead, d.section))
 }
 

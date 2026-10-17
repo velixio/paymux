@@ -14,6 +14,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +24,7 @@ import (
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/web"
@@ -67,6 +70,7 @@ const (
 	JobMandateExpiry    = "mandate.expiry"
 	JobRevokeMandate    = "mandate.revoke"
 	JobCancelAtProvider = "subscription.cancel_at_provider"
+	JobPollMandate      = "mandate.poll"
 )
 
 // Event types.
@@ -119,6 +123,12 @@ type Options struct {
 	Now     func() time.Time
 	// Pages renders the hosted /s views; nil uses the embedded templates.
 	Pages *web.Renderer
+	// Mailer sends the customer pre-debit notice; nil sends nothing.
+	Mailer notify.Mailer
+	// Templates is where email templates are looked up first (the overlay with
+	// PAYMUX_DATA_DIR/custom); nil or a missing file falls back to the defaults.
+	Templates fs.FS
+	Logger    *slog.Logger
 }
 
 // Service implements the subscription operations.
@@ -131,6 +141,9 @@ type Service struct {
 	connectors Connectors
 	baseURL    string
 	now        func() time.Time
+	mailer     notify.Mailer
+	templates  fs.FS
+	log        *slog.Logger
 
 	pagesOnce sync.Once
 	pagesR    *web.Renderer
@@ -147,8 +160,11 @@ func New(o Options) *Service {
 		o.Emitter = events.EmitterFunc(func(context.Context, store.Tx, events.Event) error { return nil })
 	}
 	return &Service{db: o.DB, core: o.Core, settings: o.Settings, jobs: o.Jobs, emitter: o.Emitter, connectors: o.Connectors,
-		baseURL: strings.TrimRight(o.BaseURL, "/"), now: o.Now, pagesOpt: o.Pages}
+		baseURL: strings.TrimRight(o.BaseURL, "/"), now: o.Now, pagesOpt: o.Pages, mailer: o.Mailer, templates: o.Templates, log: o.Logger}
 }
+
+// SetTemplates sets where email templates are looked up first (call before serving).
+func (s *Service) SetTemplates(f fs.FS) { s.templates = f }
 
 // SetPages sets the HTML renderer of the hosted views (call before serving).
 func (s *Service) SetPages(r *web.Renderer) { s.pagesOpt = r }
