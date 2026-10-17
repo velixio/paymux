@@ -219,6 +219,20 @@ func firstNonEmpty(ss ...string) string {
 type number string
 
 func (n *number) UnmarshalJSON(b []byte) error {
+	// Some endpoints return money as {"currency":"usd","amount":"10.00",...}.
+	if t := strings.TrimSpace(string(b)); strings.HasPrefix(t, "{") {
+		var obj struct {
+			Amount json.RawMessage `json:"amount"`
+		}
+		if err := json.Unmarshal(b, &obj); err != nil {
+			return err
+		}
+		if len(obj.Amount) == 0 {
+			*n = ""
+			return nil
+		}
+		return n.UnmarshalJSON(obj.Amount)
+	}
 	s := strings.Trim(strings.TrimSpace(string(b)), `"`)
 	if s == "null" {
 		s = ""
