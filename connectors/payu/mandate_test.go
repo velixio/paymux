@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http/httptest"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,6 +98,8 @@ func TestMandateCheckoutFormAndGoldenSIHash(t *testing.T) {
 	}
 }
 
+var requestIDRE = regexp.MustCompile(`^\{"authPayuId":"[0-9]+","requestId":"[A-Za-z0-9]+"\}$`)
+
 func TestFetchMandateByRegistrationRefThenById(t *testing.T) {
 	f := &fake{verify: verifyBody("success", "captured"), cmds: map[string]string{
 		"check_mandate_status": `{"status":1,"msg":"ok","result":{"mandateStatus":"REVOKED"}}`}}
@@ -118,12 +122,28 @@ func TestFetchMandateByRegistrationRefThenById(t *testing.T) {
 	if err != nil || s.Status != "revoked" || s.ProviderMandateID != "403993715521" {
 		t.Fatalf("by id: %+v %v", s, err)
 	}
-	if got := f.last(); got.Get("command") != "check_mandate_status" || got.Get("var1") != `{"authPayuId":"403993715521"}` {
+	// check_mandate_status and mandate_revoke refuse a call without a requestId
+	// ("requestId is mandatory", verified live): a fresh one is sent each time.
+	if got := f.last(); got.Get("command") != "check_mandate_status" || !requestIDRE.MatchString(got.Get("var1")) || !strings.Contains(got.Get("var1"), `"authPayuId":"403993715521"`) {
 		t.Errorf("form = %v", got)
+	}
+	first := f.last().Get("var1")
+	_, _ = m.FetchMandate(context.Background(), connector.MandateRef{ProviderMandateID: "403993715521"})
+	if f.last().Get("var1") == first {
+		t.Error("the requestId was reused")
 	}
 	f.cmds["check_mandate_status"] = `{"status":0,"msg":"no such mandate"}`
 	if _, err := m.FetchMandate(context.Background(), connector.MandateRef{ProviderMandateID: "1"}); !errors.Is(err, connector.ErrNotFound) {
 		t.Errorf("err = %v", err)
+	}
+	// These commands name their message "message", not "msg" (verified live).
+	f.cmds["check_mandate_status"] = `{"status":0,"message":"Consent is Not Mandated","action":"check_mandate_status"}`
+	if _, err := m.FetchMandate(context.Background(), connector.MandateRef{ProviderMandateID: "1"}); !errors.Is(err, connector.ErrNotFound) {
+		t.Errorf("unknown mandate: %v", err)
+	}
+	f.cmds["check_mandate_status"] = `{"status":0,"message":"Invalid Hash."}`
+	if _, err := m.FetchMandate(context.Background(), connector.MandateRef{ProviderMandateID: "1"}); !errors.Is(err, connector.ErrInvalidCredentials) {
+		t.Errorf("bad hash: %v", err)
 	}
 }
 
@@ -198,8 +218,12 @@ func TestRevokeMandate(t *testing.T) {
 	if err := m.RevokeMandate(context.Background(), connector.MandateRef{ProviderMandateID: "403993715521"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.last(); got.Get("command") != "mandate_revoke" || got.Get("var1") != `{"authPayuId":"403993715521"}` {
+	if got := f.last(); got.Get("command") != "mandate_revoke" || !requestIDRE.MatchString(got.Get("var1")) || !strings.Contains(got.Get("var1"), `"authPayuId":"403993715521"`) {
 		t.Errorf("form = %v", got)
+	}
+	f.cmds["mandate_revoke"] = `{"status":0,"message":"Mandate entry not found","action":"MANDATE_REVOKE"}`
+	if err := m.RevokeMandate(context.Background(), connector.MandateRef{ProviderMandateID: "1"}); !errors.Is(err, connector.ErrNotFound) {
+		t.Errorf("unknown mandate (message key): %v", err)
 	}
 	f.cmds["mandate_revoke"] = `{"status":0,"msg":"Mandate already cancelled"}`
 	if err := m.RevokeMandate(context.Background(), connector.MandateRef{ProviderMandateID: "1"}); err != nil {

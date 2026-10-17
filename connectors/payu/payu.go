@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync/atomic"
 
 	"github.com/paymux/paymux/pkg/connector"
 	"github.com/paymux/paymux/pkg/connector/money"
@@ -65,6 +66,7 @@ type payu struct {
 	cfg  config
 	deps connector.Deps
 	api  *client
+	seq  atomic.Uint64
 }
 
 // New is the connector.Factory for PayU.
