@@ -41,7 +41,11 @@ func (s *Service) ReissueInvoice(ctx context.Context, actor audit.Actor, invoice
 			return invalid("invoice %s already has credit notes and cannot be reissued", inv.Number)
 		}
 		now := s.now().UTC()
-		if now.After(tax.CreditNoteDeadline(inv.IssuedAt)) {
+		deadline, hasCutoff, err := s.creditNoteDeadline(ctx, tx, inv.OrgID, inv.IssuedAt)
+		if err != nil {
+			return err
+		}
+		if hasCutoff && now.After(deadline) {
 			return invalid("the credit note cutoff for invoice %s has passed", inv.Number)
 		}
 		p, err := store.GetPayment(ctx, tx, inv.PaymentID)

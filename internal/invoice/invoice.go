@@ -547,9 +547,11 @@ func (s *Service) issueCredit(ctx context.Context, tx store.Tx, src creditSource
 		}
 	}
 	now := s.now().UTC()
-	if now.After(tax.CreditNoteDeadline(inv.IssuedAt)) {
-		// TODO(spec): the cutoff is meant to be an org setting; the statutory
-		// default is hard-wired until that setting exists.
+	deadline, hasCutoff, err := s.creditNoteDeadline(ctx, tx, inv.OrgID, inv.IssuedAt)
+	if err != nil {
+		return nil, err
+	}
+	if hasCutoff && now.After(deadline) {
 		if src.refund == nil {
 			return nil, ErrCreditNoteCutoff
 		}
