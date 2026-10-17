@@ -185,3 +185,50 @@ func TestImportedPendingRefundCompletesLater(t *testing.T) {
 		}
 	})
 }
+
+// Whop answers a refund request with the payment, not a refund, so our refund
+// first carries its own reference as the provider id. The real refund id
+// arrives later, by webhook: that is still our refund, whether it is pending or
+// already seen succeeded, and it must not be booked a second time.
+func TestImportProviderRefundAdoptsARefundThatCarriesOnlyOurOwnReference(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p, a := paidPayment(t, e, 1000)
+		mine, err := e.svc.CreateRefund(ctx, core.CreateRefundInput{Scope: e.scope, Actor: audit.System, InitiatedBy: "api", PaymentID: p.ID, Amount: 300})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The provider's answer: pending, identified by our own reference.
+		if _, err := e.svc.ApplyRefundSnapshot(ctx, mine.ID, core.RefundSnapshot{Status: state.RefundPending, ProviderRefundID: mine.ProviderRef}); err != nil {
+			t.Fatal(err)
+		}
+		res, err := e.svc.ImportProviderRefund(ctx, a.ID, dashboardRefund("rfnd_real_1", 300))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Created || res.Refund.ID != mine.ID || res.Refund.ProviderRefundID != "rfnd_real_1" || res.Refund.Status != "succeeded" {
+			t.Errorf("pending adoption: %+v created=%v", res.Refund, res.Created)
+		}
+		if e.count("SELECT COUNT(*) FROM refunds") != 1 || e.get(p.ID).AmountRefunded != 300 {
+			t.Errorf("counted twice: %d rows, refunded %d", e.count("SELECT COUNT(*) FROM refunds"), e.get(p.ID).AmountRefunded)
+		}
+
+		// The same, when polling already saw it succeed under the reference.
+		mine2, err := e.svc.CreateRefund(ctx, core.CreateRefundInput{Scope: e.scope, Actor: audit.System, InitiatedBy: "api", PaymentID: p.ID, Amount: 200})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.svc.ApplyRefundSnapshot(ctx, mine2.ID, core.RefundSnapshot{Status: state.RefundSucceeded, ProviderRefundID: mine2.ProviderRef}); err != nil {
+			t.Fatal(err)
+		}
+		res, err = e.svc.ImportProviderRefund(ctx, a.ID, dashboardRefund("rfnd_real_2", 200))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Created || res.Refund.ID != mine2.ID || res.Refund.ProviderRefundID != "rfnd_real_2" {
+			t.Errorf("succeeded adoption: %+v created=%v", res.Refund, res.Created)
+		}
+		if e.count("SELECT COUNT(*) FROM refunds") != 2 || e.get(p.ID).AmountRefunded != 500 {
+			t.Errorf("counted twice: %d rows, refunded %d", e.count("SELECT COUNT(*) FROM refunds"), e.get(p.ID).AmountRefunded)
+		}
+	})
+}
