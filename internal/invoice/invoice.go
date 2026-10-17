@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +36,7 @@ const (
 	FlagFXPending         = "fx_pending"
 	FlagCutoffPassed      = "credit_note_cutoff_passed"
 	FlagRecipientInvalid  = "recipient_invalid"
+	FlagReissued          = "reissued"
 	testSeriesPrefix      = "TEST"
 	kindInvoice           = "invoice"
 	kindCreditNote        = "credit_note"
@@ -231,6 +233,13 @@ func (s *Service) IssueForPayment(ctx context.Context, tx store.Tx, p store.Paym
 	} else if len(existing) > 0 {
 		return &existing[0], nil
 	}
+	return s.issue(ctx, tx, p, a, c, prof, nil)
+}
+
+// issue writes a new invoice for the payment. IssueForPayment calls it once
+// per payment; ReissueInvoice calls it again with corrected billing details.
+func (s *Service) issue(ctx context.Context, tx store.Tx, p store.Payment, a store.Attempt, c store.Customer,
+	prof store.AppTaxProfile, extraFlags []string) (*store.Invoice, error) {
 	ent, err := store.GetTaxEntity(ctx, tx, prof.TaxEntityID)
 	if err != nil {
 		return nil, fmt.Errorf("invoice: tax entity %s of app %s: %w", prof.TaxEntityID, p.AppID, err)
@@ -248,7 +257,7 @@ func (s *Service) IssueForPayment(ctx context.Context, tx store.Tx, p store.Paym
 		sup.LUT = &tax.LUT{Number: ent.LUTNumber, ValidFrom: ent.LUTValidFrom, ValidTo: ent.LUTValidTo}
 	}
 	rcp := tax.Recipient{GSTIN: c.Billing.GSTIN, StateCode: c.Billing.StateCode, Country: c.Billing.Country}
-	var flags []string
+	flags := slices.Clone(extraFlags)
 	cls, err := tax.Classify(sup, rcp, issued, cur != "INR")
 	if err != nil {
 		// Bad billing data must not stop a paid order from being invoiced:
@@ -430,6 +439,14 @@ func (s *Service) IssueCreditNote(ctx context.Context, tx store.Tx, r store.Refu
 	if err != nil {
 		return nil, fmt.Errorf("invoice: credit for refund %s: %w", r.ID, err)
 	}
+	return s.insertCreditNote(ctx, tx, inv, r.ID, p.ID, split, firstNonEmpty(r.Reason, "Refund"), now)
+}
+
+// insertCreditNote numbers, stores, renders and announces a credit note for
+// the amounts in split against inv. refundID is empty for a manual credit
+// note such as the one of a reissue.
+func (s *Service) insertCreditNote(ctx context.Context, tx store.Tx, inv store.Invoice, refundID, paymentID string,
+	split tax.Amounts, reason string, now time.Time) (*store.CreditNote, error) {
 	ent, err := store.GetTaxEntity(ctx, tx, inv.TaxEntityID)
 	if err != nil {
 		return nil, err
@@ -464,8 +481,8 @@ func (s *Service) IssueCreditNote(ctx context.Context, tx store.Tx, r store.Refu
 	token, tokenHash := newToken()
 	cn := store.CreditNote{
 		ID: ids.New("crn"), OrgID: inv.OrgID, Mode: inv.Mode, AppID: inv.AppID, TaxEntityID: ent.ID, InvoiceID: inv.ID,
-		PaymentID: p.ID, RefundID: r.ID, Number: number, SeriesPrefix: prefix, FiscalYear: fy, IssuedAt: now,
-		Reason: firstNonEmpty(r.Reason, "Refund"), Currency: inv.Currency, Lines: linesJSON,
+		PaymentID: paymentID, RefundID: refundID, Number: number, SeriesPrefix: prefix, FiscalYear: fy, IssuedAt: now,
+		Reason: reason, Currency: inv.Currency, Lines: linesJSON,
 		Taxable: split.Taxable, CGST: split.CGST, SGST: split.SGST, IGST: split.IGST, Total: split.Total,
 		TemplateVersion: render.Version1, AccessTokenHash: tokenHash,
 	}

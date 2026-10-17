@@ -139,3 +139,18 @@ func ListDomains(ctx context.Context, q Queryer, appID string) ([]Domain, error)
 	}
 	return out, rows.Err()
 }
+
+// UpdateCustomerBilling replaces a customer's billing details.
+func UpdateCustomerBilling(ctx context.Context, tx Tx, customerID string, b Billing, now time.Time) error {
+	res, err := tx.ExecContext(ctx, `UPDATE customers SET billing_legal_name = ?, billing_gstin = ?, billing_line1 = ?,
+		billing_line2 = ?, billing_city = ?, billing_state_code = ?, billing_postal_code = ?, billing_country = ?, updated_at = ?
+		WHERE id = ?`, nullIfEmpty(b.LegalName), nullIfEmpty(b.GSTIN), nullIfEmpty(b.Line1), nullIfEmpty(b.Line2),
+		nullIfEmpty(b.City), nullIfEmpty(b.StateCode), nullIfEmpty(b.PostalCode), nullIfEmpty(b.Country), ms(now), customerID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
