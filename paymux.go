@@ -14,10 +14,15 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/internal/config"
+	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/events"
+	"github.com/paymux/paymux/internal/httpapi"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/logging"
 	"github.com/paymux/paymux/internal/metrics"
+	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/server"
+	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/migrations"
 )
@@ -35,8 +40,9 @@ const (
 
 // App is a Paymux instance.
 type App struct {
-	cfg config.Config
-	log *slog.Logger
+	cfg     config.Config
+	log     *slog.Logger
+	emitter events.Emitter // nil means core.NoopEmitter
 
 	mu          sync.Mutex
 	addr, iaddr string
@@ -47,6 +53,10 @@ type Option func(*App)
 
 // WithLogger sets the logger. The default writes redacted JSON to stderr.
 func WithLogger(l *slog.Logger) Option { return func(a *App) { a.log = l } }
+
+// WithEmitter sets the domain-event emitter. The default drops events until
+// the outbound-webhooks lane provides one.
+func WithEmitter(e events.Emitter) Option { return func(a *App) { a.emitter = e } }
 
 // New builds an App. Nothing is opened until Start.
 func New(cfg config.Config, opts ...Option) (*App, error) {
@@ -90,8 +100,23 @@ func (a *App) Start(ctx context.Context) error {
 		return err
 	}
 
+	set := settings.New(db)
+	if _, err := core.Bootstrap(ctx, db, set); err != nil {
+		return fmt.Errorf("bootstrap: %w", err)
+	}
+	box, err := secrets.NewBox(a.cfg.MasterKey)
+	if err != nil {
+		return fmt.Errorf("master key: %w", err)
+	}
+
 	started := time.Now()
 	q := jobs.New(db, jobs.Options{Logger: a.log})
+	core.RegisterJobs(q)
+	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: a.emitter})
+	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log})
+	if err != nil {
+		return err
+	}
 	q.Register(heartbeatKind, func(context.Context, json.RawMessage) error { return nil })
 	if err := q.AddSchedule(jobs.Schedule{Name: heartbeatKind, Kind: heartbeatKind, Every: heartbeatEvery}); err != nil {
 		return err
@@ -133,6 +158,8 @@ func (a *App) Start(ctx context.Context) error {
 			}},
 		},
 	})
+
+	api.Register(srv)
 
 	ln, err := net.Listen("tcp", a.cfg.Listen)
 	if err != nil {
