@@ -34,6 +34,8 @@ type fake struct {
 	captureFails  bool // capture answers "already captured" 400
 	refundErrCode int  // when set, refund answers this status with an error body
 	listPages     int  // number of full pages to serve for lists
+	plans         int  // plans created
+	subStatus     string
 }
 
 func newFake(status string) *fake { return &fake{payStatus: status, refundStatus: "processed"} }
@@ -155,6 +157,33 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, fakeCollection(disputeJSON("open")))
 	case r.Method == "GET" && p == "/v1/disputes/disp_Nx3":
 		writeJSON(w, 200, disputeJSON("under_review"))
+	case r.Method == "POST" && p == "/v1/plans":
+		var in map[string]any
+		_ = json.Unmarshal(body, &in)
+		f.mu.Lock()
+		f.plans++
+		id := "plan_Nx" + strconv.Itoa(f.plans)
+		f.mu.Unlock()
+		in["id"], in["entity"] = id, "plan"
+		writeJSON(w, 200, in)
+	case r.Method == "GET" && strings.HasPrefix(p, "/v1/plans/"):
+		writeJSON(w, 200, map[string]any{"id": strings.TrimPrefix(p, "/v1/plans/"), "entity": "plan", "period": "monthly", "interval": 1,
+			"item": map[string]any{"amount": 49900, "currency": "INR"}})
+	case r.Method == "POST" && p == "/v1/subscriptions":
+		var in map[string]any
+		_ = json.Unmarshal(body, &in)
+		in["id"], in["entity"], in["status"] = "sub_Nx5", "subscription", "created"
+		writeJSON(w, 200, in)
+	case r.Method == "GET" && p == "/v1/subscriptions/sub_Nx5":
+		writeJSON(w, 200, map[string]any{"id": "sub_Nx5", "entity": "subscription", "plan_id": "plan_Nx4", "status": f.subStatus,
+			"current_start": 1760000000, "current_end": 1762592000, "total_count": 12, "paid_count": 1})
+	case r.Method == "POST" && p == "/v1/subscriptions/sub_Nx5/cancel":
+		writeJSON(w, 200, map[string]any{"id": "sub_Nx5", "entity": "subscription", "status": "cancelled"})
+	case r.Method == "PATCH" && p == "/v1/subscriptions/sub_Nx5":
+		var in map[string]any
+		_ = json.Unmarshal(body, &in)
+		in["id"] = "sub_Nx5"
+		writeJSON(w, 200, in)
 	case strings.HasPrefix(p, "/v1/missing"):
 		writeAPIError(w, 404, "not found")
 	default:

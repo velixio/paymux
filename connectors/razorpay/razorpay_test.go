@@ -259,7 +259,8 @@ func TestParseWebhookEvents(t *testing.T) {
 
 func TestParseWebhookIgnoresUnknownEventsAndRejectsGarbage(t *testing.T) {
 	c := newConn(t, newFake("created"))
-	ns, err := c.ParseWebhook(context.Background(), webhookReq(t, "event_subscription_charged", testWebhookSecret, "e"))
+	ignored := connector.WebhookRequest{Body: []byte(`{"entity":"event","event":"account.instantly_activated","payload":{}}`)}
+	ns, err := c.ParseWebhook(context.Background(), ignored)
 	if err != nil || len(ns) != 0 {
 		t.Fatalf("ns=%v err=%v", ns, err)
 	}
