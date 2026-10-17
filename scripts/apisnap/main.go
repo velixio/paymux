@@ -167,9 +167,21 @@ func modulePath(root string) (string, error) {
 
 func packageAPI(dir, importPath string) (string, error) {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, func(fi fs.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }, parser.ParseComments)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return "", err
+	}
+	pkgs := map[string][]*ast.File{}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.ParseComments)
+		if err != nil {
+			return "", err
+		}
+		pkgs[f.Name.Name] = append(pkgs[f.Name.Name], f)
 	}
 	var names []string
 	for n := range pkgs {
@@ -178,7 +190,10 @@ func packageAPI(dir, importPath string) (string, error) {
 	sort.Strings(names)
 	var out bytes.Buffer
 	for _, n := range names {
-		d := doc.New(pkgs[n], importPath, 0) // exported declarations only
+		d, err := doc.NewFromFiles(fset, pkgs[n], importPath) // exported declarations only
+		if err != nil {
+			return "", err
+		}
 		fmt.Fprintf(&out, "package %s // import %q\n\n", n, importPath)
 		emit := func(node ast.Node) {
 			strip(node)
