@@ -84,3 +84,17 @@ func InsertProviderAccount(ctx context.Context, tx Tx, pa ProviderAccount) error
 		pa.Status, ms(pa.CreatedAt), ms(pa.CreatedAt))
 	return err
 }
+
+// GetProviderAccount loads a provider account by id.
+func GetProviderAccount(ctx context.Context, q Queryer, id string) (ProviderAccount, error) {
+	var pa ProviderAccount
+	var created int64
+	err := q.QueryRowContext(ctx, `SELECT id, org_id, mode, connector, name, config_enc, status, created_at
+		FROM provider_accounts WHERE id = ?`, id).
+		Scan(&pa.ID, &pa.OrgID, &pa.Mode, &pa.Connector, &pa.Name, &pa.ConfigEnc, &pa.Status, &created)
+	if err != nil {
+		return ProviderAccount{}, notFound(err)
+	}
+	pa.CreatedAt = fromMS(created)
+	return pa, nil
+}
