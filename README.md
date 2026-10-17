@@ -79,8 +79,18 @@ Settings are read from environment variables, or from a `.env` file. A real envi
 | `PAYMUX_JS_HOOKS_ALLOWED_HOSTS` | unset | Hosts `fetch()` in JavaScript hooks may call, comma separated (`hooks.slack.com,*.example.com`) |
 | `PAYMUX_ALLOW_PRIVATE_WEBHOOKS` | `false` | Allow webhook URLs that resolve to private IPs |
 | `PAYMUX_DEV_SKIP_2FA` | `false` | Honoured only in development on a local host |
+| `PAYMUX_OIDC_ISSUER`, `_CLIENT_ID`, `_CLIENT_SECRET` | unset | Enable OpenID Connect single sign-on (all three together) |
+| `PAYMUX_OIDC_ALLOWED_DOMAINS` | unset | Comma-separated e-mail domains whose users may be created at first sign-in |
+| `PAYMUX_OIDC_DEFAULT_ROLE` | `viewer` | Role of those users (never `admin`) |
 
 Everything else is data that you edit in the dashboard or with the CLI: apps, provider accounts, routing rules, tax entities and policy settings. Policy settings resolve as app value, then org value, then built-in default.
+
+## Access control
+
+- **Roles.** `admin`, `operator` and `viewer` are built in. Admins create custom roles on the dashboard's Roles page by ticking actions, and assign them on the Users page; the user and role management actions stay with admins. Every change is audited.
+- **API key scopes.** A key may be limited to `payments:read`, `payments:write`, `refunds:read`, `refunds:write`, `subscriptions:read`, `subscriptions:write` and `invoices:read` (`x:write` includes `x:read`). A missing scope answers 403 `insufficient_scope`; keys without scopes have all of them. Create scoped keys on the app's Keys tab or with `paymux app key --app SLUG --scopes payments:read,refunds:write`; `docs/openapi.yaml` lists the scope of each operation.
+- **Key rotation.** `paymux app key --app SLUG --mode live --rotate [--grace-hours 24]` (or Rotate on the Keys tab) creates a new key and lets the current keys of that mode keep working for the grace period, then stops them.
+- **Single sign-on.** With the `PAYMUX_OIDC_*` settings the login page offers an OpenID Connect sign-in (authorization code flow with PKCE, state and nonce). Users are matched by verified e-mail; someone new is created only for an allowed domain, with the default role. The identity provider's sign-in replaces TOTP; password logins still need TOTP. The redirect URI to register is `<PAYMUX_BASE_URL>/dashboard/login/oidc/callback`.
 
 ## Development
 

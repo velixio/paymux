@@ -145,7 +145,7 @@ func serve(t *testing.T, c connector.Connector, wrap func(http.Handler) http.Han
 
 func dial(t *testing.T, srv *httptest.Server, secret string) connector.Connector {
 	t.Helper()
-	cfg, _ := json.Marshal(config{BaseURL: srv.URL + "/v1/", Secret: secret})
+	cfg, _ := json.Marshal(config{BaseURL: srv.URL + "/v1/", Secret: secret, AllowInsecure: true}) // httptest listens on loopback
 	deps := connectortest.NewDeps(nil, now0)
 	deps.HTTP = srv.Client()
 	rc, err := New(cfg, deps)
@@ -346,7 +346,7 @@ func TestSecurity(t *testing.T) {
 
 	// A different secret: the remote rejects our requests (401), which discovery reports.
 	other := wire.SecretPrefix + base64.StdEncoding.EncodeToString([]byte("a completely different secret!!"))
-	cfg, _ := json.Marshal(config{BaseURL: good.URL, Secret: other})
+	cfg, _ := json.Marshal(config{BaseURL: good.URL, Secret: other, AllowInsecure: true})
 	deps := connectortest.NewDeps(nil, now0)
 	deps.HTTP = good.Client()
 	if _, err := New(cfg, deps); !errors.Is(err, connector.ErrInvalidCredentials) {
@@ -410,7 +410,7 @@ func TestSecurity(t *testing.T) {
 	sig := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/fetch_payment", nil)
 	signer, _ := wire.NewSigner(testSecret)
-	signer.Sign(req.Header, nil, now0.Add(-time.Hour))
+	signer.SignRequest(req.Header, "POST", "fetch_payment", nil, now0.Add(-time.Hour))
 	h.ServeHTTP(sig, req)
 	if sig.Code != 401 {
 		t.Errorf("stale request: %d", sig.Code)

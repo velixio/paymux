@@ -57,7 +57,12 @@ type Info struct {
 	MerchantOfRecord   bool            `json:"merchant_of_record"`
 	SubscriptionModes  []BillingMode   `json:"subscription_modes"`
 	PreDebitPerAttempt bool            `json:"pre_debit_per_attempt"`
-	MandateLimits      []MandateLimit  `json:"mandate_limits"`
+	// DenyPrivateNetwork asks the host to build this connector's HTTP client
+	// with HTTPOptions.DenyPrivate (no loopback, private or link-local targets,
+	// no redirects), unless the account config sets "allow_insecure": true.
+	// For connectors that call a URL an operator configures.
+	DenyPrivateNetwork bool           `json:"deny_private_network,omitempty"`
+	MandateLimits      []MandateLimit `json:"mandate_limits"`
 	// MandateSetupAmount is what a mandate registration debits when no real
 	// charge is due yet (a trial): the provider's minimal or verification
 	// amount, in minor units. 0 means the provider default of 100 (Rs 1).

@@ -29,6 +29,7 @@ import (
 
 const (
 	apiBase          = "https://api.whop.com/api/v1"
+	sandboxAPIBase   = "https://sandbox-api.whop.com/api/v1"
 	webhookTolerance = 5 * time.Minute
 )
 
@@ -40,7 +41,8 @@ const configSchema = `{
   "properties": {
     "api_key": {"type": "string", "title": "API key", "minLength": 1, "x-secret": true},
     "company_id": {"type": "string", "title": "Company id (biz_...)", "minLength": 1},
-    "webhook_secret": {"type": "string", "title": "Webhook secret (ws_...)", "minLength": 1, "x-secret": true}
+    "webhook_secret": {"type": "string", "title": "Webhook secret (ws_...)", "minLength": 1, "x-secret": true},
+    "sandbox": {"type": "boolean", "title": "Use the Whop sandbox (sandbox.whop.com)", "default": false}
   }
 }`
 
@@ -67,6 +69,7 @@ type config struct {
 	APIKey        string `json:"api_key"`
 	CompanyID     string `json:"company_id"`
 	WebhookSecret string `json:"webhook_secret"`
+	Sandbox       bool   `json:"sandbox"`
 }
 
 type whop struct {
@@ -113,8 +116,16 @@ func (w *whop) Info() connector.Info {
 	return i
 }
 
+// base is the API host for this account: production or the Whop sandbox.
+func (w *whop) base() string {
+	if w.cfg.Sandbox {
+		return sandboxAPIBase
+	}
+	return apiBase
+}
+
 func (w *whop) do(ctx context.Context, method, path string, query url.Values, in, out any, hdr map[string]string) error {
-	u := apiBase + path
+	u := w.base() + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
 	}
@@ -208,6 +219,20 @@ func firstNonEmpty(ss ...string) string {
 type number string
 
 func (n *number) UnmarshalJSON(b []byte) error {
+	// Some endpoints return money as {"currency":"usd","amount":"10.00",...}.
+	if t := strings.TrimSpace(string(b)); strings.HasPrefix(t, "{") {
+		var obj struct {
+			Amount json.RawMessage `json:"amount"`
+		}
+		if err := json.Unmarshal(b, &obj); err != nil {
+			return err
+		}
+		if len(obj.Amount) == 0 {
+			*n = ""
+			return nil
+		}
+		return n.UnmarshalJSON(obj.Amount)
+	}
 	s := strings.Trim(strings.TrimSpace(string(b)), `"`)
 	if s == "null" {
 		s = ""
@@ -342,9 +367,9 @@ func (w *whop) CreateCheckout(ctx context.Context, req connector.CheckoutRequest
 			"company_id": w.cfg.CompanyID, "plan_type": "one_time",
 			"currency": strings.ToLower(req.Currency), "initial_price": json.Number(price),
 		},
-		"metadata":     map[string]string{"pay": req.PaymentID, "att": req.AttemptID, "app": req.AppID, "ref": req.ProviderRef},
-		"redirect_url": w.deps.URLs.ReturnURL(req.ProviderRef),
+		"metadata": map[string]string{"pay": req.PaymentID, "att": req.AttemptID, "app": req.AppID, "ref": req.ProviderRef},
 	}
+	w.setRedirect(in, req.ProviderRef)
 	var out struct {
 		ID          string `json:"id"`
 		PurchaseURL string `json:"purchase_url"`
@@ -623,3 +648,11 @@ func (w *whop) FetchRefund(ctx context.Context, ref connector.RefundRef) (connec
 }
 
 var _ connector.Refunder = (*whop)(nil)
+
+// setRedirect adds the return URL when it is https. Whop rejects any other
+// redirect_url, so local http setups rely on the poller and webhooks instead.
+func (w *whop) setRedirect(in map[string]any, ref string) {
+	if u := w.deps.URLs.ReturnURL(ref); strings.HasPrefix(u, "https://") {
+		in["redirect_url"] = u
+	}
+}

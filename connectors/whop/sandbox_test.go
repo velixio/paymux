@@ -16,7 +16,7 @@ import (
 // Run with: go test -tags sandbox ./connectors/whop -run Sandbox
 // Needs WHOP_TEST_API_KEY, WHOP_TEST_COMPANY_ID and WHOP_TEST_WEBHOOK_SECRET.
 func TestSandboxCreateCheckout(t *testing.T) {
-	cfg := config{APIKey: os.Getenv("WHOP_TEST_API_KEY"), CompanyID: os.Getenv("WHOP_TEST_COMPANY_ID"), WebhookSecret: os.Getenv("WHOP_TEST_WEBHOOK_SECRET")}
+	cfg := config{APIKey: os.Getenv("WHOP_TEST_API_KEY"), CompanyID: os.Getenv("WHOP_TEST_COMPANY_ID"), WebhookSecret: os.Getenv("WHOP_TEST_WEBHOOK_SECRET"), Sandbox: os.Getenv("WHOP_TEST_PRODUCTION") == ""}
 	if cfg.APIKey == "" || cfg.CompanyID == "" || cfg.WebhookSecret == "" {
 		t.Skip("WHOP_TEST_* not set")
 	}

@@ -250,7 +250,14 @@ func runUpdate(ctx context.Context, args []string, lookup func(string) (string, 
 	}
 	fmt.Fprintf(stderr, "paymux update: checksum verified (%s)\n", got[:12])
 
-	if sig, ok := rel.asset("SHA256SUMS.sig"); ok {
+	// Asking for a signature check makes it mandatory: never fall back to
+	// checksums when the operator supplied a key or identity.
+	wantSig := *cosignKey != "" || *cosignIdentity != ""
+	sig, signed := rel.asset("SHA256SUMS.sig")
+	switch {
+	case wantSig && !signed:
+		return fail("release %s is not signed but --cosign-key/--cosign-identity was given; refusing to install", rel.Tag)
+	case signed:
 		msg, err := u.verifySignature(sig, rel, sums, *cosignKey, *cosignIdentity, *cosignIssuer)
 		if err != nil {
 			return fail("%v", err)
@@ -480,8 +487,15 @@ func selfTest(ctx context.Context, bin, tag string) error {
 // With cosign missing, or nothing to verify against, it says so and the
 // checksum alone decides.
 func (u *updater) verifySignature(sig releaseAsset, rel release, sums []byte, key, identity, issuer string) (string, error) {
+	required := key != "" || identity != ""
+	if identity != "" && issuer == "" {
+		return "", errors.New("--cosign-identity needs --cosign-issuer; refusing to install")
+	}
 	cosign, err := exec.LookPath("cosign")
 	if err != nil {
+		if required {
+			return "", errors.New("signature verification was requested but cosign is not installed; refusing to install")
+		}
 		return "the release is signed, but cosign is not installed: signature not verified (checksums only)", nil
 	}
 	if key == "" && identity == "" {

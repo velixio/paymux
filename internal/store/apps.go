@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"time"
 )
 
@@ -17,6 +19,32 @@ type APIKey struct {
 	LastUsedAt                           time.Time
 	RevokedAt                            time.Time
 	CreatedAt                            time.Time
+	// Scopes limits what the key may do; nil means every scope.
+	Scopes []string
+	// ExpiresAt, when set, is when the key stops working (a rotated-out key).
+	ExpiresAt time.Time
+}
+
+const apiKeyCols = "id, org_id, app_id, mode, prefix, sha256_hash, last_used_at, revoked_at, created_at, scopes, expires_at"
+
+func scanAPIKey(row interface{ Scan(...any) error }) (APIKey, error) {
+	var k APIKey
+	var used, revoked, expires sql.NullInt64
+	var scopes sql.NullString
+	var created int64
+	if err := row.Scan(&k.ID, &k.OrgID, &k.AppID, &k.Mode, &k.Prefix, &k.Hash, &used, &revoked, &created, &scopes, &expires); err != nil {
+		return APIKey{}, err
+	}
+	k.LastUsedAt, k.RevokedAt, k.CreatedAt, k.ExpiresAt = fromNullMS(used), fromNullMS(revoked), fromMS(created), fromNullMS(expires)
+	if scopes.Valid {
+		if err := json.Unmarshal([]byte(scopes.String), &k.Scopes); err != nil {
+			return APIKey{}, err
+		}
+		if k.Scopes == nil {
+			k.Scopes = []string{}
+		}
+	}
+	return k, nil
 }
 
 // InsertApp inserts a. A duplicate (org, slug) returns ErrConflict.
@@ -53,30 +81,58 @@ func GetAppBySlug(ctx context.Context, q Queryer, orgID, slug string) (App, erro
 
 // InsertAPIKey inserts k.
 func InsertAPIKey(ctx context.Context, tx Tx, k APIKey) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO api_keys (id, org_id, app_id, mode, prefix, sha256_hash, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, k.ID, k.OrgID, k.AppID, k.Mode, k.Prefix, k.Hash, ms(k.CreatedAt))
+	var scopes any
+	if k.Scopes != nil {
+		b, _ := json.Marshal(k.Scopes)
+		scopes = string(b)
+	}
+	var expires any
+	if !k.ExpiresAt.IsZero() {
+		expires = ms(k.ExpiresAt)
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO api_keys (id, org_id, app_id, mode, prefix, sha256_hash, created_at, scopes, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, k.ID, k.OrgID, k.AppID, k.Mode, k.Prefix, k.Hash, ms(k.CreatedAt), scopes, expires)
 	return err
 }
 
 // GetAPIKeyByPrefix loads the key with the given lookup prefix.
 func GetAPIKeyByPrefix(ctx context.Context, q Queryer, prefix string) (APIKey, error) {
-	var k APIKey
-	var used, revoked *int64
-	var created int64
-	err := q.QueryRowContext(ctx, `SELECT id, org_id, app_id, mode, prefix, sha256_hash, last_used_at, revoked_at, created_at
-		FROM api_keys WHERE prefix = ?`, prefix).
-		Scan(&k.ID, &k.OrgID, &k.AppID, &k.Mode, &k.Prefix, &k.Hash, &used, &revoked, &created)
+	k, err := scanAPIKey(q.QueryRowContext(ctx, "SELECT "+apiKeyCols+" FROM api_keys WHERE prefix = ?", prefix))
 	if err != nil {
 		return APIKey{}, notFound(err)
 	}
-	if used != nil {
-		k.LastUsedAt = fromMS(*used)
-	}
-	if revoked != nil {
-		k.RevokedAt = fromMS(*revoked)
-	}
-	k.CreatedAt = fromMS(created)
 	return k, nil
+}
+
+// ExpireAPIKeys makes every live key of the app and mode, except exceptID, stop
+// working at the given time (unless it already expires sooner). It returns the
+// keys it changed.
+func ExpireAPIKeys(ctx context.Context, tx Tx, appID, mode, exceptID string, at time.Time) ([]APIKey, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT "+apiKeyCols+` FROM api_keys WHERE app_id = ? AND mode = ? AND id <> ? AND revoked_at IS NULL
+		AND (expires_at IS NULL OR expires_at > ?) ORDER BY created_at, id`, appID, mode, exceptID, ms(at))
+	if err != nil {
+		return nil, err
+	}
+	var out []APIKey
+	for rows.Next() {
+		k, err := scanAPIKey(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if _, err := tx.ExecContext(ctx, `UPDATE api_keys SET expires_at = ? WHERE id = ?`, ms(at), out[i].ID); err != nil {
+			return nil, err
+		}
+		out[i].ExpiresAt = at
+	}
+	return out, nil
 }
 
 // TouchAPIKey sets last_used_at when it is unset or older than olderThan.
