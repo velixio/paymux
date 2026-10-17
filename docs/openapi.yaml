@@ -877,6 +877,14 @@ components:
       type: object
       required: [currency]
       description: Either `amount` (a fixed price) or `min_amount` (the customer chooses), not both.
+      example:
+        amount: 49900
+        currency: INR
+        description: Pro plan, annual
+        single_use: true
+        expires_at: "2026-12-31T18:00:00Z"
+        return_url: https://shop.example.com/thanks
+        metadata: { sku: pro-annual }
       properties:
         amount: { type: integer, minimum: 1, description: Fixed price in minor units. }
         min_amount: { type: integer, minimum: 1, description: Smallest amount the customer may enter. }
@@ -894,6 +902,22 @@ components:
       additionalProperties: false
     PaymentLink:
       type: object
+      example:
+        id: plink_01hxyzabcdefghjkmnpqrstvw0
+        object: payment_link
+        url: https://pay.example.com/l/k3n9x0q7vb2m
+        slug: k3n9x0q7vb2m
+        app_id: app_01hxyzabcdefghjkmnpqrstvw0
+        amount: 49900
+        currency: INR
+        description: Pro plan, annual
+        return_url: https://shop.example.com/thanks
+        single_use: true
+        active: true
+        expires_at: "2026-12-31T18:00:00Z"
+        metadata: { sku: pro-annual }
+        created_at: "2026-10-17T12:00:00Z"
+        version: 1
       required: [id, object, url, slug, app_id, amount, currency, single_use, active, expires_at, metadata, created_at, version]
       properties:
         id: { type: string, pattern: "^plink_[0-9a-z]{26}$" }

@@ -1,0 +1,35 @@
+/* API reference (/docs). Colours and radius come from the theme tokens. */
+main.docs { max-width: 1180px; margin: 0 auto; padding: 16px; text-align: left; }
+.docs h1 { margin: 8px 0; font-size: 28px; }
+.docs h2 { margin: 24px 0 8px; font-size: 20px; }
+.docs h2.group { text-transform: capitalize; border-bottom: 1px solid var(--color-muted); padding-bottom: 6px; }
+.docs h3 { margin: 20px 0 6px; font-size: 17px; overflow-wrap: anywhere; }
+.docs h4 { margin: 14px 0 4px; font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--color-muted); }
+.docs-layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 24px; }
+.docs-nav { position: sticky; top: 8px; align-self: start; max-height: calc(100vh - 16px); overflow: auto; font-size: 14px; padding-right: 8px; }
+.docs-nav a { display: block; padding: 3px 0; color: inherit; text-decoration: none; overflow-wrap: anywhere; }
+.docs-nav a:hover { text-decoration: underline; }
+.docs-nav h2 { margin: 14px 0 4px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--color-muted); }
+.docs-body { min-width: 0; }
+.docs .op, .docs .schema { padding: 8px 0 16px; border-bottom: 1px solid rgba(127, 127, 127, .3); }
+.docs .method { display: inline-block; min-width: 3.6em; padding: 1px 6px; border-radius: var(--radius); font: 600 12px/1.6 var(--font); text-align: center; color: #fff; background: #6b7280; }
+.docs .method-GET { background: #15803d; }
+.docs .method-POST { background: #1d4ed8; }
+.docs .method-PUT, .docs .method-PATCH { background: #b45309; }
+.docs .method-DELETE { background: #b91c1c; }
+.docs code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+.docs pre { margin: 6px 0; padding: 10px 12px; overflow: auto; border: 1px solid rgba(127, 127, 127, .4); border-radius: var(--radius); font-size: 13px; }
+.docs table.grid { width: 100%; border-collapse: collapse; font-size: 14px; }
+.docs table.grid th, .docs table.grid td { padding: 5px 8px; border-bottom: 1px solid rgba(127, 127, 127, .25); text-align: left; vertical-align: top; }
+.docs table.grid td small { display: block; }
+.docs .table-scroll { overflow-x: auto; }
+.docs .resp { margin: 6px 0 10px; }
+.docs .resp-head { display: flex; gap: 8px; align-items: baseline; }
+.docs .resp-head p { margin: 0; }
+.docs .status-code { font-family: ui-monospace, Menlo, monospace; }
+.docs details summary { cursor: pointer; color: var(--color-muted); font-size: 14px; }
+.docs a { color: var(--accent, var(--color-accent)); }
+@media (max-width: 860px) {
+  .docs-layout { grid-template-columns: minmax(0, 1fr); }
+  .docs-nav { position: static; max-height: 14em; border-bottom: 1px solid rgba(127, 127, 127, .3); padding-bottom: 8px; }
+}

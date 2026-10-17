@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/paymux/paymux/docs"
+	"github.com/paymux/paymux/internal/apidocs"
 	"github.com/paymux/paymux/internal/checkout"
 	"github.com/paymux/paymux/internal/config"
 	"github.com/paymux/paymux/internal/connectors"
@@ -333,6 +335,13 @@ func (a *App) Start(ctx context.Context) error {
 	srv.HandleFunc("/dashboard/", dash.ServeHTTP)
 	// First-run setup: open only while there are no users (the token is in the log).
 	srv.HandleFunc("/setup", dash.SetupHandler().ServeHTTP)
+	// The API reference, rendered from docs/openapi.yaml: base host only.
+	apiDocs, err := apidocs.NewHandler(apidocs.Options{Spec: docs.OpenAPI, Renderer: renderer, Settings: set, Logger: a.log})
+	if err != nil {
+		return err
+	}
+	srv.HandleFunc("GET /docs", apiDocs.Page)
+	srv.HandleFunc("GET /docs/openapi.yaml", apiDocs.Raw)
 	srv.HandleFunc("GET /assets/", web.AssetHandler(overlay).ServeHTTP)
 	srv.HandleFunc("GET /theme/", themes.Handler().ServeHTTP)
 	// Browsers ask for /favicon.ico whatever the page says.
