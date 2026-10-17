@@ -23,6 +23,7 @@ import (
 	"github.com/paymux/paymux/internal/auth"
 	"github.com/paymux/paymux/internal/authz"
 	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/oidc"
 	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/settings"
@@ -68,6 +69,12 @@ type Options struct {
 	Outbound *outbound.Service
 	// Subscriptions serves the subscription pages; nil answers 404 there.
 	Subscriptions *subscriptions.Service
+	// OIDC enables single sign-on (nil: password and TOTP only). People whose
+	// verified e-mail is in OIDCAllowedDomains are created at first sign-in with
+	// OIDCDefaultRole (default viewer).
+	OIDC               *oidc.Client
+	OIDCAllowedDomains []string
+	OIDCDefaultRole    string
 	// Location is the time zone of "today" and of date filters (default UTC).
 	Location *time.Location
 	// PageSize is the number of rows per list page (default 25).
@@ -81,8 +88,8 @@ type Dashboard struct {
 	users Users
 	lim   *limiter
 
-	preKey, ticketKey, modeKey []byte
-	secure                     bool
+	preKey, ticketKey, modeKey, oidcKey []byte
+	secure                              bool
 
 	orgMu sync.Mutex
 	org   string
@@ -117,6 +124,7 @@ func New(o Options) (*Dashboard, error) {
 		preKey:    derive(o.MasterKey, "dashboard-csrf-pre"),
 		ticketKey: derive(o.MasterKey, "dashboard-login-ticket"),
 		modeKey:   derive(o.MasterKey, "dashboard-mode"),
+		oidcKey:   derive(o.MasterKey, "dashboard-oidc"),
 		// Cookies are Secure everywhere except plain-http local development.
 		secure: o.BaseURL.Scheme == "https"}
 	d.roles = authz.NewCache(d.loadRoles, rolesTTL, o.Now)
@@ -154,6 +162,8 @@ func (d *Dashboard) routes() {
 	m.HandleFunc("GET "+prefix+"/{$}", d.authed(authz.PaymentRead, d.root))
 	m.HandleFunc("GET "+prefix+"/login", d.loginPage)
 	m.HandleFunc("POST "+prefix+"/login", d.loginSubmit)
+	m.HandleFunc("GET "+prefix+"/login/oidc", d.ssoStart)
+	m.HandleFunc("GET "+prefix+"/login/oidc/callback", d.ssoCallback)
 	m.HandleFunc("GET "+prefix+"/login/totp", d.totpPage)
 	m.HandleFunc("POST "+prefix+"/login/totp", d.totpSubmit)
 	m.HandleFunc("POST "+prefix+"/logout", d.authed(authz.PaymentRead, d.logout))
@@ -210,6 +220,7 @@ type view struct {
 
 	// login
 	Email string
+	SSO   bool // show the single sign-on button
 	// totp
 	Enrol               bool
 	TOTPSecret, TOTPURI string

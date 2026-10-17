@@ -9,4 +9,6 @@
 <input class="field" name="password" type="password" placeholder="Password" autocomplete="current-password" required>
 <button class="btn" type="submit">Continue</button>
 </form>
+{{if .SSO}}<p class="muted">or</p>
+<a class="btn" href="/dashboard/login/oidc">Sign in with single sign-on</a>{{end}}
 {{template "dash_close" .}}{{end}}

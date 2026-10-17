@@ -37,6 +37,9 @@ type IdP struct {
 	Mutate func(claims map[string]any)
 	// OmitKey leaves the signing key out of the JWKS.
 	OmitKey bool
+	// SignWith, when set, signs id_tokens with this key instead of Key (which
+	// the JWKS still shows): a forged token.
+	SignWith *rsa.PrivateKey
 
 	mu         sync.Mutex
 	codes      map[string]grant
@@ -158,7 +161,14 @@ func (p *IdP) token(w http.ResponseWriter, r *http.Request) {
 	if p.Mutate != nil {
 		p.Mutate(claims)
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "unused", "token_type": "Bearer", "id_token": p.Sign(claims)})
+	_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "unused", "token_type": "Bearer", "id_token": p.sign(claims)})
+}
+
+func (p *IdP) sign(claims map[string]any) string {
+	if p.SignWith != nil {
+		return SignRS256(p.SignWith, p.KID, claims)
+	}
+	return p.Sign(claims)
 }
 
 // Sign makes an RS256 id_token over claims with the IdP's current key.

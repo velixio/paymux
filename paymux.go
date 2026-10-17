@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/paymux/paymux/internal/logging"
 	"github.com/paymux/paymux/internal/metrics"
 	"github.com/paymux/paymux/internal/notify"
+	"github.com/paymux/paymux/internal/oidc"
 	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/paypage"
 	"github.com/paymux/paymux/internal/reconcile"
@@ -282,7 +284,8 @@ func (a *App) Start(ctx context.Context) error {
 	// Operator dashboard and the shared static assets.
 	dash, err := dashboard.New(dashboard.Options{DB: db, Box: box, Renderer: renderer, MasterKey: a.cfg.MasterKey,
 		BaseURL: a.cfg.BaseURL, DevSkip2FA: a.cfg.DevSkip2FA, Logger: a.log,
-		Core: svc, Settings: set, Outbound: out, Subscriptions: subs, Location: a.cfg.Location})
+		Core: svc, Settings: set, Outbound: out, Subscriptions: subs, Location: a.cfg.Location,
+		OIDC: a.oidcClient(), OIDCAllowedDomains: a.cfg.OIDCAllowedDomains, OIDCDefaultRole: a.cfg.OIDCDefaultRole})
 	if err != nil {
 		return err
 	}
@@ -424,4 +427,13 @@ func schedulerHealthy(now, started, last time.Time, haveLast bool) bool {
 		return true
 	}
 	return haveLast && now.Sub(last) <= heartbeatGrace
+}
+
+// oidcClient is the single sign-on client, or nil when it is not configured.
+func (a *App) oidcClient() *oidc.Client {
+	if !a.cfg.OIDCEnabled() {
+		return nil
+	}
+	return oidc.New(oidc.Config{Issuer: a.cfg.OIDCIssuer, ClientID: a.cfg.OIDCClientID, ClientSecret: a.cfg.OIDCClientSecret.Reveal(),
+		RedirectURL: strings.TrimRight(a.cfg.BaseURL.String(), "/") + "/dashboard/login/oidc/callback"})
 }

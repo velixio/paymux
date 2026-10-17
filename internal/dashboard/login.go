@@ -33,7 +33,7 @@ func (d *Dashboard) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, prefix+"/", http.StatusSeeOther)
 		return
 	}
-	d.render(w, http.StatusOK, "dash_login", view{Title: "Sign in", CSRF: d.preToken(w, r)})
+	d.render(w, http.StatusOK, "dash_login", view{Title: "Sign in", CSRF: d.preToken(w, r), SSO: d.ssoEnabled()})
 }
 
 func (d *Dashboard) loginSubmit(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +44,7 @@ func (d *Dashboard) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(strings.TrimSpace(r.PostForm.Get("email")))
 	password := r.PostForm.Get("password")
 	again := func(status int, msg string) {
-		d.render(w, status, "dash_login", view{Title: "Sign in", CSRF: d.preToken(w, r), Email: email, Error: msg})
+		d.render(w, status, "dash_login", view{Title: "Sign in", CSRF: d.preToken(w, r), Email: email, Error: msg, SSO: d.ssoEnabled()})
 	}
 	key := limitKey(email, r)
 	now := d.o.Now()
