@@ -245,7 +245,7 @@ func (a *App) Start(ctx context.Context) error {
 	// Operator dashboard and the shared static assets.
 	dash, err := dashboard.New(dashboard.Options{DB: db, Box: box, Renderer: renderer, MasterKey: a.cfg.MasterKey,
 		BaseURL: a.cfg.BaseURL, DevSkip2FA: a.cfg.DevSkip2FA, Logger: a.log,
-		Core: svc, Settings: set, Outbound: out, Location: a.cfg.Location})
+		Core: svc, Settings: set, Outbound: out, Invoice: inv, Connectors: conns, Location: a.cfg.Location})
 	if err != nil {
 		return err
 	}

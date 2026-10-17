@@ -22,7 +22,9 @@ import (
 
 	"github.com/paymux/paymux/internal/auth"
 	"github.com/paymux/paymux/internal/authz"
+	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/invoice"
 	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/settings"
@@ -61,9 +63,11 @@ type Options struct {
 	Logger     *slog.Logger
 	Now        func() time.Time
 
-	Core     *core.Service
-	Settings *settings.Service
-	Outbound *outbound.Service
+	Core       *core.Service
+	Settings   *settings.Service
+	Outbound   *outbound.Service
+	Invoice    *invoice.Service
+	Connectors *connectors.Service
 	// Location is the time zone of "today" and of date filters (default UTC).
 	Location *time.Location
 	// PageSize is the number of rows per list page (default 25).
@@ -90,8 +94,8 @@ type Dashboard struct {
 // New builds a Dashboard.
 func New(o Options) (*Dashboard, error) {
 	if o.DB == nil || o.Box == nil || o.Renderer == nil || o.BaseURL == nil || len(o.MasterKey) == 0 ||
-		o.Core == nil || o.Settings == nil || o.Outbound == nil {
-		return nil, errors.New("dashboard: DB, Box, Renderer, BaseURL, MasterKey, Core, Settings and Outbound are required")
+		o.Core == nil || o.Settings == nil || o.Outbound == nil || o.Invoice == nil || o.Connectors == nil {
+		return nil, errors.New("dashboard: DB, Box, Renderer, BaseURL, MasterKey, Core, Settings, Outbound, Invoice and Connectors are required")
 	}
 	if o.Location == nil {
 		o.Location = time.UTC
@@ -124,19 +128,18 @@ func derive(master []byte, label string) []byte {
 
 // sections are the placeholder pages of the nav shell.
 var sections = []navItem{
-	{"subscriptions", "Subscriptions", prefix + "/subscriptions"},
-	{"disputes", "Disputes", prefix + "/disputes"}, {"invoices", "Invoices", prefix + "/invoices"},
-	{"reports", "Reports", prefix + "/reports"}, {"providers", "Providers", prefix + "/providers"},
+	{"subscriptions", "Subscriptions", prefix + "/subscriptions"}, {"disputes", "Disputes", prefix + "/disputes"},
 }
 
-// navItems is the full menu; the first entries are built pages, the rest of
-// the placeholders come from sections.
-var navItems = func() []navItem {
-	items := []navItem{{"overview", "Overview", prefix + "/overview"}, {"payments", "Payments", prefix + "/payments"}}
-	items = append(items, sections...)
-	return append(items, navItem{"apps", "Apps", prefix + "/apps"}, navItem{"settings", "Settings", prefix + "/settings"},
-		navItem{"audit", "Audit", prefix + "/audit"}, navItem{"users", "Users", prefix + "/users"})
-}()
+// navItems is the full menu; built pages and placeholders interleaved.
+var navItems = []navItem{
+	{"overview", "Overview", prefix + "/overview"}, {"payments", "Payments", prefix + "/payments"},
+	{"subscriptions", "Subscriptions", prefix + "/subscriptions"}, {"disputes", "Disputes", prefix + "/disputes"},
+	{"invoices", "Invoices", prefix + "/invoices"}, {"reports", "Reports", prefix + "/reports"},
+	{"apps", "Apps", prefix + "/apps"}, {"providers", "Providers", prefix + "/providers"},
+	{"tax-entities", "Tax entities", prefix + "/tax-entities"}, {"fx", "FX rates", prefix + "/fx"},
+	{"settings", "Settings", prefix + "/settings"}, {"audit", "Audit", prefix + "/audit"}, {"users", "Users", prefix + "/users"},
+}
 
 type navItem struct{ Key, Label, Href string }
 
@@ -169,7 +172,7 @@ func (d *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.Set("Referrer-Policy", "same-origin")
 	h.Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
 	limit := int64(maxFormBytes)
-	if strings.HasSuffix(r.URL.Path, "/branding") {
+	if isUploadPath(r.URL.Path) {
 		limit = maxUploadBytes + 64<<10
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
@@ -279,6 +282,11 @@ func (d *Dashboard) validPre(r *http.Request) bool {
 		return false
 	}
 	return auth.ValidCSRF(d.preKey, c.Value, formCSRF(r))
+}
+
+// isUploadPath reports whether the route takes a logo upload.
+func isUploadPath(p string) bool {
+	return strings.HasSuffix(p, "/branding") || strings.HasSuffix(p, "/tax-entities") || strings.Contains(p, "/tax-entities/")
 }
 
 // maxUploadBytes bounds the multipart branding form (a logo of up to 512 KB
