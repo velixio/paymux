@@ -21,7 +21,7 @@ Type=simple
 User=paymux
 Group=paymux
 EnvironmentFile=/etc/paymux/paymux.env
-ExecStart=/usr/local/bin/paymux serve
+ExecStart=/usr/local/bin/paymux
 Restart=on-failure
 RestartSec=3
 # The hub drains in-flight jobs for up to 30 s after SIGTERM.

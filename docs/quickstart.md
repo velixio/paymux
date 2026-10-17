@@ -33,7 +33,7 @@ PAYMUX_MASTER_KEY=$(head -c32 /dev/urandom | base64)
 PAYMUX_DEV_SKIP_2FA=true
 PAYMUX_ALLOW_PRIVATE_WEBHOOKS=true
 EOF
-./bin/paymux serve
+./bin/paymux
 ```
 
 What those say: `development` relaxes production-only checks;

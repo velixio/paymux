@@ -87,7 +87,7 @@ You need a Go toolchain of version 1.21 or later. `go.mod` pins `toolchain go1.2
 ```bash
 make build                       # → bin/paymux
 cp .env.example .env             # set PAYMUX_MASTER_KEY: head -c32 /dev/urandom | base64
-./bin/paymux serve              # the log prints a one-time setup code
+./bin/paymux                     # the log prints a one-time setup code
 ```
 
 Open `http://localhost:8080/setup`, enter the code and create the administrator (the first-run wizard also offers a first app and its API keys). Prefer the command line? This works too (with SQLite, while `serve` is stopped):

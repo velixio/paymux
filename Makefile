@@ -1,6 +1,6 @@
 VERSION ?= $(shell git describe --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: build test test-pg test-all fmt ci run-dev
+.PHONY: build test test-pg test-all fmt ci run-dev kill
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/paymux/paymux.Version=$(VERSION)" -o bin/paymux ./cmd/paymux
@@ -31,4 +31,12 @@ ci:
 	scripts/ci.sh
 
 run-dev:
-	go run ./cmd/paymux serve
+	go run ./cmd/paymux
+
+# Stop every running paymux server of this user (matches the process name
+# exactly, so it never hits a shell whose command line mentions paymux).
+kill:
+	@if pkill -x -u "$$(id -u)" paymux; then \
+		for i in $$(seq 1 50); do pgrep -x -u "$$(id -u)" paymux >/dev/null || exit 0; sleep 0.1; done; \
+		echo "paymux still running after 5s; sending SIGKILL" >&2; pkill -9 -x -u "$$(id -u)" paymux; \
+	else echo "no paymux running"; fi
