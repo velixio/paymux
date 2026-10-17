@@ -37,6 +37,7 @@ import (
 	"github.com/paymux/paymux/internal/oidc"
 	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/paylinks"
+	"github.com/paymux/paymux/internal/payouts"
 	"github.com/paymux/paymux/internal/paypage"
 	"github.com/paymux/paymux/internal/reconcile"
 	"github.com/paymux/paymux/internal/routing"
@@ -206,6 +207,12 @@ func (a *App) Start(ctx context.Context) error {
 			return live.Connector, err
 		})})
 	subs.RegisterJobs(q)
+	payoutSvc := payouts.New(payouts.Options{DB: db, Box: box, Jobs: q, Emitter: emitter, Logger: a.log,
+		Connectors: payouts.ConnectorsFunc(func(ctx context.Context, id string) (connector.Connector, error) {
+			live, err := conns.Get(ctx, id)
+			return live.Connector, err
+		})})
+	payoutSvc.RegisterJobs(q)
 	flow := checkout.New(checkout.Options{DB: db, Core: svc, Conns: conns, Routing: rt, Breaker: breaker, Logger: a.log, Disputes: disp, Subs: subs})
 	if err := flow.Register(q); err != nil {
 		return err
@@ -225,7 +232,7 @@ func (a *App) Start(ctx context.Context) error {
 	if err := hk.Register(q); err != nil {
 		return err
 	}
-	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv, Subscriptions: subs, PaymentLinks: links})
+	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv, Subscriptions: subs, PaymentLinks: links, Payouts: payoutSvc})
 	if err != nil {
 		return err
 	}
@@ -491,5 +498,6 @@ func (a *App) oidcClient() *oidc.Client {
 		return nil
 	}
 	return oidc.New(oidc.Config{Issuer: a.cfg.OIDCIssuer, ClientID: a.cfg.OIDCClientID, ClientSecret: a.cfg.OIDCClientSecret.Reveal(),
-		RedirectURL: strings.TrimRight(a.cfg.BaseURL.String(), "/") + "/dashboard/login/oidc/callback"})
+		RedirectURL:   strings.TrimRight(a.cfg.BaseURL.String(), "/") + "/dashboard/login/oidc/callback",
+		AllowInsecure: strings.HasPrefix(a.cfg.OIDCIssuer, "http://")}) // config allows http for localhost only
 }

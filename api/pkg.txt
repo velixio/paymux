@@ -215,6 +215,17 @@ func Register(name string, f Factory, info Info)
 
 func ResetRegistryForTest()
 
+func WithAttemptHook(ctx context.Context, fn func(*http.Request)) context.Context
+
+type Beneficiary struct {
+	Name          string `json:"name"`
+	AccountNumber string `json:"account_number,omitempty"`
+	IFSC          string `json:"ifsc,omitempty"`
+	UPI           string `json:"upi,omitempty"`
+	Email         string `json:"email,omitempty"`
+	Phone         string `json:"phone,omitempty"`
+}
+
 type BillingMode string
 
 const (
@@ -237,6 +248,7 @@ const (
 	CapCancel              Capability = "cancel"
 	CapSubscriptionManager Capability = "subscription_manager"
 	CapMandateManager      Capability = "mandate_manager"
+	CapPayout              Capability = "payout"
 )
 
 type ChargeRequest struct {
@@ -535,6 +547,47 @@ const (
 
 func (s PaymentStatus) Valid() bool
 
+type PayoutRef struct {
+	ProviderRef      string `json:"provider_ref,omitempty"`
+	ProviderPayoutID string `json:"provider_payout_id,omitempty"`
+}
+
+type PayoutRequest struct {
+	ProviderRef string      `json:"provider_ref"`
+	Amount      int64       `json:"amount"`
+	Currency    string      `json:"currency"`
+	Beneficiary Beneficiary `json:"beneficiary"`
+	Narration   string      `json:"narration,omitempty"`
+}
+
+type PayoutSnapshot struct {
+	ProviderRef      string       `json:"provider_ref,omitempty"`
+	ProviderPayoutID string       `json:"provider_payout_id"`
+	Status           PayoutStatus `json:"status"`
+	RawStatus        string       `json:"raw_status"`
+	Amount           int64        `json:"amount"`
+	Currency         string       `json:"currency"`
+	UTR              string       `json:"utr,omitempty"`
+	ErrorCode        string       `json:"error_code,omitempty"`
+	ErrorMessage     string       `json:"error_message,omitempty"`
+	CreatedAt        int64        `json:"created_at,omitempty"`
+}
+
+type PayoutStatus string
+
+const (
+	PayoutPending    PayoutStatus = "pending"
+	PayoutProcessing PayoutStatus = "processing"
+	PayoutSucceeded  PayoutStatus = "succeeded"
+	PayoutFailed     PayoutStatus = "failed"
+	PayoutReversed   PayoutStatus = "reversed"
+)
+
+type Payouter interface {
+	CreatePayout(ctx context.Context, req PayoutRequest) (PayoutSnapshot, error)
+	FetchPayout(ctx context.Context, ref PayoutRef) (PayoutSnapshot, error)
+}
+
 type PreDebitRequest struct {
 	Mandate     MandateRef `json:"mandate"`
 	ProviderRef string     `json:"provider_ref"`
@@ -796,6 +849,8 @@ const (
 	MethodNotifyPreDebit             = "notify_pre_debit"
 	MethodChargeMandate              = "charge_mandate"
 	MethodRevokeMandate              = "revoke_mandate"
+	MethodCreatePayout               = "create_payout"
+	MethodFetchPayout                = "fetch_payout"
 )
 
 const (

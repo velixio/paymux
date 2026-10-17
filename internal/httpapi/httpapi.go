@@ -21,6 +21,7 @@ import (
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/invoice"
 	"github.com/paymux/paymux/internal/paylinks"
+	"github.com/paymux/paymux/internal/payouts"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/server"
 	"github.com/paymux/paymux/internal/store"
@@ -41,6 +42,8 @@ type Options struct {
 	Subscriptions *subscriptions.Service
 	// PaymentLinks serves /v1/payment_links; nil answers 404.
 	PaymentLinks *paylinks.Service
+	// Payouts serves /v1/payouts; nil answers 404.
+	Payouts *payouts.Service
 	// BaseURL is PAYMUX_BASE_URL, the origin of checkout_url.
 	BaseURL *url.URL
 	Log     *slog.Logger
@@ -79,6 +82,9 @@ var RouteScopes = map[string]string{
 	"GET /v1/credit_notes/{id}":                  authz.ScopeInvoicesRead,
 	"GET /v1/credit_notes/{id}/pdf":              authz.ScopeInvoicesRead,
 	"GET /v1/credit_notes":                       authz.ScopeInvoicesRead,
+	"POST /v1/payouts":                           authz.ScopePayoutsWrite,
+	"GET /v1/payouts/{id}":                       authz.ScopePayoutsRead,
+	"GET /v1/payouts":                            authz.ScopePayoutsRead,
 }
 
 // Mux is the part of server.Server the API needs.
@@ -98,6 +104,7 @@ type API struct {
 	invoices *invoice.Service
 	subs     *subscriptions.Service
 	links    *paylinks.Service
+	payouts  *payouts.Service
 }
 
 // New builds the API.
@@ -108,7 +115,7 @@ func New(o Options) (*API, error) {
 	if o.Log == nil {
 		o.Log = slog.Default()
 	}
-	a := &API{core: o.Core, db: o.DB, box: o.Box, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log, invoices: o.Invoices, subs: o.Subscriptions, links: o.PaymentLinks}
+	a := &API{core: o.Core, db: o.DB, box: o.Box, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log, invoices: o.Invoices, subs: o.Subscriptions, links: o.PaymentLinks, payouts: o.Payouts}
 	if o.RatePerSecond >= 0 {
 		a.limit = newLimiter(o.RatePerSecond, o.RateBurst, o.Now)
 	}
@@ -150,6 +157,9 @@ func (a *API) Register(m Mux) {
 	route("GET /v1/credit_notes/{id}", a.getCreditNote, false)
 	route("GET /v1/credit_notes/{id}/pdf", a.getCreditNotePDF, false)
 	route("GET /v1/credit_notes", a.listCreditNotes, false)
+	route("POST /v1/payouts", a.createPayout, true)
+	route("GET /v1/payouts/{id}", a.getPayout, false)
+	route("GET /v1/payouts", a.listPayouts, false)
 	m.HandleFunc("/v1/", a.wrap(func(w http.ResponseWriter, r *http.Request, _ core.Principal, _ []byte) {
 		a.fail(w, r, http.StatusNotFound, "not_found", "no such endpoint")
 	}, false, ""))

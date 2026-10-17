@@ -261,6 +261,7 @@ func Run(t *testing.T, factory connector.Factory, fx Fixtures) {
 			connector.CapCancel:              isA[connector.Canceler](c),
 			connector.CapSubscriptionManager: isA[connector.SubscriptionManager](c),
 			connector.CapMandateManager:      isA[connector.MandateManager](c),
+			connector.CapPayout:              isA[connector.Payouter](c),
 		}
 		for cap, has := range impl {
 			if has != info.Has(cap) {
