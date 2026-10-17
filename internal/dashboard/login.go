@@ -33,7 +33,7 @@ func (d *Dashboard) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, prefix+"/", http.StatusSeeOther)
 		return
 	}
-	d.render(w, http.StatusOK, "dash_login", view{Title: "Sign in", CSRF: d.preToken(w, r)})
+	d.render(w, http.StatusOK, "dash_login", view{Title: "Sign in", CSRF: d.preToken(w, r), NeedsSetup: d.SetupToken() != ""})
 }
 
 func (d *Dashboard) loginSubmit(w http.ResponseWriter, r *http.Request) {

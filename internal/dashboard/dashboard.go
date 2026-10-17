@@ -109,6 +109,11 @@ type Dashboard struct {
 
 	dummyOnce sync.Once
 	dummyHash string
+
+	// first-run setup: the token that opens /setup (see setup.go)
+	setupMu  sync.Mutex
+	setupTok string
+	setupKey []byte
 }
 
 // New builds a Dashboard.
@@ -134,9 +139,11 @@ func New(o Options) (*Dashboard, error) {
 		preKey:    derive(o.MasterKey, "dashboard-csrf-pre"),
 		ticketKey: derive(o.MasterKey, "dashboard-login-ticket"),
 		modeKey:   derive(o.MasterKey, "dashboard-mode"),
+		setupKey:  derive(o.MasterKey, "dashboard-csrf-setup"),
 		// Cookies are Secure everywhere except plain-http local development.
 		secure: o.BaseURL.Scheme == "https"}
 	d.routes()
+	d.SetupToken() // on a hub without users this logs the token that opens /setup
 	return d, nil
 }
 
@@ -185,14 +192,18 @@ func (d *Dashboard) routes() {
 	m.HandleFunc("GET "+prefix+"/{section}", d.authed(authz.PaymentRead, d.section))
 }
 
-// ServeHTTP implements http.Handler.
-func (d *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h := w.Header()
+// setSecurityHeaders sets the headers of every dashboard page (and of /setup).
+func setSecurityHeaders(h http.Header) {
 	h.Set("Cache-Control", "no-store")
 	h.Set("X-Frame-Options", "DENY")
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Referrer-Policy", "same-origin")
 	h.Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
+}
+
+// ServeHTTP implements http.Handler.
+func (d *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	setSecurityHeaders(w.Header())
 	limit := int64(maxFormBytes)
 	switch {
 	case strings.HasPrefix(r.URL.Path, prefix+"/disputes/") && strings.HasSuffix(r.URL.Path, "/evidence"):
@@ -221,7 +232,12 @@ type view struct {
 	Notice    string
 
 	// login
-	Email string
+	Email      string
+	NeedsSetup bool
+	// first-run setup
+	SetupOrg, SetupApp, SetupSlug string
+	SetupKeys                     []setupKey
+	SetupSignedIn                 bool
 	// totp
 	Enrol               bool
 	TOTPSecret, TOTPURI string

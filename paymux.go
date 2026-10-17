@@ -305,6 +305,8 @@ func (a *App) Start(ctx context.Context) error {
 	srv.HandleFunc("GET /i/{id}", inv.ServeHosted)
 	srv.HandleFunc("GET /s/{id}", subs.ServeHosted)
 	srv.HandleFunc("/dashboard/", dash.ServeHTTP)
+	// First-run setup: open only while there are no users (the token is in the log).
+	srv.HandleFunc("/setup", dash.SetupHandler().ServeHTTP)
 	srv.HandleFunc("GET /assets/", web.AssetHandler(overlay).ServeHTTP)
 	srv.HandleFunc("GET /theme/", themes.Handler().ServeHTTP)
 	// Browsers ask for /favicon.ico whatever the page says.

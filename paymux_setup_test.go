@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-var setupTokenRE = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}`)
+var setupTokenRE = regexp.MustCompile(`[a-z]{6}-[a-z]{6}-[a-z]{6}-[a-z]{6}`)
 
 func TestFirstRunSetupThroughTheRunningHub(t *testing.T) {
 	dir := t.TempDir()

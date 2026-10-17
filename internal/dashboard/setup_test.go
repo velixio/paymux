@@ -132,7 +132,10 @@ func TestSetupCreatesAdminOrgAppAndKeysThenEnrolsTwoFactor(t *testing.T) {
 		}
 		// Keys and secrets are on the response page only: not in the audit log.
 		var aud []store.AuditRow
-		_ = db.Read(ctx, func(q store.Querier) (err error) { aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "", 50); return })
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "", 50)
+			return
+		})
 		var seen []string
 		for _, a := range aud {
 			seen = append(seen, a.Action)
