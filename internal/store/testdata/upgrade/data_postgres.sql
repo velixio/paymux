@@ -1,0 +1,4 @@
+-- Blob columns, PostgreSQL syntax.
+INSERT INTO provider_accounts (id, org_id, mode, connector, name, config_enc, status, statement_descriptor, provider_gstin, accepted_currencies, enabled_purposes, created_at, updated_at) VALUES ('pa_01up', 'org_default', 'test', 'razorpay', 'main', '\x00DEADBEEF01FF7F', 'active', 'VOICESTUDIO', '29AAAAA0000A1Z5', '["INR"]', '["one_time"]', 1760000001500, 1760000001500);
+INSERT INTO webhook_endpoints (id, org_id, app_id, url, signing_secret_enc, event_types, enabled, created_at, updated_at) VALUES ('whe_01up', 'org_default', 'app_01up', 'https://shop.example.com/hooks', '\x0102030405060708', '["*"]', 1, 1760000005000, 1760000005000);
+INSERT INTO connector_kv (provider_account_id, key, value_enc, expires_at) VALUES ('pa_01up', 'plan_cache', '\xAABBCC00DDEEFF', NULL);
