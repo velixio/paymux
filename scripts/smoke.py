@@ -97,7 +97,8 @@ class Receiver(BaseHTTPRequestHandler):
 def verify_signature(secret, headers, body):
     """Standard Webhooks: HMAC-SHA256 of "id.timestamp.body" with the whsec_ key."""
     h = {k.lower(): v for k, v in headers.items()}
-    key = base64.b64decode(secret.removeprefix("whsec_"))
+    raw = secret.removeprefix("whsec_")
+    key = base64.b64decode(raw + "=" * (-len(raw) % 4))  # the secret is unpadded base64
     signed = f"{h['webhook-id']}.{h['webhook-timestamp']}.".encode() + body
     want = base64.b64encode(hmac.new(key, signed, hashlib.sha256).digest()).decode()
     return any(s.split(",", 1)[-1] == want for s in h["webhook-signature"].split())
