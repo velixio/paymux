@@ -40,15 +40,15 @@ func (p Payment) HasFlag(f string) bool {
 
 const paymentCols = `id, org_id, app_id, mode, kind, COALESCE(subscription_id,''), amount, currency, amount_received,
 	amount_refunded, status, COALESCE(order_ref,''), COALESCE(description,''), COALESCE(customer_id,''), metadata,
-	COALESCE(return_url,''), client_secret_hash, expires_at, version, flags, created_at, updated_at`
+	COALESCE(return_url,''), client_secret_hash, expires_at, version, flags, allowed_connectors, country, created_at, updated_at`
 
 func scanPayment(row interface{ Scan(...any) error }) (Payment, error) {
 	var p Payment
-	var meta, flags string
+	var meta, flags, allowed string
 	var exp, created, updated int64
 	err := row.Scan(&p.ID, &p.OrgID, &p.AppID, &p.Mode, &p.Kind, &p.SubscriptionID, &p.Amount, &p.Currency,
 		&p.AmountReceived, &p.AmountRefunded, &p.Status, &p.OrderRef, &p.Description, &p.CustomerID, &meta,
-		&p.ReturnURL, &p.ClientSecretHash, &exp, &p.Version, &flags, &created, &updated)
+		&p.ReturnURL, &p.ClientSecretHash, &exp, &p.Version, &flags, &allowed, &p.Country, &created, &updated)
 	if err != nil {
 		return Payment{}, notFound(err)
 	}
@@ -58,6 +58,9 @@ func scanPayment(row interface{ Scan(...any) error }) (Payment, error) {
 	if err := json.Unmarshal([]byte(flags), &p.Flags); err != nil {
 		return Payment{}, fmt.Errorf("payment %s flags: %w", p.ID, err)
 	}
+	if err := json.Unmarshal([]byte(allowed), &p.AllowedConnectors); err != nil {
+		return Payment{}, fmt.Errorf("payment %s allowed_connectors: %w", p.ID, err)
+	}
 	p.ExpiresAt, p.CreatedAt, p.UpdatedAt = fromMS(exp), fromMS(created), fromMS(updated)
 	return p, nil
 }
@@ -66,14 +69,15 @@ func scanPayment(row interface{ Scan(...any) error }) (Payment, error) {
 func InsertPayment(ctx context.Context, tx Tx, p Payment) error {
 	meta, _ := json.Marshal(nonNilMap(p.Metadata))
 	flags, _ := json.Marshal(nonNilSlice(p.Flags))
+	allowed, _ := json.Marshal(nonNilSlice(p.AllowedConnectors))
 	_, err := tx.ExecContext(ctx, `INSERT INTO payments (id, org_id, app_id, mode, kind, subscription_id, amount, currency,
 		amount_received, amount_refunded, status, order_ref, description, customer_id, metadata, return_url,
-		client_secret_hash, expires_at, version, flags, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		client_secret_hash, expires_at, version, flags, allowed_connectors, country, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.ID, p.OrgID, p.AppID, p.Mode, p.Kind, nullIfEmpty(p.SubscriptionID), p.Amount, p.Currency,
 		p.AmountReceived, p.AmountRefunded, p.Status, nullIfEmpty(p.OrderRef), nullIfEmpty(p.Description),
 		nullIfEmpty(p.CustomerID), string(meta), nullIfEmpty(p.ReturnURL), p.ClientSecretHash, ms(p.ExpiresAt),
-		p.Version, string(flags), ms(p.CreatedAt), ms(p.UpdatedAt))
+		p.Version, string(flags), string(allowed), p.Country, ms(p.CreatedAt), ms(p.UpdatedAt))
 	return err
 }
 

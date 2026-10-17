@@ -187,6 +187,7 @@ func (s *Service) CreatePayment(ctx context.Context, in CreatePaymentInput) (Cre
 			Currency: in.Currency, Status: string(state.PaymentCreated), OrderRef: in.OrderRef, Description: in.Description,
 			Metadata: in.Metadata, ReturnURL: in.ReturnURL, ClientSecretHash: hashSecret(secret),
 			ExpiresAt: now.Add(time.Duration(minutes) * time.Minute), Version: 1, CreatedAt: now, UpdatedAt: now,
+			AllowedConnectors: in.AllowedConnectors, Country: in.Country,
 		}
 		if p.ReturnURL == "" {
 			p.ReturnURL = app.DefaultReturnURL

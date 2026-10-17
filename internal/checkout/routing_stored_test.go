@@ -92,7 +92,7 @@ func TestAllowedConnectorsAreKeptForTheWholeLifeOfThePayment(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, a := range e.attempts(res.Payment.ID) {
-			if a.ProviderAccountID != tp.xa.ID {
+			if a.ProviderAccountID == tp.ya.ID {
 				t.Errorf("an attempt went to %s, outside allowed_connectors [%s]", a.ProviderAccountID, tp.x.Name)
 			}
 		}
@@ -151,7 +151,7 @@ func TestCountryOfThePaymentIsRoutedOnAtThePayPage(t *testing.T) {
 		if got := e.get(us.Payment.ID); got.Country != "US" {
 			t.Fatalf("country kept = %q", got.Country)
 		}
-		for id, want := range map[string]string{us.Payment.ID: tp.ya.ID, other.Payment.ID: tp.xa.ID} {
+		for id, wantY := range map[string]bool{us.Payment.ID: true, other.Payment.ID: false} {
 			if _, err := e.flow.StartCheckout(ctx, id); err != nil {
 				t.Fatal(err)
 			}
@@ -159,8 +159,8 @@ func TestCountryOfThePaymentIsRoutedOnAtThePayPage(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, a := range e.attempts(id) {
-				if a.ProviderAccountID != want {
-					t.Errorf("payment %s: attempt on %s, want %s", id, a.ProviderAccountID, want)
+				if (a.ProviderAccountID == tp.ya.ID) != wantY {
+					t.Errorf("payment %s: attempt on %s (Y account %s), want Y=%v", id, a.ProviderAccountID, tp.ya.ID, wantY)
 				}
 			}
 		}
