@@ -173,9 +173,40 @@ func (q *Queue) fail(ctx context.Context, r store.JobRow, cause error, dead bool
 	}
 }
 
-// Start runs the poll loop until ctx is cancelled.
+// drainTimeout bounds how long Start waits for in-flight jobs after cancel.
+const drainTimeout = 30 * time.Second
+
+// Start polls and runs jobs until ctx is cancelled, then lets in-flight jobs
+// finish for up to 30s before cancelling their context.
 func (q *Queue) Start(ctx context.Context) error {
-	return errors.New("not implemented")
+	if !q.running.CompareAndSwap(false, true) {
+		return errors.New("jobs: queue already started")
+	}
+	defer q.running.Store(false)
+
+	workCtx, cancelWork := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelWork()
+	stop := context.AfterFunc(ctx, func() { time.AfterFunc(drainTimeout, cancelWork) })
+	defer stop()
+
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-timer.C:
+		}
+		n, err := q.runOnce(ctx, workCtx)
+		if err != nil && ctx.Err() == nil {
+			q.opts.Logger.Error("job poll", "err", err)
+		}
+		if n > 0 {
+			timer.Reset(0)
+		} else {
+			timer.Reset(q.opts.PollInterval)
+		}
+	}
 }
 
 // Running reports whether Start is looping.
