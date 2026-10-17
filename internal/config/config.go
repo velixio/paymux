@@ -124,8 +124,8 @@ func Load(lookupEnv func(string) (string, bool)) (Config, error) {
 		bad("PAYMUX_DEV_SKIP_2FA must be true or false")
 	}
 	if skip && c.Env != "" && c.BaseURL != nil {
-		if c.Env != EnvDevelopment || !isLocalHost(c.BaseURL.Hostname()) {
-			bad("PAYMUX_DEV_SKIP_2FA is only allowed in development on a local host")
+		if c.Env != EnvDevelopment {
+			bad("PAYMUX_DEV_SKIP_2FA is only allowed in development (PAYMUX_ENV=development)")
 		} else {
 			c.DevSkip2FA = true
 		}
@@ -361,3 +361,7 @@ func validHookHost(h string) bool {
 	}
 	return true
 }
+
+// IsLocalHost reports whether h names this machine (localhost or a loopback
+// address).
+func IsLocalHost(h string) bool { return isLocalHost(h) }

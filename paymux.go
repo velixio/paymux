@@ -135,7 +135,11 @@ func (a *App) Start(ctx context.Context) error {
 	a.log.Info("paymux starting", "version", Version, "dialect", dialect,
 		"database", a.cfg.RedactedDatabaseURL(), "env", string(a.cfg.Env))
 	if a.cfg.DevSkip2FA {
-		a.log.Warn("2FA is disabled (development)")
+		if host := a.cfg.BaseURL.Hostname(); !config.IsLocalHost(host) {
+			a.log.Warn("2FA is disabled on a public host: anyone with a password can sign in; set PAYMUX_ENV=production before going live", "host", host)
+		} else {
+			a.log.Warn("2FA is disabled (development)")
+		}
 	}
 
 	if err := db.Migrate(ctx, migrations.FS); err != nil {
