@@ -114,6 +114,9 @@ func (d Document) validate() error {
 	if strings.TrimSpace(d.Number) == "" {
 		add("number is required")
 	}
+	if len(d.Number) > 16 {
+		add("number %q exceeds 16 characters (CGST Rule 46)", d.Number)
+	}
 	if d.IssueDate.IsZero() {
 		add("issue date is required")
 	}

@@ -31,8 +31,29 @@ const (
 // Render produces the PDF bytes. The output depends only on d (the creation
 // date is the issue date), so identical input renders identical bytes.
 func Render(d Document, o Options) ([]byte, error) {
+	b, _, err := render(d, o)
+	return b, err
+}
+
+// rect is a placed box in millimetres.
+type rect struct{ X, Y, W, H float64 }
+
+// layout records where things landed, for tests.
+type layout struct {
+	Logo              rect
+	SupplierTextX     float64
+	TitleBottom       float64
+	SupplierBoxBottom float64
+}
+
+const (
+	logoMaxH = 14.0
+	logoMaxW = 30.0
+)
+
+func render(d Document, o Options) ([]byte, layout, error) {
 	if err := d.validate(); err != nil {
-		return nil, fmt.Errorf("invoice render: %w", err)
+		return nil, layout{}, fmt.Errorf("invoice render: %w", err)
 	}
 	p := fpdf.New("P", "mm", "A4", "")
 	p.SetCompression(true)
@@ -50,27 +71,30 @@ func Render(d Document, o Options) ([]byte, error) {
 
 	r := &renderer{p: p, d: d}
 	if err := r.draw(); err != nil {
-		return nil, fmt.Errorf("invoice render: %w", err)
+		return nil, layout{}, fmt.Errorf("invoice render: %w", err)
 	}
 	var buf bytes.Buffer
 	if err := p.Output(&buf); err != nil {
-		return nil, fmt.Errorf("invoice render: %w", err)
+		return nil, layout{}, fmt.Errorf("invoice render: %w", err)
 	}
 	out := buf.Bytes()
 	if o.Signer != nil {
 		signed, err := o.Signer.Sign(out)
 		if err != nil {
-			return nil, fmt.Errorf("invoice render: sign: %w", err)
+			return nil, layout{}, fmt.Errorf("invoice render: sign: %w", err)
 		}
 		out = signed
 	}
-	return out, nil
+	return out, r.lay, nil
 }
 
 type renderer struct {
 	p *fpdf.Fpdf
 	d Document
 	y float64
+
+	lay layout
+	err error
 }
 
 func title(d Document) string {
@@ -107,23 +131,18 @@ func (r *renderer) draw() error {
 	r.font("B", 15)
 	p.SetXY(marginX, 12)
 	p.CellFormat(contentW, 8, title(d), "", 0, "C", false, 0, "")
-	if len(d.Supplier.Logo) > 0 {
-		info := p.RegisterImageOptionsReader("logo", fpdf.ImageOptions{ImageType: "PNG"}, bytes.NewReader(d.Supplier.Logo))
-		if p.Error() != nil || info == nil {
-			if err := p.Error(); err != nil {
-				return fmt.Errorf("logo: %w", err)
-			}
-			return fmt.Errorf("logo: unreadable image")
-		}
-		p.ImageOptions("logo", marginX, 11, 18, 0, false, fpdf.ImageOptions{ImageType: "PNG"}, 0, "")
-	}
+	r.lay.TitleBottom = 20
 	r.y = 24
 
 	// Supplier (left) and document details (right).
 	half := contentW/2 - 2
 	left := r.supplierBlock(marginX, r.y, half)
 	right := r.metaBlock(marginX+half+4, r.y, half)
+	if r.err != nil {
+		return r.err
+	}
 	h := max(left, right)
+	r.lay.SupplierBoxBottom = r.y - 1 + h + 2
 	p.Rect(marginX, r.y-1, half, h+2, "D")
 	p.Rect(marginX+half+4, r.y-1, half, h+2, "D")
 	r.y += h + 4
@@ -141,14 +160,48 @@ func (r *renderer) draw() error {
 
 func (r *renderer) supplierBlock(x, y, w float64) float64 {
 	s := r.d.Supplier
-	h := r.para(x+1, y, w-2, "B", 10, firstNonEmpty(s.TradeName, s.LegalName))
-	if s.TradeName != "" && s.LegalName != "" && s.LegalName != s.TradeName {
-		h += r.para(x+1, y+h, w-2, "", 8.5, s.LegalName)
+	tx, tw, logoH := x+1, w-2, 0.0
+	if len(s.Logo) > 0 {
+		lw, lh, err := r.placeLogo(x+1, y, s.Logo)
+		if err != nil {
+			r.err = err
+			return 0
+		}
+		tx += lw + 3
+		tw -= lw + 3
+		logoH = lh
 	}
-	h += r.para(x+1, y+h, w-2, "", 8.5, s.Address)
-	h += r.para(x+1, y+h, w-2, "", 8.5, "GSTIN: "+s.GSTIN)
-	h += r.para(x+1, y+h, w-2, "", 8.5, fmt.Sprintf("State: %s, Code: %s", s.StateName, s.StateCode))
-	return h
+	r.lay.SupplierTextX = tx
+	h := r.para(tx, y, tw, "B", 10, firstNonEmpty(s.TradeName, s.LegalName))
+	if s.TradeName != "" && s.LegalName != "" && s.LegalName != s.TradeName {
+		h += r.para(tx, y+h, tw, "", 8.5, s.LegalName)
+	}
+	h += r.para(tx, y+h, tw, "", 8.5, s.Address)
+	h += r.para(tx, y+h, tw, "", 8.5, "GSTIN: "+s.GSTIN)
+	h += r.para(tx, y+h, tw, "", 8.5, fmt.Sprintf("State: %s, Code: %s", s.StateName, s.StateCode))
+	return max(h, logoH)
+}
+
+// placeLogo draws the logo at (x, y) scaled to fit logoMaxW x logoMaxH while
+// keeping its aspect ratio, and returns the size used.
+func (r *renderer) placeLogo(x, y float64, png []byte) (w, h float64, err error) {
+	opts := fpdf.ImageOptions{ImageType: "PNG"}
+	info := r.p.RegisterImageOptionsReader("logo", opts, bytes.NewReader(png))
+	if e := r.p.Error(); e != nil {
+		return 0, 0, fmt.Errorf("logo: %w", e)
+	}
+	if info == nil {
+		return 0, 0, fmt.Errorf("logo: unreadable image")
+	}
+	iw, ih := info.Extent()
+	if iw <= 0 || ih <= 0 {
+		return 0, 0, fmt.Errorf("logo: empty image")
+	}
+	scale := min(logoMaxW/iw, logoMaxH/ih)
+	w, h = iw*scale, ih*scale
+	r.p.ImageOptions("logo", x, y, w, h, false, opts, 0, "")
+	r.lay.Logo = rect{X: x, Y: y, W: w, H: h}
+	return w, h, nil
 }
 
 func (r *renderer) metaBlock(x, y, w float64) float64 {
