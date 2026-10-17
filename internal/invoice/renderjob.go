@@ -22,8 +22,11 @@ import (
 // (spec section 10). It belongs to template version v1.
 const exportEndorsement = "SUPPLY MEANT FOR EXPORT/SUPPLY TO SEZ UNIT OR SEZ DEVELOPER FOR AUTHORISED OPERATIONS UNDER BOND OR LETTER OF UNDERTAKING WITHOUT PAYMENT OF INTEGRATED TAX"
 
-// RegisterJobs registers the invoice.render handler on q.
-func (s *Service) RegisterJobs(q *jobs.Queue) { q.Register(JobRender, s.handleRender) }
+// RegisterJobs registers the invoice.render and invoice.alert handlers on q.
+func (s *Service) RegisterJobs(q *jobs.Queue) {
+	q.Register(JobRender, s.handleRender)
+	q.Register(JobAlert, s.handleAlert)
+}
 
 type renderPayload struct {
 	Kind string `json:"kind"`

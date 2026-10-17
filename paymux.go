@@ -188,6 +188,7 @@ func (a *App) Start(ctx context.Context) error {
 	alerts := notify.NewAlerts(notify.AlertsOptions{Mailer: mailer, Emails: a.cfg.OpsEmails, WebhookURL: a.cfg.OpsWebhookURL,
 		Recorder: alertCenter, Logger: a.log})
 	a.registerHookJob(q, alerts)
+	inv.SetAlerter(alerts) // tax exceptions (pos_defaulted, export_igst, fx_pending, credit-note cutoff)
 	// A payment that succeeds issues its invoice and spends the single-use
 	// payment link it came from, in the same transaction.
 	var links *paylinks.Service

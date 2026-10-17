@@ -95,6 +95,9 @@ type Service struct {
 	pagesOpt  *web.Renderer
 }
 
+// SetAlerter sets the ops alert sender when it is built after the service (call before serving).
+func (s *Service) SetAlerter(a Alerter) { s.alerter = a }
+
 // SetPages sets the HTML renderer of the hosted views (call before serving).
 func (s *Service) SetPages(r *web.Renderer) { s.pagesOpt = r }
 
@@ -441,6 +444,9 @@ func (s *Service) issue(ctx context.Context, tx store.Tx, p store.Payment, a sto
 	if err := s.enqueueRender(ctx, tx, kindInvoice, inv.ID); err != nil {
 		return nil, err
 	}
+	if err := s.alertInvoiceFlags(ctx, tx, inv); err != nil {
+		return nil, err
+	}
 	hosted, pdf := s.invoiceURLs(inv.ID, token)
 	err = s.emitter.Emit(ctx, tx, events.Event{OrgID: inv.OrgID, AppID: inv.AppID, Mode: inv.Mode, Type: EventInvoiceIssued,
 		ObjectType: "invoice", ObjectID: inv.ID, ObjectVersion: 1,
@@ -564,7 +570,10 @@ func (s *Service) issueCredit(ctx context.Context, tx store.Tx, src creditSource
 		if src.refund == nil {
 			return nil, ErrCreditNoteCutoff
 		}
-		return nil, store.AddRefundFlag(ctx, tx, src.refund.ID, FlagCutoffPassed, now)
+		if err := store.AddRefundFlag(ctx, tx, src.refund.ID, FlagCutoffPassed, now); err != nil {
+			return nil, err
+		}
+		return nil, s.alertCutoffPassed(ctx, tx, inv, src.refund.ID)
 	}
 	if src.currency != inv.Currency {
 		return nil, fmt.Errorf("invoice: %s is in %s but invoice %s in %s", src.id(), src.currency, inv.Number, inv.Currency)
