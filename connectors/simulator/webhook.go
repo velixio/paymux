@@ -99,7 +99,7 @@ func (c *conn) send(ctx context.Context, e event) error {
 	defer res.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 1<<16))
 	if res.StatusCode/100 != 2 {
-		return fmt.Errorf("Paymux answered %s", res.Status)
+		return fmt.Errorf("paymux answered %s", res.Status)
 	}
 	return nil
 }
