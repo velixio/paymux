@@ -207,6 +207,10 @@ const (
 	NotifyDispute      NotificationKind = "dispute"
 	NotifyMandate      NotificationKind = "mandate"
 	NotifySubscription NotificationKind = "subscription"
+	// NotifyPayout is a payout changing state (processed, failed, reversed). Like
+	// every notification it is a hint: Paymux fetches the payout with FetchPayout
+	// and applies that.
+	NotifyPayout NotificationKind = "payout"
 )
 
 // Notification is one normalized fact extracted from a webhook.
@@ -220,6 +224,7 @@ type Notification struct {
 	Dispute      *DisputeSnapshot      `json:"dispute,omitempty"`
 	Mandate      *MandateSnapshot      `json:"mandate,omitempty"`
 	Subscription *SubscriptionSnapshot `json:"subscription,omitempty"`
+	Payout       *PayoutSnapshot       `json:"payout,omitempty"`
 }
 
 // PaymentRef identifies a payment at the provider. At least one id must be set.
