@@ -9,9 +9,12 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/authz"
@@ -20,6 +23,7 @@ import (
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/server"
 	"github.com/paymux/paymux/internal/store"
+	"github.com/paymux/paymux/internal/subscriptions"
 )
 
 const maxBody = 1 << 20 // 1 MiB
@@ -32,9 +36,17 @@ type Options struct {
 	Box *secrets.Box
 	// Invoices serves /v1/invoices and /v1/credit_notes; nil answers 404.
 	Invoices *invoice.Service
+	// Subscriptions serves /v1/subscriptions; nil answers 404.
+	Subscriptions *subscriptions.Service
 	// BaseURL is PAYMUX_BASE_URL, the origin of checkout_url.
 	BaseURL *url.URL
 	Log     *slog.Logger
+	// RatePerSecond is the request rate allowed per API key (default 20; a
+	// negative value disables the limit). RateBurst is the bucket size
+	// (default: the rate rounded up). Now is the clock (tests).
+	RatePerSecond float64
+	RateBurst     int
+	Now           func() time.Time
 }
 
 // Mux is the part of server.Server the API needs.
@@ -49,8 +61,10 @@ type API struct {
 	box     *secrets.Box
 	baseURL string
 	log     *slog.Logger
+	limit   *limiter // nil: unlimited
 
 	invoices *invoice.Service
+	subs     *subscriptions.Service
 }
 
 // New builds the API.
@@ -61,7 +75,11 @@ func New(o Options) (*API, error) {
 	if o.Log == nil {
 		o.Log = slog.Default()
 	}
-	return &API{core: o.Core, db: o.DB, box: o.Box, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log, invoices: o.Invoices}, nil
+	a := &API{core: o.Core, db: o.DB, box: o.Box, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log, invoices: o.Invoices, subs: o.Subscriptions}
+	if o.RatePerSecond >= 0 {
+		a.limit = newLimiter(o.RatePerSecond, o.RateBurst, o.Now)
+	}
+	return a, nil
 }
 
 // handler is an authenticated route handler. body is the already-read
@@ -76,6 +94,12 @@ func (a *API) Register(m Mux) {
 	m.HandleFunc("POST /v1/payments/{id}/cancel", a.wrap(a.cancelPayment, true))
 	m.HandleFunc("POST /v1/payments/{id}/refunds", a.wrap(a.createRefund, true))
 	m.HandleFunc("GET /v1/refunds/{id}", a.wrap(a.getRefund, false))
+	m.HandleFunc("POST /v1/subscriptions", a.wrap(a.createSubscription, true))
+	m.HandleFunc("GET /v1/subscriptions/{id}", a.wrap(a.getSubscription, false))
+	m.HandleFunc("GET /v1/subscriptions", a.wrap(a.listSubscriptions, false))
+	m.HandleFunc("POST /v1/subscriptions/{id}/cancel", a.wrap(a.cancelSubscription, true))
+	m.HandleFunc("POST /v1/subscriptions/{id}/update", a.wrap(a.updateSubscription, true))
+	m.HandleFunc("POST /v1/subscriptions/{id}/payment_method", a.wrap(a.subscriptionPaymentMethod, true))
 	m.HandleFunc("GET /v1/invoices/{id}", a.wrap(a.getInvoice, false))
 	m.HandleFunc("GET /v1/invoices/{id}/pdf", a.wrap(a.getInvoicePDF, false))
 	m.HandleFunc("GET /v1/invoices", a.wrap(a.listInvoices, false))
@@ -93,6 +117,13 @@ func (a *API) wrap(h handler, idempotent bool) http.HandlerFunc {
 		pr, ok := a.authenticate(w, r)
 		if !ok {
 			return
+		}
+		if a.limit != nil {
+			if allowed, wait := a.limit.allow(pr.KeyID); !allowed {
+				w.Header().Set("Retry-After", strconv.Itoa(max(1, int(math.Ceil(wait.Seconds())))))
+				a.fail(w, r, http.StatusTooManyRequests, "rate_limited", "too many requests for this API key; retry after the Retry-After seconds")
+				return
+			}
 		}
 		var body []byte
 		if r.Method == http.MethodPost {

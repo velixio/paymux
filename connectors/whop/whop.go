@@ -373,18 +373,18 @@ func (w *whop) HandleReturn(_ context.Context, req connector.ReturnRequest) (con
 func (w *whop) VerifyWebhook(_ context.Context, req connector.WebhookRequest) error {
 	id, ts, sigHdr := req.Header("webhook-id"), req.Header("webhook-timestamp"), req.Header("webhook-signature")
 	if id == "" || ts == "" || sigHdr == "" {
-		return connector.ErrUnsigned
+		return connector.ErrInvalidSignature
 	}
 	sec, err := strconv.ParseInt(ts, 10, 64)
 	if err != nil {
-		return connector.ErrUnsigned
+		return connector.ErrInvalidSignature
 	}
 	now := w.deps.Now()
 	if req.ReceivedAt > 0 {
 		now = time.UnixMilli(req.ReceivedAt)
 	}
 	if d := now.Sub(time.Unix(sec, 0)); d > webhookTolerance || d < -webhookTolerance {
-		return connector.ErrUnsigned
+		return connector.ErrInvalidSignature
 	}
 	m := hmac.New(sha256.New, w.key)
 	m.Write([]byte(id + "." + ts + "."))
@@ -399,7 +399,7 @@ func (w *whop) VerifyWebhook(_ context.Context, req connector.WebhookRequest) er
 			return nil
 		}
 	}
-	return connector.ErrUnsigned
+	return connector.ErrInvalidSignature
 }
 
 // ParseWebhook maps payment.* and refund.* events; others are ignored.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/core/state"
+	"github.com/paymux/paymux/internal/disputes"
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/inbound"
 	"github.com/paymux/paymux/internal/jobs"
@@ -119,7 +120,10 @@ func (s *Service) handleNotification(ctx context.Context, ev store.ProviderEvent
 		if err != nil {
 			return err
 		}
-		_, err = s.syncAttempt(ctx, a.ID, connector.PaymentRef{ProviderOrderID: ps.ProviderOrderID, ProviderPaymentID: ps.ProviderPaymentID})
+		res, err := s.syncAttempt(ctx, a.ID, connector.PaymentRef{ProviderOrderID: ps.ProviderOrderID, ProviderPaymentID: ps.ProviderPaymentID})
+		if err == nil && s.o.Subs != nil {
+			err = s.o.Subs.ReconcilePayment(ctx, res.Payment.ID) // a renewal moves its subscription
+		}
 		return err
 	case n.Kind == connector.NotifyRefund && n.Refund != nil:
 		rs := n.Refund
@@ -139,13 +143,30 @@ func (s *Service) handleNotification(ctx context.Context, ev store.ProviderEvent
 		_, err = s.syncRefund(ctx, r.ID, rs.ProviderRefundID)
 		return err
 	case n.Kind == connector.NotifyDispute && n.Dispute != nil:
-		// TODO(spec): the dispute lane looks disputes up by provider_dispute_id
-		// within this account and applies FetchDispute; until its tables exist
-		// every dispute is recorded as unknown.
-		return s.recordUnknown(ctx, ev, "dispute", n.Dispute.ProviderDisputeID, n)
+		if s.o.Disputes == nil {
+			return s.recordUnknown(ctx, ev, "dispute", n.Dispute.ProviderDisputeID, n)
+		}
+		// The disputes service fetches the dispute from the provider (scoped to
+		// this account) and applies that, not the notification.
+		_, err := s.o.Disputes.SyncNotification(ctx, account, n)
+		if errors.Is(err, disputes.ErrUnknownPayment) || errors.Is(err, disputes.ErrNoReader) || errors.Is(err, connector.ErrNotFound) {
+			return s.recordUnknown(ctx, ev, "dispute", n.Dispute.ProviderDisputeID, n)
+		}
+		return err
 	}
-	// TODO(spec): mandate and subscription notifications belong to the
-	// subscriptions lane.
+	if (n.Kind == connector.NotifySubscription || n.Kind == connector.NotifyMandate) && s.o.Subs != nil {
+		err := s.o.Subs.HandleNotification(ctx, account, n)
+		if errors.Is(err, ErrUnknownObject) {
+			id := n.EventID
+			if n.Subscription != nil {
+				id = n.Subscription.ProviderSubscriptionID
+			} else if n.Mandate != nil {
+				id = n.Mandate.ProviderMandateID
+			}
+			return s.recordUnknown(ctx, ev, string(n.Kind), id, n)
+		}
+		return err
+	}
 	id := n.EventID
 	return s.recordUnknown(ctx, ev, string(n.Kind), id, n)
 }

@@ -83,7 +83,7 @@ func (s *Service) ReissueInvoice(ctx context.Context, actor audit.Actor, invoice
 		}
 		c.Billing = billing
 
-		cn, err := s.insertCreditNote(ctx, tx, inv, "", inv.PaymentID, amountsOf(inv.Taxable, inv.CGST, inv.SGST, inv.IGST, inv.Total),
+		cn, err := s.insertCreditNote(ctx, tx, inv, creditRefs{PaymentID: inv.PaymentID}, amountsOf(inv.Taxable, inv.CGST, inv.SGST, inv.IGST, inv.Total),
 			firstNonEmpty(reason, "Reissued with corrected billing details"), now)
 		if err != nil {
 			return err

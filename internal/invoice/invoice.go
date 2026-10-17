@@ -398,11 +398,52 @@ func recipientSnapshot(c store.Customer, rcp tax.Recipient, cls tax.Classificati
 	return r
 }
 
+// ErrCreditNoteCutoff means the statutory deadline for a credit note against
+// the invoice has passed (returned for dispute credit notes, which an operator
+// asks for explicitly; a refund gets a flag instead).
+var ErrCreditNoteCutoff = errors.New("invoice: the credit note deadline for this invoice has passed")
+
+// creditSource is what a credit note answers: a refund or a dispute.
+type creditSource struct {
+	refund   *store.Refund
+	dispute  *store.Dispute
+	amount   int64
+	currency string
+	reason   string
+}
+
+func (c creditSource) id() string {
+	if c.refund != nil {
+		return c.refund.ID
+	}
+	return c.dispute.ID
+}
+
+func (c creditSource) matches(n store.CreditNote) bool {
+	if c.refund != nil {
+		return n.RefundID == c.refund.ID
+	}
+	return n.DisputeID == c.dispute.ID
+}
+
 // IssueCreditNote issues the credit note of a succeeded refund inside tx. It
 // returns nil, nil when none is due: the payment has no invoice, or the cutoff
 // passed (the refund then gets the credit_note_cutoff_passed flag). It is
 // idempotent per refund.
 func (s *Service) IssueCreditNote(ctx context.Context, tx store.Tx, r store.Refund, p store.Payment, a store.Attempt) (*store.CreditNote, error) {
+	return s.issueCredit(ctx, tx, creditSource{refund: &r, amount: r.Amount, currency: r.Currency, reason: firstNonEmpty(r.Reason, "Refund")}, p, a)
+}
+
+// IssueDisputeCreditNote issues a credit note for a dispute (a chargeback)
+// for the disputed amount. It returns nil, nil when the payment has no
+// invoice, ErrCreditNoteCutoff when the deadline passed, and is idempotent per
+// dispute.
+func (s *Service) IssueDisputeCreditNote(ctx context.Context, tx store.Tx, d store.Dispute, p store.Payment, a store.Attempt) (*store.CreditNote, error) {
+	reason := "Chargeback: " + firstNonEmpty(d.Reason, d.Stage, "disputed payment")
+	return s.issueCredit(ctx, tx, creditSource{dispute: &d, amount: d.Amount, currency: d.Currency, reason: reason}, p, a)
+}
+
+func (s *Service) issueCredit(ctx context.Context, tx store.Tx, src creditSource, p store.Payment, a store.Attempt) (*store.CreditNote, error) {
 	invs, err := store.InvoicesForPayment(ctx, tx, p.ID)
 	if err != nil || len(invs) == 0 {
 		return nil, err
@@ -418,7 +459,7 @@ func (s *Service) IssueCreditNote(ctx context.Context, tx store.Tx, r store.Refu
 		return nil, err
 	}
 	for i := range prior {
-		if prior[i].RefundID == r.ID {
+		if src.matches(prior[i]) {
 			return &prior[i], nil
 		}
 	}
@@ -426,26 +467,39 @@ func (s *Service) IssueCreditNote(ctx context.Context, tx store.Tx, r store.Refu
 	if now.After(tax.CreditNoteDeadline(inv.IssuedAt)) {
 		// TODO(spec): the cutoff is meant to be an org setting; the statutory
 		// default is hard-wired until that setting exists.
-		return nil, store.AddRefundFlag(ctx, tx, r.ID, FlagCutoffPassed, now)
+		if src.refund == nil {
+			return nil, ErrCreditNoteCutoff
+		}
+		return nil, store.AddRefundFlag(ctx, tx, src.refund.ID, FlagCutoffPassed, now)
 	}
-	if r.Currency != inv.Currency {
-		return nil, fmt.Errorf("invoice: refund %s is in %s but invoice %s in %s", r.ID, r.Currency, inv.Number, inv.Currency)
+	if src.currency != inv.Currency {
+		return nil, fmt.Errorf("invoice: %s is in %s but invoice %s in %s", src.id(), src.currency, inv.Number, inv.Currency)
 	}
 	var done []tax.Amounts
 	for _, c := range prior {
 		done = append(done, amountsOf(c.Taxable, c.CGST, c.SGST, c.IGST, c.Total))
 	}
-	split, err := tax.CreditSplit(amountsOf(inv.Taxable, inv.CGST, inv.SGST, inv.IGST, inv.Total), r.Amount, done)
+	split, err := tax.CreditSplit(amountsOf(inv.Taxable, inv.CGST, inv.SGST, inv.IGST, inv.Total), src.amount, done)
 	if err != nil {
-		return nil, fmt.Errorf("invoice: credit for refund %s: %w", r.ID, err)
+		return nil, fmt.Errorf("invoice: credit for %s: %w", src.id(), err)
 	}
-	return s.insertCreditNote(ctx, tx, inv, r.ID, p.ID, split, firstNonEmpty(r.Reason, "Refund"), now)
+	refs := creditRefs{PaymentID: p.ID}
+	if src.refund != nil {
+		refs.RefundID = src.refund.ID
+	} else {
+		refs.DisputeID = src.dispute.ID
+	}
+	return s.insertCreditNote(ctx, tx, inv, refs, split, src.reason, now)
 }
 
+// creditRefs says what a credit note answers: always a payment, and a refund
+// or a dispute unless it is a manual one (the credit note of a reissue).
+type creditRefs struct{ PaymentID, RefundID, DisputeID string }
+
 // insertCreditNote numbers, stores, renders and announces a credit note for
-// the amounts in split against inv. refundID is empty for a manual credit
-// note such as the one of a reissue.
-func (s *Service) insertCreditNote(ctx context.Context, tx store.Tx, inv store.Invoice, refundID, paymentID string,
+// the amounts in split against inv. It serves refund, dispute and reissue
+// credit notes alike.
+func (s *Service) insertCreditNote(ctx context.Context, tx store.Tx, inv store.Invoice, refs creditRefs,
 	split tax.Amounts, reason string, now time.Time) (*store.CreditNote, error) {
 	ent, err := store.GetTaxEntity(ctx, tx, inv.TaxEntityID)
 	if err != nil {
@@ -481,7 +535,7 @@ func (s *Service) insertCreditNote(ctx context.Context, tx store.Tx, inv store.I
 	token, tokenHash := newToken()
 	cn := store.CreditNote{
 		ID: ids.New("crn"), OrgID: inv.OrgID, Mode: inv.Mode, AppID: inv.AppID, TaxEntityID: ent.ID, InvoiceID: inv.ID,
-		PaymentID: paymentID, RefundID: refundID, Number: number, SeriesPrefix: prefix, FiscalYear: fy, IssuedAt: now,
+		PaymentID: refs.PaymentID, RefundID: refs.RefundID, DisputeID: refs.DisputeID, Number: number, SeriesPrefix: prefix, FiscalYear: fy, IssuedAt: now,
 		Reason: reason, Currency: inv.Currency, Lines: linesJSON,
 		Taxable: split.Taxable, CGST: split.CGST, SGST: split.SGST, IGST: split.IGST, Total: split.Total,
 		TemplateVersion: render.Version1, AccessTokenHash: tokenHash,

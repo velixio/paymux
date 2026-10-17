@@ -73,6 +73,7 @@ func New(o Options) *Handler {
 func (h *Handler) Register(m Mux) {
 	m.HandleFunc("GET /pay/{id}", h.pay)
 	m.HandleFunc("POST /pay/{id}", h.billingPost)
+	m.HandleFunc("GET /.well-known/paymux/{token}", h.wellKnown)
 	m.HandleFunc("GET /return/{pa}/{ref}", h.ret)
 	m.HandleFunc("POST /return/{pa}/{ref}", h.ret)
 	if h.o.Assets != nil {
@@ -428,6 +429,23 @@ func (h *Handler) ret(w http.ResponseWriter, r *http.Request) {
 		h.result(w, http.StatusBadRequest, "", "Invalid request", "The request could not be read.", "")
 		return
 	}
+	// Returns from subscription and mandate checkouts are not payment attempts.
+	if back, handled, err := h.o.Flow.SubscriptionReturn(ctx, r.PathValue("pa"), r.PathValue("ref")); handled {
+		switch {
+		case err != nil:
+			h.serverError(w, "", err)
+		case back != "":
+			w.Header().Set("Referrer-Policy", "no-referrer")
+			w.Header().Set("Cache-Control", "no-store")
+			http.Redirect(w, r, back, http.StatusSeeOther)
+		default:
+			h.result(w, http.StatusOK, "", "Thank you", "Your subscription is being set up. You can close this page.", "")
+		}
+		return
+	} else if err != nil {
+		h.serverError(w, "", err)
+		return
+	}
 	p, err := h.o.Flow.HandleReturn(ctx, r.PathValue("pa"), r.PathValue("ref"), checkout.ReturnInput{
 		Method: r.Method, Query: r.URL.Query(), Form: r.PostForm, Headers: r.Header})
 	if errors.Is(err, core.ErrNotFound) || err == nil && !h.hostMayServe(ctx, p.AppID) {
@@ -459,3 +477,16 @@ func (s stdMux) HandleFunc(pattern string, fn http.HandlerFunc) { s.m.HandleFunc
 // StdMux adapts an *http.ServeMux (for example the one serving custom
 // domains) to Mux.
 func StdMux(m *http.ServeMux) Mux { return stdMux{m} }
+
+// wellKnown serves a custom domain's activation token so the background check
+// can prove the domain points at this server. Only a registered custom host
+// (served through the host router) with the right token answers.
+func (h *Handler) wellKnown(w http.ResponseWriter, r *http.Request) {
+	if !h.o.Core.VerifyDomainToken(r.Context(), r.Host, r.PathValue("token")) {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(r.PathValue("token")))
+}

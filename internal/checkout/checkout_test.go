@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http/httptest"
 	"net/url"
 	"slices"
 	"sync"
@@ -15,6 +17,7 @@ import (
 	"github.com/paymux/paymux/internal/checkout"
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/disputes"
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/fakeconn"
 	"github.com/paymux/paymux/internal/inbound"
@@ -953,6 +956,129 @@ func TestRegisterInstallsHandlersAndSchedule(t *testing.T) {
 		}
 		if e.count("SELECT COUNT(*) FROM jobs WHERE state = 'dead'") != 0 {
 			t.Error("a handler is missing")
+		}
+	})
+}
+
+// ---- forged webhooks ----
+
+func (e *env) hook(account, eventID, sigHeader string, notes any) (int, *httptest.ResponseRecorder) {
+	e.t.Helper()
+	h := inbound.New(inbound.Options{DB: e.db, Queue: e.q, Verifiers: e.conns.Verifiers(), Now: e.clk.Now})
+	body, _ := json.Marshal(notes)
+	req := httptest.NewRequest("POST", "/hooks/"+account, bytes.NewReader(body))
+	req.SetPathValue("provider_account_id", account)
+	if sigHeader != "" {
+		req.Header.Set("X-Fake-Sig", sigHeader)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Code, rec
+}
+
+func TestForgedWebhookGets401AndNoFetch(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p, st := startedAttempt(t, e)
+		ref := st.Attempt.ProviderRef
+		e.setPayment(ref, succeeded(50000, "INR", "pay_1")) // the provider really has the money
+		notes := []connector.Notification{{Kind: connector.NotifyPayment, EventID: "evt_forged",
+			Payment: &connector.PaymentSnapshot{ProviderRef: ref, Status: connector.PaymentSucceeded, Amount: 50000, Currency: "INR"}}}
+
+		// No signature, or a wrong one: 401, stored verified=false, no job.
+		for name, sig := range map[string]string{"missing": "", "wrong": "nope"} {
+			code, _ := e.hook(st.AccountID, "evt_forged", sig, notes)
+			if code != 401 {
+				t.Errorf("%s signature: %d, want 401", name, code)
+			}
+		}
+		if e.count("SELECT COUNT(*) FROM jobs WHERE kind IN ('provider_event.process', 'provider_event.fetch_only')") != 0 {
+			t.Error("a forged webhook enqueued processing")
+		}
+		if e.count("SELECT COUNT(*) FROM provider_events WHERE verified = 0 AND error LIKE 'verification failed%'") == 0 {
+			t.Error("forged webhook not stored as unverified")
+		}
+		if e.count("SELECT COUNT(*) FROM provider_events WHERE verified = 1") != 0 {
+			t.Error("forged webhook stored as verified")
+		}
+		for i := 0; i < 3; i++ {
+			e.clk.Add(2 * time.Minute)
+			_, _ = e.q.RunOnce(ctx)
+		}
+		e.fake.Locked(func() {
+			if len(e.fake.Fetches) != 0 {
+				t.Errorf("forged webhook triggered %d fetches", len(e.fake.Fetches))
+			}
+		})
+		if got := e.get(p.ID); got.Status == "succeeded" {
+			t.Fatal("a forged webhook changed state")
+		}
+
+		// A genuinely unsigned event type (the provider never signs it) still
+		// takes the fetch-only path.
+		notes[0].EventID = "evt_unsigned"
+		code, _ := e.hook(st.AccountID, "evt_unsigned", "unsigned", notes)
+		if code != 200 || e.count("SELECT COUNT(*) FROM jobs WHERE kind = 'provider_event.fetch_only'") != 1 {
+			t.Errorf("unsigned event type: %d", code)
+		}
+		// A signed one is processed normally.
+		notes[0].EventID = "evt_ok" // dedupe is per provider event id
+		code, _ = e.hook(st.AccountID, "evt_ok", "ok", notes)
+		if code != 200 || e.count("SELECT COUNT(*) FROM jobs WHERE kind = 'provider_event.process'") != 1 {
+			t.Errorf("signed: %d", code)
+		}
+	})
+}
+
+// ---- disputes ----
+
+type stubDisputes struct {
+	err   error
+	calls []string
+}
+
+func (d *stubDisputes) SyncNotification(_ context.Context, account string, n connector.Notification) (disputes.Result, error) {
+	d.calls = append(d.calls, account+"/"+n.Dispute.ProviderDisputeID)
+	return disputes.Result{}, d.err
+}
+
+func TestDisputeNotificationsGoToTheDisputesService(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		stub := &stubDisputes{}
+		flow := checkout.New(checkout.Options{DB: e.db, Core: e.core, Conns: e.conns, Routing: checkout.NewRouting(e.breaker), Breaker: e.breaker,
+			Now: e.clk.Now, Disputes: stub})
+		_, st := startedAttempt(t, e)
+		note := []connector.Notification{{Kind: connector.NotifyDispute, EventID: "d1",
+			Dispute: &connector.DisputeSnapshot{ProviderDisputeID: "dsp_1", ProviderPaymentID: "pay_1"}}}
+		ev := storeEvent(t, e, st.AccountID, true, note)
+		if err := flow.ProcessProviderEvent(ctx, jobPayload(st.AccountID, ev)); err != nil {
+			t.Fatal(err)
+		}
+		if len(stub.calls) != 1 || stub.calls[0] != st.AccountID+"/dsp_1" {
+			t.Errorf("calls %v", stub.calls)
+		}
+		if e.count("SELECT COUNT(*) FROM unknown_provider_objects") != 0 {
+			t.Error("a handled dispute was recorded as unknown")
+		}
+		// A dispute of no known payment, or for a connector that cannot read
+		// disputes, is recorded for an operator instead of failing the job.
+		for i, serr := range []error{disputes.ErrUnknownPayment, disputes.ErrNoReader} {
+			stub.err = serr
+			note[0].Dispute.ProviderDisputeID = fmt.Sprintf("dsp_u%d", i)
+			ev := storeEvent(t, e, st.AccountID, true, note)
+			time.Sleep(time.Millisecond)
+			if err := flow.ProcessProviderEvent(ctx, jobPayload(st.AccountID, ev)); err != nil {
+				t.Fatalf("%v: %v", serr, err)
+			}
+		}
+		if e.count("SELECT COUNT(*) FROM unknown_provider_objects WHERE kind = 'dispute'") != 2 {
+			t.Errorf("unknown disputes recorded: %d", e.count("SELECT COUNT(*) FROM unknown_provider_objects WHERE kind = 'dispute'"))
+		}
+		// Anything else is retried.
+		stub.err = errors.New("db down")
+		note[0].Dispute.ProviderDisputeID = "dsp_retry"
+		ev = storeEvent(t, e, st.AccountID, true, note)
+		if err := flow.ProcessProviderEvent(ctx, jobPayload(st.AccountID, ev)); err == nil {
+			t.Error("a transient failure must make the job retry")
 		}
 	})
 }

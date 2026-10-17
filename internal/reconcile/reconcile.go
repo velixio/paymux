@@ -1,0 +1,482 @@
+// Package reconcile is the daily reconciliation of spec section 11: for each
+// provider account it lists the provider's payments and refunds for the
+// window D-2..D, diffs them with ours (internal/recon), lets the provider win
+// on status mismatches, and records and alerts on everything else.
+package reconcile
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/paymux/paymux/internal/audit"
+	"github.com/paymux/paymux/internal/checkout"
+	"github.com/paymux/paymux/internal/connectors"
+	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/core/state"
+	"github.com/paymux/paymux/internal/ids"
+	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/notify"
+	"github.com/paymux/paymux/internal/recon"
+	"github.com/paymux/paymux/internal/settings"
+	"github.com/paymux/paymux/internal/store"
+	"github.com/paymux/paymux/pkg/connector"
+)
+
+// Alerter raises ops alerts (*notify.Alerts).
+type Alerter interface {
+	Raise(ctx context.Context, al notify.Alert) error
+}
+
+// JobTick is the job that checks, every few minutes, whether a reconciliation
+// is due.
+const JobTick = "recon.tick"
+
+// Options configures a Service.
+type Options struct {
+	DB       *store.DB
+	Core     *core.Service
+	Conns    *connectors.Service
+	Settings *settings.Service
+	Alerts   Alerter // nil disables alerts
+	// Loc is PAYMUX_TZ: recon_time and the D-2..D window are in this zone.
+	Loc    *time.Location
+	Logger *slog.Logger
+	Now    func() time.Time
+	// SubscriptionOf returns the provider subscription id a payment belongs
+	// to (renewals), "" for none; KnownSubscription says whether Paymux has
+	// that subscription. A payment of a known subscription that Paymux does
+	// not have is stored as renewal_to_link for the subscriptions lane.
+	SubscriptionOf    func(connector.PaymentSnapshot) string
+	KnownSubscription func(string) bool
+}
+
+// Service runs reconciliations.
+type Service struct{ o Options }
+
+// New builds a Service.
+func New(o Options) *Service {
+	if o.Logger == nil {
+		o.Logger = slog.Default()
+	}
+	if o.Now == nil {
+		o.Now = time.Now
+	}
+	if o.Loc == nil {
+		o.Loc = time.UTC
+	}
+	return &Service{o: o}
+}
+
+func (s *Service) now() time.Time { return s.o.Now().UTC() }
+
+func invalid(format string, a ...any) error { return core.NewError(core.ErrInvalid, format, a...) }
+
+// window is [start of day D-2 in Loc, now].
+func (s *Service) window() (from, to time.Time) {
+	now := s.now()
+	y, m, d := now.In(s.o.Loc).Date()
+	return time.Date(y, m, d-2, 0, 0, 0, 0, s.o.Loc).UTC(), now
+}
+
+// payment statuses are compared in a small shared vocabulary: an attempt that
+// is created or pending is "open".
+func openStatus(attemptStatus string) string {
+	switch state.AttemptStatus(attemptStatus) {
+	case state.AttemptCreated, state.AttemptPending:
+		return "open"
+	}
+	return attemptStatus
+}
+
+const maxPages = 200
+
+// RunAll reconciles every active provider account. A failing account is
+// recorded and alerted and does not stop the others.
+func (s *Service) RunAll(ctx context.Context) error {
+	var accounts []store.ProviderAccount
+	if err := s.o.DB.Read(ctx, func(q store.Querier) (err error) { accounts, err = store.ListActiveProviderAccounts(ctx, q); return }); err != nil {
+		return err
+	}
+	for _, pa := range accounts {
+		if _, err := s.RunAccount(ctx, pa.ID); err != nil {
+			s.o.Logger.Warn("reconcile: account failed", "account", pa.ID, "err", err)
+		}
+	}
+	return nil
+}
+
+// Tick runs the reconciliation of every account that has not run since the
+// latest recon_time (in PAYMUX_TZ). An account that never ran waits for the
+// first recon_time that passes after it was created. The setting is read on
+// every tick, so changes apply without a restart, and a missed slot is made up.
+func (s *Service) Tick(ctx context.Context) error {
+	org, err := s.orgID(ctx)
+	if err != nil {
+		return err
+	}
+	v, err := s.o.Settings.ResolveOrg(ctx, org, "recon_time")
+	if err != nil {
+		return err
+	}
+	var hhmm string
+	if err := v.Decode(&hhmm); err != nil {
+		return err
+	}
+	var h, m int
+	if _, err := fmt.Sscanf(hhmm, "%d:%d", &h, &m); err != nil {
+		return fmt.Errorf("reconcile: recon_time %q: %w", hhmm, err)
+	}
+	now := s.now()
+	y, mo, d := now.In(s.o.Loc).Date()
+	slot := time.Date(y, mo, d, h, m, 0, 0, s.o.Loc)
+	if slot.After(now) {
+		slot = time.Date(y, mo, d-1, h, m, 0, 0, s.o.Loc)
+	}
+	today := slot.In(s.o.Loc).Day() == now.In(s.o.Loc).Day() && slot.In(s.o.Loc).Month() == now.In(s.o.Loc).Month()
+	var accounts []store.ProviderAccount
+	if err := s.o.DB.Read(ctx, func(q store.Querier) (err error) { accounts, err = store.ListActiveProviderAccounts(ctx, q); return }); err != nil {
+		return err
+	}
+	for _, pa := range accounts {
+		var last time.Time
+		var had bool
+		if err := s.o.DB.Read(ctx, func(q store.Querier) (err error) { last, had, err = store.LastReconStart(ctx, q, pa.ID); return }); err != nil {
+			return err
+		}
+		due := had && last.Before(slot.UTC()) || !had && today
+		if !due {
+			continue
+		}
+		if _, err := s.RunAccount(ctx, pa.ID); err != nil {
+			s.o.Logger.Warn("reconcile: account failed", "account", pa.ID, "err", err)
+		}
+	}
+	return nil
+}
+
+func (s *Service) orgID(ctx context.Context) (string, error) {
+	var org string
+	err := s.o.DB.Read(ctx, func(q store.Querier) (err error) { org, err = store.FirstOrgID(ctx, q); return })
+	return org, err
+}
+
+// Register installs the tick job and its schedule (every 5 minutes).
+func (s *Service) Register(q *jobs.Queue) error {
+	q.Register(JobTick, func(ctx context.Context, _ json.RawMessage) error { return s.Tick(ctx) })
+	return q.AddSchedule(jobs.Schedule{Name: JobTick, Kind: JobTick, Every: 5 * time.Minute})
+}
+
+// RunAccount reconciles one provider account for the window D-2..D and
+// returns the recorded run. A connector that cannot list payments is skipped
+// (a run with nothing checked). Provider failures produce a failed run and a
+// critical alert.
+func (s *Service) RunAccount(ctx context.Context, accountID string) (store.ReconRun, error) {
+	var pa store.ProviderAccount
+	err := s.o.DB.Read(ctx, func(q store.Querier) (err error) { pa, err = store.GetProviderAccount(ctx, q, accountID); return })
+	if err != nil {
+		return store.ReconRun{}, err
+	}
+	from, to := s.window()
+	run := store.ReconRun{ID: ids.New("rcr"), OrgID: pa.OrgID, ProviderAccountID: pa.ID, WindowFrom: from, WindowTo: to, StartedAt: s.now()}
+	if err := s.o.DB.Write(ctx, func(tx store.Tx) error { return store.InsertReconRun(ctx, tx, run) }); err != nil {
+		return run, err
+	}
+	runErr := s.reconcile(ctx, pa, &run)
+	run.FinishedAt, run.Status = s.now(), "ok"
+	if runErr != nil {
+		run.Status, run.Error = "failed", runErr.Error()
+	}
+	if err := s.o.DB.Write(ctx, func(tx store.Tx) error { return store.FinishReconRun(ctx, tx, run) }); err != nil {
+		return run, err
+	}
+	if runErr != nil {
+		s.raise(ctx, notify.Alert{Severity: notify.SeverityCritical, Kind: "recon.failed",
+			Message: fmt.Sprintf("Reconciliation of %s account %s failed: %v", pa.Connector, pa.Name, runErr),
+			Refs:    map[string]string{"provider_account": pa.ID, "run": run.ID}})
+	}
+	return run, runErr
+}
+
+func (s *Service) raise(ctx context.Context, al notify.Alert) {
+	if s.o.Alerts == nil {
+		return
+	}
+	if err := s.o.Alerts.Raise(ctx, al); err != nil {
+		s.o.Logger.Warn("reconcile: alert not delivered", "kind", al.Kind, "err", err)
+	}
+}
+
+func (s *Service) reconcile(ctx context.Context, pa store.ProviderAccount, run *store.ReconRun) error {
+	live, err := s.o.Conns.Get(ctx, pa.ID)
+	if err != nil {
+		return err
+	}
+	lister, ok := live.Connector.(connector.Lister)
+	if !ok {
+		return nil // nothing to compare against
+	}
+	tr := connector.TimeRange{From: run.WindowFrom.UnixMilli(), To: run.WindowTo.UnixMilli()}
+
+	var theirsPay []connector.PaymentSnapshot
+	for cur, n := connector.Cursor(""), 0; n < maxPages; n++ {
+		pg, err := lister.ListPayments(ctx, tr, cur)
+		if err != nil {
+			return fmt.Errorf("listing payments: %w", err)
+		}
+		theirsPay = append(theirsPay, pg.Items...)
+		if pg.Next == "" {
+			break
+		}
+		cur = pg.Next
+	}
+	var theirsRef []connector.RefundSnapshot
+	for cur, n := connector.Cursor(""), 0; n < maxPages; n++ {
+		pg, err := lister.ListRefunds(ctx, tr, cur)
+		if err != nil {
+			return fmt.Errorf("listing refunds: %w", err)
+		}
+		theirsRef = append(theirsRef, pg.Items...)
+		if pg.Next == "" {
+			break
+		}
+		cur = pg.Next
+	}
+	run.Checked = len(theirsPay) + len(theirsRef)
+
+	if err := s.reconcilePayments(ctx, pa, run, theirsPay); err != nil {
+		return err
+	}
+	return s.reconcileRefunds(ctx, pa, run, theirsRef)
+}
+
+// ---- payments ----
+
+func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccount, run *store.ReconRun, theirs []connector.PaymentSnapshot) error {
+	// Attempts created a day before the window can still be paid inside it.
+	var attempts []store.ReconAttempt
+	err := s.o.DB.Read(ctx, func(q store.Querier) (err error) {
+		attempts, err = store.ListReconAttempts(ctx, q, pa.ID, run.WindowFrom.Add(-24*time.Hour), run.WindowTo)
+		return
+	})
+	if err != nil {
+		return err
+	}
+	byPayID := map[string]connector.PaymentSnapshot{}
+	byOrder := map[string]string{} // provider order id -> provider payment id
+	var theirRecs []recon.Record
+	for _, t := range theirs {
+		if t.ProviderPaymentID == "" {
+			continue
+		}
+		byPayID[t.ProviderPaymentID] = t
+		if t.ProviderOrderID != "" {
+			byOrder[t.ProviderOrderID] = t.ProviderPaymentID
+		}
+		theirRecs = append(theirRecs, recon.Record{ProviderID: t.ProviderPaymentID, Status: string(checkout.ToSnapshot(t).Status),
+			Amount: t.Amount, Currency: t.Currency, SubscriptionID: s.subscriptionOf(t)})
+	}
+	for i := range theirRecs {
+		theirRecs[i].Status = openStatus(theirRecs[i].Status)
+	}
+	var ours []recon.Record
+	for _, a := range attempts {
+		id := a.ProviderPaymentID
+		if id == "" {
+			id = byOrder[a.ProviderOrderID] // a payment we never heard about, found by its order
+		}
+		if id == "" {
+			continue
+		}
+		rec := recon.Record{ProviderID: id, Status: openStatus(a.Status), Amount: a.PaymentAmount, Currency: a.PaymentCurrency}
+		if a.Status == string(state.AttemptCaptured) {
+			rec.Amount, rec.Currency = a.AmountReceived, a.CurrencyReceived
+		}
+		ours = append(ours, rec)
+	}
+	items := recon.Diff(ours, theirRecs, s.o.KnownSubscription)
+	for _, it := range items {
+		snap := byPayID[it.ProviderID]
+		fixed := false
+		if it.AutoFix {
+			if err := s.fixPayment(ctx, pa, snap); err != nil {
+				s.o.Logger.Warn("reconcile: auto-fix failed", "account", pa.ID, "payment", it.ProviderID, "err", err)
+				it.AutoFix = false
+				s.raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: "recon.autofix_failed",
+					Message: fmt.Sprintf("Reconciliation could not apply the provider's state of payment %s: %v", it.ProviderID, err),
+					Refs:    map[string]string{"provider_account": pa.ID, "provider_id": it.ProviderID}})
+			} else {
+				fixed = true
+			}
+		}
+		if err := s.record(ctx, pa, run, it, fixed); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) subscriptionOf(t connector.PaymentSnapshot) string {
+	if s.o.SubscriptionOf == nil {
+		return ""
+	}
+	return s.o.SubscriptionOf(t)
+}
+
+func (s *Service) fixPayment(ctx context.Context, pa store.ProviderAccount, snap connector.PaymentSnapshot) error {
+	var a store.Attempt
+	err := s.o.DB.Read(ctx, func(q store.Querier) (err error) {
+		a, err = store.FindAttempt(ctx, q, pa.ID, snap.ProviderRef, snap.ProviderOrderID, snap.ProviderPaymentID)
+		return
+	})
+	if err != nil {
+		return err
+	}
+	_, err = s.o.Core.ApplyAttemptSnapshot(ctx, a.ID, checkout.ToSnapshot(snap))
+	return err
+}
+
+// ---- refunds ----
+
+func refundStatus(s connector.RefundStatus) string { return string(s) }
+
+func (s *Service) reconcileRefunds(ctx context.Context, pa store.ProviderAccount, run *store.ReconRun, theirs []connector.RefundSnapshot) error {
+	var ourRefunds []store.ReconRefund
+	err := s.o.DB.Read(ctx, func(q store.Querier) (err error) {
+		ourRefunds, err = store.ListReconRefunds(ctx, q, pa.ID, run.WindowFrom.Add(-24*time.Hour), run.WindowTo)
+		return
+	})
+	if err != nil {
+		return err
+	}
+	byID := map[string]connector.RefundSnapshot{}
+	byRef := map[string]string{} // provider_ref (receipt) -> provider refund id
+	var theirRecs []recon.Record
+	for _, t := range theirs {
+		if t.ProviderRefundID == "" {
+			continue
+		}
+		byID[t.ProviderRefundID] = t
+		if t.ProviderRef != "" {
+			byRef[t.ProviderRef] = t.ProviderRefundID
+		}
+		theirRecs = append(theirRecs, recon.Record{ProviderID: t.ProviderRefundID, Status: refundStatus(t.Status), Amount: t.Amount, Currency: t.Currency})
+	}
+	ourByProviderID := map[string]string{} // provider refund id -> our refund id
+	var ours []recon.Record
+	for _, r := range ourRefunds {
+		id := r.ProviderRefundID
+		if id == "" {
+			id = byRef[r.ProviderRef]
+		}
+		if id == "" {
+			continue
+		}
+		ourByProviderID[id] = r.RefundID
+		ours = append(ours, recon.Record{ProviderID: id, Status: r.Status, Amount: r.Amount, Currency: r.Currency})
+	}
+	for _, it := range recon.Diff(ours, theirRecs, nil) {
+		fixed := false
+		if it.AutoFix {
+			snap := byID[it.ProviderID]
+			_, err := s.o.Core.ApplyRefundSnapshot(ctx, ourByProviderID[it.ProviderID], core.RefundSnapshot{
+				Status: state.RefundStatus(snap.Status), ProviderRefundID: snap.ProviderRefundID, FailureReason: snap.RawStatus})
+			if err != nil {
+				s.o.Logger.Warn("reconcile: refund auto-fix failed", "account", pa.ID, "refund", it.ProviderID, "err", err)
+				s.raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: "recon.autofix_failed",
+					Message: fmt.Sprintf("Reconciliation could not apply the provider's state of refund %s: %v", it.ProviderID, err),
+					Refs:    map[string]string{"provider_account": pa.ID, "provider_id": it.ProviderID}})
+			} else {
+				fixed = true
+			}
+		}
+		if err := s.record(ctx, pa, run, it, fixed); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ---- recording ----
+
+// record stores an item. Auto-fixed items are always stored. Anything else is
+// stored and alerted once per object and kind while it stays open.
+func (s *Service) record(ctx context.Context, pa store.ProviderAccount, run *store.ReconRun, it recon.Item, fixed bool) error {
+	ours := ""
+	if it.Ours != nil {
+		b, _ := json.Marshal(it.Ours)
+		ours = string(b)
+	}
+	theirs, _ := json.Marshal(it.Theirs)
+	item := store.ReconItem{ID: ids.New("rci"), RunID: run.ID, OrgID: pa.OrgID, ProviderAccountID: pa.ID, Kind: it.Kind,
+		ProviderID: it.ProviderID, Ours: ours, Theirs: string(theirs), State: "open", CreatedAt: s.now()}
+	switch {
+	case fixed:
+		item.State = "fixed"
+	case it.Kind == recon.KindRenewalToLink:
+		item.State = "to_link"
+	}
+	var existing store.ReconItem
+	var seen bool
+	err := s.o.DB.Write(ctx, func(tx store.Tx) (err error) {
+		if !fixed {
+			if existing, seen, err = store.FindOpenReconItem(ctx, tx, pa.ID, it.Kind, it.ProviderID); err != nil {
+				return err
+			}
+			if seen {
+				return store.TouchReconItem(ctx, tx, existing.ID, run.ID)
+			}
+		}
+		return store.InsertReconItem(ctx, tx, item)
+	})
+	if err != nil {
+		return err
+	}
+	run.Items++
+	if fixed {
+		run.Fixed++
+		return nil
+	}
+	if seen || item.State == "to_link" {
+		return nil
+	}
+	s.raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: "recon." + it.Kind,
+		Message: describe(it, pa), Refs: map[string]string{"provider_account": pa.ID, "provider_id": it.ProviderID, "run": run.ID}})
+	return nil
+}
+
+func describe(it recon.Item, pa store.ProviderAccount) string {
+	switch it.Kind {
+	case recon.KindAmountMismatch, recon.KindCurrencyMismatch:
+		return fmt.Sprintf("%s account %s: %s differs for %s: ours %d %s, provider %d %s", pa.Connector, pa.Name, it.Kind, it.ProviderID,
+			it.Ours.Amount, it.Ours.Currency, it.Theirs.Amount, it.Theirs.Currency)
+	case recon.KindUnknownProviderObject:
+		return fmt.Sprintf("%s account %s has %s %s (%d %s, %s) that Paymux does not know", pa.Connector, pa.Name, "an object", it.ProviderID,
+			it.Theirs.Amount, it.Theirs.Currency, it.Theirs.Status)
+	}
+	return fmt.Sprintf("%s account %s: %s for %s", pa.Connector, pa.Name, it.Kind, it.ProviderID)
+}
+
+// Resolve closes an open item with a note, audited.
+func (s *Service) Resolve(ctx context.Context, actor audit.Actor, sc core.OrgScope, itemID, note string) error {
+	if note == "" {
+		return invalid("a note is required to resolve a reconciliation item")
+	}
+	return s.o.DB.Write(ctx, func(tx store.Tx) error {
+		it, err := store.GetReconItem(ctx, tx, itemID)
+		if errors.Is(err, store.ErrNotFound) || err == nil && (sc.OrgID == "" || it.OrgID != sc.OrgID) {
+			return core.NewError(core.ErrNotFound, "reconciliation item not found")
+		}
+		if err != nil {
+			return err
+		}
+		if err := store.ResolveReconItem(ctx, tx, itemID, note, s.now()); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{OrgID: sc.OrgID, Actor: actor, Action: "recon.resolve", Target: itemID,
+			Before: map[string]string{"state": it.State, "kind": it.Kind}, After: map[string]string{"state": "resolved", "note": note}})
+	})
+}

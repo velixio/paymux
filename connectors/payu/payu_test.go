@@ -91,6 +91,7 @@ type fake struct {
 	refund  string
 	check   string
 	listing string
+	cmds    map[string]string // other commands (standing instructions)
 }
 
 func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -108,6 +109,9 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := map[string]string{"verify_payment": f.verify, "cancel_refund_transaction": f.refund, "check_action_status": f.check, "get_Transaction_Details": f.listing}[r.PostForm.Get("command")]
+	if b, ok := f.cmds[r.PostForm.Get("command")]; ok {
+		body = b
+	}
 	_, _ = w.Write([]byte(body))
 }
 
@@ -227,6 +231,32 @@ func TestVerifyWebhookRefundIsUnsigned(t *testing.T) {
 	refund := url.Values{"mihpayid": {"403993715521"}, "requestId": {"rq1"}, "status": {"success"}, "amount": {"100.00"}, "action": {"refund"}}
 	if err := c.VerifyWebhook(context.Background(), webhook(refund)); !errors.Is(err, connector.ErrUnsigned) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestVerifyWebhookBadHashIsInvalidSignatureNotUnsigned(t *testing.T) {
+	c := newConn(t, &fake{})
+	ctx := context.Background()
+	ok := successForm(testSalt, "")
+	if err := c.VerifyWebhook(ctx, webhook(ok)); err != nil {
+		t.Fatalf("valid payment webhook rejected: %v", err)
+	}
+	wrongHash := successForm(testSalt, "")
+	wrongHash.Set("hash", strings.Repeat("0", 128))
+	wrongSalt := successForm("other-salt", "")
+	noHash := successForm(testSalt, "")
+	noHash.Del("hash")
+	refundWithBadHash := url.Values{"mihpayid": {"1"}, "requestId": {"rq"}, "action": {"refund"}, "hash": {"abc"}}
+	for name, f := range map[string]url.Values{"wrong hash": wrongHash, "wrong salt": wrongSalt, "payment without hash": noHash, "refund with bad hash": refundWithBadHash} {
+		err := c.VerifyWebhook(ctx, webhook(f))
+		if !errors.Is(err, connector.ErrInvalidSignature) || errors.Is(err, connector.ErrUnsigned) {
+			t.Errorf("%s: err = %v, want ErrInvalidSignature", name, err)
+		}
+	}
+	// Only hash-less refund notices are genuinely unsigned.
+	refund := url.Values{"mihpayid": {"403993715521"}, "requestId": {"rq1"}, "status": {"success"}, "amount": {"100.00"}, "action": {"refund"}}
+	if err := c.VerifyWebhook(ctx, webhook(refund)); !errors.Is(err, connector.ErrUnsigned) || errors.Is(err, connector.ErrInvalidSignature) {
+		t.Errorf("refund webhook: err = %v, want ErrUnsigned", err)
 	}
 }
 

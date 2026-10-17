@@ -71,7 +71,7 @@ func newInvoiceFixture(t *testing.T, db *store.DB) *invoiceFixture {
 	f.otherKey, _, _ = svc.CreateAPIKey(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, other.ID, "live")
 	box, _ := secrets.NewBox(bytes.Repeat([]byte{7}, 32))
 	base, _ := url.Parse("https://pay.example.com")
-	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: base, Invoices: inv})
+	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: base, Invoices: inv, RatePerSecond: 100000})
 	if err != nil {
 		t.Fatal(err)
 	}

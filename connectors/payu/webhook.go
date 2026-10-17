@@ -37,12 +37,20 @@ func mapStatus(raw string) connector.PaymentStatus {
 }
 
 // VerifyWebhook checks the reverse hash of a form-urlencoded payment webhook.
-// PayU refund (and other) webhooks carry no hash: they are reported as
-// ErrUnsigned so the caller polls FetchRefund instead of trusting them.
+// A missing, wrong or unparsable hash on a payment webhook is
+// ErrInvalidSignature. Only PayU refund (and other non-payment) notices that
+// carry no hash field at all are ErrUnsigned: the provider does not sign
+// them, so the caller polls FetchRefund instead of trusting them.
 func (p *payu) VerifyWebhook(_ context.Context, req connector.WebhookRequest) error {
 	f, err := url.ParseQuery(string(req.Body))
-	if err != nil || !p.verifyReverse(f) {
-		return connector.ErrUnsigned
+	if err != nil {
+		return connector.ErrInvalidSignature
+	}
+	if f.Get("hash") == "" && f.Get("txnid") == "" {
+		return connector.ErrUnsigned // an unsigned refund notice
+	}
+	if !p.verifyReverse(f) {
+		return connector.ErrInvalidSignature
 	}
 	return nil
 }

@@ -242,12 +242,15 @@ func TestParseSubscriptionWebhooks(t *testing.T) {
 				s.CurrentPeriodEnd != 1762592000000 {
 				t.Errorf("sub = %+v", s)
 			}
+			if len(ns) != 1 {
+				t.Errorf("len = %d, want one notification", len(ns))
+			}
 			if tc.event == "subscription.charged" {
-				if len(ns) != 2 || ns[1].Kind != connector.NotifyPayment || ns[1].Payment.Status != connector.PaymentSucceeded || ns[1].EventID != "evt_s" {
-					t.Errorf("charged must also carry the renewal payment: %+v", ns)
+				if n.Payment == nil || n.Payment.Status != connector.PaymentSucceeded || n.Payment.ProviderPaymentID != "pay_Nx1" {
+					t.Errorf("charged must carry the renewal payment: %+v", n)
 				}
-			} else if len(ns) != 1 {
-				t.Errorf("len = %d", len(ns))
+			} else if n.Payment != nil {
+				t.Errorf("only subscription.charged carries a payment: %+v", n.Payment)
 			}
 		})
 	}

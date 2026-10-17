@@ -19,6 +19,10 @@ info:
     returns 409 `idempotency_in_progress`. Responses with status 5xx are not
     stored, so those requests can be retried.
 
+    **Rate limit.** 20 requests per second per API key (token bucket). Over the
+    limit the API answers 429 `rate_limited` with a `Retry-After` header in
+    seconds; the request is not processed.
+
     **Errors** share one shape: `{"error": {"type", "message", "request_id"}}`.
 servers:
   - url: "{baseUrl}"
@@ -305,6 +309,176 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
         "404":
           $ref: "#/components/responses/NotFound"
+  /v1/subscriptions:
+    post:
+      operationId: createSubscription
+      summary: Create a subscription
+      description: |
+        Routes the subscription (provider-managed, or merchant-triggered with a mandate) and returns it
+        `incomplete` with a `checkout_url` (`/s/{id}?t=...`) for the customer. Setup must finish within 24 hours.
+        An amount above what a mandate allows (Rs 15,000 for UPI and card) is billed through an e-NACH mandate or a
+        provider-managed account; if neither exists the call fails with 422 `amount_exceeds_mandate_limit`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSubscriptionRequest"
+      responses:
+        "201":
+          description: The incomplete subscription and its checkout link.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedSubscription"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/SubscriptionUnprocessable"
+    get:
+      operationId: listSubscriptions
+      summary: List subscriptions
+      parameters:
+        - { name: customer, in: query, required: false, schema: { type: string } }
+        - { name: status, in: query, required: false, schema: { $ref: "#/components/schemas/SubscriptionStatus" } }
+        - { name: starting_after, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: A page of subscriptions, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+  /v1/subscriptions/{id}:
+    get:
+      operationId: getSubscription
+      summary: Retrieve a subscription
+      parameters:
+        - $ref: "#/components/parameters/SubscriptionId"
+      responses:
+        "200":
+          description: The subscription.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subscription"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/subscriptions/{id}/cancel:
+    post:
+      operationId: cancelSubscription
+      summary: Cancel a subscription
+      description: |
+        Now (revokes the mandate or cancels at the provider) or, with `at_period_end`, at the end of the
+        current period. Canceling a canceled subscription succeeds.
+      parameters:
+        - $ref: "#/components/parameters/SubscriptionId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                at_period_end: { type: boolean, default: false }
+              additionalProperties: false
+      responses:
+        "200":
+          description: The subscription.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subscription"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/StateConflict"
+  /v1/subscriptions/{id}/update:
+    post:
+      operationId: updateSubscription
+      summary: Change the amount from the next period
+      description: |
+        No proration. If the new amount is above the mandate's maximum the response has
+        `requires_reauthorization: true` and a new `checkout_url`, and `subscription.reauthorization_required`
+        fires; the new amount applies once the customer authorises the larger mandate.
+      parameters:
+        - $ref: "#/components/parameters/SubscriptionId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: integer, minimum: 1, description: Minor units per period. }
+              additionalProperties: false
+      responses:
+        "200":
+          description: The subscription (with `checkout_url` when re-authorization is needed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedSubscription"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/StateConflict"
+        "422":
+          $ref: "#/components/responses/SubscriptionUnprocessable"
+  /v1/subscriptions/{id}/payment_method:
+    post:
+      operationId: updateSubscriptionPaymentMethod
+      summary: Start a new mandate checkout
+      description: |
+        Returns a `checkout_url` for a new mandate. The old mandate is revoked once the new one is active.
+        Not available for provider-managed subscriptions (422 `unsupported`).
+      parameters:
+        - $ref: "#/components/parameters/SubscriptionId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                method: { type: string, enum: [upi, card, emandate], description: Default is the current mandate's method. }
+              additionalProperties: false
+      responses:
+        "200":
+          description: The subscription with the new `checkout_url`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedSubscription"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/StateConflict"
+        "422":
+          $ref: "#/components/responses/SubscriptionUnprocessable"
 components:
   securitySchemes:
     bearerAuth:
@@ -317,6 +491,11 @@ components:
       in: header
       required: false
       schema: { type: string, maxLength: 255 }
+    SubscriptionId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^sub_[0-9a-z]{26}$" }
     PaymentId:
       name: id
       in: path
@@ -347,6 +526,13 @@ components:
       description: |
         `idempotency_key_reuse` (same key, different request) or
         `idempotency_in_progress` (the first request is still running).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    SubscriptionUnprocessable:
+      description: |
+        `amount_exceeds_mandate_limit` (no e-NACH or provider-managed account can bill the amount),
+        `no_route` (no subscription-capable provider account for the currency) or `unsupported`.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -381,6 +567,9 @@ components:
                 - currency_not_accepted
                 - idempotency_key_reuse
                 - idempotency_in_progress
+                - rate_limited
+                - amount_exceeds_mandate_limit
+                - unsupported
                 - internal
             message: { type: string }
             request_id: { type: string }
@@ -494,6 +683,77 @@ components:
         reason: { type: string }
         initiated_by: { type: string, enum: [api, dashboard, provider, system] }
         created_at: { type: string, format: date-time }
+    SubscriptionStatus:
+      type: string
+      enum: [incomplete, incomplete_expired, trialing, active, past_due, canceled, ended]
+    CreateSubscriptionRequest:
+      type: object
+      required: [customer, amount, currency, interval]
+      properties:
+        customer: { $ref: "#/components/schemas/Customer" }
+        amount: { type: integer, minimum: 1, description: Minor units per period. }
+        currency: { type: string, pattern: "^[A-Za-z]{3}$" }
+        interval: { type: string, enum: [day, week, month, year] }
+        interval_count: { type: integer, minimum: 1, maximum: 366, default: 1 }
+        trial_days: { type: integer, minimum: 0, maximum: 365 }
+        start_at: { type: string, format: date-time, description: First period start; default now. }
+        total_count: { type: integer, minimum: 0, description: Number of periods to bill; 0 means until canceled. }
+        description: { type: string, maxLength: 1000 }
+        metadata:
+          type: object
+          maxProperties: 20
+          additionalProperties: { type: string, maxLength: 500 }
+        return_url: { type: string, format: uri }
+        method: { type: string, enum: [upi, card, emandate], description: Preferred mandate method for merchant-triggered billing; default UPI. }
+      additionalProperties: false
+    Subscription:
+      type: object
+      required: [id, object, status, billing_mode, customer_id, amount, currency, interval, interval_count, current_period_start, current_period_end, renewals_done, cancel_at_period_end, requires_reauthorization, metadata, created_at, version]
+      properties:
+        id: { type: string, pattern: "^sub_[0-9a-z]{26}$" }
+        object: { type: string, const: subscription }
+        status: { $ref: "#/components/schemas/SubscriptionStatus" }
+        billing_mode: { type: string, enum: [provider_managed, merchant_triggered] }
+        customer_id: { type: string }
+        amount: { type: integer }
+        currency: { type: string }
+        interval: { type: string, enum: [day, week, month, year] }
+        interval_count: { type: integer }
+        current_period_start: { type: string, format: date-time }
+        current_period_end: { type: string, format: date-time }
+        trial_end: { type: string, format: date-time }
+        total_count: { type: integer }
+        renewals_done: { type: integer }
+        cancel_at_period_end: { type: boolean }
+        canceled_at: { type: string, format: date-time }
+        ended_at: { type: string, format: date-time }
+        pending_amount: { type: integer, description: Amount that applies from the next period. }
+        requires_reauthorization: { type: boolean }
+        description: { type: string }
+        metadata: { type: object, additionalProperties: { type: string } }
+        return_url: { type: string }
+        mandate_id: { type: string }
+        created_at: { type: string, format: date-time }
+        version: { type: integer }
+    CreatedSubscription:
+      allOf:
+        - $ref: "#/components/schemas/Subscription"
+        - type: object
+          properties:
+            checkout_url:
+              type: string
+              format: uri
+              description: "`<PAYMUX_BASE_URL>/s/<id>?t=<secret>`. Shown only in this response."
+    SubscriptionList:
+      type: object
+      required: [object, data, has_more]
+      properties:
+        object: { type: string, const: list }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Subscription" }
+        has_more: { type: boolean }
+        next_cursor: { type: string }
     Invoice:
       type: object
       description: |

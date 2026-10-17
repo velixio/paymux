@@ -48,11 +48,14 @@ const configSchema = `{
 var info = connector.Info{
 	Version:      "0.1.0",
 	DisplayName:  "Zoho Payments",
-	Capabilities: []connector.Capability{connector.CapRefund},
+	Capabilities: []connector.Capability{connector.CapRefund, connector.CapMandateManager},
 	ConfigSchema: json.RawMessage(configSchema),
 	Currencies:   []string{"INR"},
 	Methods:      []string{"upi", "card", "netbanking"},
-	// TODO(spec): UPI mandates (merchant_triggered) are a later milestone.
+	// UPI AutoPay mandates only; the issuer notifies the customer before each
+	// debit, so there is no pre-debit API (NotifyPreDebit returns ErrUnsupported).
+	SubscriptionModes: []connector.BillingMode{connector.MerchantTriggered},
+	MandateLimits:     []connector.MandateLimit{{Method: "upi", Currency: "INR"}},
 	// Refunds are limited to 60/min; the client limiter applies that to every call.
 	RateLimit: connector.RateLimit{RequestsPerSecond: 1, Burst: 10},
 }
@@ -291,14 +294,14 @@ func (z *zoho) VerifyWebhook(_ context.Context, req connector.WebhookRequest) er
 	}
 	ts, err := strconv.ParseInt(t, 10, 64)
 	if err != nil || len(sigs) == 0 {
-		return connector.ErrUnsigned
+		return connector.ErrInvalidSignature
 	}
 	now := z.deps.Now()
 	if req.ReceivedAt > 0 {
 		now = time.UnixMilli(req.ReceivedAt)
 	}
 	if d := now.Sub(time.Unix(ts, 0)); d > webhookTolerance || d < -webhookTolerance {
-		return connector.ErrUnsigned
+		return connector.ErrInvalidSignature
 	}
 	m := hmac.New(sha256.New, []byte(z.cfg.WebhookSecret))
 	m.Write([]byte(t + "."))
@@ -309,7 +312,7 @@ func (z *zoho) VerifyWebhook(_ context.Context, req connector.WebhookRequest) er
 			return nil
 		}
 	}
-	return connector.ErrUnsigned
+	return connector.ErrInvalidSignature
 }
 
 // ParseWebhook maps payment.* and refund.* events; others are ignored.
@@ -320,6 +323,7 @@ func (z *zoho) ParseWebhook(_ context.Context, req connector.WebhookRequest) ([]
 		Payload   struct {
 			Payment *paymentEntity `json:"payment"`
 			Refund  *refundEntity  `json:"refund"`
+			Mandate *mandateEntity `json:"mandate"`
 		} `json:"payload"`
 	}
 	if err := json.Unmarshal(req.Body, &ev); err != nil {
@@ -342,6 +346,12 @@ func (z *zoho) ParseWebhook(_ context.Context, req connector.WebhookRequest) ([]
 			return nil, err
 		}
 		n.Kind, n.Refund = connector.NotifyRefund, &s
+	case strings.HasPrefix(ev.EventType, "mandate.") && ev.Payload.Mandate != nil:
+		s, err := ev.Payload.Mandate.snapshot()
+		if err != nil {
+			return nil, err
+		}
+		n.Kind, n.Mandate = connector.NotifyMandate, &s
 	default:
 		return nil, nil
 	}
