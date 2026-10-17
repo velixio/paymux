@@ -139,10 +139,14 @@ func (q *Queue) process(ctx context.Context, r store.JobRow) {
 }
 
 func (q *Queue) finish(ctx context.Context, r store.JobRow, h Handler) {
+	err := h(ctx, r.Payload)
+	if err != nil {
+		q.fail(ctx, r, err, false)
+		return
+	}
 	if err := q.db.CompleteJob(ctx, r.ID, q.opts.Clock()); err != nil {
 		q.opts.Logger.Error("complete job", "job_id", r.ID, "err", err)
 	}
-	_ = h
 }
 
 func (q *Queue) fail(ctx context.Context, r store.JobRow, cause error, dead bool) {
