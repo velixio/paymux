@@ -428,3 +428,56 @@ func TestValidateConfig(t *testing.T) {
 		t.Errorf("no schema means any object: %v", err)
 	}
 }
+
+func TestTestConnection(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		pa := e.create(fakeconn.ValidConfig)
+		// the provider does not know the dummy payment: credentials work
+		res, err := e.svc.TestConnection(ctx, org, pa.ID)
+		if err != nil || !res.OK || !strings.Contains(res.Message, "accepted") {
+			t.Fatalf("%+v %v", res, err)
+		}
+		if len(e.fake.Fetches) != 1 || e.fake.Fetches[0].ProviderRef == "" {
+			t.Fatalf("expected one FetchPayment of a dummy ref: %+v", e.fake.Fetches)
+		}
+		// rejected credentials
+		e.fake.Locked(func() { e.fake.FetchErr = connector.ErrInvalidCredentials })
+		res, err = e.svc.TestConnection(ctx, org, pa.ID)
+		if err != nil || res.OK || !strings.Contains(res.Message, "credentials") {
+			t.Fatalf("invalid credentials: %+v %v", res, err)
+		}
+		// any other failure is inconclusive, not a pass
+		e.fake.Locked(func() { e.fake.FetchErr = errors.New("connection refused") })
+		res, err = e.svc.TestConnection(ctx, org, pa.ID)
+		if err != nil || res.OK || !strings.Contains(res.Message, "connection refused") {
+			t.Fatalf("other error: %+v %v", res, err)
+		}
+		// accounts of another org are invisible
+		if _, err := e.svc.TestConnection(ctx, core.OrgScope{OrgID: "org_other"}, pa.ID); !errors.Is(err, core.ErrNotFound) {
+			t.Fatalf("other org: %v", err)
+		}
+		if _, err := e.svc.TestConnection(ctx, org, "pa_missing"); !errors.Is(err, core.ErrNotFound) {
+			t.Fatalf("missing: %v", err)
+		}
+	})
+}
+
+func TestUpdateAccountPurposes(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		pa := e.create(fakeconn.ValidConfig)
+		if err := e.svc.UpdateAccount(ctx, audit.System, org, pa.ID, connectors.UpdateAccountInput{Purposes: []string{"one_time", "subscription"}}); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := e.svc.Account(ctx, org, pa.ID)
+		if strings.Join(got.EnabledPurposes, ",") != "one_time,subscription" {
+			t.Fatalf("purposes %v", got.EnabledPurposes)
+		}
+		if err := e.svc.UpdateAccount(ctx, audit.System, org, pa.ID, connectors.UpdateAccountInput{Purposes: []string{"barter"}}); !errors.Is(err, core.ErrInvalid) {
+			t.Fatalf("bad purpose: %v", err)
+		}
+		got, _ = e.svc.Account(ctx, org, pa.ID)
+		if len(got.EnabledPurposes) != 2 {
+			t.Fatalf("a rejected update changed purposes: %v", got.EnabledPurposes)
+		}
+	})
+}
