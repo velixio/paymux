@@ -122,6 +122,12 @@ func TestSetValidation(t *testing.T) {
 			{"gst_rate_bp", `-1`, true},
 			{"invoice_series_prefix", `"toolong"`, false},
 			{"invoice_series_prefix", `"ab"`, false},
+			{"routing", `{"rules":[{"name":"x","when":{},"action":{"kind":"bogus"}}]}`, false},
+			{"routing", `{"rules":[{"name":"x","when":{},"action":{"kind":"route"}}]}`, false},
+			{"routing", `{"rules":[{"name":"x","when":{"colour":["red"]},"action":{"kind":"reject"}}]}`, false},
+			{"routing", `{"rules":[{"name":"x","when":{},"action":{"kind":"route","targets":[{}]}}]}`, false},
+			{"routing", `{"catch_all":{"name":"c","when":{},"action":{"kind":"reject","message":"no"}}}`, false},
+			{"routing", `[]`, false},
 			{"dunning_schedule", `[24,24,24,24,24,24,24]`, false},
 			{"dunning_schedule", `[0]`, false},
 			{"dunning_schedule", `[721]`, false},
@@ -137,9 +143,6 @@ func TestSetValidation(t *testing.T) {
 			{"provider_event_retention", `29`, false},
 			{"document_retention", `7`, false},
 			{"upi_execution_windows", `[{"start":"13:00","end":"10:00"}]`, false},
-			{"routing", `{"rules":[{"currency":"inr","connectors":["razorpay"]}],"catch_all":{"reject":true}}`, false},
-			{"routing", `{"rules":[],"catch_all":{}}`, false},
-			{"routing", `[]`, false},
 		}
 		for _, c := range bad {
 			var err error
@@ -159,9 +162,9 @@ func TestSetValidation(t *testing.T) {
 			{"predebit_lead", `25`}, {"mandate_headroom", `1`}, {"mandate_headroom", `2.5`}, {"mandate_validity", `30`},
 			{"recon_time", `"23:59"`}, {"provider_event_retention", `0`}, {"provider_event_retention", `30`},
 			{"document_retention", `0`}, {"document_retention", `8`}, {"invoice_series_prefix", `"A1"`},
+			{"routing", `{"rules":[{"name":"inr","when":{"currency":["INR"],"amount_min":100},"action":{"kind":"route","targets":[{"connector":"razorpay"},{"account_id":"pa_1"}]}}],"catch_all":{"name":"c","when":{},"action":{"kind":"reject","message":"not accepted"}}}`},
+			{"routing", `{"rules":[]}`},
 			{"webhook_retry_schedule", `[0]`}, {"pay_page_retry_buttons", `{"try_again":false,"pay_another_way":true}`},
-			{"routing", `{"rules":[{"currency":"INR","connectors":["razorpay","payu"]}],"catch_all":{"reject":true}}`},
-			{"routing", `{"rules":[],"catch_all":{"connectors":["razorpay"]}}`},
 		}
 		for _, c := range good {
 			if err := s.SetOrg(ctx, admin, org, c.key, json.RawMessage(c.val)); err != nil {
