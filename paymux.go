@@ -32,6 +32,7 @@ import (
 	"github.com/paymux/paymux/internal/metrics"
 	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/outbound"
+	"github.com/paymux/paymux/internal/paylinks"
 	"github.com/paymux/paymux/internal/paypage"
 	"github.com/paymux/paymux/internal/reconcile"
 	"github.com/paymux/paymux/internal/routing"
@@ -178,8 +179,18 @@ func (a *App) Start(ctx context.Context) error {
 	// rate-limited sender shared by every component that raises them.
 	alerts := notify.NewAlerts(notify.AlertsOptions{Mailer: mailer, Emails: a.cfg.OpsEmails, WebhookURL: a.cfg.OpsWebhookURL})
 	a.registerHookJob(q, alerts)
+	// A payment that succeeds issues its invoice and spends the single-use
+	// payment link it came from, in the same transaction.
+	var links *paylinks.Service
+	onPaymentSucceeded := func(ctx context.Context, tx store.Tx, p store.Payment, at store.Attempt) error {
+		if err := inv.OnPaymentSucceeded(ctx, tx, p, at); err != nil {
+			return err
+		}
+		return links.OnPaymentSucceeded(ctx, tx, p, at)
+	}
 	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter, Router: rt, Alerts: alerts,
-		OnPaymentSucceeded: inv.OnPaymentSucceeded, OnRefundSucceeded: inv.OnRefundSucceeded})
+		OnPaymentSucceeded: onPaymentSucceeded, OnRefundSucceeded: inv.OnRefundSucceeded})
+	links = paylinks.New(paylinks.Options{DB: db, Core: svc, Emitter: emitter, Settings: set, BaseURL: a.cfg.BaseURL.String()})
 	disp := disputes.New(disputes.Options{DB: db, Settings: set, Emitter: emitter, Alerts: alerts, Credit: inv, Conns: conns,
 		Logger: a.log, CutoffErr: invoice.ErrCreditNoteCutoff})
 	// Subscriptions and mandates: renewals run as jobs; provider notifications
@@ -210,7 +221,7 @@ func (a *App) Start(ctx context.Context) error {
 	if err := hk.Register(q); err != nil {
 		return err
 	}
-	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv, Subscriptions: subs})
+	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv, Subscriptions: subs, PaymentLinks: links})
 	if err != nil {
 		return err
 	}
@@ -244,6 +255,8 @@ func (a *App) Start(ctx context.Context) error {
 	csrf := sha256.Sum256(append([]byte("paymux-pay-csrf-key|"), a.cfg.MasterKey...))
 	pay := paypage.New(paypage.Options{Core: svc, Flow: flow, Settings: set, Renderer: renderer,
 		CSRFKey: csrf[:], Logger: a.log})
+	linkPages := paylinks.NewHosted(paylinks.HostedOptions{Service: links, Core: svc, Renderer: renderer, Settings: set, CSRFKey: csrf[:],
+		Secure: a.cfg.BaseURL.Scheme == "https", Logger: a.log})
 
 	a.registerMetrics(reg, db, dialect)
 	registerBusinessMetrics(reg, db, a.log, time.Now)
@@ -291,6 +304,8 @@ func (a *App) Start(ctx context.Context) error {
 	customerMux := http.NewServeMux()
 	pay.Register(paypage.StdMux(customerMux))
 	customerMux.HandleFunc("GET /i/{id}", inv.ServeHosted)
+	customerMux.HandleFunc("GET /l/{slug}", linkPages.Show)
+	customerMux.HandleFunc("POST /l/{slug}", linkPages.Submit)
 	customerMux.HandleFunc("GET /s/{id}", subs.ServeHosted)
 	customerMux.Handle("GET /assets/", web.AssetHandler(overlay))
 	customerMux.Handle("GET /theme/", themes.Handler())
@@ -304,7 +319,7 @@ func (a *App) Start(ctx context.Context) error {
 	dash, err := dashboard.New(dashboard.Options{DB: db, Box: box, Renderer: renderer, Themes: themes, MasterKey: a.cfg.MasterKey,
 		BaseURL: a.cfg.BaseURL, DevSkip2FA: a.cfg.DevSkip2FA, Logger: a.log,
 		TrustedProxies: a.cfg.TrustedProxies, Core: svc, Settings: set, Outbound: out, Invoice: inv, Connectors: conns, Disputes: disp, Recon: rec, Jobs: q,
-		Subscriptions: subs, Location: a.cfg.Location})
+		Subscriptions: subs, PaymentLinks: links, Location: a.cfg.Location})
 	if err != nil {
 		return err
 	}
@@ -312,6 +327,8 @@ func (a *App) Start(ctx context.Context) error {
 	subs.SetPages(renderer)
 	subs.SetTemplates(overlay)
 	srv.HandleFunc("GET /i/{id}", inv.ServeHosted)
+	srv.HandleFunc("GET /l/{slug}", linkPages.Show)
+	srv.HandleFunc("POST /l/{slug}", linkPages.Submit)
 	srv.HandleFunc("GET /s/{id}", subs.ServeHosted)
 	srv.HandleFunc("/dashboard/", dash.ServeHTTP)
 	// First-run setup: open only while there are no users (the token is in the log).

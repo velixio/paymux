@@ -51,10 +51,11 @@ func TestPaymentLinksPageListsTheSessionModesLinksOfThisOrg(t *testing.T) {
 		e.clk.Add(2 * time.Hour) // timed has now expired
 
 		c := e.roleClient("viewer")
+		e.setMode(c, "test") // dashboards open in live mode
 		body := e.pageOK(c, "/dashboard/payment-links")
-		has(t, body, e.links.URL(fixed), e.links.URL(choose), e.links.URL(single), "Course fee", "Donation", "INR 499.00", "INR 100.00", "INR 5000.00",
+		has(t, body, e.links.URL(fixed), e.links.URL(choose), e.links.URL(single), "Course fee", "Donation", "499.00 INR", "100.00 INR", "5000.00 INR",
 			"Alpha", "Beta", "single-use", "reusable", "Payment links", `data-copy="link-url-`+fixed.ID+`"`)
-		lacks(t, body, e.links.URL(live), "Live only", "foreign", `action="/dashboard/payment-links`)
+		lacks(t, body, e.links.URL(live), "Live only", "foreign", `name="single_use"`, `/deactivate"`)
 		row := func(id string) string { return regexpFind(t, `(?s)(<tr id="link-`+id+`".*?</tr>)`, body) }
 		has(t, row(fixed.ID), "active")
 		has(t, row(off.ID), "inactive")
@@ -90,6 +91,7 @@ func TestOperatorCreatesPaymentLinks(t *testing.T) {
 		alpha := e.seedApp("alpha")
 		e.otherOrg()
 		op, viewer := e.roleClient("operator"), e.roleClient("viewer")
+		e.setMode(op, "test")
 		body := e.pageOK(op, "/dashboard/payment-links")
 		has(t, body, `action="/dashboard/payment-links"`, `name="app"`, `name="currency"`, `name="amount"`, `name="min_amount"`, `name="max_amount"`,
 			`name="description"`, `name="single_use"`, `name="expires_at"`, `name="return_url"`, `name="metadata"`)
@@ -213,6 +215,7 @@ func TestOperatorDeactivatesAPaymentLink(t *testing.T) {
 		_ = db.Write(ctx, func(tx store.Tx) error { return store.InsertPaymentLink(ctx, tx, foreign) })
 
 		op, viewer := e.roleClient("operator"), e.roleClient("viewer")
+		e.setMode(op, "test")
 		body := e.pageOK(op, "/dashboard/payment-links")
 		has(t, body, `action="/dashboard/payment-links/`+l.ID+`/deactivate"`)
 		tok := csrfOf(t, body)
