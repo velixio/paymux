@@ -10,10 +10,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/paymux/paymux/internal/config"
+	"github.com/paymux/paymux/internal/dashboard"
 	"github.com/paymux/paymux/internal/inbound"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/logging"
@@ -22,6 +24,7 @@ import (
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/server"
 	"github.com/paymux/paymux/internal/store"
+	"github.com/paymux/paymux/internal/web"
 	"github.com/paymux/paymux/migrations"
 )
 
@@ -167,6 +170,24 @@ func (a *App) Start(ctx context.Context) error {
 	})
 
 	srv.HandleFunc("POST /hooks/{provider_account_id}", hooks.ServeHTTP)
+
+	// Operator dashboard and the shared static assets. Files in
+	// PAYMUX_DATA_DIR/custom shadow the embedded templates and assets.
+	overlay, err := web.NewOverlay(web.Embedded(), filepath.Join(a.cfg.DataDir, "custom"))
+	if err != nil {
+		return err
+	}
+	renderer, err := web.NewRenderer(overlay)
+	if err != nil {
+		return err
+	}
+	dash, err := dashboard.New(dashboard.Options{DB: db, Box: box, Renderer: renderer, MasterKey: a.cfg.MasterKey,
+		BaseURL: a.cfg.BaseURL, DevSkip2FA: a.cfg.DevSkip2FA, Logger: a.log})
+	if err != nil {
+		return err
+	}
+	srv.HandleFunc("/dashboard/", dash.ServeHTTP)
+	srv.HandleFunc("GET /assets/", web.AssetHandler(overlay).ServeHTTP)
 
 	ln, err := net.Listen("tcp", a.cfg.Listen)
 	if err != nil {
