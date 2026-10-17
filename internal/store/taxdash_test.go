@@ -38,7 +38,10 @@ func TestTaxEntityListAndUpdate(t *testing.T) {
 			t.Fatal(err)
 		}
 		var list []store.TaxEntity
-		_ = db.Read(ctx, func(q store.Querier) (err error) { list, err = store.ListTaxEntities(ctx, q, store.DefaultOrgID); return })
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			list, err = store.ListTaxEntities(ctx, q, store.DefaultOrgID)
+			return
+		})
 		if len(list) != 2 || list[0].ID != "te_a" || list[1].ID != "te_b" {
 			t.Fatalf("list %+v", list)
 		}
