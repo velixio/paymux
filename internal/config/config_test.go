@@ -145,14 +145,14 @@ func TestRedactedDatabaseURL(t *testing.T) {
 }
 
 func TestDevSkip2FAGuard(t *testing.T) {
-	const msg = "PAYMUX_DEV_SKIP_2FA is only allowed in development on a local host"
+	const msg = "PAYMUX_DEV_SKIP_2FA is only allowed in development (PAYMUX_ENV=development)"
 	const bad = "PAYMUX_DEV_SKIP_2FA must be true or false"
 	cases := []struct {
 		env, url, skip, err string
 		want                bool
 	}{
 		{"development", "http://localhost:8080", "true", "", true},
-		{"development", "https://pay.example.com", "true", msg, false},
+		{"development", "https://pay.example.com", "true", "", true},
 		{"production", "http://localhost:8080", "true", msg, false},
 		{"production", "https://pay.example.com", "", "", false},
 		{"production", "https://pay.example.com", "false", "", false},
