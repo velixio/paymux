@@ -88,9 +88,9 @@ func TestSimulatorBoxIsOnlyForSimulatorPayments(t *testing.T) {
 	storetest.Each(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		f := e.detailFixture() // a live Razorpay payment
-		body := e.pageOK(e.roleClient("operator"), "/dashboard/payments/"+f.pay.ID)
-		lacks(t, body, "Simulate a dispute")
 		op := e.roleClient("operator")
+		body := e.pageOK(op, "/dashboard/payments/"+f.pay.ID)
+		lacks(t, body, "Simulate a dispute")
 		tok := csrfOf(t, body)
 		if r, _ := e.post(op, "/dashboard/payments/"+f.pay.ID+"/simulate-dispute", url.Values{"attempt_id": {"att_ok"}, "csrf": {tok}}); r.StatusCode != 400 {
 			t.Errorf("simulating a dispute on a real provider: %d", r.StatusCode)
