@@ -73,6 +73,7 @@ func New(o Options) *Handler {
 func (h *Handler) Register(m Mux) {
 	m.HandleFunc("GET /pay/{id}", h.pay)
 	m.HandleFunc("POST /pay/{id}", h.billingPost)
+	m.HandleFunc("GET /.well-known/paymux/{token}", h.wellKnown)
 	m.HandleFunc("GET /return/{pa}/{ref}", h.ret)
 	m.HandleFunc("POST /return/{pa}/{ref}", h.ret)
 	if h.o.Assets != nil {
@@ -459,3 +460,16 @@ func (s stdMux) HandleFunc(pattern string, fn http.HandlerFunc) { s.m.HandleFunc
 // StdMux adapts an *http.ServeMux (for example the one serving custom
 // domains) to Mux.
 func StdMux(m *http.ServeMux) Mux { return stdMux{m} }
+
+// wellKnown serves a custom domain's activation token so the background check
+// can prove the domain points at this server. Only a registered custom host
+// (served through the host router) with the right token answers.
+func (h *Handler) wellKnown(w http.ResponseWriter, r *http.Request) {
+	if !h.o.Core.VerifyDomainToken(r.Context(), r.Host, r.PathValue("token")) {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(r.PathValue("token")))
+}
