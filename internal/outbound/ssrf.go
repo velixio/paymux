@@ -83,3 +83,12 @@ func newHTTPClient(allowPrivate bool, lookup lookupFunc) *http.Client {
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 }
+
+// GuardedClient is the SSRF-guarded HTTP client (private, loopback and
+// link-local targets refused at dial time, redirects not followed) with the
+// given overall request timeout. JavaScript hooks use it for fetch.
+func GuardedClient(allowPrivate bool, timeout time.Duration) *http.Client {
+	c := newHTTPClient(allowPrivate, nil)
+	c.Timeout = timeout
+	return c
+}
