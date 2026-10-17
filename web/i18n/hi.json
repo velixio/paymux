@@ -2,6 +2,8 @@
   "billing.title": "बिलिंग विवरण",
   "billing.name": "पूरा नाम",
   "billing.email": "ईमेल",
+  "billing.country": "देश (2 अक्षर का कोड, जैसे IN)",
+  "billing.err.country": "कृपया 2 अक्षर का देश कोड दर्ज करें, जैसे IN।",
   "billing.state": "राज्य",
   "billing.address": "पता",
   "billing.pin": "पिन कोड",

@@ -5,6 +5,7 @@
 {{with .Error}}<p class="error">{{.}}</p>{{end}}
 <input class="field" name="name" placeholder="{{t "billing.name"}}" value="{{.Billing.Name}}" required>
 <input class="field" name="email" type="email" placeholder="{{t "billing.email"}}" value="{{.Billing.Email}}">
+<input class="field" name="country" maxlength="2" autocomplete="country" placeholder="{{t "billing.country"}}" value="{{.Billing.Country}}">
 {{if .IndiaStates}}<select class="field" name="state_code" {{if .StateRequired}}required{{end}}>
 <option value="">{{t "billing.state"}}</option>
 {{range .IndiaStates}}<option value="{{.Code}}" {{if eq .Code $.Billing.StateCode}}selected{{end}}>{{.Name}}</option>{{end}}
