@@ -71,3 +71,19 @@ func SumActiveRefunds(ctx context.Context, q Queryer, attemptID string) (int64, 
 		WHERE attempt_id = ? AND status IN ('pending','succeeded')`, attemptID).Scan(&n)
 	return n, err
 }
+
+// FindRefundByProviderID returns the refund of an attempt that carries the
+// provider's refund id.
+func FindRefundByProviderID(ctx context.Context, q Queryer, attemptID, providerRefundID string) (Refund, error) {
+	return scanRefund(q.QueryRowContext(ctx, "SELECT "+refundCols+" FROM refunds WHERE attempt_id = ? AND provider_refund_id = ?",
+		attemptID, providerRefundID))
+}
+
+// FindAdoptableRefund returns the oldest pending refund of the attempt that
+// we asked for (not initiated by the provider), of exactly this amount, and
+// that does not know its provider id yet: the refund a provider refund
+// notification most likely is.
+func FindAdoptableRefund(ctx context.Context, q Queryer, attemptID string, amount int64) (Refund, error) {
+	return scanRefund(q.QueryRowContext(ctx, "SELECT "+refundCols+` FROM refunds WHERE attempt_id = ? AND status = 'pending'
+		AND initiated_by <> 'provider' AND provider_refund_id IS NULL AND amount = ? ORDER BY created_at, id LIMIT 1`, attemptID, amount))
+}

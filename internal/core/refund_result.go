@@ -2,11 +2,16 @@ package core
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
+	"strings"
 
+	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/core/state"
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/ids"
+	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/store"
 )
 
@@ -14,6 +19,8 @@ import (
 const (
 	FlagRefundedPartial = "refunded_partial"
 	FlagRefundedFull    = "refunded_full"
+	// FlagRefundExceeds: the provider reports more refunded than was received.
+	FlagRefundExceeds = "refund_exceeds_balance"
 )
 
 // RefundSnapshot is the authoritative provider state of a refund.
@@ -41,39 +48,56 @@ func (s *Service) ApplyRefundSnapshot(ctx context.Context, refundID string, snap
 		return RefundApplyResult{}, newErr(ErrInvalid, "unknown refund status %q", snap.Status)
 	}
 	var res RefundApplyResult
+	var alerts []notify.Alert
 	err := s.db.Write(ctx, func(tx store.Tx) error {
-		res = RefundApplyResult{}
+		var err error
+		alerts = nil
+		res, err = s.applyRefundTx(ctx, tx, refundID, snap, &alerts)
+		return err
+	})
+	if err == nil {
+		s.raise(ctx, alerts)
+	}
+	return res, err
+}
+
+// applyRefundTx is ApplyRefundSnapshot inside the caller's transaction. Any
+// ops alerts are appended to alerts, to be raised after commit.
+func (s *Service) applyRefundTx(ctx context.Context, tx store.Tx, refundID string, snap RefundSnapshot, alerts *[]notify.Alert) (RefundApplyResult, error) {
+	var res RefundApplyResult
+	{
 		r, err := store.GetRefund(ctx, tx, refundID)
 		if err != nil {
-			return mapStoreErr(err, "refund")
+			return res, mapStoreErr(err, "refund")
 		}
 		p, err := store.GetPaymentForUpdate(ctx, tx, r.PaymentID)
 		if err != nil {
-			return mapStoreErr(err, "payment")
+			return res, mapStoreErr(err, "payment")
 		}
 		if r, err = store.GetRefund(ctx, tx, refundID); err != nil { // re-read under the lock
-			return err
+			return res, err
 		}
 		res.Refund, res.Payment = r, p
 		switch state.RefundNext(state.RefundStatus(r.Status), snap.Status) {
 		case state.Reject:
-			return newErr(ErrInvalidState, "refund cannot move from %s to %s", r.Status, snap.Status)
+			return res, newErr(ErrInvalidState, "refund cannot move from %s to %s", r.Status, snap.Status)
 		case state.Ignore:
 			// A repeat may still carry the provider id we did not have yet.
 			if r.ProviderRefundID == "" && snap.ProviderRefundID != "" {
 				r.ProviderRefundID = snap.ProviderRefundID
 				res.Refund = r
-				return store.UpdateRefund(ctx, tx, r, s.nowUTC())
+				return res, store.UpdateRefund(ctx, tx, r, s.nowUTC())
 			}
-			return nil
+			return res, nil
 		}
 		now := s.nowUTC()
 		r.Status = string(snap.Status)
 		r.ProviderRefundID = firstNonEmpty(snap.ProviderRefundID, r.ProviderRefundID)
 		if err := store.UpdateRefund(ctx, tx, r, now); err != nil {
-			return err
+			return res, err
 		}
 		typ := "refund.failed"
+		exceeds := false
 		if snap.Status == state.RefundSucceeded {
 			typ = "refund.succeeded"
 			p.AmountRefunded += r.Amount
@@ -83,28 +107,139 @@ func (s *Service) ApplyRefundSnapshot(ctx context.Context, refundID string, snap
 			} else {
 				addFlag(&p, FlagRefundedPartial)
 			}
+			// Only a refund the provider made on its own can overrun the balance
+			// (ours are checked when created). The truth is still recorded.
+			if exceeds = p.AmountRefunded > p.AmountReceived; exceeds {
+				addFlag(&p, FlagRefundExceeds)
+			}
 			if err := store.UpdatePayment(ctx, tx, &p, now); err != nil {
-				return err
+				return res, err
 			}
 			if err := store.InsertLedgerEntry(ctx, tx, store.LedgerEntry{ID: ids.New("led"), OrgID: r.OrgID, Mode: r.Mode,
 				Kind: "refund", Amount: -r.Amount, Currency: r.Currency, PaymentID: p.ID, RefundID: r.ID, OccurredAt: now}); err != nil {
-				return err
+				return res, err
 			}
 			// Issues the GST credit note (when the payment has an invoice) in
 			// this same transaction.
 			if err := s.RefundSucceeded(ctx, tx, r); err != nil {
-				return err
+				return res, err
 			}
 		}
 		res.Refund, res.Payment, res.Changed = r, p, true
-		return s.emitter.Emit(ctx, tx, events.Event{OrgID: r.OrgID, AppID: r.AppID, Mode: r.Mode, Type: typ,
-			ObjectType: "refund", ObjectID: r.ID, ObjectVersion: 2, Data: refundEventData{ViewRefund(r), snap.FailureReason}})
-	})
-	return res, err
+		if err := s.emitter.Emit(ctx, tx, events.Event{OrgID: r.OrgID, AppID: r.AppID, Mode: r.Mode, Type: typ,
+			ObjectType: "refund", ObjectID: r.ID, ObjectVersion: 2, Data: refundEventData{ViewRefund(r), snap.FailureReason}}); err != nil {
+			return res, err
+		}
+		if exceeds {
+			*alerts = append(*alerts, notify.Alert{Severity: notify.SeverityCritical, Kind: "refund.exceeds_balance",
+				Message: fmt.Sprintf("The provider has refunded %d %s of payment %s, but only %d %s was received. The refund is recorded; check the payment in the dashboard.",
+					p.AmountRefunded, r.Currency, p.ID, p.AmountReceived, r.Currency),
+				Refs: map[string]string{"payment": p.ID, "refund": r.ID, "app": p.AppID}})
+			if err := s.emitPayment(ctx, tx, "payment.needs_review", p, FlagRefundExceeds, r.AttemptID); err != nil {
+				return res, err
+			}
+		}
+		return res, nil
+	}
 }
 
 // refundEventData adds the failure reason to a refund snapshot.
 type refundEventData struct {
 	RefundView
 	FailureReason string `json:"failure_reason,omitempty"`
+}
+
+// ProviderRefund is a refund the provider made on its own (from its own
+// dashboard, or a Resolution Center), as the provider's API reports it. Its
+// amount and currency come from that fetch, never from a webhook body.
+type ProviderRefund struct {
+	ProviderRefundID string
+	Status           state.RefundStatus
+	Amount           int64
+	Currency         string
+	FailureReason    string
+}
+
+// ImportedRefund is the outcome of ImportProviderRefund.
+type ImportedRefund struct {
+	RefundApplyResult
+	// Created is true when a new refund row was made.
+	Created bool
+}
+
+// ImportProviderRefund books a refund the provider made on its own, so that
+// amount_refunded, the ledger, the credit note and the app's events follow what
+// the provider did. It runs in one transaction under the payment lock and is
+// idempotent on (attempt, provider refund id): the same refund again, by
+// webhook or by reconciliation, finds its row and only advances it. A pending
+// refund of ours with the same amount and no provider id yet is adopted
+// instead of being counted twice. No refund.submit job is queued: nothing is
+// sent to the provider. A refund beyond the balance is still recorded, and
+// flagged (see FlagRefundExceeds).
+func (s *Service) ImportProviderRefund(ctx context.Context, attemptID string, in ProviderRefund) (ImportedRefund, error) {
+	if in.ProviderRefundID == "" {
+		return ImportedRefund{}, newErr(ErrInvalid, "a provider refund needs the provider's refund id")
+	}
+	if !slices.Contains(state.AllRefundStatuses, in.Status) {
+		return ImportedRefund{}, newErr(ErrInvalid, "unknown refund status %q", in.Status)
+	}
+	if in.Amount <= 0 || in.Amount > maxAmount {
+		return ImportedRefund{}, newErr(ErrInvalid, "a provider refund needs a positive amount")
+	}
+	var out ImportedRefund
+	var alerts []notify.Alert
+	err := s.db.Write(ctx, func(tx store.Tx) error {
+		out, alerts = ImportedRefund{}, nil
+		a, err := store.GetAttempt(ctx, tx, attemptID)
+		if err != nil {
+			return mapStoreErr(err, "attempt")
+		}
+		p, err := store.GetPaymentForUpdate(ctx, tx, a.PaymentID)
+		if err != nil {
+			return mapStoreErr(err, "payment")
+		}
+		if a.Status != string(state.AttemptCaptured) {
+			return newErr(ErrNotRefundable, "attempt %s was never captured, so it has nothing to refund", a.ID)
+		}
+		if !strings.EqualFold(in.Currency, a.CurrencyReceived) {
+			return newErr(ErrInvalid, "the provider refunded in %s but the attempt was paid in %s", in.Currency, a.CurrencyReceived)
+		}
+		snap := RefundSnapshot{Status: in.Status, ProviderRefundID: in.ProviderRefundID, FailureReason: in.FailureReason}
+
+		r, err := store.FindRefundByProviderID(ctx, tx, a.ID, in.ProviderRefundID)
+		if errors.Is(err, store.ErrNotFound) {
+			r, err = store.FindAdoptableRefund(ctx, tx, a.ID, in.Amount)
+		}
+		switch {
+		case err == nil:
+			out.RefundApplyResult, err = s.applyRefundTx(ctx, tx, r.ID, snap, &alerts)
+			return err
+		case !errors.Is(err, store.ErrNotFound):
+			return err
+		}
+
+		now := s.nowUTC()
+		r = store.Refund{ID: ids.New("ref"), OrgID: p.OrgID, AppID: p.AppID, Mode: p.Mode, PaymentID: p.ID, AttemptID: a.ID,
+			Amount: in.Amount, Currency: a.CurrencyReceived, Status: string(state.RefundPending), ProviderRef: ids.ProviderRef(),
+			ProviderRefundID: in.ProviderRefundID, InitiatedBy: "provider", CreatedAt: now, UpdatedAt: now}
+		if err := store.InsertRefund(ctx, tx, r); err != nil {
+			return err
+		}
+		if err := s.emitter.Emit(ctx, tx, events.Event{OrgID: r.OrgID, AppID: r.AppID, Mode: r.Mode, Type: "refund.created",
+			ObjectType: "refund", ObjectID: r.ID, ObjectVersion: 1, Data: ViewRefund(r)}); err != nil {
+			return err
+		}
+		if err := audit.Record(ctx, tx, audit.Entry{OrgID: r.OrgID, Actor: audit.System, Action: "refund.import", Target: r.ID,
+			After: ViewRefund(r)}); err != nil {
+			return err
+		}
+		out.Created = true
+		out.RefundApplyResult, err = s.applyRefundTx(ctx, tx, r.ID, snap, &alerts)
+		out.Created = true
+		return err
+	})
+	if err == nil {
+		s.raise(ctx, alerts)
+	}
+	return out, err
 }
