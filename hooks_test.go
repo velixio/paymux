@@ -2,6 +2,7 @@ package paymux
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -188,5 +189,34 @@ func TestOnRouteHooksChainAndCannotBreakRouting(t *testing.T) {
 	}
 	if req.Metadata["plan"] != "pro" {
 		t.Error("a routing hook changed the request's metadata")
+	}
+}
+
+func TestHookEventsMarshalAsSnakeCaseJSON(t *testing.T) {
+	b, err := json.Marshal(PaymentEvent{Event: EventInfo{Type: "payment.succeeded", OrgID: "org_1", AppID: "app_1", Mode: "live", ObjectType: "payment", ObjectID: "pay_1", ObjectVersion: 3},
+		Payment: Payment{ID: "pay_1", Amount: 100, Currency: "INR", AmountReceived: 100, OrderRef: "o1", Metadata: map[string]string{"k": "v"}}, AttemptID: "att_1", Raw: json.RawMessage(`{"id":"pay_1"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	_ = json.Unmarshal(b, &m)
+	ev, _ := m["event"].(map[string]any)
+	pay, _ := m["payment"].(map[string]any)
+	if ev["type"] != "payment.succeeded" || ev["app_id"] != "app_1" || ev["object_id"] != "pay_1" || ev["object_version"] != float64(3) ||
+		pay["amount_received"] != float64(100) || pay["order_ref"] != "o1" || m["attempt_id"] != "att_1" || m["raw"].(map[string]any)["id"] != "pay_1" {
+		t.Errorf("shape: %s", b)
+	}
+	rb, _ := json.Marshal(RouteRequest{AppID: "app_1", Mode: "live", Currency: "INR", Amount: 5, Purpose: "one_time", Accounts: []RouteAccount{{ID: "pa_1", Connector: "razorpay", Name: "main"}}})
+	var rm map[string]any
+	_ = json.Unmarshal(rb, &rm)
+	acc, _ := rm["accounts"].([]any)
+	if rm["app_id"] != "app_1" || rm["currency"] != "INR" || len(acc) != 1 || acc[0].(map[string]any)["id"] != "pa_1" || acc[0].(map[string]any)["connector"] != "razorpay" {
+		t.Errorf("route request shape: %s", rb)
+	}
+	for _, e := range []any{RefundEvent{}, DisputeEvent{}, SubscriptionEvent{}, InvoiceEvent{}} {
+		out, _ := json.Marshal(e)
+		if !strings.Contains(string(out), `"event":{"type"`) {
+			t.Errorf("%T lacks a lower-case event object: %s", e, out)
+		}
 	}
 }
