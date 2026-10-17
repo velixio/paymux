@@ -9,7 +9,7 @@ GOVULNCHECK_VERSION=v1.9.0
 step() { printf '\n==> %s\n' "$*"; }
 
 step "gofmt"
-test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt: files need formatting" >&2; exit 1; }
+test -z "$(git ls-files -z "*.go" | xargs -0 gofmt -l)" || { git ls-files -z "*.go" | xargs -0 gofmt -l; echo "gofmt: files need formatting" >&2; exit 1; }
 
 step "go vet"
 go vet ./...
