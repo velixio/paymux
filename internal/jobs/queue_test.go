@@ -45,6 +45,16 @@ func newQueue(db *store.DB, c *clock) *jobs.Queue {
 	})
 }
 
+// newMigrated opens a SQLite store, migrates it, and returns it with a fake clock.
+func newMigrated(t *testing.T) (*store.DB, *clock) {
+	t.Helper()
+	db := storetest.SQLite(t)
+	if err := db.Migrate(ctx, migrations.FS); err != nil {
+		t.Fatal(err)
+	}
+	return db, &clock{t: t0}
+}
+
 // fixture migrates db and returns a queue with a controllable clock.
 func fixture(t *testing.T, db *store.DB) (*jobs.Queue, *clock) {
 	t.Helper()
