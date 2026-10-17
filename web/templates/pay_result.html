@@ -1,0 +1,6 @@
+{{define "title"}}{{.Title}}{{end}}
+{{define "content"}}
+<h3>{{.Title}}</h3>
+<p class="muted">{{.Message}}</p>
+{{with .ReturnURL}}<a class="btn" href="{{.}}">Return to {{$.AppName}}</a>{{end}}
+{{end}}
