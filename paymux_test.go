@@ -53,7 +53,8 @@ func testConfig(t *testing.T, databaseURL, dataDir string) config.Config {
 type running struct {
 	app  *App
 	logs *syncBuf
-	done chan error
+	done chan struct{} // closed when Start has returned
+	err  error         // Start's result; valid after done is closed
 	stop context.CancelFunc
 }
 
@@ -65,8 +66,8 @@ func startApp(t *testing.T, cfg config.Config) *running {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	r := &running{app: app, logs: logs, done: make(chan error, 1), stop: cancel}
-	go func() { r.done <- app.Start(ctx) }()
+	r := &running{app: app, logs: logs, done: make(chan struct{}), stop: cancel}
+	go func() { r.err = app.Start(ctx); close(r.done) }()
 	t.Cleanup(func() {
 		cancel()
 		select {
@@ -93,8 +94,8 @@ func waitReady(t *testing.T, r *running) {
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		select {
-		case err := <-r.done:
-			t.Fatalf("Start returned early: %v\nlogs: %s", err, r.logs)
+		case <-r.done:
+			t.Fatalf("Start returned early: %v\nlogs: %s", r.err, r.logs)
 		default:
 		}
 		if addr := r.app.Addr(); addr != "" {
@@ -111,9 +112,9 @@ func shutdown(t *testing.T, r *running) {
 	t.Helper()
 	r.stop()
 	select {
-	case err := <-r.done:
-		if err != nil {
-			t.Fatalf("Start returned %v", err)
+	case <-r.done:
+		if r.err != nil {
+			t.Fatalf("Start returned %v", r.err)
 		}
 	case <-time.After(11 * time.Second):
 		t.Fatal("Start did not return within 11s")
