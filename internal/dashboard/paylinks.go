@@ -170,8 +170,9 @@ func (d *Dashboard) linkCreate(w http.ResponseWriter, r *http.Request, s *sessio
 		}
 		in.ExpiresAt = t.UTC()
 	}
-	if in.Metadata, err = parseLinkMetadata(form.Metadata); err != nil {
-		again(err.Error())
+	var metaProblem string
+	if in.Metadata, metaProblem = parseLinkMetadata(form.Metadata); metaProblem != "" {
+		again(metaProblem)
 		return
 	}
 	if _, err := d.o.PaymentLinks.Create(ctx, s.auditActor(), in); err != nil {
@@ -190,8 +191,9 @@ func (d *Dashboard) linkCreate(w http.ResponseWriter, r *http.Request, s *sessio
 	http.Redirect(w, r, prefix+"/payment-links", http.StatusSeeOther)
 }
 
-// parseLinkMetadata reads "key=value" lines.
-func parseLinkMetadata(raw string) (map[string]string, error) {
+// parseLinkMetadata reads "key=value" lines; the second result says what is
+// wrong with them, or is empty.
+func parseLinkMetadata(raw string) (map[string]string, string) {
 	out := map[string]string{}
 	for _, line := range strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n") {
 		line = strings.TrimSpace(line)
@@ -201,11 +203,11 @@ func parseLinkMetadata(raw string) (map[string]string, error) {
 		k, v, ok := strings.Cut(line, "=")
 		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
 		if !ok || k == "" {
-			return nil, errors.New("Metadata lines look like key=value.")
+			return nil, "Metadata lines look like key=value."
 		}
 		out[k] = v
 	}
-	return out, nil
+	return out, ""
 }
 
 func (d *Dashboard) linkDeactivate(w http.ResponseWriter, r *http.Request, s *session) {
