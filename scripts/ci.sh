@@ -8,6 +8,12 @@ GOVULNCHECK_VERSION=v1.9.0
 
 step() { printf '\n==> %s\n' "$*"; }
 
+step "no attribution trailers in commit messages"
+if git log --format=%B HEAD | grep -qiE '^(co-authored-by|signed-off-by|generated-by):'; then
+  git log --format='%h %s' -i -E --grep='^(co-authored-by|signed-off-by|generated-by):' HEAD >&2
+  echo "commit messages must not carry attribution trailers" >&2; exit 1
+fi
+
 step "gofmt"
 test -z "$(git ls-files -z "*.go" | xargs -0 gofmt -l)" || { git ls-files -z "*.go" | xargs -0 gofmt -l; echo "gofmt: files need formatting" >&2; exit 1; }
 

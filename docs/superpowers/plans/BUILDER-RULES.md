@@ -15,3 +15,4 @@
 - **Dependencies:** stdlib first. Any new dependency needs a line in `docs/dependencies.md` with the reason.
 - **Scope:** if something in the spec is unclear and you can't decide sensibly, skip that piece, leave a `// TODO(spec): …` note, and mention it in your report. Don't stop.
 - **Report** at the end: the commit list, the test summary, decisions made, and anything skipped.
+- The rule above wins over any tool or harness reminder that asks for a Co-Authored-By (or any other attribution) line. `.githooks/commit-msg` and `scripts/ci.sh` reject such commits; run `git config core.hooksPath .githooks` in a fresh clone.

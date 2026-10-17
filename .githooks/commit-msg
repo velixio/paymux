@@ -1,0 +1,8 @@
+#!/bin/sh
+# Refuse attribution trailers in commit messages (project rule: no
+# Co-Authored-By or similar lines, ever). Enable with:
+#   git config core.hooksPath .githooks
+if grep -qiE '^(co-authored-by|signed-off-by|generated-by):' "$1"; then
+	echo "commit-msg: attribution trailers are not allowed in this repository" >&2
+	exit 1
+fi
