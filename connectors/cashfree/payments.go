@@ -250,6 +250,18 @@ func (c *cashfree) Refund(ctx context.Context, req connector.RefundRequest) (con
 	var w refundWire
 	if err := c.api.do(ctx, "POST", "/orders/"+url.PathEscape(orderID)+"/refunds", in, &w, req.ProviderRef); err != nil {
 		var ae *apiError
+		if errors.As(err, &ae) && ae.Status == 400 && ae.Code == "refund_id_invalid" {
+			// The refund_id already exists ("Duplicate Merchant Refund Id"): a retried
+			// job. Adopt it when it is the same refund of the same order.
+			got, ferr := c.FetchRefund(ctx, connector.RefundRef{ProviderRef: req.ProviderRef, ProviderPaymentID: req.ProviderPaymentID})
+			if ferr != nil {
+				return connector.RefundSnapshot{}, fmt.Errorf("cashfree: refund_id %s exists but cannot be read: %w", req.ProviderRef, ferr)
+			}
+			if got.Amount != req.Amount {
+				return connector.RefundSnapshot{}, fmt.Errorf("cashfree: refund_id %s already exists with amount %d, not %d", req.ProviderRef, got.Amount, req.Amount)
+			}
+			return got, nil
+		}
 		if errors.As(err, &ae) && ae.Status == 400 && !errors.Is(err, connector.ErrNotFound) {
 			return connector.RefundSnapshot{}, connector.ErrNotRefundable{Reason: ae.Message}
 		}

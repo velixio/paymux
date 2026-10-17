@@ -23,6 +23,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -220,7 +222,18 @@ func (c *cashfree) CreateCheckout(ctx context.Context, req connector.CheckoutReq
 	}
 	var o orderWire
 	if err := c.api.do(ctx, "POST", "/orders", in, &o, "order:"+req.ProviderRef); err != nil {
-		return connector.CheckoutResult{}, err
+		var ae *apiError
+		if !errors.As(err, &ae) || ae.Status != http.StatusConflict || ae.Code != "order_already_exists" {
+			return connector.CheckoutResult{}, err
+		}
+		// A retry after the idempotency window: adopt the order if it is ours.
+		o = orderWire{}
+		if err := c.api.do(ctx, "GET", "/orders/"+url.PathEscape(req.ProviderRef), nil, &o, ""); err != nil {
+			return connector.CheckoutResult{}, err
+		}
+		if got, _ := o.OrderAmount.minor(req.Currency); got != req.Amount || o.OrderCurrency != req.Currency || o.OrderStatus != "ACTIVE" {
+			return connector.CheckoutResult{}, fmt.Errorf("cashfree: order %s already exists with another amount, currency or state (%s)", req.ProviderRef, o.OrderStatus)
+		}
 	}
 	if o.OrderID != req.ProviderRef || o.PaymentSessionID == "" {
 		return connector.CheckoutResult{}, errors.New("cashfree: order response does not match the request (order_id or payment_session_id)")
