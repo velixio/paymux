@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -43,6 +44,12 @@ type fixture struct {
 func newFixture(t *testing.T, db *store.DB) *fixture { return newFixtureRouter(t, db, nil) }
 
 func newFixtureRouter(t *testing.T, db *store.DB, router core.Router) *fixture {
+	return newFixtureOpts(t, db, router, nil)
+}
+
+// newFixtureOpts builds the fixture; mod may adjust the API options. The
+// rate limit is lifted unless mod sets it, so ordinary tests can burst.
+func newFixtureOpts(t *testing.T, db *store.DB, router core.Router, mod func(*httpapi.Options)) *fixture {
 	t.Helper()
 	set := settings.New(db)
 	if _, err := core.Bootstrap(ctx, db, set); err != nil {
@@ -74,7 +81,11 @@ func newFixtureRouter(t *testing.T, db *store.DB, router core.Router) *fixture {
 		t.Fatal(err)
 	}
 	base, _ := url.Parse("https://pay.example.com")
-	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: base})
+	opts := httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: base, RatePerSecond: 100000}
+	if mod != nil {
+		mod(&opts)
+	}
+	api, err := httpapi.New(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -545,6 +556,98 @@ func TestRoutingFailuresAre422(t *testing.T) {
 		}
 		if f.count("SELECT COUNT(*) FROM payments") != 1 {
 			t.Error("unroutable requests created payments")
+		}
+	})
+}
+
+// ---- rate limit ----
+
+type fakeClock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func (c *fakeClock) Now() time.Time { c.mu.Lock(); defer c.mu.Unlock(); return c.t }
+func (c *fakeClock) Add(d time.Duration) {
+	c.mu.Lock()
+	c.t = c.t.Add(d)
+	c.mu.Unlock()
+}
+
+func TestRateLimitIs20PerSecondPerKey(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		clk := &fakeClock{t: time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)}
+		f := newFixtureOpts(t, db, nil, func(o *httpapi.Options) { o.RatePerSecond = 0; o.Now = clk.Now }) // 0 = the default, 20
+		for i := 0; i < 20; i++ {
+			if r := f.do("GET", "/v1/payments", f.testKey, nil); r.status != 200 {
+				t.Fatalf("request %d: %d %s", i+1, r.status, r.raw)
+			}
+		}
+		r := f.do("GET", "/v1/payments", f.testKey, nil)
+		if r.status != 429 || r.errType(t) != "rate_limited" {
+			t.Fatalf("21st request: %d %s", r.status, r.raw)
+		}
+		if ra, err := strconv.Atoi(r.header.Get("Retry-After")); err != nil || ra < 1 {
+			t.Errorf("Retry-After %q", r.header.Get("Retry-After"))
+		}
+		// Another key has its own bucket, and so does a different mode of the same app.
+		if r := f.do("GET", "/v1/payments", f.otherKey, nil); r.status != 200 {
+			t.Errorf("another key: %d", r.status)
+		}
+		if r := f.do("GET", "/v1/payments", f.liveKey, nil); r.status != 200 {
+			t.Errorf("another key of the same app: %d", r.status)
+		}
+		// Tokens refill at 20 per second.
+		clk.Add(49 * time.Millisecond)
+		if r := f.do("GET", "/v1/payments", f.testKey, nil); r.status != 429 {
+			t.Errorf("before a full token: %d", r.status)
+		}
+		clk.Add(2 * time.Millisecond)
+		if r := f.do("GET", "/v1/payments", f.testKey, nil); r.status != 200 {
+			t.Errorf("after 51ms: %d", r.status)
+		}
+		clk.Add(5 * time.Second) // never more than the burst
+		ok := 0
+		for i := 0; i < 30; i++ {
+			if f.do("GET", "/v1/payments", f.testKey, nil).status == 200 {
+				ok++
+			}
+		}
+		if ok != 20 {
+			t.Errorf("burst after a long idle: %d", ok)
+		}
+	})
+}
+
+func TestRateLimitedRequestsDoNotRunOrConsumeIdempotency(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		clk := &fakeClock{t: time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)}
+		f := newFixtureOpts(t, db, nil, func(o *httpapi.Options) { o.RatePerSecond = 1; o.RateBurst = 1; o.Now = clk.Now })
+		if r := f.do("GET", "/v1/payments", f.testKey, nil); r.status != 200 {
+			t.Fatal(r.status)
+		}
+		r := f.do("POST", "/v1/payments", f.testKey, createBody, "Idempotency-Key", "k-1")
+		if r.status != 429 || f.count("SELECT COUNT(*) FROM payments") != 0 || f.count("SELECT COUNT(*) FROM idempotency_keys") != 0 {
+			t.Fatalf("limited POST: %d, payments=%d keys=%d", r.status, f.count("SELECT COUNT(*) FROM payments"), f.count("SELECT COUNT(*) FROM idempotency_keys"))
+		}
+		clk.Add(time.Second)
+		if r := f.do("POST", "/v1/payments", f.testKey, createBody, "Idempotency-Key", "k-1"); r.status != 201 {
+			t.Errorf("retry after the wait: %d %s", r.status, r.raw)
+		}
+	})
+}
+
+func TestUnauthenticatedRequestsDoNotConsumeAKeysBudget(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		clk := &fakeClock{t: time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)}
+		f := newFixtureOpts(t, db, nil, func(o *httpapi.Options) { o.RatePerSecond = 1; o.RateBurst = 1; o.Now = clk.Now })
+		for i := 0; i < 5; i++ {
+			if r := f.do("GET", "/v1/payments", "pmx_test_sk_"+strings.Repeat("a", 43), nil); r.status != 401 {
+				t.Fatalf("%d", r.status)
+			}
+		}
+		if r := f.do("GET", "/v1/payments", f.testKey, nil); r.status != 200 {
+			t.Errorf("a valid key was limited by other people's bad requests: %d", r.status)
 		}
 	})
 }
