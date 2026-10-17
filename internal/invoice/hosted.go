@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/paymux/paymux/internal/look"
+	"github.com/paymux/paymux/internal/qrcode"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/tax"
 	"github.com/paymux/paymux/pkg/connector/money"
@@ -34,6 +35,16 @@ type docPage struct {
 	Total, TotalWords                               string
 	Notes                                           []string
 	PDFURL                                          string
+	// EInvoice is set once the operator has recorded the portal's answer.
+	EInvoice *eInvoicePage
+}
+
+// eInvoicePage is the e-invoice block of the hosted page: the QR code is an
+// inline SVG (no image request, nothing external).
+type eInvoicePage struct {
+	IRN, AckNo, AckDate string
+	QRPath              string // SVG path data; empty when the token is too long for a QR code
+	QRBox               int
 }
 
 func fmtMoney(minor int64, cur string) string {
@@ -157,6 +168,13 @@ func (s *Service) invoicePage(ctx context.Context, q store.Queryer, inv store.In
 	if inv.SupplyType == string(tax.ExportLUT) {
 		p.Notes = append(p.Notes, exportEndorsement, "LUT No: "+inv.LUTNumber)
 	}
+	if inv.IRN != "" {
+		e := &eInvoicePage{IRN: inv.IRN, AckNo: inv.AckNo, AckDate: inv.AckDate.In(tax.IST).Format("02-01-2006 15:04:05")}
+		if code, err := qrcode.New(inv.SignedQR); err == nil {
+			e.QRPath, e.QRBox = code.Path(), code.ViewBox()
+		}
+		p.EInvoice = e
+	}
 	s.branding(ctx, q, inv.AppID, &p)
 	return p, nil
 }
@@ -170,6 +188,7 @@ func (s *Service) creditNotePage(ctx context.Context, q store.Queryer, cn store.
 	if err != nil {
 		return docPage{}, err
 	}
+	p.EInvoice = nil // the IRN belongs to the invoice
 	p.Title, p.Number, p.Date = "Credit note", cn.Number, cn.IssuedAt.In(tax.IST).Format("02 Jan 2006")
 	p.OriginalNumber, p.OriginalDate, p.Reason = inv.Number, inv.IssuedAt.In(tax.IST).Format("02 Jan 2006"), cn.Reason
 	p.Notes = nil

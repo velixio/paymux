@@ -23,3 +23,6 @@ body { margin: 0; font-family: var(--font); background: var(--color-bg); color: 
 
 .amount { font-size: 28px; margin: 8px 0 16px; }
 label.muted { display: block; text-align: left; }
+
+.einvoice { text-align: left; margin-top: 16px; }
+svg.qr { display: block; width: 100%; max-width: 260px; height: auto; margin: 8px 0; background: #fff; }

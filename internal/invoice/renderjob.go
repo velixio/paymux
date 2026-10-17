@@ -320,6 +320,9 @@ func (s *Service) invoiceParts(ctx context.Context, q store.Queryer, inv store.I
 	if inv.Currency != "INR" {
 		d.Currency, d.ForeignAmount, d.FXRate = inv.Currency, inv.Total, inv.FXRate
 	}
+	if inv.IRN != "" {
+		d.EInvoice = &render.EInvoiceInfo{IRN: inv.IRN, AckNo: inv.AckNo, AckDate: inv.AckDate, QR: inv.SignedQR}
+	}
 	return docParts{doc: d, number: inv.Number, pdfBlobID: inv.PDFBlobID, paymentID: inv.PaymentID, appID: inv.AppID,
 		pending: inv.Currency != "INR" && inv.FXRate == ""}, nil
 }
