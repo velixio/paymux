@@ -23,7 +23,6 @@ type fakeSMTP struct {
 	tlsConf  *tls.Config
 	roots    *x509.CertPool
 	starttls bool // advertise STARTTLS
-	wantAuth string
 
 	mu       sync.Mutex
 	msgs     []sentMail

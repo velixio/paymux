@@ -230,7 +230,7 @@ func TestSMTPPasswordIsRedacted(t *testing.T) {
 	l.Info("cfg", "cfg", c, "pw", c.SMTPPassword)
 	j, _ := json.Marshal(c.SMTPPassword)
 	for name, s := range map[string]string{"%v": fmt.Sprintf("%v", c), "%+v": fmt.Sprintf("%+v", c),
-		"%#v": fmt.Sprintf("%#v", c), "%s": fmt.Sprintf("%s", c.SMTPPassword), "slog": buf.String(), "json": string(j)} {
+		"%#v": fmt.Sprintf("%#v", c), "%s": fmt.Sprint(c.SMTPPassword), "slog": buf.String(), "json": string(j)} {
 		if strings.Contains(s, "hunter2") {
 			t.Errorf("%s leaks the password: %s", name, s)
 		}
