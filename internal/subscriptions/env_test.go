@@ -44,6 +44,8 @@ type rec struct {
 	payFn       func(connector.PaymentRef) (connector.PaymentSnapshot, error)
 	perAttempt  bool
 	nsub        int
+	fetchCalls  []string // ids FetchMandate was asked for
+	noReverse   bool     // the provider does not reverse the verification debit itself
 }
 
 func (r *rec) chargeCount() int { r.mu.Lock(); defer r.mu.Unlock(); return len(r.charges) }
@@ -57,7 +59,8 @@ type base struct {
 
 func (b base) Info() connector.Info {
 	return connector.Info{Name: b.name, Version: "1", DisplayName: b.name, Currencies: []string{"INR"}, SubscriptionModes: b.modes,
-		MandateLimits: b.limits, PreDebitPerAttempt: b.r.perAttempt, MandateSetupAmount: 100}
+		MandateLimits: b.limits, PreDebitPerAttempt: b.r.perAttempt, MandateSetupAmount: 100,
+		RefundsVerificationDebit: !b.r.noReverse}
 }
 func (b base) CreateCheckout(context.Context, connector.CheckoutRequest) (connector.CheckoutResult, error) {
 	return connector.CheckoutResult{}, connector.ErrUnsupported
@@ -91,6 +94,7 @@ func (c mandateConn) CreateMandateCheckout(_ context.Context, req connector.Mand
 func (c mandateConn) FetchMandate(_ context.Context, ref connector.MandateRef) (connector.MandateSnapshot, error) {
 	c.r.mu.Lock()
 	defer c.r.mu.Unlock()
+	c.r.fetchCalls = append(c.r.fetchCalls, ref.ProviderMandateID)
 	if m, ok := c.r.mandates[ref.ProviderMandateID]; ok {
 		return m, nil
 	}
@@ -179,18 +183,20 @@ func (m *recMailer) messages() []notify.Message {
 
 type env struct {
 	mailer *recMailer
-	t      *testing.T
-	db     *store.DB
-	core   *core.Service
-	inv    *invoice.Service
-	subs   *subscriptions.Service
-	q      *jobs.Queue
-	set    *settings.Service
-	r      *rec
-	scope  core.Scope
-	mu     sync.Mutex
-	now    time.Time
-	events []events.Event
+	// verifyOnSwap makes confirmations of replacement mandates carry the verification debit.
+	verifyOnSwap bool
+	t            *testing.T
+	db           *store.DB
+	core         *core.Service
+	inv          *invoice.Service
+	subs         *subscriptions.Service
+	q            *jobs.Queue
+	set          *settings.Service
+	r            *rec
+	scope        core.Scope
+	mu           sync.Mutex
+	now          time.Time
+	events       []events.Event
 }
 
 func (e *env) clock() time.Time { e.mu.Lock(); defer e.mu.Unlock(); return e.now }
@@ -256,6 +262,7 @@ func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 			return nil, fmt.Errorf("no connector for %s", id)
 		})})
 	e.subs.RegisterJobs(e.q)
+	e.q.Register("refund.submit", func(context.Context, json.RawMessage) error { return nil })
 
 	err := db.Write(ctx, func(tx store.Tx) error {
 		if err := store.SeedOrg(ctx, tx, "Paymux", start); err != nil {
@@ -419,10 +426,15 @@ func (e *env) confirmMandate(m store.Mandate, providerID string, withSetup bool)
 	snap := connector.MandateSnapshot{ProviderMandateID: providerID, Status: "active", RawStatus: "confirmed", MaxAmount: m.MaxAmount, Currency: "INR", Method: m.Method}
 	if withSetup {
 		for _, sub := range e.subsOfMandate(m.ID) {
-			if sub.Status == "incomplete" && sub.TrialEnd.IsZero() {
-				snap.SetupPayment = &connector.PaymentSnapshot{Status: connector.PaymentSucceeded, Amount: sub.Amount, Currency: "INR",
-					ProviderPaymentID: "setup_" + providerID, ProviderRef: m.ProviderRef, Method: m.Method, RawStatus: "success"}
+			if sub.Status != "incomplete" && !e.verifyOnSwap {
+				continue
 			}
+			amount := int64(100) // the verification debit: nothing is due yet
+			if sub.Status == "incomplete" && sub.TrialEnd.IsZero() {
+				amount = sub.Amount // the registration pays the first period
+			}
+			snap.SetupPayment = &connector.PaymentSnapshot{Status: connector.PaymentSucceeded, Amount: amount, Currency: "INR",
+				ProviderPaymentID: "setup_" + providerID, ProviderRef: m.ProviderRef, Method: m.Method, RawStatus: "success"}
 		}
 	}
 	e.r.mu.Lock()

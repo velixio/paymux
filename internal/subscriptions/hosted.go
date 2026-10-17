@@ -282,7 +282,7 @@ func (s *Service) freshMandate(ctx context.Context, subID, token string) (store.
 				ProviderAccountID: sub.ProviderAccountID, ProviderRef: ids.ProviderRef(), Method: old.Method, Status: string(state.MandatePending),
 				MaxAmount: old.MaxAmount, Currency: old.Currency, Frequency: old.Frequency,
 				ValidUntil: now.AddDate(pol.validityYears, 0, 0), CreatedAt: now, UpdatedAt: now}
-			if err := store.InsertMandate(ctx, tx, m); err != nil {
+			if err := s.insertMandate(ctx, tx, m); err != nil {
 				return err
 			}
 			sub.MandateID, sub.CheckoutAction = m.ID, ""

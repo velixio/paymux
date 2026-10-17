@@ -34,7 +34,7 @@ func SampleValues() []any {
 			Capabilities: []connector.Capability{connector.CapRefund}, ConfigSchema: []byte(`{"type":"object"}`),
 			Currencies: []string{"INR"}, Methods: []string{"card"}, MerchantOfRecord: true,
 			SubscriptionModes: []connector.BillingMode{connector.ProviderManaged}, PreDebitPerAttempt: true,
-			MandateLimits: []connector.MandateLimit{{Method: "upi", Currency: "INR", MaxAmount: 1500000}}, MandateSetupAmount: 100,
+			MandateLimits: []connector.MandateLimit{{Method: "upi", Currency: "INR", MaxAmount: 1500000}}, MandateSetupAmount: 100, RefundsVerificationDebit: true,
 			RateLimit: connector.RateLimit{RequestsPerSecond: 5, Burst: 10},
 		},
 		connector.CheckoutRequest{

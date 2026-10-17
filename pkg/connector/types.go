@@ -61,8 +61,12 @@ type Info struct {
 	// MandateSetupAmount is what a mandate registration debits when no real
 	// charge is due yet (a trial): the provider's minimal or verification
 	// amount, in minor units. 0 means the provider default of 100 (Rs 1).
-	MandateSetupAmount int64     `json:"mandate_setup_amount,omitempty"`
-	RateLimit          RateLimit `json:"rate_limit"`
+	MandateSetupAmount int64 `json:"mandate_setup_amount,omitempty"`
+	// RefundsVerificationDebit says the provider reverses that verification
+	// debit by itself. When false, Paymux refunds it (initiated_by=system,
+	// reason=mandate_verification).
+	RefundsVerificationDebit bool      `json:"refunds_verification_debit,omitempty"`
+	RateLimit                RateLimit `json:"rate_limit"`
 }
 
 // Has reports whether the capability is declared.
