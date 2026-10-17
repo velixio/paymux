@@ -24,6 +24,9 @@ import (
 type StatusCase struct {
 	// Raw is the provider's status string.
 	Raw string
+	// WantRaw is the raw status expected in the snapshot when it differs from
+	// Raw (for example after the connector captured an authorized payment).
+	WantRaw string
 	// Want is the expected SDK status.
 	Want connector.PaymentStatus
 	// WantAmount is the expected snapshot amount in minor units.
@@ -202,8 +205,12 @@ func Run(t *testing.T, factory connector.Factory, fx Fixtures) {
 				if snap.Status != sc.Want {
 					t.Errorf("status = %q want %q", snap.Status, sc.Want)
 				}
-				if snap.RawStatus != sc.Raw {
-					t.Errorf("raw status = %q want %q", snap.RawStatus, sc.Raw)
+				wantRaw := sc.Raw
+				if sc.WantRaw != "" {
+					wantRaw = sc.WantRaw
+				}
+				if snap.RawStatus != wantRaw {
+					t.Errorf("raw status = %q want %q", snap.RawStatus, wantRaw)
 				}
 				if snap.Amount != sc.WantAmount {
 					t.Errorf("amount = %d want %d", snap.Amount, sc.WantAmount)
