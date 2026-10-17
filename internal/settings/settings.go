@@ -68,7 +68,7 @@ func (s *Service) Resolve(ctx context.Context, appID, key string) (Value, error)
 func (s *Service) ResolveOrg(ctx context.Context, orgID, key string) (Value, error) {
 	var v Value
 	err := s.db.Read(ctx, func(q store.Querier) (err error) {
-		v, err = resolveOrgWith(ctx, q, orgID, key)
+		v, err = ResolveOrgWith(ctx, q, orgID, key)
 		return
 	})
 	return v, err
@@ -85,7 +85,7 @@ func ResolveWith(ctx context.Context, q store.Queryer, appID, key string) (Value
 		if err != nil {
 			return Value{}, err
 		}
-		return resolveOrgWith(ctx, q, orgID, key)
+		return ResolveOrgWith(ctx, q, orgID, key)
 	}
 	app, err := store.GetApp(ctx, q, appID)
 	if err != nil {
@@ -96,10 +96,12 @@ func ResolveWith(ctx context.Context, q store.Queryer, appID, key string) (Value
 	} else if found {
 		return Value{Raw: json.RawMessage(raw), Source: SourceApp}, nil
 	}
-	return resolveOrgWith(ctx, q, app.OrgID, key)
+	return ResolveOrgWith(ctx, q, app.OrgID, key)
 }
 
-func resolveOrgWith(ctx context.Context, q store.Queryer, orgID, key string) (Value, error) {
+// ResolveOrgWith resolves the org-level value (org value, else default) using an
+// existing reader.
+func ResolveOrgWith(ctx context.Context, q store.Queryer, orgID, key string) (Value, error) {
 	def, ok := Lookup(key)
 	if !ok {
 		return Value{}, fmt.Errorf("%w: %q", ErrUnknownKey, key)
@@ -152,7 +154,7 @@ func (s *Service) SetOrg(ctx context.Context, actor audit.Actor, orgID, key stri
 		return err
 	}
 	return s.db.Write(ctx, func(tx store.Tx) error {
-		before, err := resolveOrgWith(ctx, tx, orgID, key)
+		before, err := ResolveOrgWith(ctx, tx, orgID, key)
 		if err != nil {
 			return err
 		}

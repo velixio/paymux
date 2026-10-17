@@ -376,41 +376,64 @@ func TestStartCheckoutAllFail(t *testing.T) {
 
 func TestBreakerRecordsFailuresAndSuccessesAndReordersAccounts(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
-		bad := e.pa1
+		// The first account tried for each payment always errors and the next
+		// one works, so the first-choice account collects the failures.
+		calls := 0
 		e.fake.Locked(func() {
 			e.fake.CheckoutFn = func(req connector.CheckoutRequest) (connector.CheckoutResult, error) {
-				return connector.CheckoutResult{}, errors.New("down")
-			}
-		})
-		// Five failed checkouts on the first-choice account open its breaker.
-		first := ""
-		for i := 0; i < routing.BreakerFailures; i++ {
-			p := e.payment2()
-			e.fake.Locked(func() { e.fake.CheckoutFn = nil })
-			var seen string
-			e.fake.Locked(func() {
-				e.fake.CheckoutFn = func(connector.CheckoutRequest) (connector.CheckoutResult, error) {
+				calls++
+				if calls%2 == 1 {
 					return connector.CheckoutResult{}, errors.New("down")
 				}
-			})
-			_, _ = e.flow.StartCheckout(ctx, p.ID)
-			a := e.attempts(p.ID)
-			seen = a[0].ProviderAccountID
-			if i == 0 {
-				first = seen
+				return connector.CheckoutResult{ProviderOrderID: "o", NextAction: connector.NextAction{Kind: connector.ActionRedirect, URL: "https://x.example.com"}}, nil
+			}
+		})
+		first := ""
+		for i := 0; i < routing.BreakerFailures; i++ {
+			if first != "" && e.breaker.Open(first) {
+				t.Fatalf("breaker opened after only %d failures", i)
+			}
+			st, err := e.flow.StartCheckout(ctx, e.payment2().ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a := e.attempts(st.Attempt.PaymentID)
+			if first == "" {
+				first = a[0].ProviderAccountID
+			}
+			if st.AccountID == first {
+				t.Fatal("the failing first choice must not be the one that succeeded")
 			}
 		}
-		_ = bad
 		if !e.breaker.Open(first) {
-			t.Skip("breaker did not open for the first account (ordering is by id)")
+			t.Fatal("breaker did not open after repeated failures")
 		}
+		if e.breaker.Open(e.otherAccount(first)) {
+			t.Error("the working account's breaker must stay closed")
+		}
+		// With the breaker open the account is tried last, so the first call succeeds.
 		e.fake.Locked(func() { e.fake.CheckoutFn = nil })
-		p := e.payment2()
-		st, err := e.flow.StartCheckout(ctx, p.ID)
+		st, err := e.flow.StartCheckout(ctx, e.payment2().ID)
 		if err != nil || st.AccountID == first {
 			t.Errorf("open breaker must push the account last: used %s (open: %s) err=%v", st.AccountID, first, err)
 		}
+		// After the cooldown it is tried first again.
+		e.clk.Add(routing.BreakerCooldown + time.Second)
+		if e.breaker.Open(first) {
+			t.Error("breaker should close after the cooldown")
+		}
+		st, err = e.flow.StartCheckout(ctx, e.payment2().ID)
+		if err != nil || st.AccountID != first {
+			t.Errorf("recovered account should be first choice again: used %s want %s err=%v", st.AccountID, first, err)
+		}
 	})
+}
+
+func (e *env) otherAccount(id string) string {
+	if id == e.pa1 {
+		return e.pa2
+	}
+	return e.pa1
 }
 
 func TestStartCheckoutRefusesFinishedPayments(t *testing.T) {
@@ -904,9 +927,12 @@ func TestRegisterInstallsHandlersAndSchedule(t *testing.T) {
 		if _, err := e.core.CreateRefund(ctx, core.CreateRefundInput{Scope: e.scope, Actor: audit.System, InitiatedBy: "api", PaymentID: p.ID}); err != nil {
 			t.Fatal(err)
 		}
-		e.clk.Add(time.Minute)
-		if _, err := e.q.RunOnce(ctx); err != nil {
-			t.Fatal(err)
+		e.clk.Add(2 * time.Minute)
+		for i := 0; i < 3; i++ {
+			if _, err := e.q.RunOnce(ctx); err != nil {
+				t.Fatal(err)
+			}
+			e.clk.Add(2 * time.Minute)
 		}
 		e.fake.Locked(func() {
 			if len(e.fake.RefundCalls) != 1 {
