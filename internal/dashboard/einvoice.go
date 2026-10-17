@@ -93,6 +93,38 @@ func (d *Dashboard) invoiceEInvoiceJSON(w http.ResponseWriter, r *http.Request, 
 	d.sendJSON(w, res.Filename, res.JSON)
 }
 
+// creditNoteEInvoiceJSON downloads the CRN e-invoice of a credit note of the
+// caller's org.
+func (d *Dashboard) creditNoteEInvoiceJSON(w http.ResponseWriter, r *http.Request, s *session) {
+	var cn store.CreditNote
+	err := d.o.DB.Read(r.Context(), func(q store.Querier) (err error) {
+		cn, err = store.GetCreditNote(r.Context(), q, r.PathValue("id"))
+		return
+	})
+	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(r.Context(), cn.OrgID) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	res, err := d.o.Invoice.CreditNoteEInvoice(r.Context(), cn.ID)
+	var pe *einvoice.Problems
+	switch {
+	case errors.As(err, &pe):
+		http.Error(w, "The e-invoice cannot be built yet: "+strings.Join(pe.List, "; ")+".", http.StatusUnprocessableEntity)
+		return
+	case errors.Is(err, invoice.ErrInvalid):
+		badRequest(w, trimInvalid(err))
+		return
+	case err != nil:
+		d.fail(w, err)
+		return
+	}
+	d.sendJSON(w, res.Filename, res.JSON)
+}
+
 func (d *Dashboard) sendJSON(w http.ResponseWriter, filename string, body []byte) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
