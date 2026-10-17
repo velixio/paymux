@@ -145,8 +145,12 @@ func newSink(t *testing.T, code int) *sink {
 	return s
 }
 
-func (s *sink) hits() []recorded { s.mu.Lock(); defer s.mu.Unlock(); return append([]recorded(nil), s.got...) }
-func (s *sink) setCode(c int)    { s.mu.Lock(); s.code = c; s.mu.Unlock() }
+func (s *sink) hits() []recorded {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]recorded(nil), s.got...)
+}
+func (s *sink) setCode(c int) { s.mu.Lock(); s.code = c; s.mu.Unlock() }
 
 func TestEmitFansOutToMatchingEnabledEndpoints(t *testing.T) {
 	storetest.Each(t, func(t *testing.T, db *store.DB) {
