@@ -250,12 +250,12 @@ func (p *payu) FetchRefund(ctx context.Context, ref connector.RefundRef) (connec
 		Status    flexStr `json:"status"`
 		Amt       flexStr `json:"amt"`
 	}
-	var found *entry
+	var entries []entry
 	var walk func(raw json.RawMessage)
 	walk = func(raw json.RawMessage) {
 		var e entry
-		if json.Unmarshal(raw, &e) == nil && e.Status != "" && found == nil {
-			found = &e
+		if json.Unmarshal(raw, &e) == nil && e.Status != "" {
+			entries = append(entries, e)
 			return
 		}
 		var nested map[string]json.RawMessage
@@ -268,9 +268,24 @@ func (p *payu) FetchRefund(ctx context.Context, ref connector.RefundRef) (connec
 	for _, raw := range out.Details {
 		walk(raw)
 	}
+	// A payment with several refunds lists them all: take the one whose request
+	// id is the one asked for. A lone entry answers a lookup by token; among
+	// several, an entry that is not named is never guessed at.
+	var found *entry
+	for i := range entries {
+		if string(entries[i].RequestID) == id {
+			found = &entries[i]
+			break
+		}
+	}
+	if found == nil && len(entries) == 1 {
+		found = &entries[0]
+	}
 	if found == nil {
-		if err := checkCredentials(out.Msg); err != nil {
-			return connector.RefundSnapshot{}, err
+		if len(entries) == 0 {
+			if err := checkCredentials(out.Msg); err != nil {
+				return connector.RefundSnapshot{}, err
+			}
 		}
 		return connector.RefundSnapshot{}, connector.ErrNotFound
 	}
