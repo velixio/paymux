@@ -101,6 +101,19 @@ func TestBuildMIMEHTMLAlternativeAndNoAttachment(t *testing.T) {
 	}
 }
 
+func TestBuildMIMEHTMLWithAttachment(t *testing.T) {
+	raw, err := buildMIME("billing@example.com", Message{To: []string{"a@example.com"}, Subject: "s", Text: "plain body", HTML: "<p>rich body</p>",
+		Attachments: []Attachment{{Filename: "a.txt", Data: []byte("hello")}}}, time.Now(), "<x@y>")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, files, _ := parseMsg(t, string(raw))
+	if files["a.txt"] != "hello" || !strings.Contains(string(raw), "multipart/alternative") ||
+		!strings.Contains(string(raw), "<p>rich body</p>") || !strings.Contains(string(raw), "plain body") {
+		t.Fatalf("bad message:\n%s", raw)
+	}
+}
+
 func TestBuildMIMERejectsHeaderInjectionAndBadInput(t *testing.T) {
 	ok := Message{To: []string{"a@example.com"}, Subject: "s", Text: "t"}
 	bad := map[string]Message{
