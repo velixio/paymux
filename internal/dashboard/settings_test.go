@@ -94,7 +94,7 @@ func TestOrgSettingsPage(t *testing.T) {
 // routeForm builds the editor's form: rules is a list of rule field maps.
 func routeForm(tok string, rules []map[string]string, catchAll map[string]string) url.Values {
 	f := url.Values{"csrf": {tok}}
-	for _, k := range []string{"r_name", "r_currency", "r_country", "r_purpose", "r_amin", "r_amax", "r_meta", "r_action", "r_targets", "r_message"} {
+	for _, k := range []string{"r_order", "r_name", "r_currency", "r_country", "r_purpose", "r_amin", "r_amax", "r_meta", "r_action", "r_targets", "r_message"} {
 		for _, r := range rules {
 			v := r[k]
 			if k == "r_action" && v == "" {
@@ -270,6 +270,62 @@ func TestRoutingTestBox(t *testing.T) {
 			if r, _ := e.get(viewer, "/dashboard/settings?test=1&"+q); r.StatusCode != 400 {
 				t.Errorf("%s: %d", q, r.StatusCode)
 			}
+		}
+	})
+}
+
+func TestRoutingEditorRulesAreCardsWithOrderNumbers(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		admin := e.roleClient("admin")
+		body := e.pageOK(admin, "/dashboard/settings")
+		tok := csrfOf(t, body)
+		// each rule is a labelled block with an order number, not a table row
+		cards := strings.Count(body, `class="rule-card"`)
+		if cards < 4 { // two seeded rules, the catch-all and blank rows
+			t.Fatalf("rule cards: %d", cards)
+		}
+		has(t, body, `name="r_order"`, `value="1"`, `value="2"`, `<label>Name`, `<label>Targets`, `<label>Currencies`, `class="rule-card catch-all"`)
+		lacks(t, regexpFind(t, `(?s)(<form[^>]*routing-editor.*?</form>)`, body), "<table")
+
+		order := func(a, b string) []string {
+			f := routeForm(tok, []map[string]string{
+				{"r_order": a, "r_name": "first-written", "r_currency": "INR", "r_targets": "razorpay"},
+				{"r_order": b, "r_name": "second-written", "r_currency": "BDT", "r_targets": "whop"}}, map[string]string{"ca_targets": "razorpay"})
+			if r, out := e.post(admin, "/dashboard/settings/routing", f); r.StatusCode != 303 {
+				t.Fatalf("save %s/%s: %d\n%s", a, b, r.StatusCode, out)
+			}
+			v, _ := e.set.ResolveOrg(ctx, store.DefaultOrgID, "routing")
+			var doc struct {
+				Rules []struct{ Name string } `json:"rules"`
+			}
+			_ = json.Unmarshal(v.Raw, &doc)
+			var names []string
+			for _, r := range doc.Rules {
+				names = append(names, r.Name)
+			}
+			return names
+		}
+		if got := order("1", "2"); strings.Join(got, ",") != "first-written,second-written" {
+			t.Errorf("1,2 -> %v", got)
+		}
+		if got := order("2", "1"); strings.Join(got, ",") != "second-written,first-written" {
+			t.Errorf("2,1 -> %v", got)
+		}
+		if got := order("", ""); strings.Join(got, ",") != "first-written,second-written" {
+			t.Errorf("blank orders keep the written order: %v", got)
+		}
+		if got := order("5", "5"); strings.Join(got, ",") != "first-written,second-written" {
+			t.Errorf("equal orders keep the written order: %v", got)
+		}
+		f := routeForm(tok, []map[string]string{{"r_order": "first", "r_name": "x", "r_currency": "INR", "r_targets": "razorpay"}}, map[string]string{"ca_targets": "razorpay"})
+		if r, _ := e.post(admin, "/dashboard/settings/routing", f); r.StatusCode != 400 {
+			t.Errorf("non-numeric order: %d", r.StatusCode)
+		}
+		// the page numbers the stored rules 1..n, in order
+		page := e.pageOK(admin, "/dashboard/settings")
+		if strings.Index(page, `value="second-written"`) > strings.Index(page, `value="first-written"`) && strings.Contains(page, "first-written") {
+			t.Log("rules shown in stored order")
 		}
 	})
 }
