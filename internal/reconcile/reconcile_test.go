@@ -67,19 +67,21 @@ func (a *alertLog) kinds() []string {
 }
 
 type env struct {
-	t      *testing.T
-	db     *store.DB
-	core   *core.Service
-	conns  *connectors.Service
-	set    *settings.Service
-	rec    *reconcile.Service
-	fake   *fakeconn.State
-	clk    *clock
-	alerts *alertLog
-	scope  core.Scope
-	acct   string
-	mu     sync.Mutex
-	events []events.Event
+	t       *testing.T
+	db      *store.DB
+	core    *core.Service
+	conns   *connectors.Service
+	set     *settings.Service
+	rec     *reconcile.Service
+	fake    *fakeconn.State
+	clk     *clock
+	alerts  *alertLog
+	scope   core.Scope
+	acct    string
+	mu      sync.Mutex
+	events  []events.Event
+	linked  []string
+	linkErr error
 }
 
 func (e *env) emitted() []string {
@@ -122,12 +124,12 @@ func newEnv(t *testing.T, db *store.DB) *env {
 	}
 	e.acct = pa.ID
 	e.rec = reconcile.New(reconcile.Options{DB: db, Core: e.core, Conns: e.conns, Settings: e.set, Alerts: e.alerts, Loc: time.UTC, Now: clk.Now,
-		KnownSubscription: func(id string) bool { return id == "sub_known" },
-		SubscriptionOf: func(s connector.PaymentSnapshot) string {
-			if s.ProviderRef == "RENEWAL" {
-				return "sub_known"
-			}
-			return ""
+		KnownSubscription: func(_ context.Context, account, id string) bool { return account == pa.ID && id == "sub_known" },
+		LinkRenewal: func(_ context.Context, account string, pay connector.PaymentSnapshot) error {
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			e.linked = append(e.linked, account+"/"+pay.ProviderPaymentID+"/"+pay.SubscriptionID)
+			return e.linkErr
 		}})
 	return e
 }
@@ -263,20 +265,71 @@ func TestAmountAndCurrencyMismatchesAreFlaggedOnceAndAlerted(t *testing.T) {
 	})
 }
 
-func TestUnknownProviderObjectAndRenewalToLink(t *testing.T) {
+func renewal(id, sub string) connector.PaymentSnapshot {
+	s := paid("", id, 100, "INR")
+	s.SubscriptionID = sub
+	return s
+}
+
+func TestUnknownProviderObjectAndRenewalLinking(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
 		e.provider("stranger", paid("order_x", "pay_stranger", 100, "INR"))
-		e.provider("RENEWAL", paid("", "pay_renew", 100, "INR"))
+		e.provider("RENEWAL", renewal("pay_renew", "sub_known"))
+		e.provider("OTHERSUB", renewal("pay_other", "sub_unknown")) // a subscription Paymux does not have: just unknown
 		run, err := e.rec.RunAccount(ctx, e.acct)
 		if err != nil {
 			t.Fatal(err)
 		}
 		items := e.items(run.ID)
-		if items["unknown_provider_object:pay_stranger"].State != "open" || items["renewal_to_link:pay_renew"].State != "to_link" || run.Items != 2 {
-			t.Fatalf("items %+v", items)
+		if items["unknown_provider_object:pay_stranger"].State != "open" || items["unknown_provider_object:pay_other"].State != "open" ||
+			items["renewal_to_link:pay_renew"].State != "fixed" || run.Items != 3 || run.Fixed != 1 {
+			t.Fatalf("items %+v run %+v", items, run)
 		}
-		if k := e.alerts.kinds(); !slices.Equal(k, []string{"recon.unknown_provider_object"}) {
-			t.Errorf("only the unknown payment alerts; a renewal is stored to be linked: %v", k)
+		if !slices.Equal(e.linked, []string{e.acct + "/pay_renew/sub_known"}) {
+			t.Errorf("linked %v", e.linked)
+		}
+		k := e.alerts.kinds()
+		slices.Sort(k)
+		if !slices.Equal(k, []string{"recon.unknown_provider_object", "recon.unknown_provider_object"}) {
+			t.Errorf("linked renewals do not alert, unknown payments do: %v", k)
+		}
+	})
+}
+
+func TestRenewalThatCannotBeLinkedStaysToLinkAndRetries(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		e.provider("RENEWAL", renewal("pay_renew", "sub_known"))
+		e.linkErr = errors.New("subscriptions service down")
+		run, err := e.rec.RunAccount(ctx, e.acct)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if it := e.items(run.ID)["renewal_to_link:pay_renew"]; it.State != "to_link" || run.Fixed != 0 {
+			t.Fatalf("item %+v run %+v", it, run)
+		}
+		if len(e.alerts.kinds()) != 0 {
+			t.Errorf("alerts %v", e.alerts.kinds())
+		}
+		// The next run links it and closes the earlier to_link item.
+		e.linkErr = nil
+		run2, _ := e.rec.RunAccount(ctx, e.acct)
+		if e.items(run2.ID)["renewal_to_link:pay_renew"].State != "fixed" || len(e.linked) != 2 {
+			t.Errorf("retry: %+v linked %v", e.items(run2.ID), e.linked)
+		}
+		if e.count("SELECT COUNT(*) FROM recon_items WHERE state = 'to_link'") != 0 {
+			t.Error("the to_link item was left open after the renewal was linked")
+		}
+	})
+}
+
+func TestRenewalsAreLinkedWhenNoLinkerIsConfigured(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		rec := reconcile.New(reconcile.Options{DB: e.db, Core: e.core, Conns: e.conns, Settings: e.set, Alerts: e.alerts, Loc: time.UTC, Now: e.clk.Now,
+			KnownSubscription: func(context.Context, string, string) bool { return true }})
+		e.provider("RENEWAL", renewal("pay_renew", "sub_known"))
+		run, err := rec.RunAccount(ctx, e.acct)
+		if err != nil || e.items(run.ID)["renewal_to_link:pay_renew"].State != "to_link" || len(e.alerts.kinds()) != 0 {
+			t.Errorf("%+v %v", e.items(run.ID), err)
 		}
 	})
 }

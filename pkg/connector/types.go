@@ -239,20 +239,23 @@ func (s PaymentStatus) Valid() bool {
 
 // PaymentSnapshot is the provider's view of a payment.
 type PaymentSnapshot struct {
-	ProviderRef       string        `json:"provider_ref,omitempty"`
-	ProviderOrderID   string        `json:"provider_order_id,omitempty"`
-	ProviderPaymentID string        `json:"provider_payment_id,omitempty"`
-	Status            PaymentStatus `json:"status"`
-	RawStatus         string        `json:"raw_status"`
-	Amount            int64         `json:"amount"`
-	Currency          string        `json:"currency"`
-	Method            string        `json:"method,omitempty"`
-	Fee               int64         `json:"fee,omitempty"`
-	Tax               int64         `json:"tax,omitempty"`
-	AmountRefunded    int64         `json:"amount_refunded,omitempty"`
-	ErrorCode         string        `json:"error_code,omitempty"`
-	ErrorMessage      string        `json:"error_message,omitempty"`
-	CreatedAt         int64         `json:"created_at,omitempty"` // unix ms
+	ProviderRef       string `json:"provider_ref,omitempty"`
+	ProviderOrderID   string `json:"provider_order_id,omitempty"`
+	ProviderPaymentID string `json:"provider_payment_id,omitempty"`
+	// SubscriptionID is the provider subscription a payment belongs to (a
+	// provider-managed renewal), empty for one-time payments.
+	SubscriptionID string        `json:"subscription_id,omitempty"`
+	Status         PaymentStatus `json:"status"`
+	RawStatus      string        `json:"raw_status"`
+	Amount         int64         `json:"amount"`
+	Currency       string        `json:"currency"`
+	Method         string        `json:"method,omitempty"`
+	Fee            int64         `json:"fee,omitempty"`
+	Tax            int64         `json:"tax,omitempty"`
+	AmountRefunded int64         `json:"amount_refunded,omitempty"`
+	ErrorCode      string        `json:"error_code,omitempty"`
+	ErrorMessage   string        `json:"error_message,omitempty"`
+	CreatedAt      int64         `json:"created_at,omitempty"` // unix ms
 }
 
 // RefundStatus is the SDK-level refund status.
