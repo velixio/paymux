@@ -364,6 +364,15 @@ func (a *App) Start(ctx context.Context) error {
 	srv.HandleFunc("GET /docs/openapi.yaml", apiDocs.Raw)
 	srv.HandleFunc("GET /assets/", web.AssetHandler(overlay).ServeHTTP)
 	srv.HandleFunc("GET /theme/", themes.Handler().ServeHTTP)
+	// The bare host leads to first-run setup while there are no users, then
+	// to the dashboard (which sends a signed-out browser to its login).
+	srv.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		if dash.SetupToken() != "" {
+			http.Redirect(w, r, "/setup", http.StatusSeeOther)
+			return
+		}
+		http.Redirect(w, r, "/dashboard/", http.StatusSeeOther)
+	})
 	// Browsers ask for /favicon.ico whatever the page says.
 	srv.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/assets/favicon.svg", http.StatusMovedPermanently)
