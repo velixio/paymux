@@ -64,7 +64,12 @@ func TestPanicReturns500JSON(t *testing.T) {
 	if rec.Code != 500 {
 		t.Fatal(rec.Code)
 	}
-	var body struct{ Error struct{ Type, RequestID string } }
+	var body struct {
+		Error struct {
+			Type      string `json:"type"`
+			RequestID string `json:"request_id"`
+		}
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err, rec.Body.String())
 	}
