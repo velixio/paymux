@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ledongthuc/pdf"
-
 	"github.com/paymux/paymux/internal/tax"
 )
 
@@ -98,23 +96,7 @@ func creditNote(t *testing.T) Document {
 	return d
 }
 
-func text(t *testing.T, b []byte) string {
-	t.Helper()
-	r, err := pdf.NewReader(bytes.NewReader(b), int64(len(b)))
-	if err != nil {
-		t.Fatalf("not a readable PDF: %v", err)
-	}
-	pr, err := r.GetPlainText()
-	if err != nil {
-		t.Fatalf("extract: %v", err)
-	}
-	var out bytes.Buffer
-	if _, err := out.ReadFrom(pr); err != nil {
-		t.Fatal(err)
-	}
-	// collapse whitespace so assertions don't depend on line breaks
-	return strings.Join(strings.Fields(out.String()), " ")
-}
+func text(t *testing.T, b []byte) string { t.Helper(); return pdfText(t, b) }
 
 func mustRender(t *testing.T, d Document) []byte {
 	t.Helper()
@@ -141,7 +123,7 @@ func TestIntraStateB2CInvoice(t *testing.T) {
 	got := text(t, mustRender(t, intraB2C(t)))
 	wantAll(t, got, "TAX INVOICE", "VS/2026-27/000042", "03-11-2026", "29ABCDE1234F1Z5", "Yupcha Technologies Private Limited",
 		"Karnataka", "Priya Sharma", "998314", "service", "CGST", "SGST", "9%", "₹90.00", "₹1,000.00", "₹1,180.00",
-		"Rupees One Thousand One Hundred and Eighty Only", "Whether tax is payable on reverse charge: No",
+		"Rupees One Thousand One Hundred Eighty Only", "Whether tax is payable on reverse charge: No",
 		"UPI", "pay_9X2KQ7", "A. Rao", "This is a computer-generated document", "Thank you for your business.", "Voicestudio Pro — Nov 2026")
 	if strings.Contains(got, "IGST") {
 		t.Error("intra-state invoice shows IGST")
@@ -166,7 +148,7 @@ func TestExportLUTInvoice(t *testing.T) {
 func TestCreditNote(t *testing.T) {
 	got := text(t, mustRender(t, creditNote(t)))
 	wantAll(t, got, "CREDIT NOTE", "VSCN/2026-27/000007", "VS/2026-27/000042", "03-11-2026", "Refund of subscription charge",
-		"₹500.00", "₹45.00", "₹590.00", "Rupees Five Hundred and Ninety Only")
+		"₹500.00", "₹45.00", "₹590.00", "Rupees Five Hundred Ninety Only")
 	if strings.Contains(got, "TAX INVOICE") {
 		t.Error("credit note titled as tax invoice")
 	}
