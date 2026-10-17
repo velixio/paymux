@@ -14,6 +14,9 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/internal/config"
+	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/events"
+	"github.com/paymux/paymux/internal/httpapi"
 	"github.com/paymux/paymux/internal/inbound"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/logging"
@@ -21,6 +24,7 @@ import (
 	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/server"
+	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/migrations"
 )
@@ -38,8 +42,9 @@ const (
 
 // App is a Paymux instance.
 type App struct {
-	cfg config.Config
-	log *slog.Logger
+	cfg     config.Config
+	log     *slog.Logger
+	emitter events.Emitter // nil means the outbound service
 
 	verifiers inbound.VerifierFunc
 
@@ -61,6 +66,10 @@ type Option func(*App)
 
 // WithLogger sets the logger. The default writes redacted JSON to stderr.
 func WithLogger(l *slog.Logger) Option { return func(a *App) { a.log = l } }
+
+// WithEmitter replaces the domain-event emitter. The default is the outbound
+// webhooks service.
+func WithEmitter(e events.Emitter) Option { return func(a *App) { a.emitter = e } }
 
 // New builds an App. Nothing is opened until Start.
 func New(cfg config.Config, opts ...Option) (*App, error) {
@@ -107,6 +116,15 @@ func (a *App) Start(ctx context.Context) error {
 		return err
 	}
 
+	set := settings.New(db)
+	if _, err := core.Bootstrap(ctx, db, set); err != nil {
+		return fmt.Errorf("bootstrap: %w", err)
+	}
+	box, err := secrets.NewBox(a.cfg.MasterKey)
+	if err != nil {
+		return fmt.Errorf("master key: %w", err)
+	}
+
 	started := time.Now()
 	q := jobs.New(db, jobs.Options{Logger: a.log})
 	q.Register(heartbeatKind, func(context.Context, json.RawMessage) error { return nil })
@@ -114,14 +132,22 @@ func (a *App) Start(ctx context.Context) error {
 		return err
 	}
 
-	box, err := secrets.NewBox(a.cfg.MasterKey)
-	if err != nil {
-		return err
-	}
-	// The outbound service is the events.Emitter other lanes will be given.
+	// The outbound service is the events.Emitter the domain services emit
+	// through, unless WithEmitter swapped it.
 	out := outbound.New(outbound.Options{DB: db, Queue: q, Box: box,
 		AllowPrivate: a.cfg.AllowPrivateWebhooks, Logger: a.log})
 	out.Register()
+	var emitter events.Emitter = out
+	if a.emitter != nil {
+		emitter = a.emitter
+	}
+	core.RegisterJobs(q)
+	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter})
+	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log})
+	if err != nil {
+		return err
+	}
+
 	// TODO(spec): the connector lane replaces these with real processing
 	// (ParseWebhook, Fetch*, apply transition) for the §6.4 jobs.
 	for _, kind := range []string{inbound.JobProcess, inbound.JobFetchOnly} {
@@ -166,6 +192,7 @@ func (a *App) Start(ctx context.Context) error {
 		},
 	})
 
+	api.Register(srv)
 	srv.HandleFunc("POST /hooks/{provider_account_id}", hooks.ServeHTTP)
 
 	ln, err := net.Listen("tcp", a.cfg.Listen)

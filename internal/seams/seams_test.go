@@ -41,6 +41,13 @@ func TestConnectorLeak(t *testing.T) {
 	}
 }
 
+func TestSettingsLeak(t *testing.T) {
+	v := wantOne(t, check(t, "settingsleak"), "settings-via-resolver")
+	if v.File != "internal/api/a.go" {
+		t.Fatalf("wrong file: %+v", v)
+	}
+}
+
 func TestFatMain(t *testing.T) { wantOne(t, check(t, "fatmain"), "thin-main") }
 
 func TestRepoHasNoViolations(t *testing.T) {
