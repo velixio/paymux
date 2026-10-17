@@ -3,6 +3,8 @@ package web
 import (
 	"bytes"
 	"io/fs"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,5 +119,18 @@ func TestEmbeddedPayTemplates(t *testing.T) {
 	}
 	if !strings.Contains(out, `src="https://checkout.razorpay.com/v1/checkout.js"`) || !strings.Contains(out, "order_1") {
 		t.Fatalf("sdk page wrong: %s", out)
+	}
+}
+
+func TestAssetHandler(t *testing.T) {
+	o, _ := NewOverlay(Embedded(), "")
+	srv := httptest.NewServer(AssetHandler(o))
+	defer srv.Close()
+	res, err := http.Get(srv.URL + "/assets/css/app.css")
+	if err != nil || res.StatusCode != 200 {
+		t.Fatalf("%v %v", res, err)
+	}
+	if res, _ := http.Get(srv.URL + "/assets/../templates/layout.html"); res.StatusCode == 200 {
+		t.Fatal("templates reachable through assets")
 	}
 }
