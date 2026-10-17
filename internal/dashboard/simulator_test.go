@@ -167,3 +167,47 @@ func TestSimulateRenewalFromTheDashboard(t *testing.T) {
 		}
 	})
 }
+
+func TestSimulateAProviderDashboardRefund(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		p, att, ctl := e.simPayment()
+		page := "/dashboard/payments/" + p.ID
+		path := page + "/simulate-refund"
+
+		op := e.roleClient("operator")
+		body := e.pageOK(op, page)
+		has(t, body, "Refund from the provider", att.ID)
+		tok := csrfOf(t, body)
+		viewer := e.roleClient("viewer")
+		if r, _ := e.post(viewer, path, url.Values{"attempt_id": {att.ID}, "csrf": {csrfOf(t, e.pageOK(viewer, page))}}); r.StatusCode != 403 {
+			t.Fatalf("viewer: %d", r.StatusCode)
+		}
+		if r, _ := e.post(op, path, url.Values{"attempt_id": {att.ID}, "amount": {"-3"}, "csrf": {tok}}); r.StatusCode != 400 {
+			t.Errorf("a negative amount: %d", r.StatusCode)
+		}
+		if r, _ := e.post(op, path, url.Values{"attempt_id": {"att_nope"}, "csrf": {tok}}); r.StatusCode != 400 {
+			t.Errorf("unknown attempt: %d", r.StatusCode)
+		}
+		r, out := e.post(op, path, url.Values{"attempt_id": {att.ID}, "amount": {"25.50"}, "csrf": {tok}})
+		if r.StatusCode != 200 || !strings.Contains(out, "Refund made at the simulated provider") {
+			t.Fatalf("refund: %d\n%s", r.StatusCode, out)
+		}
+		pg, err := ctl.(connector.Lister).ListRefunds(ctx, connector.TimeRange{From: 0}, "")
+		if err != nil || len(pg.Items) != 1 || pg.Items[0].Amount != 2550 || pg.Items[0].ProviderPaymentID != att.ProviderPaymentID || pg.Items[0].ProviderRef != "" {
+			t.Fatalf("the simulator's refunds: %+v %v", pg, err)
+		}
+		var aud []store.AuditRow
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "simulator.provider_refund", 10)
+			return
+		})
+		if len(aud) != 1 || aud[0].Target != p.ID {
+			t.Errorf("audit %+v", aud)
+		}
+		// Nothing was booked in Paymux by the click itself: that comes from the webhook.
+		if e.count("SELECT COUNT(*) FROM refunds") != 0 {
+			t.Error("the click booked a refund directly")
+		}
+	})
+}

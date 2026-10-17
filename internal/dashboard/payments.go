@@ -319,11 +319,9 @@ func (d *Dashboard) replaySubmit(w http.ResponseWriter, r *http.Request, s *sess
 	http.Redirect(w, r, safeNext(r.PostForm.Get("next"), prefix+"/overview"), http.StatusSeeOther)
 }
 
-// simulateDispute opens a dispute on a test-mode payment made through the
-// simulator connector. The simulator then sends its signed dispute.created
-// webhook, so what appears is exactly what a real provider's dispute would
-// produce.
-func (d *Dashboard) simulateDispute(w http.ResponseWriter, r *http.Request, s *session) {
+// simulatorTarget finds the payment, the captured attempt and the simulator
+// controller a "simulate ..." button acts on. It writes the error page itself.
+func (d *Dashboard) simulatorTarget(w http.ResponseWriter, r *http.Request, s *session) (store.Payment, store.Attempt, simulator.Controller, bool) {
 	ctx := r.Context()
 	var (
 		p        store.Payment
@@ -338,11 +336,11 @@ func (d *Dashboard) simulateDispute(w http.ResponseWriter, r *http.Request, s *s
 	})
 	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, p.OrgID) {
 		http.NotFound(w, r)
-		return
+		return p, store.Attempt{}, nil, false
 	}
 	if err != nil {
 		d.fail(w, err)
-		return
+		return p, store.Attempt{}, nil, false
 	}
 	var att store.Attempt
 	for _, a := range attempts {
@@ -357,7 +355,19 @@ func (d *Dashboard) simulateDispute(w http.ResponseWriter, r *http.Request, s *s
 		}
 	}
 	if ctl == nil {
-		d.renderPayment(w, r, s, http.StatusBadRequest, "A dispute can only be simulated on a captured test-mode payment made through the simulator.", "")
+		d.renderPayment(w, r, s, http.StatusBadRequest, "This only works on a captured test-mode payment made through the simulator.", "")
+		return p, att, nil, false
+	}
+	return p, att, ctl, true
+}
+
+// simulateDispute opens a dispute on a test-mode payment made through the
+// simulator connector. The simulator then sends its signed dispute.created
+// webhook, so what appears is exactly what a real provider's dispute would
+// produce.
+func (d *Dashboard) simulateDispute(w http.ResponseWriter, r *http.Request, s *session) {
+	p, att, ctl, ok := d.simulatorTarget(w, r, s)
+	if !ok {
 		return
 	}
 	reason := r.PostForm.Get("reason")
@@ -366,14 +376,42 @@ func (d *Dashboard) simulateDispute(w http.ResponseWriter, r *http.Request, s *s
 	default:
 		reason = "fraudulent"
 	}
-	snap, err := ctl.SimulateDispute(ctx, att.ProviderPaymentID, reason)
+	snap, err := ctl.SimulateDispute(r.Context(), att.ProviderPaymentID, reason)
 	if err != nil {
 		d.renderPayment(w, r, s, http.StatusBadRequest, err.Error(), "")
 		return
 	}
-	if err := d.record(ctx, r, s, "simulator.dispute", p.ID, nil, map[string]string{"dispute": snap.ProviderDisputeID, "reason": reason}); err != nil {
+	if err := d.record(r.Context(), r, s, "simulator.dispute", p.ID, nil, map[string]string{"dispute": snap.ProviderDisputeID, "reason": reason}); err != nil {
 		d.fail(w, err)
 		return
 	}
 	d.renderPayment(w, r, s, http.StatusOK, "", "Dispute simulated. It shows up under Disputes as soon as the simulator's webhook has been processed (a second or two).")
+}
+
+// simulateProviderRefund refunds a simulator payment "in the provider's own
+// dashboard": Paymux did not ask for it, and learns of it from the webhook (or
+// reconciliation), as it would for a refund made in Razorpay's dashboard.
+func (d *Dashboard) simulateProviderRefund(w http.ResponseWriter, r *http.Request, s *session) {
+	p, att, ctl, ok := d.simulatorTarget(w, r, s)
+	if !ok {
+		return
+	}
+	var amount int64
+	if raw := strings.TrimSpace(r.PostForm.Get("amount")); raw != "" {
+		var err error
+		if amount, err = money.ParseDecimal(raw, p.Currency); err != nil || amount <= 0 {
+			d.renderPayment(w, r, s, http.StatusBadRequest, "Enter the amount as a positive number like 25.50, or leave it blank to refund what is left.", "")
+			return
+		}
+	}
+	snap, err := ctl.SimulateProviderRefund(r.Context(), att.ProviderPaymentID, amount)
+	if err != nil {
+		d.renderPayment(w, r, s, http.StatusBadRequest, err.Error(), "")
+		return
+	}
+	if err := d.record(r.Context(), r, s, "simulator.provider_refund", p.ID, nil, map[string]any{"refund": snap.ProviderRefundID, "amount": snap.Amount}); err != nil {
+		d.fail(w, err)
+		return
+	}
+	d.renderPayment(w, r, s, http.StatusOK, "", "Refund made at the simulated provider. Paymux books it as a provider refund once the webhook has been processed (a second or two).")
 }
