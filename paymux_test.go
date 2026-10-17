@@ -160,6 +160,13 @@ func checkMetrics(t *testing.T, r *running, dialect string) {
 		"paymux_jobs_oldest_pending_seconds",
 		"paymux_heartbeat_last_run_timestamp_seconds",
 		`paymux_jobs_depth{state="pending"}`,
+		"# TYPE paymux_payments_total counter",
+		"# TYPE paymux_subscriptions gauge",
+		"paymux_invoices_issued_total 0",
+		"paymux_webhook_deliveries_failed_total 0",
+		"# TYPE paymux_inbound_verification_failures_total counter",
+		"# TYPE paymux_provider_requests_total counter",
+		"# TYPE paymux_provider_request_duration_seconds histogram",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("metrics missing %q:\n%s", want, body)

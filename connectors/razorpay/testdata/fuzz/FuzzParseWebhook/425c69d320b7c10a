@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("{\"event\":\"payment.dispute.created\",\"pAYloAd\":{\"dispute\":{}}}")
+string("0")

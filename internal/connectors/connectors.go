@@ -38,6 +38,9 @@ type Options struct {
 	// HTTPClient overrides the per-account client (tests point it at a fake
 	// provider). Nil builds connector.NewHTTPClient per account.
 	HTTPClient func(pa store.ProviderAccount, info connector.Info, secretValues []string) *http.Client
+	// Observe receives every provider HTTP attempt of the default per-account
+	// clients, with the connector's name (see ProviderMetrics).
+	Observe func(name string, o connector.RequestObservation)
 }
 
 // Service builds and manages connectors.
@@ -331,7 +334,11 @@ func (s *Service) deps(pa store.ProviderAccount, info connector.Info, cfg json.R
 	if s.o.HTTPClient != nil {
 		hc = s.o.HTTPClient(pa, info, secretValues)
 	} else {
-		hc = connector.NewHTTPClient(connector.HTTPOptions{Logger: logger, Secrets: secretValues, RateLimit: info.RateLimit})
+		opts := connector.HTTPOptions{Logger: logger, Secrets: secretValues, RateLimit: info.RateLimit}
+		if s.o.Observe != nil {
+			opts.Observer = func(o connector.RequestObservation) { s.o.Observe(info.Name, o) }
+		}
+		hc = connector.NewHTTPClient(opts)
 	}
 	return connector.Deps{HTTP: hc, KV: &kvStore{s: s, account: pa.ID}, Clock: s.o.Now, Logger: logger,
 		URLs: &urls{s: s, account: pa.ID}}

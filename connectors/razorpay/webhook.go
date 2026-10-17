@@ -180,7 +180,7 @@ func (r *razorpay) ParseWebhook(ctx context.Context, req connector.WebhookReques
 			}
 			n.Payment = &ps
 		}
-		return []connector.Notification{n}, nil
+		return identified(n)
 	}
 	switch ev.Event {
 	case "order.paid", "payment.captured", "payment.authorized", "payment.failed":
@@ -208,6 +208,15 @@ func (r *razorpay) ParseWebhook(ctx context.Context, req connector.WebhookReques
 		n.Kind, n.Dispute = connector.NotifyDispute, &s
 	default:
 		return nil, nil
+	}
+	return identified(n)
+}
+
+// identified rejects a notification that breaks the SDK's contract, such as an
+// entity without an id (found by fuzzing: an empty dispute object).
+func identified(n connector.Notification) ([]connector.Notification, error) {
+	if err := n.Validate(); err != nil {
+		return nil, fmt.Errorf("razorpay: %w", err)
 	}
 	return []connector.Notification{n}, nil
 }

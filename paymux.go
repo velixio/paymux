@@ -165,7 +165,9 @@ func (a *App) Start(ctx context.Context) error {
 	emitter = hookEmitter{next: emitter, queue: q, hooks: &a.hooks}
 	breaker := routing.NewBreaker(nil)
 	rt := checkout.NewRouting(breaker).WithSettings(set).WithSuggester(a.suggestRoute)
-	conns := connectors.New(connectors.Options{DB: db, Box: box, BaseURL: a.cfg.BaseURL, Logger: a.log, HTTPClient: a.connHTTP})
+	reg := metrics.NewRegistry()
+	conns := connectors.New(connectors.Options{DB: db, Box: box, BaseURL: a.cfg.BaseURL, Logger: a.log, HTTPClient: a.connHTTP,
+		Observe: connectors.ProviderMetrics(reg)})
 	// GST invoicing: documents are issued by hooks inside the transaction in
 	// which a payment or refund succeeds.
 	mailer := notify.New(a.cfg)
@@ -230,8 +232,8 @@ func (a *App) Start(ctx context.Context) error {
 	pay := paypage.New(paypage.Options{Core: svc, Flow: flow, Settings: set, Renderer: renderer,
 		CSRFKey: csrf[:], Logger: a.log})
 
-	reg := metrics.NewRegistry()
 	a.registerMetrics(reg, db, dialect)
+	registerBusinessMetrics(reg, db, a.log, time.Now)
 
 	srv := server.New(server.Options{
 		Logger:  a.log,

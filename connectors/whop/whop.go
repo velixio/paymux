@@ -473,6 +473,9 @@ func (w *whop) ParseWebhook(_ context.Context, req connector.WebhookRequest) ([]
 	default:
 		return nil, nil
 	}
+	if err := n.Validate(); err != nil { // e.g. an entity with no id (found by fuzzing)
+		return nil, fmt.Errorf("whop: %w", err)
+	}
 	return []connector.Notification{n}, nil
 }
 

@@ -24,18 +24,33 @@ type family struct {
 	mu              sync.Mutex
 	series          map[string]*series
 	fn              func() float64 // GaugeFunc only
+	buckets         []float64      // histograms only: upper bounds, ascending
 }
 
 type series struct {
 	values []string
 	v      float64
+	// histograms: per-bucket counts (made cumulative on render), sum and count.
+	counts   []float64
+	sum, cnt float64
 }
+
+// maxSeries bounds the label combinations of one family. A combination beyond
+// it is folded into a series whose label values are all "other", so a bug or
+// an attacker cannot grow the registry without limit.
+const maxSeries = 500
 
 // CounterVec is a counter with labels.
 type CounterVec struct{ f *family }
 
 // GaugeVec is a gauge with labels.
 type GaugeVec struct{ f *family }
+
+// HistogramVec is a histogram with labels.
+type HistogramVec struct{ f *family }
+
+// HTTPBuckets are histogram buckets (seconds) suited to outbound HTTP calls.
+var HTTPBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30}
 
 // NewRegistry returns an empty registry.
 func NewRegistry() *Registry { return &Registry{families: map[string]*family{}} }
@@ -54,6 +69,12 @@ func (r *Registry) add(f *family) *family {
 // Counter registers a counter family.
 func (r *Registry) Counter(name, help string, labels ...string) *CounterVec {
 	return &CounterVec{r.add(&family{name: name, help: help, typ: "counter", labels: labels})}
+}
+
+// Histogram registers a histogram family; buckets are ascending upper bounds
+// in the metric's unit (the +Inf bucket is implicit).
+func (r *Registry) Histogram(name, help string, buckets []float64, labels ...string) *HistogramVec {
+	return &HistogramVec{r.add(&family{name: name, help: help, typ: "histogram", labels: labels, buckets: append([]float64(nil), buckets...)})}
 }
 
 // Gauge registers a gauge family.
@@ -80,7 +101,20 @@ func (f *family) get(values []string) *series {
 	key := strings.Join(values, "\x00")
 	s := f.series[key]
 	if s == nil {
+		if len(f.series) >= maxSeries {
+			values = make([]string, len(f.labels))
+			for i := range values {
+				values[i] = "other"
+			}
+			key = strings.Join(values, "\x00")
+			if s = f.series[key]; s != nil {
+				return s
+			}
+		}
 		s = &series{values: append([]string(nil), values...)}
+		if f.typ == "histogram" {
+			s.counts = make([]float64, len(f.buckets))
+		}
 		f.series[key] = s
 	}
 	return s
@@ -94,6 +128,36 @@ func (c *CounterVec) Add(v float64, values ...string) {
 	c.f.mu.Lock()
 	defer c.f.mu.Unlock()
 	c.f.get(values).v += v
+}
+
+// Set sets the series to v. It mirrors a counter kept in durable state (the
+// database) rather than in memory; the value should only ever grow.
+func (c *CounterVec) Set(v float64, values ...string) {
+	c.f.mu.Lock()
+	defer c.f.mu.Unlock()
+	c.f.get(values).v = v
+}
+
+// Reset removes all series (before re-mirroring durable state).
+func (c *CounterVec) Reset() {
+	c.f.mu.Lock()
+	defer c.f.mu.Unlock()
+	c.f.series = map[string]*series{}
+}
+
+// Observe records one observation.
+func (h *HistogramVec) Observe(v float64, values ...string) {
+	h.f.mu.Lock()
+	defer h.f.mu.Unlock()
+	s := h.f.get(values)
+	for i, ub := range h.f.buckets {
+		if v <= ub {
+			s.counts[i]++
+			break
+		}
+	}
+	s.sum += v
+	s.cnt++
 }
 
 // Set sets the series to v.
@@ -148,18 +212,36 @@ func (r *Registry) render() string {
 		sort.Strings(keys)
 		for _, k := range keys {
 			s := f.series[k]
-			b.WriteString(f.name)
-			if len(f.labels) > 0 {
-				b.WriteByte('{')
-				for i, l := range f.labels {
+			labels := func(extra string) string {
+				var l strings.Builder
+				for i, name := range f.labels {
 					if i > 0 {
-						b.WriteByte(',')
+						l.WriteByte(',')
 					}
-					fmt.Fprintf(&b, `%s="%s"`, l, escapeLabel(s.values[i]))
+					fmt.Fprintf(&l, `%s="%s"`, name, escapeLabel(s.values[i]))
 				}
-				b.WriteByte('}')
+				if extra != "" {
+					if l.Len() > 0 {
+						l.WriteByte(',')
+					}
+					l.WriteString(extra)
+				}
+				if l.Len() == 0 {
+					return ""
+				}
+				return "{" + l.String() + "}"
 			}
-			fmt.Fprintf(&b, " %s\n", fmtFloat(s.v))
+			if f.typ == "histogram" {
+				cum := 0.0
+				for i, ub := range f.buckets {
+					cum += s.counts[i]
+					fmt.Fprintf(&b, "%s_bucket%s %s\n", f.name, labels(`le="`+fmtFloat(ub)+`"`), fmtFloat(cum))
+				}
+				fmt.Fprintf(&b, "%s_bucket%s %s\n", f.name, labels(`le="+Inf"`), fmtFloat(s.cnt))
+				fmt.Fprintf(&b, "%s_sum%s %s\n%s_count%s %s\n", f.name, labels(""), fmtFloat(s.sum), f.name, labels(""), fmtFloat(s.cnt))
+				continue
+			}
+			fmt.Fprintf(&b, "%s%s %s\n", f.name, labels(""), fmtFloat(s.v))
 		}
 		f.mu.Unlock()
 	}
