@@ -19,6 +19,10 @@ info:
     returns 409 `idempotency_in_progress`. Responses with status 5xx are not
     stored, so those requests can be retried.
 
+    **Rate limit.** 20 requests per second per API key (token bucket). Over the
+    limit the API answers 429 `rate_limited` with a `Retry-After` header in
+    seconds; the request is not processed.
+
     **Errors** share one shape: `{"error": {"type", "message", "request_id"}}`.
 servers:
   - url: "{baseUrl}"
@@ -563,8 +567,8 @@ components:
                 - currency_not_accepted
                 - idempotency_key_reuse
                 - idempotency_in_progress
+                - rate_limited
                 - amount_exceeds_mandate_limit
-                - no_route
                 - unsupported
                 - internal
             message: { type: string }

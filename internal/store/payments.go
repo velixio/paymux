@@ -147,3 +147,29 @@ func nonNilSlice(s []string) []string {
 	}
 	return s
 }
+
+// ListExpirablePayments returns up to limit payment ids that are created or
+// requires_action, past expires_at at now, and have no open attempt. An open
+// attempt is pending or authorized, or created with a provider reference,
+// and was created after openSince (unix ms): older ones are no longer polled.
+func ListExpirablePayments(ctx context.Context, q Queryer, now time.Time, openSince int64, limit int) ([]string, error) {
+	rows, err := q.QueryContext(ctx, `SELECT p.id FROM payments p
+		WHERE p.status IN ('created','requires_action') AND p.expires_at < ?
+		AND NOT EXISTS (SELECT 1 FROM payment_attempts a WHERE a.payment_id = p.id AND a.created_at > ?
+			AND (a.status IN ('pending','authorized')
+				OR (a.status = 'created' AND (a.provider_order_id IS NOT NULL OR a.provider_payment_id IS NOT NULL))))
+		ORDER BY p.expires_at, p.id LIMIT ?`, ms(now), openSince, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}

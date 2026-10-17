@@ -12,9 +12,15 @@ var (
 	ErrInvalidCredentials = errors.New("connector: invalid credentials")
 	ErrTemporary          = errors.New("connector: temporary failure")
 	ErrUnsupported        = errors.New("connector: unsupported")
-	// ErrUnsigned is returned by VerifyWebhook only, when the signature is
-	// missing, wrong or stale.
-	ErrUnsigned = errors.New("connector: webhook not signed or signature invalid")
+	// ErrInvalidSignature is returned by VerifyWebhook when the signature is
+	// missing, wrong or stale (timestamp outside the tolerance). The webhook is
+	// rejected with 401, stored as unverified and never causes a fetch.
+	ErrInvalidSignature = errors.New("connector: webhook signature missing, wrong or stale")
+	// ErrUnsigned is returned by VerifyWebhook only for event types the
+	// provider genuinely does not sign (today: PayU refund webhooks). Such an
+	// event is stored unverified and enqueues a fetch-only job: the fetched
+	// API result, not the webhook, is what may change state.
+	ErrUnsigned = errors.New("connector: webhook event type is not signed by the provider")
 	// ErrInvalidReturn is returned by HandleReturn when the return signature fails.
 	ErrInvalidReturn = errors.New("connector: return signature invalid")
 	ErrMandateLimit  = errors.New("connector: amount exceeds mandate limit")

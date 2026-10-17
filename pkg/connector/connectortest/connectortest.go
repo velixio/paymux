@@ -151,10 +151,10 @@ func Run(t *testing.T, factory connector.Factory, fx Fixtures) {
 		t.Run("tampered_body", func(t *testing.T) {
 			r := clone(w.Valid)
 			r.Body = append(r.Body, ' ')
-			wantUnsigned(t, c.VerifyWebhook(ctx, r))
+			wantInvalidSignature(t, c.VerifyWebhook(ctx, r))
 		})
 		t.Run("wrong_secret", func(t *testing.T) {
-			wantUnsigned(t, c.VerifyWebhook(ctx, clone(w.WrongSecret)))
+			wantInvalidSignature(t, c.VerifyWebhook(ctx, clone(w.WrongSecret)))
 		})
 		for _, h := range w.SignatureHeaders {
 			t.Run("missing_"+h, func(t *testing.T) {
@@ -164,12 +164,12 @@ func Run(t *testing.T, factory connector.Factory, fx Fixtures) {
 						delete(r.Headers, k)
 					}
 				}
-				wantUnsigned(t, c.VerifyWebhook(ctx, r))
+				wantInvalidSignature(t, c.VerifyWebhook(ctx, r))
 			})
 		}
 		if w.Stale != nil {
 			t.Run("stale_timestamp", func(t *testing.T) {
-				wantUnsigned(t, c.VerifyWebhook(ctx, clone(*w.Stale)))
+				wantInvalidSignature(t, c.VerifyWebhook(ctx, clone(*w.Stale)))
 			})
 		}
 	})
@@ -302,17 +302,22 @@ func Run(t *testing.T, factory connector.Factory, fx Fixtures) {
 
 func isA[T any](c connector.Connector) bool { _, ok := c.(T); return ok }
 
-func wantUnsigned(t *testing.T, err error) {
+// wantInvalidSignature requires ErrInvalidSignature, and not ErrUnsigned:
+// a present-but-wrong, missing or stale signature must be rejected with 401
+// and never reach a fetch, while ErrUnsigned is reserved for event types the
+// provider does not sign at all.
+func wantInvalidSignature(t *testing.T, err error) {
 	t.Helper()
 	if err == nil {
-		t.Fatal("webhook accepted, want ErrUnsigned")
+		t.Fatal("webhook accepted, want ErrInvalidSignature")
 	}
-	if !isUnsigned(err) {
-		t.Fatalf("err = %v, want ErrUnsigned", err)
+	if errors.Is(err, connector.ErrUnsigned) {
+		t.Fatalf("err = %v: a bad signature must not be reported as ErrUnsigned (that path triggers a fetch)", err)
+	}
+	if !errors.Is(err, connector.ErrInvalidSignature) {
+		t.Fatalf("err = %v, want ErrInvalidSignature", err)
 	}
 }
-
-func isUnsigned(err error) bool { return errors.Is(err, connector.ErrUnsigned) }
 
 func clone(w connector.WebhookRequest) connector.WebhookRequest {
 	out := w

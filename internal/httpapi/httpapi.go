@@ -9,9 +9,12 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/authz"
@@ -38,6 +41,12 @@ type Options struct {
 	// BaseURL is PAYMUX_BASE_URL, the origin of checkout_url.
 	BaseURL *url.URL
 	Log     *slog.Logger
+	// RatePerSecond is the request rate allowed per API key (default 20; a
+	// negative value disables the limit). RateBurst is the bucket size
+	// (default: the rate rounded up). Now is the clock (tests).
+	RatePerSecond float64
+	RateBurst     int
+	Now           func() time.Time
 }
 
 // Mux is the part of server.Server the API needs.
@@ -52,6 +61,7 @@ type API struct {
 	box     *secrets.Box
 	baseURL string
 	log     *slog.Logger
+	limit   *limiter // nil: unlimited
 
 	invoices *invoice.Service
 	subs     *subscriptions.Service
@@ -65,7 +75,11 @@ func New(o Options) (*API, error) {
 	if o.Log == nil {
 		o.Log = slog.Default()
 	}
-	return &API{core: o.Core, db: o.DB, box: o.Box, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log, invoices: o.Invoices, subs: o.Subscriptions}, nil
+	a := &API{core: o.Core, db: o.DB, box: o.Box, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log, invoices: o.Invoices, subs: o.Subscriptions}
+	if o.RatePerSecond >= 0 {
+		a.limit = newLimiter(o.RatePerSecond, o.RateBurst, o.Now)
+	}
+	return a, nil
 }
 
 // handler is an authenticated route handler. body is the already-read
@@ -103,6 +117,13 @@ func (a *API) wrap(h handler, idempotent bool) http.HandlerFunc {
 		pr, ok := a.authenticate(w, r)
 		if !ok {
 			return
+		}
+		if a.limit != nil {
+			if allowed, wait := a.limit.allow(pr.KeyID); !allowed {
+				w.Header().Set("Retry-After", strconv.Itoa(max(1, int(math.Ceil(wait.Seconds())))))
+				a.fail(w, r, http.StatusTooManyRequests, "rate_limited", "too many requests for this API key; retry after the Retry-After seconds")
+				return
+			}
 		}
 		var body []byte
 		if r.Method == http.MethodPost {

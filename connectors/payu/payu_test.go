@@ -234,6 +234,32 @@ func TestVerifyWebhookRefundIsUnsigned(t *testing.T) {
 	}
 }
 
+func TestVerifyWebhookBadHashIsInvalidSignatureNotUnsigned(t *testing.T) {
+	c := newConn(t, &fake{})
+	ctx := context.Background()
+	ok := successForm(testSalt, "")
+	if err := c.VerifyWebhook(ctx, webhook(ok)); err != nil {
+		t.Fatalf("valid payment webhook rejected: %v", err)
+	}
+	wrongHash := successForm(testSalt, "")
+	wrongHash.Set("hash", strings.Repeat("0", 128))
+	wrongSalt := successForm("other-salt", "")
+	noHash := successForm(testSalt, "")
+	noHash.Del("hash")
+	refundWithBadHash := url.Values{"mihpayid": {"1"}, "requestId": {"rq"}, "action": {"refund"}, "hash": {"abc"}}
+	for name, f := range map[string]url.Values{"wrong hash": wrongHash, "wrong salt": wrongSalt, "payment without hash": noHash, "refund with bad hash": refundWithBadHash} {
+		err := c.VerifyWebhook(ctx, webhook(f))
+		if !errors.Is(err, connector.ErrInvalidSignature) || errors.Is(err, connector.ErrUnsigned) {
+			t.Errorf("%s: err = %v, want ErrInvalidSignature", name, err)
+		}
+	}
+	// Only hash-less refund notices are genuinely unsigned.
+	refund := url.Values{"mihpayid": {"403993715521"}, "requestId": {"rq1"}, "status": {"success"}, "amount": {"100.00"}, "action": {"refund"}}
+	if err := c.VerifyWebhook(ctx, webhook(refund)); !errors.Is(err, connector.ErrUnsigned) || errors.Is(err, connector.ErrInvalidSignature) {
+		t.Errorf("refund webhook: err = %v, want ErrUnsigned", err)
+	}
+}
+
 func TestParseWebhook(t *testing.T) {
 	c := newConn(t, &fake{})
 	for raw, want := range map[string]connector.PaymentStatus{
