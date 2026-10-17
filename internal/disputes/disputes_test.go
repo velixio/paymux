@@ -810,3 +810,30 @@ func TestCreditNoteOnLossSetting(t *testing.T) {
 		}
 	})
 }
+
+// A dispute holds money back from the payment it names. What the provider says
+// about the amount is checked against what we received: more than that, or in
+// another currency, cannot be a dispute of this payment.
+func TestApplyRejectsADisputeThatCannotBeOfThisPayment(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		e.paid("pay_1")
+		over := e.snap("dsp_over", "pay_1", connector.DisputeNeedsResponse, time.Time{})
+		over.Amount = 50001
+		usd := e.snap("dsp_usd", "pay_1", connector.DisputeNeedsResponse, time.Time{})
+		usd.Currency = "USD"
+		for name, s := range map[string]connector.DisputeSnapshot{"more than received": over, "another currency": usd} {
+			if _, err := e.d.Apply(ctx, e.acct, s, "webhook"); !errors.Is(err, core.ErrInvalid) {
+				t.Errorf("%s: %v", name, err)
+			}
+		}
+		if e.count("SELECT COUNT(*) FROM disputes") != 0 {
+			t.Error("a dispute was recorded")
+		}
+		// A partial dispute is fine.
+		part := e.snap("dsp_part", "pay_1", connector.DisputeNeedsResponse, time.Time{})
+		part.Amount = 10000
+		if r := e.apply(part); r.Dispute.Amount != 10000 {
+			t.Errorf("partial: %+v", r.Dispute)
+		}
+	})
+}
