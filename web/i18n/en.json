@@ -2,6 +2,8 @@
   "billing.title": "Billing details",
   "billing.name": "Full name",
   "billing.email": "Email",
+  "billing.country": "Country (2-letter code, e.g. IN)",
+  "billing.err.country": "Please enter a 2-letter country code, for example IN.",
   "billing.state": "State",
   "billing.address": "Address",
   "billing.pin": "PIN code",

@@ -23,6 +23,7 @@ import (
 	"github.com/paymux/paymux/internal/invoice/render"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/notify"
+	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/tax"
@@ -50,8 +51,19 @@ type Enqueuer interface {
 	Enqueue(ctx context.Context, tx store.Tx, j jobs.Job) error
 }
 
+// Alerter raises ops alerts (*notify.Alerts).
+type Alerter interface {
+	Raise(ctx context.Context, al notify.Alert) error
+}
+
 // Options configures a Service.
 type Options struct {
+	// Box seals the digital signature certificate of a tax entity. Without
+	// it no certificate can be stored and documents are never signed.
+	Box *secrets.Box
+	// Alerter receives the alerts for tax exceptions (pos_defaulted,
+	// export_igst, fx_pending, credit_note_cutoff_passed). Nil raises none.
+	Alerter  Alerter
 	DB       *store.DB
 	Settings *settings.Service
 	Jobs     Enqueuer
@@ -76,6 +88,8 @@ type Service struct {
 	jobs     Enqueuer
 	emitter  events.Emitter
 	mailer   notify.Mailer
+	alerter  Alerter
+	box      *secrets.Box
 	baseURL  string
 	now      func() time.Time
 	isMoR    func(string) bool
@@ -85,6 +99,9 @@ type Service struct {
 	pagesErr  error
 	pagesOpt  *web.Renderer
 }
+
+// SetAlerter sets the ops alert sender when it is built after the service (call before serving).
+func (s *Service) SetAlerter(a Alerter) { s.alerter = a }
 
 // SetPages sets the HTML renderer of the hosted views (call before serving).
 func (s *Service) SetPages(r *web.Renderer) { s.pagesOpt = r }
@@ -115,7 +132,7 @@ func New(o Options) *Service {
 			return ok && info.MerchantOfRecord
 		}
 	}
-	return &Service{db: o.DB, settings: o.Settings, jobs: o.Jobs, emitter: o.Emitter, mailer: o.Mailer,
+	return &Service{db: o.DB, settings: o.Settings, jobs: o.Jobs, emitter: o.Emitter, mailer: o.Mailer, alerter: o.Alerter, box: o.Box,
 		baseURL: strings.TrimRight(o.BaseURL, "/"), now: o.Now, isMoR: o.IsMerchantOfRecord, pagesOpt: o.Pages}
 }
 
@@ -230,7 +247,7 @@ func (s *Service) IssueForPayment(ctx context.Context, tx store.Tx, p store.Paym
 	if err != nil {
 		return nil, fmt.Errorf("invoice: provider account of attempt %s: %w", a.ID, err)
 	}
-	if s.isMoR(pa.Connector) {
+	if pa.MerchantOfRecord || s.isMoR(pa.Connector) {
 		return nil, nil
 	}
 	if existing, err := store.InvoicesForPayment(ctx, tx, p.ID); err != nil {
@@ -345,14 +362,11 @@ func (s *Service) issue(ctx context.Context, tx store.Tx, p store.Payment, a sto
 	}
 	flags = append(flags, cls.Flags...)
 
-	var amts tax.Amounts
-	if prof.PricesIncludeTax {
-		amts, err = tax.FromTotal(received, prof.GSTRateBP, cls.InterState, cls.ZeroRated())
-	} else {
-		// TODO(spec): with tax-exclusive pricing the core must charge
-		// taxable+tax; until it does the invoice total can exceed what was received.
-		amts, err = tax.FromTaxable(received, prof.GSTRateBP, cls.InterState, cls.ZeroRated())
-	}
+	// What was received always includes the tax: with tax-inclusive prices the
+	// price carried it, and with tax-exclusive prices the core charged
+	// taxable + GST (core.chargeAmount). Either way the invoice total is the
+	// amount received and the heads are derived from it.
+	amts, err := tax.FromTotal(received, prof.GSTRateBP, cls.InterState, cls.ZeroRated())
 	if err != nil {
 		return nil, fmt.Errorf("invoice: amounts for payment %s: %w", p.ID, err)
 	}
@@ -364,12 +378,11 @@ func (s *Service) issue(ctx context.Context, tx store.Tx, p store.Payment, a sto
 		case err == nil:
 			fx, fxSource = r.Rate, r.Source
 		case errors.Is(err, store.ErrNotFound):
-			flags = append(flags, FlagFXPending) // TODO(spec): ops alert (alerts for tax exceptions are not wired)
+			flags = append(flags, FlagFXPending) // alerted after the invoice is stored (alertInvoiceFlags)
 		default:
 			return nil, err
 		}
 	}
-	// TODO(spec): raise an ops alert for pos_defaulted and export_igst.
 
 	fy := tax.FiscalYear(issued)
 	prefix := firstNonEmpty(prof.InvoicePrefix, ent.InvoicePrefix, "INV")
@@ -404,7 +417,13 @@ func (s *Service) issue(ctx context.Context, tx store.Tx, p store.Payment, a sto
 	line := Line{Description: firstNonEmpty(p.Description, "Payment "+firstNonEmpty(p.OrderRef, p.ID)), SAC: prof.SACCode, Qty: 1,
 		Unit: "service", UnitAmount: amts.Taxable, Taxable: amts.Taxable, CGSTRateBP: cgstBP, SGSTRateBP: sgstBP,
 		IGSTRateBP: igstBP, CGST: amts.CGST, SGST: amts.SGST, IGST: amts.IGST}
-	lines, err := s.prorationLines(ctx, tx, p, line, received, amts, prof.PricesIncludeTax, prof.GSTRateBP, cls.InterState, cls.ZeroRated())
+	// Proration adjustments are in the price's own terms: tax-inclusive, or the
+	// taxable value when prices exclude tax.
+	lineBase := received
+	if !prof.PricesIncludeTax {
+		lineBase = amts.Taxable
+	}
+	lines, err := s.prorationLines(ctx, tx, p, line, lineBase, amts, prof.PricesIncludeTax, prof.GSTRateBP, cls.InterState, cls.ZeroRated())
 	if err != nil {
 		return nil, err
 	}
@@ -427,6 +446,9 @@ func (s *Service) issue(ctx context.Context, tx store.Tx, p store.Payment, a sto
 		return nil, err
 	}
 	if err := s.enqueueRender(ctx, tx, kindInvoice, inv.ID); err != nil {
+		return nil, err
+	}
+	if err := s.alertInvoiceFlags(ctx, tx, inv); err != nil {
 		return nil, err
 	}
 	hosted, pdf := s.invoiceURLs(inv.ID, token)
@@ -544,13 +566,18 @@ func (s *Service) issueCredit(ctx context.Context, tx store.Tx, src creditSource
 		}
 	}
 	now := s.now().UTC()
-	if now.After(tax.CreditNoteDeadline(inv.IssuedAt)) {
-		// TODO(spec): the cutoff is meant to be an org setting; the statutory
-		// default is hard-wired until that setting exists.
+	deadline, hasCutoff, err := s.creditNoteDeadline(ctx, tx, inv.OrgID, inv.IssuedAt)
+	if err != nil {
+		return nil, err
+	}
+	if hasCutoff && now.After(deadline) {
 		if src.refund == nil {
 			return nil, ErrCreditNoteCutoff
 		}
-		return nil, store.AddRefundFlag(ctx, tx, src.refund.ID, FlagCutoffPassed, now)
+		if err := store.AddRefundFlag(ctx, tx, src.refund.ID, FlagCutoffPassed, now); err != nil {
+			return nil, err
+		}
+		return nil, s.alertCutoffPassed(ctx, tx, inv, src.refund.ID)
 	}
 	if src.currency != inv.Currency {
 		return nil, fmt.Errorf("invoice: %s is in %s but invoice %s in %s", src.id(), src.currency, inv.Number, inv.Currency)

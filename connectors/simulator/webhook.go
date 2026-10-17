@@ -34,6 +34,7 @@ type event struct {
 	Dispute      *connector.DisputeSnapshot      `json:"dispute,omitempty"`
 	Mandate      *connector.MandateSnapshot      `json:"mandate,omitempty"`
 	Subscription *connector.SubscriptionSnapshot `json:"subscription,omitempty"`
+	Payout       *connector.PayoutSnapshot       `json:"payout,omitempty"`
 }
 
 // wireBody is the JSON body of a webhook.
@@ -132,8 +133,10 @@ func (c *conn) ParseWebhook(_ context.Context, req connector.WebhookRequest) ([]
 		return nil, fmt.Errorf("simulator: webhook body: %w", err)
 	}
 	n := connector.Notification{EventID: w.ID, EventType: w.Type, OccurredAt: w.CreatedAt,
-		Payment: w.Payment, Refund: w.Refund, Dispute: w.Dispute, Mandate: w.Mandate, Subscription: w.Subscription}
+		Payment: w.Payment, Refund: w.Refund, Dispute: w.Dispute, Mandate: w.Mandate, Subscription: w.Subscription, Payout: w.Payout}
 	switch {
+	case w.Payout != nil:
+		n.Kind = connector.NotifyPayout
 	case w.Subscription != nil:
 		n.Kind = connector.NotifySubscription
 	case w.Mandate != nil:

@@ -65,8 +65,14 @@ func seedSim(t *testing.T, url, dataDir, endpointURL string) flowSeed {
 	}
 	base, _ := neturl.Parse("http://localhost:8080")
 	conns := connectors.New(connectors.Options{DB: db, Box: box, BaseURL: base})
+	payKey, _, err := svc.CreateAPIKeyWith(ctx, audit.System, sc, app.ID, "test", core.KeyOptions{Scopes: []string{"payouts:write"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// payout_delay_seconds 1: a payout stays processing for a second, so that only
+	// the simulator's signed payout.processed webhook can finish it in a test.
 	pa, err := conns.CreateAccount(ctx, audit.System, sc, connectors.CreateAccountInput{Connector: simulator.Name, Name: "simulator", Mode: "test",
-		Config: json.RawMessage(`{}`), AppID: app.ID})
+		Config: json.RawMessage(`{"payout_delay_seconds":1}`), AppID: app.ID, Purposes: []string{"one_time", "payout"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +95,7 @@ func seedSim(t *testing.T, url, dataDir, endpointURL string) flowSeed {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return flowSeed{apiKey: key, endpointSecret: secret, accountID: pa.ID, appID: app.ID}
+	return flowSeed{apiKey: key, endpointSecret: secret, accountID: pa.ID, appID: app.ID, payoutKey: payKey}
 }
 
 var simPageRE = regexp.MustCompile(`^http://[^/]+(/sim/[0-9A-Za-z]+\?pa=pa_[0-9a-z]+)$`)
@@ -284,6 +290,35 @@ func TestSimulatorEndToEnd(t *testing.T) {
 		})
 		if getPayment(id3)["status"] == "succeeded" {
 			t.Error("a failed attempt succeeded the payment")
+		}
+
+		// 7. A payout: the simulator keeps it processing for a second and then
+		//    tells Paymux by a signed payout.processed webhook, which the normal
+		//    inbound pipeline turns into a fetch of the payout and its success.
+		payoutAPI := func(method, path string, body any) (int, map[string]any) {
+			t.Helper()
+			var rd io.Reader
+			if body != nil {
+				b, _ := json.Marshal(body)
+				rd = bytes.NewReader(b)
+			}
+			code, _, out := do(method, path, rd, map[string]string{"Authorization": "Bearer " + seed.payoutKey, "Content-Type": "application/json"})
+			var m map[string]any
+			_ = json.Unmarshal([]byte(out), &m)
+			return code, m
+		}
+		code, po := payoutAPI("POST", "/v1/payouts", map[string]any{"amount": 125000, "currency": "INR", "narration": "October",
+			"beneficiary": map[string]any{"name": "Asha Rao", "account_number": "123456789012", "ifsc": "HDFC0001234"}})
+		if code != 201 {
+			t.Fatalf("payout: %d %v", code, po)
+		}
+		payoutID := po["id"].(string)
+		waitFor(t, "the payout to be paid", func() bool { _, g := payoutAPI("GET", "/v1/payouts/"+payoutID, nil); return g["status"] == "succeeded" })
+		if _, g := payoutAPI("GET", "/v1/payouts/"+payoutID, nil); g["amount"] != float64(125000) {
+			t.Errorf("payout %v", g)
+		}
+		if strings.Contains(logs.String(), "payout") && strings.Contains(logs.String(), "not of this") {
+			t.Errorf("the payout was refused as not ours:\n%s", logs.String())
 		}
 		shutdown(t, r)
 	}

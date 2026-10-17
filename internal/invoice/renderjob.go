@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/paymux/paymux/internal/audit"
@@ -22,8 +23,11 @@ import (
 // (spec section 10). It belongs to template version v1.
 const exportEndorsement = "SUPPLY MEANT FOR EXPORT/SUPPLY TO SEZ UNIT OR SEZ DEVELOPER FOR AUTHORISED OPERATIONS UNDER BOND OR LETTER OF UNDERTAKING WITHOUT PAYMENT OF INTEGRATED TAX"
 
-// RegisterJobs registers the invoice.render handler on q.
-func (s *Service) RegisterJobs(q *jobs.Queue) { q.Register(JobRender, s.handleRender) }
+// RegisterJobs registers the invoice.render and invoice.alert handlers on q.
+func (s *Service) RegisterJobs(q *jobs.Queue) {
+	q.Register(JobRender, s.handleRender)
+	q.Register(JobAlert, s.handleAlert)
+}
 
 type renderPayload struct {
 	Kind string `json:"kind"`
@@ -36,6 +40,7 @@ type docParts struct {
 	number    string
 	pdfBlobID string
 	paymentID string
+	entityID  string // the tax entity, whose certificate signs the PDF
 	appID     string
 	pending   bool // INR value not yet known (fx_pending)
 }
@@ -90,13 +95,7 @@ func (s *Service) pdfFor(ctx context.Context, kind, id string, parts *docParts) 
 		}
 		return b.Data, nil
 	}
-	pdf, err := render.Render(parts.doc, render.Options{})
-	if err != nil && len(parts.doc.Supplier.Logo) > 0 {
-		// A broken logo must not stop the invoice: render without it.
-		d := parts.doc
-		d.Supplier.Logo = nil
-		pdf, err = render.Render(d, render.Options{})
-	}
+	pdf, err := s.renderPDF(ctx, parts)
 	if err != nil {
 		return nil, jobs.Permanent(err)
 	}
@@ -121,6 +120,58 @@ func (s *Service) pdfFor(ctx context.Context, kind, id string, parts *docParts) 
 		return store.SetCreditNotePDF(ctx, tx, id, blob.ID)
 	})
 	return pdf, err
+}
+
+// renderPDF renders the document, signed with the tax entity's certificate when
+// it has one. A certificate that cannot sign (expired, unreadable) or a PDF that
+// cannot take the signature never stops a document: it is rendered with the
+// signatory note instead, and an operator is alerted.
+func (s *Service) renderPDF(ctx context.Context, parts *docParts) ([]byte, error) {
+	render1 := func(d render.Document, o render.Options) ([]byte, error) {
+		pdf, err := render.Render(d, o)
+		if err != nil && len(d.Supplier.Logo) > 0 {
+			// A broken logo must not stop the invoice: render without it.
+			d.Supplier.Logo = nil
+			pdf, err = render.Render(d, o)
+		}
+		return pdf, err
+	}
+	signer, err := s.signerFor(ctx, parts.entityID)
+	if err != nil {
+		s.dscUnusable(ctx, parts, err)
+		signer = nil
+	}
+	if signer != nil {
+		d := parts.doc
+		d.SignedBy = commonName(signer.Info().Subject)
+		pdf, err := render1(d, render.Options{Signer: signer})
+		if err == nil {
+			return pdf, nil
+		}
+		s.dscUnusable(ctx, parts, err)
+	}
+	return render1(parts.doc, render.Options{})
+}
+
+// commonName extracts the CN of a subject string such as "CN=Asha,O=Acme,C=IN".
+func commonName(subject string) string {
+	for _, part := range strings.Split(subject, ",") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(part), "CN="); ok {
+			return v
+		}
+	}
+	return subject
+}
+
+func (s *Service) dscUnusable(ctx context.Context, parts *docParts, cause error) {
+	slog.Default().Warn("invoice: the digital signature certificate could not sign; the document goes out with the signatory note",
+		"tax_entity", parts.entityID, "document", parts.number, "err", cause)
+	if s.alerter == nil {
+		return
+	}
+	_ = s.alerter.Raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: AlertDSCUnusable,
+		Message: fmt.Sprintf("the digital signature certificate of tax entity %s could not sign document %s (%v): documents go out unsigned, with the signatory note, until it is replaced.", parts.entityID, parts.number, cause),
+		Refs:    map[string]string{"tax_entity": parts.entityID}})
 }
 
 func (s *Service) currentBlobID(ctx context.Context, q store.Queryer, kind, id string) (string, error) {
@@ -275,7 +326,7 @@ func (s *Service) loadParts(ctx context.Context, q store.Queryer, kind, id strin
 	}
 	d.Lines, d.Totals = lines, totals
 	d.ForeignAmount = cn.Total
-	return docParts{doc: d, number: cn.Number, pdfBlobID: cn.PDFBlobID, paymentID: cn.PaymentID, appID: cn.AppID, pending: base.pending}, nil
+	return docParts{doc: d, number: cn.Number, pdfBlobID: cn.PDFBlobID, paymentID: cn.PaymentID, entityID: cn.TaxEntityID, appID: cn.AppID, pending: base.pending}, nil
 }
 
 func (s *Service) invoiceParts(ctx context.Context, q store.Queryer, inv store.Invoice) (docParts, error) {
@@ -323,7 +374,7 @@ func (s *Service) invoiceParts(ctx context.Context, q store.Queryer, inv store.I
 	if inv.IRN != "" {
 		d.EInvoice = &render.EInvoiceInfo{IRN: inv.IRN, AckNo: inv.AckNo, AckDate: inv.AckDate, QR: inv.SignedQR}
 	}
-	return docParts{doc: d, number: inv.Number, pdfBlobID: inv.PDFBlobID, paymentID: inv.PaymentID, appID: inv.AppID,
+	return docParts{doc: d, number: inv.Number, pdfBlobID: inv.PDFBlobID, paymentID: inv.PaymentID, entityID: inv.TaxEntityID, appID: inv.AppID,
 		pending: inv.Currency != "INR" && inv.FXRate == ""}, nil
 }
 

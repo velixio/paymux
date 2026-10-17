@@ -178,7 +178,7 @@ func (a *App) Start(ctx context.Context) error {
 	// GST invoicing: documents are issued by hooks inside the transaction in
 	// which a payment or refund succeeds.
 	mailer := notify.New(a.cfg)
-	inv := invoice.New(invoice.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter, Mailer: mailer,
+	inv := invoice.New(invoice.Options{DB: db, Box: box, Settings: set, Jobs: q, Emitter: emitter, Mailer: mailer,
 		BaseURL: a.cfg.BaseURL.String()})
 	inv.RegisterJobs(q)
 	// Ops alerts (PAYMUX_OPS_EMAILS and PAYMUX_OPS_WEBHOOK_URL) go through one
@@ -188,6 +188,7 @@ func (a *App) Start(ctx context.Context) error {
 	alerts := notify.NewAlerts(notify.AlertsOptions{Mailer: mailer, Emails: a.cfg.OpsEmails, WebhookURL: a.cfg.OpsWebhookURL,
 		Recorder: alertCenter, Logger: a.log})
 	a.registerHookJob(q, alerts)
+	inv.SetAlerter(alerts) // tax exceptions (pos_defaulted, export_igst, fx_pending, credit-note cutoff)
 	// A payment that succeeds issues its invoice and spends the single-use
 	// payment link it came from, in the same transaction.
 	var links *paylinks.Service
@@ -217,7 +218,7 @@ func (a *App) Start(ctx context.Context) error {
 			return live.Connector, err
 		})})
 	payoutSvc.RegisterJobs(q)
-	flow := checkout.New(checkout.Options{DB: db, Core: svc, Conns: conns, Routing: rt, Breaker: breaker, Logger: a.log, Disputes: disp, Subs: subs})
+	flow := checkout.New(checkout.Options{DB: db, Core: svc, Conns: conns, Routing: rt, Breaker: breaker, Logger: a.log, Disputes: disp, Subs: subs, Payouts: payoutSvc})
 	if err := flow.Register(q); err != nil {
 		return err
 	}

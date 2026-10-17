@@ -41,6 +41,8 @@ const configSchema = `{
   "properties": {
     "refund_delay_seconds": {"type": "integer", "title": "Refund delay (seconds)", "minimum": 0, "maximum": 3600, "default": 0,
       "description": "0 makes refunds succeed at once; more makes them pending and then succeeded after this long."},
+    "payout_delay_seconds": {"type": "integer", "title": "Payout delay (seconds)", "minimum": 0, "maximum": 3600, "default": 0,
+      "description": "0 pays payouts at once; more keeps them processing for this long (or until you end them from the dashboard)."},
     "webhook_secret": {"type": "string", "title": "Webhook secret", "x-secret": true,
       "description": "Optional. By default the simulator makes up a secret and keeps it; set one only to make webhooks reproducible."}
   }
@@ -51,7 +53,7 @@ var info = connector.Info{
 	DisplayName:  "Simulator (test mode only)",
 	ConfigSchema: json.RawMessage(configSchema),
 	Capabilities: []connector.Capability{connector.CapRefund, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapList,
-		connector.CapSettle, connector.CapCancel, connector.CapSubscriptionManager, connector.CapMandateManager},
+		connector.CapSettle, connector.CapCancel, connector.CapSubscriptionManager, connector.CapMandateManager, connector.CapPayout},
 	Currencies:         []string{"INR", "USD", "BDT"},
 	Methods:            []string{"simulated", "upi", "card"},
 	MerchantOfRecord:   false,
@@ -69,6 +71,7 @@ func init() { connector.Register(Name, New, info) }
 
 type config struct {
 	RefundDelaySeconds int    `json:"refund_delay_seconds"`
+	PayoutDelaySeconds int    `json:"payout_delay_seconds"`
 	WebhookSecret      string `json:"webhook_secret"`
 }
 
@@ -93,6 +96,9 @@ func New(raw json.RawMessage, deps connector.Deps) (connector.Connector, error) 
 	}
 	if cfg.RefundDelaySeconds < 0 || cfg.RefundDelaySeconds > 3600 {
 		return nil, errors.New("simulator: refund_delay_seconds must be 0 to 3600")
+	}
+	if cfg.PayoutDelaySeconds < 0 || cfg.PayoutDelaySeconds > 3600 {
+		return nil, errors.New("simulator: payout_delay_seconds must be 0 to 3600")
 	}
 	if deps.KV == nil {
 		return nil, errors.New("simulator: needs the connector key/value store")

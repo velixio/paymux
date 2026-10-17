@@ -99,6 +99,20 @@ func TestCreditNoteDeadline(t *testing.T) {
 	}
 }
 
+func TestCreditNoteDeadlineOn(t *testing.T) {
+	supply := ist(2026, 10, 17, 12, 0)
+	if got, want := CreditNoteDeadlineOn(supply, time.November, 30), CreditNoteDeadline(supply); !got.Equal(want) {
+		t.Errorf("30 Nov differs from the statutory day: %v vs %v", got, want)
+	}
+	got := CreditNoteDeadlineOn(supply, time.December, 31)
+	if y, m, d := got.In(IST).Date(); y != 2027 || m != time.December || d != 31 {
+		t.Errorf("31 Dec: %v", got)
+	}
+	if got := CreditNoteDeadlineOn(ist(2027, 2, 1, 12, 0), time.December, 31); got.In(IST).Year() != 2027 {
+		t.Errorf("a supply in Jan-Mar belongs to the FY that ends the same year: %v", got)
+	}
+}
+
 func TestDocumentNumber(t *testing.T) {
 	n, err := DocumentNumber("INV", "2627", 123)
 	if err != nil || n != "INV/2627/000123" {

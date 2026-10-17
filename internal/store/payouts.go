@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -65,6 +66,24 @@ func InsertPayout(ctx context.Context, tx Tx, p Payout) error {
 // GetPayout loads a payout by id.
 func GetPayout(ctx context.Context, q Queryer, id string) (Payout, error) {
 	return scanPayout(q.QueryRowContext(ctx, "SELECT "+payoutCols+" FROM payouts WHERE id = ?", id))
+}
+
+// FindPayout finds the payout of a provider account by our reference or by the
+// provider's own payout id (whichever is given); ErrNotFound if neither
+// matches. It never matches across accounts.
+func FindPayout(ctx context.Context, q Queryer, providerAccountID, providerRef, providerPayoutID string) (Payout, error) {
+	if providerRef != "" {
+		p, err := scanPayout(q.QueryRowContext(ctx, "SELECT "+payoutCols+" FROM payouts WHERE provider_account_id = ? AND provider_ref = ?",
+			providerAccountID, providerRef))
+		if err == nil || !errors.Is(err, ErrNotFound) || providerPayoutID == "" {
+			return p, err
+		}
+	}
+	if providerPayoutID == "" {
+		return Payout{}, ErrNotFound
+	}
+	return scanPayout(q.QueryRowContext(ctx, "SELECT "+payoutCols+" FROM payouts WHERE provider_account_id = ? AND provider_payout_id = ?",
+		providerAccountID, providerPayoutID))
 }
 
 // GetPayoutForUpdate loads a payout and locks it on Postgres.

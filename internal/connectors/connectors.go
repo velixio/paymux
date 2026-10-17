@@ -145,7 +145,8 @@ func (s *Service) CreateAccount(ctx context.Context, actor audit.Actor, sc core.
 		}
 	}
 	id := ids.New("pa")
-	if _, err := factory(in.Config, s.deps(store.ProviderAccount{ID: id}, info, in.Config)); err != nil {
+	live, err := factory(in.Config, s.deps(store.ProviderAccount{ID: id}, info, in.Config))
+	if err != nil {
 		return store.ProviderAccount{}, invalid("config: %v", err)
 	}
 	sealed, err := s.o.Box.Seal(in.Config, configAAD(id))
@@ -154,7 +155,9 @@ func (s *Service) CreateAccount(ctx context.Context, actor audit.Actor, sc core.
 	}
 	pa := store.ProviderAccount{ID: id, OrgID: sc.OrgID, Mode: in.Mode, Connector: in.Connector, Name: in.Name, Status: "active",
 		ConfigEnc: sealed, StatementDescriptor: in.StatementDescriptor, ProviderGSTIN: in.ProviderGSTIN,
-		AcceptedCurrencies: in.Currencies, EnabledPurposes: in.Purposes, CreatedAt: s.o.Now().UTC()}
+		AcceptedCurrencies: in.Currencies, EnabledPurposes: in.Purposes, CreatedAt: s.o.Now().UTC(),
+		// A remote connector learns this by discovery, which the registry entry cannot say.
+		MerchantOfRecord: info.MerchantOfRecord || (live != nil && live.Info().MerchantOfRecord)}
 	err = s.o.DB.Write(ctx, func(tx store.Tx) error {
 		if in.AppID != "" {
 			if _, err := store.GetAppInOrg(ctx, tx, sc.OrgID, in.AppID); err != nil {

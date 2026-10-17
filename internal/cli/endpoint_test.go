@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/paymux/paymux/internal/config"
 	"github.com/paymux/paymux/internal/outbound/stdwebhooks"
@@ -29,8 +30,10 @@ func TestEndpointAddPrintsSecretOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = db.Write(ctx, func(tx store.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO orgs (id, name, created_at) VALUES ('org_1', 'Acme', 1)`)
-		return err
+		if _, err := tx.ExecContext(ctx, `INSERT INTO orgs (id, name, created_at) VALUES ('org_1', 'Acme', 1)`); err != nil {
+			return err
+		}
+		return store.InsertApp(ctx, tx, store.App{ID: "app_1", OrgID: "org_1", Name: "A", Slug: "a", CreatedAt: time.Now()})
 	})
 	db.Close()
 	if err != nil {

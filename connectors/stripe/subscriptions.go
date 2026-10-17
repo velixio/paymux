@@ -28,9 +28,15 @@ type subscriptionWire struct {
 	CancelAtPeriodEnd  bool              `json:"cancel_at_period_end"`
 	Items              struct {
 		Data []struct {
+			ID    string `json:"id"`
 			Price struct {
 				UnitAmount int64  `json:"unit_amount"`
 				Currency   string `json:"currency"`
+				Product    string `json:"product"`
+				Recurring  struct {
+					Interval      string `json:"interval"`
+					IntervalCount int    `json:"interval_count"`
+				} `json:"recurring"`
 			} `json:"price"`
 		} `json:"data"`
 	} `json:"items"`
@@ -167,14 +173,50 @@ func (s *stripe) CancelSubscription(ctx context.Context, ref connector.Subscript
 	return s.api.do(ctx, "DELETE", path, nil, nil, nil, "")
 }
 
-// UpdateSubscriptionAmount is not supported: the inline price belongs to the
-// subscription item, and replacing it mid-cycle needs a proration decision
-// Paymux makes itself (it refuses proration for provider-managed billing).
+// UpdateSubscriptionAmount gives the subscription a new price from its next
+// invoice: the item's inline price is replaced by a new one (same product,
+// currency and interval, the new amount) with proration_behavior=none, because
+// Paymux decides itself whether and how to prorate. The request is idempotent
+// per subscription and amount.
 //
-// TODO(spec): implement as a new inline price on the subscription item with
-// proration_behavior=none when plan changes are needed on Stripe.
-func (s *stripe) UpdateSubscriptionAmount(context.Context, connector.SubscriptionRef, int64) error {
-	return connector.ErrUnsupported
+// TODO(spec): the price_data-on-an-existing-item update is from Stripe's
+// documentation, not yet run against the live API (see docs/provider-verification.md).
+func (s *stripe) UpdateSubscriptionAmount(ctx context.Context, ref connector.SubscriptionRef, amount int64) error {
+	if !strings.HasPrefix(ref.ProviderSubscriptionID, "sub_") {
+		return connector.ErrNotFound // nothing was bought yet
+	}
+	if amount <= 0 {
+		return errors.New("stripe: amount must be positive")
+	}
+	path := "/v1/subscriptions/" + url.PathEscape(ref.ProviderSubscriptionID)
+	var w subscriptionWire
+	if err := s.api.do(ctx, "GET", path, nil, nil, &w, ""); err != nil {
+		return err
+	}
+	if len(w.Items.Data) != 1 {
+		return fmt.Errorf("stripe: subscription %s has %d items; Paymux subscriptions have exactly one", ref.ProviderSubscriptionID, len(w.Items.Data))
+	}
+	item := w.Items.Data[0]
+	if item.ID == "" || item.Price.Product == "" || item.Price.Currency == "" || item.Price.Recurring.Interval == "" {
+		return fmt.Errorf("stripe: subscription %s has an item without a product, currency or interval", ref.ProviderSubscriptionID)
+	}
+	minor, err := toStripe(amount, item.Price.Currency)
+	if err != nil {
+		return err
+	}
+	count := item.Price.Recurring.IntervalCount
+	if count < 1 {
+		count = 1
+	}
+	f := url.Values{}
+	f.Set("items[0][id]", item.ID)
+	f.Set("items[0][price_data][currency]", strings.ToLower(item.Price.Currency))
+	f.Set("items[0][price_data][product]", item.Price.Product)
+	f.Set("items[0][price_data][unit_amount]", fmt.Sprint(minor))
+	f.Set("items[0][price_data][recurring][interval]", item.Price.Recurring.Interval)
+	f.Set("items[0][price_data][recurring][interval_count]", fmt.Sprint(count))
+	f.Set("proration_behavior", "none")
+	return s.api.do(ctx, "POST", path, nil, f, nil, fmt.Sprintf("subamount:%s:%d", ref.ProviderSubscriptionID, amount))
 }
 
 var _ connector.SubscriptionManager = (*stripe)(nil)

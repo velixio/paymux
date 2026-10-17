@@ -70,8 +70,17 @@ type Line struct {
 	CGST, SGST, IGST                   int64
 }
 
-// Source is everything Build needs.
+// CreditRef says that a Source is a credit note, and which invoice it answers.
+type CreditRef struct {
+	InvoiceNumber string
+	InvoiceDate   time.Time
+}
+
+// Source is everything Build needs. With Credit set it describes a credit
+// note: Number and IssuedAt are the credit note's, the lines its own (positive)
+// amounts, and the portal document is a CRN referring to the invoice.
 type Source struct {
+	Credit     *CreditRef
 	Number     string
 	IssuedAt   time.Time
 	SupplyType string // B2B, ExportLUT or ExportIGST
@@ -96,6 +105,18 @@ type Invoice struct {
 	ItemList   []Item     `json:"ItemList"`
 	ValDtls    ValDtls    `json:"ValDtls"`
 	ExpDtls    *ExpDtls   `json:"ExpDtls,omitempty"`
+	RefDtls    *RefDtls   `json:"RefDtls,omitempty"`
+}
+
+// RefDtls are the references of a credit note to the documents it answers.
+type RefDtls struct {
+	PrecDocDtls []PrecDoc `json:"PrecDocDtls"`
+}
+
+// PrecDoc is the preceding document: the invoice a credit note is against.
+type PrecDoc struct {
+	InvNo string `json:"InvNo"`
+	InvDt string `json:"InvDt"`
 }
 
 // TranDtls are the transaction details.
@@ -250,7 +271,17 @@ func Build(src Source) (*Invoice, error) {
 		bad("document number %q cannot be used on an e-invoice: it must be at most 16 characters of A-Z, 0-9, '/' and '-' and not start with 0 (shorten the invoice prefix of the tax entity)", src.Number)
 	}
 	if src.IssuedAt.IsZero() {
-		bad("the invoice has no issue date")
+		bad("the document has no issue date")
+	}
+	if c := src.Credit; c != nil {
+		if !numberRE.MatchString(c.InvoiceNumber) {
+			bad("the invoice number %q the credit note answers is not a valid document number", c.InvoiceNumber)
+		}
+		if c.InvoiceDate.IsZero() {
+			bad("the credit note does not say when the invoice it answers was issued")
+		} else if !src.IssuedAt.IsZero() && istDay(src.IssuedAt).Before(istDay(c.InvoiceDate)) {
+			bad("the credit note is dated before the invoice it answers")
+		}
 	}
 
 	// Seller.
@@ -367,6 +398,10 @@ func Build(src Source) (*Invoice, error) {
 		DocDtls:    DocDtls{Typ: "INV", No: src.Number, Dt: src.IssuedAt.In(tax.IST).Format("02/01/2006")},
 		SellerDtls: seller, BuyerDtls: buyer, ItemList: items,
 		ValDtls: ValDtls{AssVal: paise(assVal), CgstVal: paise(cgst), SgstVal: paise(sgst), IgstVal: paise(igst), TotInvVal: paise(total)}}
+	if c := src.Credit; c != nil {
+		doc.DocDtls.Typ = "CRN"
+		doc.RefDtls = &RefDtls{PrecDocDtls: []PrecDoc{{InvNo: c.InvoiceNumber, InvDt: c.InvoiceDate.In(tax.IST).Format("02/01/2006")}}}
+	}
 	if export {
 		fc, err := money.FormatDecimal(src.ForeignTotal, src.Currency)
 		if err != nil {
@@ -382,6 +417,11 @@ func Build(src Source) (*Invoice, error) {
 		doc.ExpDtls = &ExpDtls{RefClm: "N", ForCur: src.Currency, CntCode: strings.ToUpper(strings.TrimSpace(b.Country))}
 	}
 	return doc, nil
+}
+
+func istDay(t time.Time) time.Time {
+	y, m, d := t.In(tax.IST).Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, tax.IST)
 }
 
 func unitPrice(taxable, qty int64) json.Number {

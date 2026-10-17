@@ -14,6 +14,7 @@ import (
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/inbound"
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/payouts"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector"
 )
@@ -152,6 +153,18 @@ func (s *Service) handleNotification(ctx context.Context, ev store.ProviderEvent
 		_, err := s.o.Disputes.SyncNotification(ctx, account, n)
 		if errors.Is(err, disputes.ErrUnknownPayment) || errors.Is(err, disputes.ErrNoReader) || errors.Is(err, connector.ErrNotFound) {
 			return s.recordUnknown(ctx, ev, "dispute", n.Dispute.ProviderDisputeID, n)
+		}
+		return err
+	case n.Kind == connector.NotifyPayout && n.Payout != nil:
+		id := firstNonEmpty(n.Payout.ProviderRef, n.Payout.ProviderPayoutID)
+		if s.o.Payouts == nil {
+			return s.recordUnknown(ctx, ev, "payout", id, n)
+		}
+		// The payouts service finds the payout among this account's, fetches
+		// it from the provider and applies that, not the notification.
+		err := s.o.Payouts.SyncNotification(ctx, account, n)
+		if errors.Is(err, payouts.ErrUnknownPayout) {
+			return s.recordUnknown(ctx, ev, "payout", id, n)
 		}
 		return err
 	}

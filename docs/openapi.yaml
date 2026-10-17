@@ -883,14 +883,23 @@ components:
             city: { type: string }
             state_code: { type: string }
             postal_code: { type: string }
-            country: { type: string }
+            country: { type: string, description: "ISO 3166 alpha-2 country of the buyer. Anything other than IN makes the sale an export for GST (IGST, or zero-rated under a valid LUT when paid in a foreign currency). Empty means India." }
           additionalProperties: false
       additionalProperties: false
     CreatePaymentRequest:
       type: object
       required: [amount, currency]
       properties:
-        amount: { type: integer, minimum: 1, description: Minor units. }
+        amount:
+          type: integer
+          minimum: 1
+          description: |
+            Minor units. Normally this is exactly what the customer pays. When the app issues
+            invoices and its tax profile has `prices_include_tax=false`, `amount` is the
+            **taxable value** instead: Paymux charges the taxable value plus GST at the
+            profile's rate (none for a zero-rated export under a valid LUT), the payment's
+            `amount` in the response is that total, and the invoice total equals
+            `amount_received`. Amounts are never silently reinterpreted otherwise.
         currency: { type: string, pattern: "^[A-Za-z]{3}$", description: ISO 4217. }
         order_ref: { type: string, maxLength: 255 }
         description: { type: string, maxLength: 1000 }

@@ -17,10 +17,9 @@ import (
 	"github.com/paymux/paymux/pkg/connector/money"
 )
 
-// B2CLThresholdPaise is the invoice value above which an inter-state B2C
-// invoice goes to the B2CL sheet (Rs 1,00,000, Rule 59(4) as amended by
-// Notification 12/2024).
-// TODO(spec): this is meant to be a setting (spec 8a); no such key exists yet.
+// B2CLThresholdPaise is the built-in value of the b2cl_threshold setting: the
+// invoice value above which an inter-state B2C invoice goes to the B2CL sheet
+// (Rs 1,00,000, Rule 59(4) as amended by Notification 12/2024).
 const B2CLThresholdPaise int64 = 10_000_000
 
 // ReportFile is one CSV of a monthly report.
@@ -119,13 +118,14 @@ type doc struct {
 	inrOK                      bool
 	originB2CL                 bool // credit notes: the invoice was a B2CL invoice
 	seriesPrefix, fiscalYear   string
+	b2clThreshold              int64 // paise; the b2cl_threshold setting
 }
 
 func (d doc) class() tax.Classification {
 	return tax.Classification{SupplyType: tax.SupplyType(d.supply), PlaceOfSupply: d.pos, InterState: d.interState}
 }
 
-func (d doc) b2cl() bool { return d.inrOK && tax.IsB2CL(d.class(), d.inr.Total, B2CLThresholdPaise) }
+func (d doc) b2cl() bool { return d.inrOK && tax.IsB2CL(d.class(), d.inr.Total, d.b2clThreshold) }
 
 // Reports builds the monthly GST report CSVs of a tax entity: sales register,
 // B2B, B2CL, B2CS, EXP, CDNR, CDNUR, SAC summary, documents issued and
@@ -179,17 +179,21 @@ func (s *Service) Reports(ctx context.Context, taxEntityID, month string) (Repor
 		return ReportSet{}, err
 	}
 
+	b2cl, err := s.b2clThreshold(ctx, ent.OrgID)
+	if err != nil {
+		return ReportSet{}, err
+	}
 	var docs []doc
 	var invDocs, cnDocs []doc
 	for _, i := range invs {
-		d, err := invoiceDoc(i)
+		d, err := invoiceDoc(i, b2cl)
 		if err != nil {
 			return ReportSet{}, err
 		}
 		docs, invDocs = append(docs, d), append(invDocs, d)
 	}
 	for _, c := range cns {
-		d, err := creditNoteDoc(c, origin[c.InvoiceID])
+		d, err := creditNoteDoc(c, origin[c.InvoiceID], b2cl)
 		if err != nil {
 			return ReportSet{}, err
 		}
@@ -230,7 +234,7 @@ func (s *Service) Reports(ctx context.Context, taxEntityID, month string) (Repor
 	return set, nil
 }
 
-func invoiceDoc(i store.Invoice) (doc, error) {
+func invoiceDoc(i store.Invoice, b2cl int64) (doc, error) {
 	var rcp Recipient
 	if err := json.Unmarshal(i.Recipient, &rcp); err != nil {
 		return doc{}, err
@@ -241,7 +245,8 @@ func invoiceDoc(i store.Invoice) (doc, error) {
 	}
 	d := doc{number: i.Number, date: istDate(i.IssuedAt), cur: i.Currency, supply: i.SupplyType, pos: i.PlaceOfSupply,
 		interState: i.InterState, rcp: rcp, rateBP: i.GSTRateBP, fx: i.FXRate, fxSource: i.FXSource, lut: i.LUTNumber,
-		flags: i.Flags, amt: amountsOf(i.Taxable, i.CGST, i.SGST, i.IGST, i.Total), seriesPrefix: i.SeriesPrefix, fiscalYear: i.FiscalYear}
+		flags: i.Flags, amt: amountsOf(i.Taxable, i.CGST, i.SGST, i.IGST, i.Total), seriesPrefix: i.SeriesPrefix, fiscalYear: i.FiscalYear,
+		b2clThreshold: b2cl}
 	if len(lines) > 0 {
 		d.sac = lines[0].SAC
 	}
@@ -250,8 +255,8 @@ func invoiceDoc(i store.Invoice) (doc, error) {
 	return d, err
 }
 
-func creditNoteDoc(c store.CreditNote, inv store.Invoice) (doc, error) {
-	d, err := invoiceDoc(inv)
+func creditNoteDoc(c store.CreditNote, inv store.Invoice, b2cl int64) (doc, error) {
+	d, err := invoiceDoc(inv, b2cl)
 	if err != nil {
 		return doc{}, err
 	}

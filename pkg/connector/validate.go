@@ -46,6 +46,12 @@ func (n Notification) Validate() error {
 		} else if s.ProviderSubscriptionID == "" && s.ProviderRef == "" {
 			return bad("subscription without any provider id")
 		}
+	case NotifyPayout:
+		if o := n.Payout; o == nil {
+			return bad("payout kind without a payout")
+		} else if o.ProviderRef == "" && o.ProviderPayoutID == "" {
+			return bad("payout without a provider payout id or reference")
+		}
 	default:
 		return bad("unknown kind " + string(n.Kind))
 	}

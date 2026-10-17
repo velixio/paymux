@@ -100,7 +100,7 @@ type StateOption struct{ Code, Name string }
 
 // Billing holds the pay-page billing form values.
 type Billing struct {
-	Name, Email, StateCode, Line1, PostalCode, GSTIN, LegalName string
+	Name, Email, StateCode, Line1, PostalCode, GSTIN, LegalName, Country string
 }
 
 // PayPage is the view model for pay_* templates.

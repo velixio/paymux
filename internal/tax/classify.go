@@ -151,6 +151,18 @@ func CreditNoteDeadline(supply time.Time) time.Time {
 	return time.Date(endYear, time.November, 30, 23, 59, 59, 999999999, IST)
 }
 
+// CreditNoteDeadlineOn is CreditNoteDeadline with the day configurable: the
+// end of the given month and day (IST) after the end of the financial year of
+// the supply. CreditNoteDeadline is month 11, day 30.
+func CreditNoteDeadlineOn(supply time.Time, month time.Month, day int) time.Time {
+	t := supply.In(IST)
+	endYear := t.Year() + 1
+	if t.Month() < time.April {
+		endYear = t.Year()
+	}
+	return time.Date(endYear, month, day, 23, 59, 59, 999999999, IST)
+}
+
 var prefixRE = regexp.MustCompile(`^[A-Z0-9]{1,5}$`)
 
 // ErrDocumentNumber is returned for invalid numbering inputs.

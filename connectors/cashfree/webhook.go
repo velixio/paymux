@@ -16,7 +16,7 @@ import (
 // x-webhook-timestamp header followed by the raw body, under the webhook
 // secret. A missing or wrong signature is ErrInvalidSignature.
 //
-// TODO(spec): the timestamp is covered by the MAC, but no tolerance is applied:
+// Decision: the timestamp is covered by the MAC, but no tolerance is applied.
 // Cashfree's documentation does not say how old a retried delivery may be, and
 // refusing one would lose its event. A replayed delivery only repeats an event
 // that the payment fetch (the source of truth) has already confirmed.

@@ -276,10 +276,10 @@ func (h *Handler) billingNeed(ctx context.Context, p store.Payment, c store.Cust
 	if err := h.setting(ctx, p.AppID, "issue_invoices", &issue); err != nil {
 		return billingNeed{}, err
 	}
-	// TODO(spec): the buyer country is not stored on the payment yet; INR
-	// payments are treated as Indian buyers. Foreign buyers' country/address
-	// prompt arrives with the invoicing lane.
-	india := p.Currency == "INR"
+	// The buyer is Indian unless their stored country says otherwise (the API
+	// may supply it, or an earlier submission of this form did). A buyer abroad
+	// needs no State or PIN: the sale is an export.
+	india := p.Currency == "INR" && (c.Billing.Country == "" || strings.EqualFold(c.Billing.Country, "IN"))
 	if mode == "state_required" && !issue {
 		mode = "off"
 	}
@@ -305,7 +305,10 @@ func (h *Handler) billingForm(w http.ResponseWriter, status int, p store.Payment
 	data := web.PayPage{AppName: appName, FormURL: "/pay/" + p.ID + "?t=" + url.QueryEscape(secret) + h.langQuery(w), CSRF: h.csrf(p.ID, secret),
 		Error: h.tr(w, msg), StateRequired: n.stateRequired, AddressRequired: n.addressRequired,
 		Billing: web.Billing{Name: c.Name, Email: c.Email, StateCode: c.Billing.StateCode, Line1: c.Billing.Line1,
-			PostalCode: c.Billing.PostalCode, GSTIN: c.Billing.GSTIN, LegalName: c.Billing.LegalName}}
+			PostalCode: c.Billing.PostalCode, GSTIN: c.Billing.GSTIN, LegalName: c.Billing.LegalName, Country: c.Billing.Country}}
+	if data.Billing.Country == "" && p.Currency == "INR" {
+		data.Billing.Country = "IN"
+	}
 	if p.Currency == "INR" {
 		codes := tax.StateCodes()
 		keys := make([]string, 0, len(codes))
@@ -321,6 +324,9 @@ func (h *Handler) billingForm(w http.ResponseWriter, status int, p store.Payment
 }
 
 var pinRE = regexp.MustCompile(`^[1-9][0-9]{5}$`)
+
+// countryRE is an ISO 3166 alpha-2 code, upper case.
+var countryRE = regexp.MustCompile(`^[A-Z]{2}$`)
 
 func (h *Handler) billingPost(w http.ResponseWriter, r *http.Request) {
 	p, secret, ok := h.load(w, r)
@@ -387,17 +393,25 @@ func (h *Handler) parseBilling(r *http.Request, p store.Payment, need billingNee
 			return in, "billing.err.email"
 		}
 	}
-	india := p.Currency == "INR"
-	if india {
+	b.Country = strings.ToUpper(get("country"))
+	if b.Country == "" && p.Currency == "INR" {
 		b.Country = "IN"
-		if b.StateCode != "" {
-			if _, ok := tax.StateName(b.StateCode); !ok {
-				return in, "billing.err.state_invalid"
-			}
+	}
+	if b.Country != "" && !countryRE.MatchString(b.Country) {
+		return in, "billing.err.country"
+	}
+	if b.Country != "" && b.Country != "IN" {
+		// A buyer abroad: an export. No Indian State, address check or GSTIN applies.
+		b.StateCode, b.GSTIN, b.LegalName = "", "", ""
+		return in, ""
+	}
+	if b.StateCode != "" {
+		if _, ok := tax.StateName(b.StateCode); !ok {
+			return in, "billing.err.state_invalid"
 		}
-		if need.stateRequired && b.StateCode == "" && b.GSTIN == "" {
-			return in, "billing.err.state_required"
-		}
+	}
+	if need.stateRequired && b.StateCode == "" && b.GSTIN == "" {
+		return in, "billing.err.state_required"
 	}
 	if b.GSTIN != "" {
 		if err := tax.ValidGSTIN(b.GSTIN); err != nil {

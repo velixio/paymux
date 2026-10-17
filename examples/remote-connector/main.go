@@ -16,9 +16,9 @@
 //	PAYMUX_ACCOUNT_ID  id of the Paymux provider account using this service (required)
 //	LISTEN             listen address (default 127.0.0.1:8090)
 //
-// TODO(spec): the return and webhook URLs belong to Paymux, so this service is
-// told them through PAYMUX_BASE_URL and PAYMUX_ACCOUNT_ID; the protocol could
-// carry them instead. The connector's KV is in memory: a restart empties it.
+// Note: the return and webhook URLs belong to Paymux, so this example is told
+// them through PAYMUX_BASE_URL and PAYMUX_ACCOUNT_ID. Its connector KV is in
+// memory: a restart empties it, which a real service would not do.
 package main
 
 import (

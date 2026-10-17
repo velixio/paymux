@@ -488,6 +488,7 @@ type Notification struct {
 	Dispute      *DisputeSnapshot      `json:"dispute,omitempty"`
 	Mandate      *MandateSnapshot      `json:"mandate,omitempty"`
 	Subscription *SubscriptionSnapshot `json:"subscription,omitempty"`
+	Payout       *PayoutSnapshot       `json:"payout,omitempty"`
 }
 
 func (n Notification) Validate() error
@@ -500,6 +501,7 @@ const (
 	NotifyDispute      NotificationKind = "dispute"
 	NotifyMandate      NotificationKind = "mandate"
 	NotifySubscription NotificationKind = "subscription"
+	NotifyPayout       NotificationKind = "payout"
 )
 
 type Observer func(RequestObservation)

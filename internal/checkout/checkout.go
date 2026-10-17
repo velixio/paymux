@@ -31,8 +31,16 @@ type DisputeSync interface {
 	SyncNotification(ctx context.Context, accountID string, n connector.Notification) (disputes.Result, error)
 }
 
+// PayoutSync handles payout notifications (*payouts.Service).
+type PayoutSync interface {
+	SyncNotification(ctx context.Context, accountID string, n connector.Notification) error
+}
+
 // Options configures a Service.
 type Options struct {
+	// Payouts, when set, receives payout notifications; without it they are
+	// recorded as unknown objects.
+	Payouts PayoutSync
 	// Disputes, when set, receives dispute notifications; without it they are
 	// recorded as unknown objects.
 	Disputes DisputeSync

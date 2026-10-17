@@ -7,9 +7,26 @@
 (function () {
   var options = {{.Options}};
   var launcher = {{.Launcher}};
+  {{/* The Zoho call shape is from its documentation and not yet run against the live widget (docs/provider-verification.md). */}}
+  function openZoho() {
+    if (!window.ZPayments) { return; }
+    var widget = new window.ZPayments({account_id: options.account_id, domain: options.domain, otherOptions: {api_key: options.api_key}});
+    widget.requestPaymentMethod({amount: options.amount, currency_code: options.currency, payments_session_id: options.payments_session_id})
+      .then(function (data) {
+        // Back through Paymux's return URL, which fetches the payment from Zoho
+        // and trusts none of these parameters.
+        var back = new URL(options.return_url);
+        back.searchParams.set("payments_session_id", options.payments_session_id);
+        var id = data && (data.payment_id || data.paymentId);
+        if (id) { back.searchParams.set("payment_id", id); }
+        window.location.href = back.toString();
+      })
+      .catch(function (err) { if (!err || err.code !== "widget_closed") { console.error(err); } })
+      .finally(function () { try { widget.close(); } catch (e) {} });
+  }
   function open() {
     if (launcher === "razorpay" && window.Razorpay) { new window.Razorpay(options).open(); return; }
-    // TODO(spec): Zoho widget launcher.
+    if (launcher === "zoho") { openZoho(); }
   }
   document.getElementById("paybtn").addEventListener("click", open);
   open();

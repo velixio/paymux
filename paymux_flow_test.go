@@ -293,6 +293,9 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 
 type flowSeed struct {
 	apiKey, endpointSecret, accountID, appID string
+	// payoutKey is a key that may send money out (payouts:write); only the
+	// simulator seed makes one.
+	payoutKey string
 }
 
 // seedFlow prepares the database before the app starts: org, app, API key,

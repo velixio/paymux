@@ -57,6 +57,19 @@ func (s *Service) CreateRenewalPayment(ctx context.Context, tx store.Tx, in Rene
 	if err := ttl.Decode(&minutes); err != nil {
 		return store.Payment{}, store.Attempt{}, err
 	}
+	if in.Kind == "renewal" { // a verification debit is never invoiced, so carries no tax
+		var buyer store.Billing
+		if in.CustomerID != "" {
+			c, err := store.GetCustomer(ctx, tx, in.CustomerID)
+			if err != nil {
+				return store.Payment{}, store.Attempt{}, mapStoreErr(err, "customer")
+			}
+			buyer = c.Billing
+		}
+		if in.Amount, err = s.chargeAmount(ctx, tx, in.AppID, in.Currency, in.Amount, buyer); err != nil {
+			return store.Payment{}, store.Attempt{}, err
+		}
+	}
 	now := s.nowUTC()
 	p := store.Payment{ID: ids.New("pay"), OrgID: in.OrgID, AppID: in.AppID, Mode: in.Mode, Kind: in.Kind,
 		SubscriptionID: in.SubscriptionID, Amount: in.Amount, Currency: in.Currency, Status: string(state.PaymentCreated),

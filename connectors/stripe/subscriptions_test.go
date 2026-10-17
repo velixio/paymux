@@ -114,9 +114,6 @@ func TestFetchAndCancelSubscription(t *testing.T) {
 	if len(f.to("DELETE /v1/subscriptions/sub_1N1")) != 1 {
 		t.Error("immediate cancel did not DELETE")
 	}
-	if err := c.UpdateSubscriptionAmount(bg, connector.SubscriptionRef{ProviderSubscriptionID: "sub_1N1"}, 1); !errors.Is(err, connector.ErrUnsupported) {
-		t.Errorf("update: %v", err)
-	}
 	f.on("GET /v1/subscriptions/sub_gone", func(w http.ResponseWriter, _ call) {
 		stripeErr(w, 404, "invalid_request_error", "resource_missing", "No such subscription")
 	})

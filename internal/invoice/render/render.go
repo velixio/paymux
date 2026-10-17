@@ -452,7 +452,11 @@ func (r *renderer) signature() {
 	if d.SignatoryName != "" {
 		h += r.para(x, y+h, w, "", 8.5, "Authorised signatory: "+d.SignatoryName)
 	}
-	h += r.para(x, y+h, w, "", 7.5, "This is a computer-generated document")
+	if d.SignedBy != "" {
+		h += r.para(x, y+h, w, "", 7.5, "Digitally signed by "+d.SignedBy)
+	} else {
+		h += r.para(x, y+h, w, "", 7.5, "This is a computer-generated document")
+	}
 	r.y = y + h + 4
 	if d.FooterNote != "" {
 		r.y += r.para(marginX, r.y, contentW, "", 8, d.FooterNote) + 2

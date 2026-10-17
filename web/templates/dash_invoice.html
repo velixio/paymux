@@ -22,6 +22,7 @@
 <dt>Payment</dt><dd><a href="/dashboard/payments/{{.PaymentID}}">{{.PaymentID}}</a></dd>
 {{if .Flags}}<dt>Flags</dt><dd>{{range .Flags}}<span class="flag">{{.}}</span> {{end}}</dd>{{end}}
 <dt>PDF</dt><dd>{{if .PDFReady}}<a href="{{.PDFHref}}">Download PDF</a>{{else}}<span class="muted">not rendered yet</span>{{end}}</dd>
+{{with .CreditEInvoiceHref}}<dt>e-Invoice</dt><dd><a href="{{.}}">Download e-invoice JSON</a> <small class="muted">(credit note, type CRN)</small></dd>{{end}}
 </dl>
 
 <div class="table-scroll"><table class="grid">

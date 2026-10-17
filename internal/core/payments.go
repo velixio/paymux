@@ -158,6 +158,14 @@ func (s *Service) CreatePayment(ctx context.Context, in CreatePaymentInput) (Cre
 		if err != nil {
 			return mapStoreErr(err, "app")
 		}
+		var buyer store.Billing
+		if in.Customer != nil {
+			buyer = in.Customer.Billing
+		}
+		// With tax-exclusive pricing the amount given is the taxable value.
+		if in.Amount, err = s.chargeAmount(ctx, tx, app.ID, in.Currency, in.Amount, buyer); err != nil {
+			return err
+		}
 		if s.router != nil {
 			err := s.router.CheckRoute(ctx, tx, RouteRequest{Scope: in.Scope, Currency: in.Currency, Country: in.Country,
 				Amount: in.Amount, Purpose: "one_time", Metadata: in.Metadata, AllowedConnectors: in.AllowedConnectors})

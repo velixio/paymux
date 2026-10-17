@@ -30,6 +30,13 @@ type EInvoiceResult struct {
 }
 
 func (s *Service) einvoiceSource(inv store.Invoice) (einvoice.Source, error) {
+	return s.documentSource(inv, inv.Number, inv.IssuedAt, inv.Lines, amountsOf(inv.Taxable, inv.CGST, inv.SGST, inv.IGST, inv.Total))
+}
+
+// documentSource maps an invoice, or a credit note against it (its own number,
+// date, lines and amounts), onto the e-invoice source. Parties and the FX rate
+// are the invoice's.
+func (s *Service) documentSource(inv store.Invoice, number string, issued time.Time, rawLines json.RawMessage, amounts tax.Amounts) (einvoice.Source, error) {
 	var sup Supplier
 	var rcp Recipient
 	if err := json.Unmarshal(inv.Supplier, &sup); err != nil {
@@ -42,11 +49,11 @@ func (s *Service) einvoiceSource(inv store.Invoice) (einvoice.Source, error) {
 		return einvoice.Source{}, &einvoice.Problems{List: []string{fmt.Sprintf(
 			"the %s FX rate for the invoice date is not set yet, so the INR values are unknown (enter it under FX rates)", inv.Currency)}}
 	}
-	lines, _, err := docLines(inv.Lines, inv.Currency, inv.FXRate, amountsOf(inv.Taxable, inv.CGST, inv.SGST, inv.IGST, inv.Total))
+	lines, _, err := docLines(rawLines, inv.Currency, inv.FXRate, amounts)
 	if err != nil {
 		return einvoice.Source{}, err
 	}
-	src := einvoice.Source{Number: inv.Number, IssuedAt: inv.IssuedAt, SupplyType: inv.SupplyType, PlaceOfSupply: inv.PlaceOfSupply,
+	src := einvoice.Source{Number: number, IssuedAt: issued, SupplyType: inv.SupplyType, PlaceOfSupply: inv.PlaceOfSupply,
 		Seller: einvoice.Party{GSTIN: sup.GSTIN, LegalName: sup.LegalName, TradeName: sup.TradeName, Address: sup.Address, StateCode: sup.StateCode, Email: sup.SupportEmail},
 		Buyer: einvoice.Party{GSTIN: rcp.GSTIN, LegalName: rcp.Name, Address: rcp.Address, Line1: rcp.Line1, Line2: rcp.Line2, City: rcp.City,
 			PostalCode: rcp.PostalCode, StateCode: rcp.StateCode, Country: rcp.Country, CountryName: rcp.CountryName}}
@@ -55,7 +62,7 @@ func (s *Service) einvoiceSource(inv store.Invoice) (einvoice.Source, error) {
 			CGSTRateBP: l.CGSTRateBP, SGSTRateBP: l.SGSTRateBP, IGSTRateBP: l.IGSTRateBP, CGST: l.CGST, SGST: l.SGST, IGST: l.IGST})
 	}
 	if inv.SupplyType != string(tax.B2B) {
-		src.Currency, src.ForeignTotal = inv.Currency, inv.Total
+		src.Currency, src.ForeignTotal = inv.Currency, amounts.Total
 	}
 	return src, nil
 }
@@ -99,6 +106,52 @@ func (s *Service) EInvoice(ctx context.Context, invoiceID string) (EInvoiceResul
 		return EInvoiceResult{}, &einvoice.Problems{List: []string{err.Error()}}
 	}
 	return EInvoiceResult{Invoice: inv, Doc: doc, JSON: raw, Filename: eInvoiceFilename(inv.Number)}, nil
+}
+
+func creditNoteEInvoiceFilename(number string) string {
+	return "einvoice-credit-note-" + strings.NewReplacer("/", "-", " ", "-").Replace(number) + ".json"
+}
+
+// CreditNoteEInvoice builds, validates and renders the e-invoice JSON of one
+// credit note: a CRN document that refers to the invoice it answers, with the
+// credit note's own number, date and (positive) amounts. Only credit notes of
+// B2B and export invoices have one, like the invoices themselves.
+func (s *Service) CreditNoteEInvoice(ctx context.Context, creditNoteID string) (EInvoiceResult, error) {
+	var cn store.CreditNote
+	var inv store.Invoice
+	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+		if cn, err = store.GetCreditNote(ctx, q, creditNoteID); err != nil {
+			return err
+		}
+		inv, err = store.GetInvoice(ctx, q, cn.InvoiceID)
+		return
+	})
+	if errors.Is(err, store.ErrNotFound) {
+		return EInvoiceResult{}, invalid("no credit note %q", creditNoteID)
+	}
+	if err != nil {
+		return EInvoiceResult{}, err
+	}
+	if !einvoice.Eligible(inv.SupplyType) {
+		return EInvoiceResult{}, invalid("credit note %s is against a %s invoice: only B2B and export documents have an e-invoice", cn.Number, inv.SupplyType)
+	}
+	src, err := s.documentSource(inv, cn.Number, cn.IssuedAt, cn.Lines, amountsOf(cn.Taxable, cn.CGST, cn.SGST, cn.IGST, cn.Total))
+	if err != nil {
+		return EInvoiceResult{}, err
+	}
+	src.Credit = &einvoice.CreditRef{InvoiceNumber: inv.Number, InvoiceDate: inv.IssuedAt}
+	doc, err := einvoice.Build(src)
+	if err != nil {
+		return EInvoiceResult{}, err
+	}
+	raw, err := einvoice.Marshal(doc)
+	if err != nil {
+		return EInvoiceResult{}, err
+	}
+	if err := einvoice.Validate(raw); err != nil {
+		return EInvoiceResult{}, &einvoice.Problems{List: []string{err.Error()}}
+	}
+	return EInvoiceResult{Invoice: inv, Doc: doc, JSON: raw, Filename: creditNoteEInvoiceFilename(cn.Number)}, nil
 }
 
 // EInvoiceRow is one invoice of a month export.

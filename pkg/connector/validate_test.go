@@ -16,6 +16,8 @@ func TestNotificationValidate(t *testing.T) {
 		{Kind: NotifyMandate, EventID: "e", EventType: "t", Mandate: &MandateSnapshot{ProviderMandateID: "x"}},
 		{Kind: NotifySubscription, EventID: "e", EventType: "t", Subscription: &SubscriptionSnapshot{ProviderRef: "x"}},
 		{Kind: NotifyPayment, EventID: "e", EventType: "t", Payment: &PaymentSnapshot{ProviderOrderID: "o"}},
+		{Kind: NotifyPayout, EventID: "e", EventType: "t", Payout: &PayoutSnapshot{ProviderRef: "po_r"}},
+		{Kind: NotifyPayout, EventID: "e", EventType: "t", Payout: &PayoutSnapshot{ProviderPayoutID: "po_1"}},
 	} {
 		if err := good.Validate(); err != nil {
 			t.Errorf("%s: %v", good.Kind, err)
@@ -31,6 +33,8 @@ func TestNotificationValidate(t *testing.T) {
 		"dispute id":   {Kind: NotifyDispute, EventID: "e", EventType: "t", Dispute: &DisputeSnapshot{}},
 		"mandate id":   {Kind: NotifyMandate, EventID: "e", EventType: "t", Mandate: &MandateSnapshot{}},
 		"subscription": {Kind: NotifySubscription, EventID: "e", EventType: "t", Subscription: &SubscriptionSnapshot{}},
+		"a payout":     {Kind: NotifyPayout, EventID: "e", EventType: "t"},
+		"payout id":    {Kind: NotifyPayout, EventID: "e", EventType: "t", Payout: &PayoutSnapshot{}},
 		"unknown kind": {Kind: "x", EventID: "e", EventType: "t"},
 	}
 	for want, n := range bad {

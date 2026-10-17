@@ -12,6 +12,7 @@ import (
 
 	"github.com/paymux/paymux/internal/authz"
 	"github.com/paymux/paymux/internal/invoice"
+	"github.com/paymux/paymux/internal/invoice/einvoice"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/tax"
 )
@@ -52,6 +53,7 @@ type docView struct {
 	Billing                                                store.Billing
 	ReissueReason                                          string
 	EInvoice                                               *eInvoiceView
+	CreditEInvoiceHref                                     string // credit notes of B2B and export invoices: the CRN JSON
 }
 
 func (d *Dashboard) routesInvoices() {
@@ -65,6 +67,7 @@ func (d *Dashboard) routesInvoices() {
 	m.HandleFunc("POST "+prefix+"/invoices/{id}/reissue", d.authed(authz.SettingsWrite, d.invoiceReissue))
 	m.HandleFunc("GET "+prefix+"/credit-notes/{id}", d.authed(authz.PaymentRead, d.creditNotePage))
 	m.HandleFunc("GET "+prefix+"/credit-notes/{id}/pdf", d.authed(authz.PaymentRead, d.creditNotePDF))
+	m.HandleFunc("GET "+prefix+"/credit-notes/{id}/einvoice.json", d.authed(authz.PaymentRead, d.creditNoteEInvoiceJSON))
 	m.HandleFunc("POST "+prefix+"/credit-notes/{id}/resend", d.authed(authz.InvoiceReissue, d.creditNoteResend))
 }
 
@@ -410,6 +413,9 @@ func (d *Dashboard) renderCreditNote(w http.ResponseWriter, r *http.Request, s *
 		PDFReady: cn.PDFBlobID != "", PDFHref: prefix + "/credit-notes/" + cn.ID + "/pdf", Reason: cn.Reason, InvoiceID: inv.ID, InvoiceNumber: inv.Number,
 		CanResend: s.can(authz.InvoiceReissue)}
 	d.fillTotals(doc, cn.Lines, cn.Currency, cn.Taxable, cn.CGST, cn.SGST, cn.IGST, cn.Total)
+	if einvoice.Eligible(inv.SupplyType) {
+		doc.CreditEInvoiceHref = prefix + "/credit-notes/" + cn.ID + "/einvoice.json"
+	}
 	for _, sd := range sends {
 		doc.Sends = append(doc.Sends, sendRow{To: sd.Recipient, Status: sd.Status, At: d.fmtTime(sd.SentAt), Error: sd.Error})
 	}
