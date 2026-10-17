@@ -141,7 +141,7 @@ func (q *Queue) process(ctx context.Context, r store.JobRow) {
 func (q *Queue) finish(ctx context.Context, r store.JobRow, h Handler) {
 	err := h(ctx, r.Payload)
 	if err != nil {
-		q.fail(ctx, r, err, false)
+		q.fail(ctx, r, err, r.Attempts >= r.MaxAttempts)
 		return
 	}
 	if err := q.db.CompleteJob(ctx, r.ID, q.opts.Clock()); err != nil {
