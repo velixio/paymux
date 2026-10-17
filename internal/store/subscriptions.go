@@ -340,38 +340,3 @@ func UpdateCycle(ctx context.Context, tx Tx, c Cycle, now time.Time) error {
 		c.JobSeq, zeroMS(c.NotifiedAt), zeroMS(c.NextRunAt), zeroMS(c.LeaseUntil), ms(now), c.ID)
 	return err
 }
-
-// RouteAccount is a provider account an app may use, as routing needs it.
-type RouteAccount struct {
-	ID, Connector        string
-	Currencies, Purposes []string // empty Currencies = whatever the connector declares
-	Enabled              bool
-}
-
-// ListAppRouteAccounts lists the active provider accounts an app may use in a mode.
-func ListAppRouteAccounts(ctx context.Context, q Queryer, appID, mode string) ([]RouteAccount, error) {
-	rows, err := q.QueryContext(ctx, `SELECT pa.id, pa.connector, pa.accepted_currencies, pa.enabled_purposes, pa.status
-		FROM provider_accounts pa JOIN app_provider_accounts apa ON apa.provider_account_id = pa.id
-		WHERE apa.app_id = ? AND pa.mode = ? ORDER BY pa.id`, appID, mode)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []RouteAccount
-	for rows.Next() {
-		var a RouteAccount
-		var cur, purposes, status string
-		if err := rows.Scan(&a.ID, &a.Connector, &cur, &purposes, &status); err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal([]byte(cur), &a.Currencies); err != nil {
-			return nil, fmt.Errorf("provider account %s accepted_currencies: %w", a.ID, err)
-		}
-		if err := json.Unmarshal([]byte(purposes), &a.Purposes); err != nil {
-			return nil, fmt.Errorf("provider account %s enabled_purposes: %w", a.ID, err)
-		}
-		a.Enabled = status == "active"
-		out = append(out, a)
-	}
-	return out, rows.Err()
-}

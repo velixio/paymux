@@ -6,18 +6,17 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"net/url"
 	"slices"
 	"time"
 
 	"github.com/paymux/paymux/internal/billing"
+	"github.com/paymux/paymux/internal/checkout"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/routing"
-	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector"
 	"github.com/paymux/paymux/pkg/connector/money"
@@ -125,34 +124,6 @@ type route struct {
 	maxAmount               int64 // mandate max (merchant_triggered)
 }
 
-// routingConfig turns the "routing" setting into rules.
-func routingConfig(raw json.RawMessage) (routing.Config, error) {
-	var v struct {
-		Rules []struct {
-			Currency   string   `json:"currency"`
-			Connectors []string `json:"connectors"`
-		} `json:"rules"`
-		CatchAll struct {
-			Connectors []string `json:"connectors"`
-			Reject     bool     `json:"reject"`
-		} `json:"catch_all"`
-	}
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return routing.Config{}, err
-	}
-	var cfg routing.Config
-	for _, r := range v.Rules {
-		cfg.Org = append(cfg.Org, routing.Rule{Name: "currency " + r.Currency,
-			When: routing.When{Currency: []string{r.Currency}}, Action: routing.Route(r.Connectors...)})
-	}
-	if v.CatchAll.Reject {
-		cfg.CatchAll = routing.Rule{Name: "catch_all", Action: routing.Reject("no provider accepts this currency")}
-	} else {
-		cfg.CatchAll = routing.Rule{Name: "catch_all", Action: routing.Route(v.CatchAll.Connectors...)}
-	}
-	return cfg, nil
-}
-
 // mandateMethods lists the mandate methods a connector supports, UPI first.
 func mandateMethods(info connector.Info) []string {
 	var out []string
@@ -182,32 +153,32 @@ func connectorLimit(info connector.Info, method string) int64 {
 // or a provider_managed account can; e-NACH is tried first. If neither exists
 // the amount is refused with ErrAmountExceedsMandateLimit.
 func (s *Service) chooseRoute(ctx context.Context, q store.Queryer, appID, mode string, in CreateInput, pol policy) (route, error) {
-	rv, err := settings.ResolveWith(ctx, q, appID, "routing")
+	app, err := store.GetApp(ctx, q, appID)
+	if err != nil {
+		return route{}, mapNotFound(err, "app")
+	}
+	cfg, err := checkout.AppRoutingConfig(ctx, q, app)
 	if err != nil {
 		return route{}, err
 	}
-	cfg, err := routingConfig(rv.Raw)
-	if err != nil {
-		return route{}, err
-	}
-	stored, err := store.ListAppRouteAccounts(ctx, q, appID, mode)
+	stored, err := store.ListAppProviderAccounts(ctx, q, appID, mode)
 	if err != nil {
 		return route{}, err
 	}
 	conns := map[string]connector.Connector{}
-	var accounts []routing.Account
+	var usable []store.ProviderAccount
 	for _, a := range stored {
 		c, err := s.connectors.Get(ctx, a.ID)
 		if err != nil {
 			continue // an account whose connector cannot be built is not routable
 		}
 		conns[a.ID] = c
-		cur := a.Currencies
-		if len(cur) == 0 {
-			cur = c.Info().Currencies
+		if len(a.AcceptedCurrencies) == 0 {
+			a.AcceptedCurrencies = c.Info().Currencies // default: whatever the connector declares
 		}
-		accounts = append(accounts, routing.Account{ID: a.ID, Connector: a.Connector, Currencies: cur, Purposes: a.Purposes, Disabled: !a.Enabled})
+		usable = append(usable, a)
 	}
+	accounts := checkout.RoutingAccounts(usable)
 	res, err := routing.Choose(cfg, routing.Request{Currency: in.Currency, Amount: in.Amount, Purpose: routing.PurposeSubscription,
 		Metadata: in.Metadata}, accounts, nil)
 	var rej *routing.RejectedError

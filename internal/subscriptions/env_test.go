@@ -271,9 +271,16 @@ func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 
 func (e *env) routeTo(connectors ...string) {
 	e.t.Helper()
-	b, _ := json.Marshal(connectors)
-	raw := fmt.Sprintf(`{"rules":[{"currency":"INR","connectors":%s}],"catch_all":{"connectors":["razorpay"]}}`, b)
-	if err := e.set.SetOrg(ctx, audit.System, store.DefaultOrgID, "routing", []byte(raw)); err != nil {
+	var targets []map[string]string
+	for _, c := range connectors {
+		targets = append(targets, map[string]string{"connector": c})
+	}
+	rule := func(name string, when map[string]any) map[string]any {
+		return map[string]any{"name": name, "when": when, "action": map[string]any{"kind": "route", "targets": targets}}
+	}
+	doc := map[string]any{"rules": []any{rule("INR", map[string]any{"currency": []string{"INR"}})}, "catch_all": rule("catch_all", map[string]any{})}
+	raw, _ := json.Marshal(doc)
+	if err := e.set.SetOrg(ctx, audit.System, store.DefaultOrgID, "routing", raw); err != nil {
 		e.t.Fatal(err)
 	}
 }
