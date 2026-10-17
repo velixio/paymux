@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/checkout"
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/core/state"
@@ -381,16 +380,15 @@ func TestTickRunsOncePerDayAfterReconTime(t *testing.T) {
 		if runs() != 2 {
 			t.Fatalf("next day: %d", runs())
 		}
-		// recon_time is a live setting.
+		// recon_time is a live setting: 03:15 on the 18th, moved to 23:30.
 		if err := e.set.SetOrg(ctx, audit.System, store.DefaultOrgID, "recon_time", json.RawMessage(`"23:30"`)); err != nil {
 			t.Fatal(err)
 		}
-		e.clk.Add(24 * time.Hour) // 03:15 next day, before 23:30
 		_ = e.rec.Tick(ctx)
 		if runs() != 2 {
 			t.Fatalf("recon_time setting ignored: %d", runs())
 		}
-		e.clk.Add(21 * time.Hour) // 00:15 the day after: yesterday's 23:30 slot is due
+		e.clk.Add(21 * time.Hour) // 00:15 on the 19th: the 23:30 slot of the 18th is overdue
 		_ = e.rec.Tick(ctx)
 		if runs() != 3 {
 			t.Fatalf("missed slot not caught up: %d", runs())
@@ -427,4 +425,3 @@ func TestResolveItemIsAudited(t *testing.T) {
 	})
 }
 
-var _ = checkout.ToSnapshot
