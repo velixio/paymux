@@ -148,15 +148,13 @@ func (s *Service) scheduleMandateExpiry(ctx context.Context, tx store.Tx, m stor
 // re-authorization is requested for every subscription on it) and expires it
 // on its valid_until date.
 func (s *Service) handleMandateExpiry(ctx context.Context, raw json.RawMessage) error {
-	var pl struct{ MandateID, Phase string }
-	var in struct {
+	var pl struct {
 		MandateID string `json:"mandate_id"`
 		Phase     string `json:"phase"`
 	}
-	if err := json.Unmarshal(raw, &in); err != nil {
+	if err := json.Unmarshal(raw, &pl); err != nil {
 		return jobs.Permanent(err)
 	}
-	pl.MandateID, pl.Phase = in.MandateID, in.Phase
 	return s.db.Write(ctx, func(tx store.Tx) error {
 		subs, err := s.lockMandateSubs(ctx, tx, pl.MandateID)
 		if err != nil {

@@ -35,12 +35,17 @@ const configSchema = `{
 var info = connector.Info{
 	Version:      "0.1.0",
 	DisplayName:  "PayU India",
-	Capabilities: []connector.Capability{connector.CapRefund, connector.CapList},
+	Capabilities: []connector.Capability{connector.CapRefund, connector.CapList, connector.CapMandateManager},
 	ConfigSchema: json.RawMessage(configSchema),
 	Currencies:   []string{"INR"},
 	Methods:      []string{"card", "upi", "netbanking", "wallet", "emi"},
-	// TODO(spec): merchant_triggered recurring (MandateManager, pre-debit API) is
-	// a later milestone; SubscriptionModes stays empty until then.
+	// Recurring: standing instructions on cards, UPI AutoPay and net-banking
+	// e-mandates; Paymux triggers every debit. PayU wants a pre-debit notice
+	// for every debit attempt, retries included. The e-NACH ceiling is Rs 1 crore.
+	SubscriptionModes:  []connector.BillingMode{connector.MerchantTriggered},
+	PreDebitPerAttempt: true,
+	MandateLimits: []connector.MandateLimit{{Method: "upi", Currency: "INR"}, {Method: "card", Currency: "INR"},
+		{Method: "emandate", Currency: "INR", MaxAmount: 1_000_000_000}},
 	// TODO(spec): Chargeback API (separate token, 20-day window) is not built;
 	// DisputeReader is therefore not declared.
 	RateLimit: connector.RateLimit{RequestsPerSecond: 10, Burst: 10},
