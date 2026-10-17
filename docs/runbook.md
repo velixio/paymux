@@ -160,8 +160,24 @@ What to know:
 
 - Invoices issued before this feature keep their address as one line of text; Paymux takes the PIN from it and the last comma-separated part as the locality, which is right for ordinary Indian addresses. New invoices keep the address in parts.
 - Exports under LUT are sent as `EXPWOP`, exports with IGST as `EXPWP`, buyer `URP`, place of supply 96, PIN 999999, the foreign currency and country in `ExpDtls`; all rupee values use the same FX rate as the PDF. `RefClm` is always `N`.
-- Credit notes are not covered: the credit note JSON (`CRN`) is not generated yet.
-- The schema was written from the portal's published field list and is **not verified against the portal's own schema file**, and the signature of the signed QR code is not verified; both are marked `TODO(spec)` in the code. Upload one invoice first and watch the portal's validation messages.
+- **Credit notes** of B2B and export invoices have their own file, a `CRN` document that names the invoice it answers (`RefDtls.PrecDocDtls`) and carries the credit note's own number, date and amounts (positive, as the portal wants them). Open the credit note in the dashboard and press *Download e-invoice JSON*. Credit notes of consumer invoices have none. Upload it the same way; the IRN of a credit note is not recorded in Paymux.
+- The schema was written from the portal's published field list and is **not verified against the portal's own schema file**, and the signature of the signed QR code is not verified; both are listed in [provider verification](provider-verification.md). Upload one invoice first and watch the portal's validation messages.
+
+## GST amounts, buyers abroad and the tax settings
+
+- **Prices with or without tax.** An app's tax profile says whether its prices include GST. With *prices include tax* (the default) the amount of a payment is what the customer pays and the tax is worked out inside it. Without it, the **amount you send is the taxable value**: Paymux charges the taxable value plus GST at the profile's rate (nothing added for an export under a valid LUT), the payment's `amount` in the response is that total, and the invoice total always equals `amount_received`. This applies to payments, payment links and subscription renewals alike, and only when the app issues invoices.
+- **Buyer country.** The pay page asks for the buyer's country (two letters, `IN` by default) along with the State. A buyer outside India needs no State or PIN, and the sale is an export: IGST, or zero-rated under a valid LUT when paid in a foreign currency. A payment in rupees from a buyer abroad is an export with IGST, and is flagged `export_igst`. The API takes the country as `customer.billing.country`.
+- **Ops alerts.** The tax exceptions the monthly report lists (`pos_defaulted`, `export_igst`, `fx_pending`, `credit_note_cutoff_passed`) also raise an ops alert when they happen, once per document, with the ids needed to find it (kinds `tax.pos_defaulted` and so on; see *Alerts*).
+- **Settings** (Settings page, org level): `credit_note_cutoff` is the last day, as `MM-DD`, after the end of the financial year of the sale on which a credit note can still be issued (`11-30`, the legal day, by default; `off` never stops one), and `b2cl_threshold` is the invoice value in paise above which an inter-state sale to a consumer goes on the B2CL sheet (`10000000`, Rs 1,00,000, by default).
+
+## Digital signature certificate (DSC)
+
+By default an invoice PDF carries the authorised signatory's name and the line "This is a computer-generated document". If you have a digital signature certificate (class 2 or 3, from a certifying authority), upload it on the tax entity's page: Paymux then signs every PDF of that entity (invoices and credit notes) with a PAdES signature (a detached CAdES signature added to the end of the file, so the document itself is not altered), and the page reads "Digitally signed by ...".
+
+- **The file** is the PKCS#12 (`.p12` or `.pfx`) the authority gives you, with its password. Both are stored encrypted and are never shown again. Paymux reads the older 3DES/RC2 encryption most authorities issue. A file made by OpenSSL 3 uses AES by default and is refused with a message; export it again with `openssl pkcs12 -export -legacy -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1 ...`. RSA and ECDSA keys are supported. The certificate must be valid when it is uploaded.
+- **Which documents.** Documents rendered after the upload; an earlier PDF stays as it was. Removing the certificate (on the same page) goes back to the signatory note.
+- **If it stops working** (the certificate expires, the file cannot be opened), invoices still go out, with the signatory note, and an ops alert `tax.dsc_unusable` tells you. The page warns 30 days before expiry.
+- **What is not done.** No trusted timestamp (PAdES-T) and no revocation data (PAdES-LT) are added, and the signature has been checked with OpenSSL and an independent parser in the tests, not in Adobe Acrobat or against the Indian CCA trust list: open a signed test invoice in a PDF reader you trust before relying on it.
 
 ## Alerts
 

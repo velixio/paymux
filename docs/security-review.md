@@ -27,6 +27,10 @@ or hard to exploit), Low (hardening).
 | F13 | `/sim` POST had no explicit body cap | Low | Hardened (Go capped it at 10 MiB already) |
 | F14 | Zoho refunds carry no provider-side idempotency key | Medium | Mitigated, residual risk documented |
 | F15 | Whop `FetchRefund` is synthetic (cumulative refunded amount) | Low | Accepted, mitigated |
+| F16 | Outbound: a webhook endpoint could be created for an app that does not exist, or for another org's app | Low | Fixed |
+| F17 | A remote connector that is merchant of record could not be seen by invoicing, so Paymux issued a second tax invoice | Medium | Fixed |
+| F18 | Tax-exclusive pricing: the invoice total could exceed what was received | Medium | Fixed (the core charges taxable + GST) |
+| F19 | The buyer's country was never kept, so a foreign buyer paying in rupees was invoiced as an Indian consumer | Medium | Fixed |
 
 ## Findings fixed
 
@@ -136,6 +140,38 @@ the API docs already did. `/sim` POST caps its body at 64 KB; Go's `ParseForm`
 already limited it to 10 MiB, so there was no failing test, and this is
 hardening only.
 
+### F16: webhook endpoints and their app
+
+`CreateEndpoint` carried a `TODO(spec)` to check that the app exists "once the
+apps table lands". It now loads the app, refuses an unknown one, refuses an org
+that is not the app's, and takes the org from the app when none is given (it
+used to take the first org of the database). The CLI, the dashboard and the
+tests all go through it.
+
+### F17: merchant of record is a fact of the account
+
+Invoicing decided "this connector sells as merchant of record, so issue no
+invoice" from the connector's registry entry. A `remote` connector learns that
+by discovery, so its registry entry cannot say, and a remote MoR connector would
+have had a Paymux invoice issued on top of the provider's. `CreateAccount` now
+reads the live connector's `Info` (it already builds the connector, which is what
+probes `GET /info`) and stores `merchant_of_record` on the account (migration
+0018); invoicing reads the account.
+
+### F18, F19: tax correctness
+
+With `prices_include_tax=false` the invoice used to treat the amount received as
+the taxable value, so the invoice total could exceed `amount_received`. The core
+now charges taxable + GST (`core.chargeAmount`, for payments, payment links and
+renewals) and the invoice derives its heads from the total received, so the two
+always agree; documented in the OpenAPI `amount` field. The pay page now asks for
+the buyer's country and keeps it on the customer; a buyer abroad is classified as
+an export (`export_igst` for a payment in rupees, with an alert). Limits: the
+amount is computed from what is known when the payment is created, so a buyer
+who gives a foreign country only on the pay page after the amount was fixed is
+invoiced as an export with IGST at the same total, not zero-rated (a zero-rated
+export needs a payment in a foreign currency).
+
 ## Accepted or mitigated
 
 ### F14: Zoho refund idempotency (Medium, residual)
@@ -201,7 +237,38 @@ on the next recon pass. Accepted.
 | Provider-initiated refunds | Never booked | Fixed (F4) |
 | Provider dispute won/lost reversals | A dispute opened or resolved in a provider dashboard | Not a gap: dispute webhooks go through `disputes.SyncNotification`, which fetches the dispute and applies won/lost (ledger release or loss, flags, credit note) and the poll/recon pass catches missed webhooks. PayU's Chargeback API (separate token, 20-day window) and Whop's dispute evidence API are not built: PayU and Whop disputes are not read automatically, so they must be entered in the dashboard (manual entry exists). TODO(spec) stays until a sandbox exists. |
 | Mandate revocation at the provider/bank | Our mandate stays active | Covered by the daily mandate reconciliation, which fetches the mandate from the provider and applies `revoked`/`failed`; the next renewal also fails with a mandate error and moves the subscription to past due. A real-time webhook mapping is not built. |
-| Payout webhooks and reversals | Status only moves when polled | Not a loss of state: the poll ladder (1m to daily, 14 days) follows every payout to a terminal state, including `reversed`, which is applied by the same snapshot path. Latency only. |
+| Payout webhooks and reversals | Status only moved when polled | Fixed: a `payout` notification kind in the SDK (`connector.NotifyPayout`); the simulator sends `payout.processed/failed/reversed`; inbound processing finds the payout in the delivering account, fetches it, checks reference, amount and currency, and applies that. Polling remains for providers without webhooks. No built-in provider connector pays out yet. |
 | PayU refund webhooks are unsigned | Cannot be trusted | Handled: they are treated as a hint and the refund is fetched (`FetchRefund`), now deterministic (F8). |
 | `RefundsVerificationDebit` (PayU, Zoho) | The Rs 1 verification debit is assumed reversed by the provider | Unverified without sandbox; recon reports a difference if wrong. |
 | PayU `ListRefunds` unsupported | Recon cannot list PayU refunds | Recon polls known refunds by `FetchRefund`; a PayU dashboard refund is found only through its webhook. Justified: PayU offers no listing API. |
+
+## Second batch: TODO(spec) items that did not need provider keys
+
+Everything below was closed with a failing test first, on both databases.
+
+| Item | Disposition |
+|------|-------------|
+| Tax-exclusive pricing | Fixed (F18). |
+| Buyer country on the payment | Fixed (F19). |
+| Ops alerts for tax exceptions | Fixed: `pos_defaulted`, `export_igst`, `fx_pending` and `credit_note_cutoff_passed` raise `tax.*` alerts through a job enqueued in the issuing transaction (so an alert is never sent for a transaction that rolls back), deduplicated by document and by the alert service. |
+| Credit-note cutoff and B2CL threshold | Fixed: org settings `credit_note_cutoff` (`MM-DD` or `off`, default `11-30`) and `b2cl_threshold` (paise, default 10000000). |
+| Payout webhooks | Fixed (above). |
+| Stale TODOs | Fixed: endpoint app check (F16); the remote connector's "validate at account creation" was already true (the factory probes `GET /info`) and its MoR gap is F17; notes that were never gaps (settings table, e-invoice schema optional sections, the Cashfree timestamp decision, an example's remarks) are now plain comments. |
+| DSC / PAdES signing | Done in pure Go (`internal/invoice/pades`; `golang.org/x/crypto/pkcs12` is part of a module already required, listed in `docs/dependencies.md`). The PKCS#12 file and password are sealed with the master key, validated on upload (password, key type, validity, the AES encryption it cannot read), audited without the secret, and a certificate that stops working never stops an invoice (note plus alert). Verified against OpenSSL and an independent parser; **not** against Adobe Acrobat or the CCA India trust list (see `docs/provider-verification.md`). |
+| E-invoice JSON for credit notes | Fixed: a `CRN` document with `RefDtls.PrecDocDtls`; dashboard download on the credit note page. |
+| Stripe `UpdateSubscriptionAmount` | Implemented as an inline price swap on the subscription item with `proration_behavior=none`, idempotent per subscription and amount; the wire shape is from documentation and is on the verification list. |
+| Zoho widget launcher | The SDK page had no launcher for Zoho (the widget mode showed a page that did nothing). A launcher is added from the documented call shape; unverified, on the list. |
+
+Security notes on the new surface: the DSC upload is admin-only
+(`SettingsWrite`), capped at 64 KB in the service and by the multipart limit in
+the dashboard, CSRF-protected like every dashboard form, and the page never
+echoes the file or the password; the sealed blob is bound to its tax entity
+(AAD), so it cannot be moved to another entity's row.
+
+## What remains
+
+Every `TODO(spec)` left in the code needs a provider sandbox, a provider
+document, or a portal; each is a checklist item in
+[provider-verification.md](provider-verification.md). Open design decisions that
+are not verification: the e-invoice `RefClm` setting for exporters who claim an
+IGST refund, and a per-provider minimum debit for proration credits.

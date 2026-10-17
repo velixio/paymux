@@ -57,8 +57,20 @@ type Connector interface {
   the final status on its own: Paymux confirms with `FetchPayment`.
 * `VerifyWebhook` authenticates a delivery; `ParseWebhook` turns an already
   verified one into `Notification`s. Parsing never calls the network.
-* `FetchPayment` is the source of truth. Paymux fetches after every webhook and
+* `FetchPayment` is the source of truth. A payment id that reaches Paymux from
+  outside (a return URL, a notification) is only a pointer: when the caller also
+  names an order, checkout or reference, `FetchPayment` must return
+  `ErrNotFound` for a payment that is not of that order, checkout or reference,
+  and must never capture or otherwise act on a payment it has not matched.
+  Never take the first result of a list or search: check the field you searched by. Paymux fetches after every webhook and
   return, so a forged or replayed webhook cannot change state by itself.
+
+Notification kinds are `payment`, `refund`, `dispute`, `mandate`,
+`subscription` and `payout` (a payout processed, failed or reversed; it carries
+a `PayoutSnapshot` with your reference or the provider's payout id). Like every
+notification a payout webhook is only a hint: Paymux finds its own payout in the
+account, calls your `FetchPayout`, checks reference, amount and currency, and
+applies that.
 
 ### Optional interfaces
 
@@ -293,7 +305,8 @@ Never call a real provider in tests.
   `ErrRateLimited`, 5xx to `ErrTemporary`, 404 to `ErrNotFound`.
 * Use `connector.NewMemKV(clock)` with a controllable clock to test caching.
 * Anything you could not check against the live API gets a
-  `// TODO(spec): ...` comment saying what to verify at sandbox time.
+  `// TODO(spec): ...` comment saying what to verify at sandbox time, and a line
+  in [provider-verification.md](provider-verification.md).
 
 For engine-level behaviour (linking, renewals, invoices) the test in
 `internal/subscriptions/whop_test.go` shows how to feed the real connector's
