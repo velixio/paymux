@@ -1,0 +1,59 @@
+{
+  "Version": "1.1",
+  "TranDtls": {
+    "TaxSch": "GST",
+    "SupTyp": "B2B",
+    "RegRev": "N",
+    "IgstOnIntra": "N"
+  },
+  "DocDtls": {
+    "Typ": "INV",
+    "No": "INV/2627/000001",
+    "Dt": "17/10/2026"
+  },
+  "SellerDtls": {
+    "Gstin": "27AAPFU0939F1ZV",
+    "LglNm": "Voice Studio Pvt Ltd",
+    "TrdNm": "Voicestudio",
+    "Addr1": "1 Marine Drive, Churchgate",
+    "Loc": "Mumbai",
+    "Pin": 400020,
+    "Stcd": "27",
+    "Ph": "919820012345",
+    "Em": "help@example.com"
+  },
+  "BuyerDtls": {
+    "Gstin": "27AABCU9603R1ZX",
+    "LglNm": "Acme Traders LLP",
+    "Pos": "27",
+    "Addr1": "22 Linking Road, Bandra West",
+    "Loc": "Mumbai",
+    "Pin": 400050,
+    "Stcd": "27"
+  },
+  "ItemList": [
+    {
+      "SlNo": "1",
+      "PrdDesc": "Pro plan, annual",
+      "IsServc": "Y",
+      "HsnCd": "998315",
+      "Qty": 1,
+      "Unit": "OTH",
+      "UnitPrice": 1000.00,
+      "TotAmt": 1000.00,
+      "AssAmt": 1000.00,
+      "GstRt": 18,
+      "IgstAmt": 0.00,
+      "CgstAmt": 90.00,
+      "SgstAmt": 90.00,
+      "TotItemVal": 1180.00
+    }
+  ],
+  "ValDtls": {
+    "AssVal": 1000.00,
+    "CgstVal": 90.00,
+    "SgstVal": 90.00,
+    "IgstVal": 0.00,
+    "TotInvVal": 1180.00
+  }
+}

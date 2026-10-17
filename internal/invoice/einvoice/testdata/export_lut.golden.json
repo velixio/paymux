@@ -1,0 +1,65 @@
+{
+  "Version": "1.1",
+  "TranDtls": {
+    "TaxSch": "GST",
+    "SupTyp": "EXPWOP",
+    "RegRev": "N",
+    "IgstOnIntra": "N"
+  },
+  "DocDtls": {
+    "Typ": "INV",
+    "No": "INV/2627/000003",
+    "Dt": "20/10/2026"
+  },
+  "SellerDtls": {
+    "Gstin": "27AAPFU0939F1ZV",
+    "LglNm": "Voice Studio Pvt Ltd",
+    "TrdNm": "Voicestudio",
+    "Addr1": "1 Marine Drive, Churchgate",
+    "Loc": "Mumbai",
+    "Pin": 400020,
+    "Stcd": "27",
+    "Ph": "919820012345",
+    "Em": "help@example.com"
+  },
+  "BuyerDtls": {
+    "Gstin": "URP",
+    "LglNm": "Acme Inc",
+    "Pos": "96",
+    "Addr1": "100 Main St, Austin, TX 78701, United States",
+    "Loc": "United States",
+    "Pin": 999999,
+    "Stcd": "96"
+  },
+  "ItemList": [
+    {
+      "SlNo": "1",
+      "PrdDesc": "Pro plan, annual",
+      "IsServc": "Y",
+      "HsnCd": "998315",
+      "Qty": 1,
+      "Unit": "OTH",
+      "UnitPrice": 99900.00,
+      "TotAmt": 99900.00,
+      "AssAmt": 99900.00,
+      "GstRt": 0,
+      "IgstAmt": 0.00,
+      "CgstAmt": 0.00,
+      "SgstAmt": 0.00,
+      "TotItemVal": 99900.00
+    }
+  ],
+  "ValDtls": {
+    "AssVal": 99900.00,
+    "CgstVal": 0.00,
+    "SgstVal": 0.00,
+    "IgstVal": 0.00,
+    "TotInvVal": 99900.00,
+    "TotInvValFc": 1200.00
+  },
+  "ExpDtls": {
+    "RefClm": "N",
+    "ForCur": "USD",
+    "CntCode": "US"
+  }
+}
