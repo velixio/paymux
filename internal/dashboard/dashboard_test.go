@@ -101,7 +101,7 @@ func newEnv(t *testing.T, db *store.DB, opts ...envOpt) *env {
 	out.Register()
 	core.RegisterJobs(q)
 	rec := &recMailer{}
-	inv := invoice.New(invoice.Options{DB: db, Settings: set, Jobs: q, Emitter: out, Mailer: rec, BaseURL: "https://pay.example.com", Now: clk.Now,
+	inv := invoice.New(invoice.Options{DB: db, Box: box, Settings: set, Jobs: q, Emitter: out, Mailer: rec, BaseURL: "https://pay.example.com", Now: clk.Now,
 		IsMerchantOfRecord: func(string) bool { return false }})
 	inv.RegisterJobs(q)
 	conns := connectors.New(connectors.Options{DB: db, Box: box, BaseURL: base, Now: clk.Now})
