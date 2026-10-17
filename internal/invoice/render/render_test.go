@@ -37,7 +37,7 @@ func supplier(t *testing.T) Party {
 }
 
 func base(t *testing.T) Document {
-	return Document{Kind: KindInvoice, Number: "VS/2026-27/000042", IssueDate: issued,
+	return Document{Kind: KindInvoice, Number: "VS/2627/000042", IssueDate: issued,
 		Supplier: supplier(t), TemplateVersion: Version1,
 		PaymentMethod: "UPI", PaymentRef: "pay_9X2KQ7", SignatoryName: "A. Rao",
 		FooterNote: "Thank you for your business."}
@@ -57,7 +57,7 @@ func intraB2C(t *testing.T) Document {
 
 func interB2B(t *testing.T) Document {
 	d := base(t)
-	d.Number = "VS/2026-27/000043"
+	d.Number = "VS/2627/000043"
 	d.Recipient = Party{Name: "Acme Traders LLP", Address: "44 Link Road, Mumbai", GSTIN: "27AAPFU0939F1ZV", StateName: "Maharashtra", StateCode: "27", Country: "IN"}
 	d.PlaceOfSupply = "Maharashtra (27)"
 	d.SupplyType = tax.B2B
@@ -70,7 +70,7 @@ func interB2B(t *testing.T) Document {
 
 func exportLUT(t *testing.T) Document {
 	d := base(t)
-	d.Number = "VS/2026-27/000044"
+	d.Number = "VS/2627/000044"
 	d.Recipient = Party{Name: "Globex Inc", Address: "1 Market St, San Francisco", Country: "US", CountryName: "United States"}
 	d.PlaceOfSupply = "Outside India (United States)"
 	d.SupplyType = tax.ExportLUT
@@ -87,8 +87,8 @@ func exportLUT(t *testing.T) Document {
 func creditNote(t *testing.T) Document {
 	d := intraB2C(t)
 	d.Kind = KindCreditNote
-	d.Number = "VSCN/2026-27/000007"
-	d.OriginalNumber = "VS/2026-27/000042"
+	d.Number = "VSCN/2627/000007"
+	d.OriginalNumber = "VS/2627/000042"
 	d.OriginalDate = time.Date(2026, 11, 3, 0, 0, 0, 0, tax.IST)
 	d.Reason = "Refund of subscription charge"
 	d.Lines[0].Taxable, d.Lines[0].CGST, d.Lines[0].SGST = 50000, 4500, 4500
@@ -121,7 +121,7 @@ func wantAll(t *testing.T, got string, want ...string) {
 
 func TestIntraStateB2CInvoice(t *testing.T) {
 	got := text(t, mustRender(t, intraB2C(t)))
-	wantAll(t, got, "TAX INVOICE", "VS/2026-27/000042", "03-11-2026", "29ABCDE1234F1Z5", "Yupcha Technologies Private Limited",
+	wantAll(t, got, "TAX INVOICE", "VS/2627/000042", "03-11-2026", "29ABCDE1234F1Z5", "Yupcha Technologies Private Limited",
 		"Karnataka", "Priya Sharma", "998314", "service", "CGST", "SGST", "9%", "₹90.00", "₹1,000.00", "₹1,180.00",
 		"Rupees One Thousand One Hundred Eighty Only", "Whether tax is payable on reverse charge: No",
 		"UPI", "pay_9X2KQ7", "A. Rao", "This is a computer-generated document", "Thank you for your business.", "Voicestudio Pro — Nov 2026")
@@ -132,7 +132,7 @@ func TestIntraStateB2CInvoice(t *testing.T) {
 
 func TestInterStateB2BInvoice(t *testing.T) {
 	got := text(t, mustRender(t, interB2B(t)))
-	wantAll(t, got, "TAX INVOICE", "VS/2026-27/000043", "27AAPFU0939F1ZV", "Maharashtra", "IGST", "18%", "₹1,800.00", "₹11,800.00",
+	wantAll(t, got, "TAX INVOICE", "VS/2627/000043", "27AAPFU0939F1ZV", "Maharashtra", "IGST", "18%", "₹1,800.00", "₹11,800.00",
 		"Rupees Eleven Thousand Eight Hundred Only")
 	if strings.Contains(got, "CGST") {
 		t.Error("inter-state invoice shows CGST")
@@ -147,7 +147,7 @@ func TestExportLUTInvoice(t *testing.T) {
 
 func TestCreditNote(t *testing.T) {
 	got := text(t, mustRender(t, creditNote(t)))
-	wantAll(t, got, "CREDIT NOTE", "VSCN/2026-27/000007", "VS/2026-27/000042", "03-11-2026", "Refund of subscription charge",
+	wantAll(t, got, "CREDIT NOTE", "VSCN/2627/000007", "VS/2627/000042", "03-11-2026", "Refund of subscription charge",
 		"₹500.00", "₹45.00", "₹590.00", "Rupees Five Hundred Ninety Only")
 	if strings.Contains(got, "TAX INVOICE") {
 		t.Error("credit note titled as tax invoice")
@@ -162,7 +162,7 @@ func TestRenderIsDeterministic(t *testing.T) {
 		}
 	}
 	d := intraB2C(t)
-	d.Number = "VS/2026-27/000099"
+	d.Number = "VS/2627/000099"
 	if bytes.Equal(mustRender(t, d), mustRender(t, intraB2C(t))) {
 		t.Error("different documents rendered identically")
 	}
@@ -239,5 +239,67 @@ func TestFormatINR(t *testing.T) {
 		if got := formatINR(in); got != want {
 			t.Errorf("formatINR(%d)=%q want %q", in, got, want)
 		}
+	}
+}
+
+func TestFixtureNumbersMatchDocumentNumber(t *testing.T) {
+	for want, got := range map[string]string{
+		"VS/2627/000042":   intraB2C(t).Number,
+		"VS/2627/000043":   interB2B(t).Number,
+		"VSCN/2627/000007": creditNote(t).Number,
+	} {
+		prefix, rest, _ := strings.Cut(want, "/")
+		var seq int64
+		for _, c := range rest[5:] {
+			seq = seq*10 + int64(c-'0')
+		}
+		n, err := tax.DocumentNumber(prefix, "2627", seq)
+		if err != nil || n != want || got != want {
+			t.Errorf("fixture %q vs DocumentNumber %q (%v)", got, n, err)
+		}
+	}
+}
+
+func TestNumberLongerThan16CharsRejected(t *testing.T) {
+	d := intraB2C(t)
+	d.Number = "VS/2026-27/000042" // 17 characters: breaks Rule 46
+	if _, err := Render(d, Options{}); err == nil || !strings.Contains(err.Error(), "16") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestLogoDoesNotOverlapSupplierText(t *testing.T) {
+	d := intraB2C(t)
+	_, l, err := render(d, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.Logo.W == 0 {
+		t.Fatal("logo not placed")
+	}
+	if l.Logo.H > 14.01 {
+		t.Errorf("logo %.1fmm tall, max 14", l.Logo.H)
+	}
+	if l.SupplierTextX <= l.Logo.X+l.Logo.W {
+		t.Errorf("supplier text x=%.1f starts inside logo (right edge %.1f)", l.SupplierTextX, l.Logo.X+l.Logo.W)
+	}
+	// the logo stays inside the supplier box, below the title
+	if l.Logo.Y < l.TitleBottom || l.Logo.Y+l.Logo.H > l.SupplierBoxBottom {
+		t.Errorf("logo %+v outside supplier box (title bottom %.1f, box bottom %.1f)", l.Logo, l.TitleBottom, l.SupplierBoxBottom)
+	}
+	// a tall logo keeps its aspect ratio within the 14mm cap
+	tall := image.NewRGBA(image.Rect(0, 0, 10, 40))
+	var b bytes.Buffer
+	_ = png.Encode(&b, tall)
+	d.Supplier.Logo = b.Bytes()
+	_, l, err = render(d, Options{})
+	if err != nil || l.Logo.H > 14.01 || l.Logo.W < 3 || l.Logo.W > 3.6 {
+		t.Fatalf("tall logo %+v err=%v", l.Logo, err)
+	}
+	// without a logo the text starts at the box edge
+	d.Supplier.Logo = nil
+	_, l, _ = render(d, Options{})
+	if l.Logo.W != 0 || l.SupplierTextX >= 14 {
+		t.Errorf("no-logo layout %+v", l)
 	}
 }
