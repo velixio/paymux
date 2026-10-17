@@ -1,0 +1,209 @@
+// Package settings resolves policy values: app override, then org value, then
+// the built-in default (spec section 8a). It is the only way to read a policy
+// value; the settings-via-resolver seam rule enforces that.
+package settings
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/paymux/paymux/internal/audit"
+	"github.com/paymux/paymux/internal/store"
+)
+
+var (
+	// ErrUnknownKey means the key is not a defined setting.
+	ErrUnknownKey = errors.New("settings: unknown key")
+	// ErrInvalid means the value violates the setting's allowed range.
+	ErrInvalid = errors.New("settings: invalid value")
+	// ErrWrongLevel means the key cannot be set at that level (org or app).
+	ErrWrongLevel = errors.New("settings: key cannot be set at this level")
+)
+
+// Source says where a resolved value came from.
+type Source string
+
+const (
+	SourceApp     Source = "app"     // overridden on the app
+	SourceOrg     Source = "org"     // inherited from the org
+	SourceDefault Source = "default" // built-in default
+)
+
+// Value is a resolved setting.
+type Value struct {
+	Raw    json.RawMessage
+	Source Source
+}
+
+// Decode unmarshals the value into dst.
+func (v Value) Decode(dst any) error { return json.Unmarshal(v.Raw, dst) }
+
+// Service reads and writes settings.
+type Service struct {
+	db  *store.DB
+	now func() time.Time
+}
+
+// New returns a Service on db.
+func New(db *store.DB) *Service { return &Service{db: db, now: time.Now} }
+
+// Resolve returns the effective value of key for an app. An empty appID
+// resolves at the org level.
+func (s *Service) Resolve(ctx context.Context, appID, key string) (Value, error) {
+	var v Value
+	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+		v, err = ResolveWith(ctx, q, appID, key)
+		return
+	})
+	return v, err
+}
+
+// ResolveOrg returns the org-level value of key (org value, else default).
+func (s *Service) ResolveOrg(ctx context.Context, orgID, key string) (Value, error) {
+	var v Value
+	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+		v, err = resolveOrgWith(ctx, q, orgID, key)
+		return
+	})
+	return v, err
+}
+
+// ResolveWith resolves using an existing reader, such as the Tx of a write
+// transaction, so the read sees that transaction's own writes.
+func ResolveWith(ctx context.Context, q store.Queryer, appID, key string) (Value, error) {
+	if _, ok := Lookup(key); !ok {
+		return Value{}, fmt.Errorf("%w: %q", ErrUnknownKey, key)
+	}
+	if appID == "" {
+		orgID, err := store.FirstOrgID(ctx, q)
+		if err != nil {
+			return Value{}, err
+		}
+		return resolveOrgWith(ctx, q, orgID, key)
+	}
+	app, err := store.GetApp(ctx, q, appID)
+	if err != nil {
+		return Value{}, fmt.Errorf("settings: app %s: %w", appID, err)
+	}
+	if raw, found, err := store.GetAppSetting(ctx, q, appID, key); err != nil {
+		return Value{}, err
+	} else if found {
+		return Value{Raw: json.RawMessage(raw), Source: SourceApp}, nil
+	}
+	return resolveOrgWith(ctx, q, app.OrgID, key)
+}
+
+func resolveOrgWith(ctx context.Context, q store.Queryer, orgID, key string) (Value, error) {
+	def, ok := Lookup(key)
+	if !ok {
+		return Value{}, fmt.Errorf("%w: %q", ErrUnknownKey, key)
+	}
+	raw, found, err := store.GetOrgSetting(ctx, q, orgID, key)
+	if err != nil {
+		return Value{}, err
+	}
+	if found {
+		return Value{Raw: json.RawMessage(raw), Source: SourceOrg}, nil
+	}
+	return Value{Raw: json.RawMessage(def.Default), Source: SourceDefault}, nil
+}
+
+// SeedOrg copies every built-in default into the org's values, leaving any
+// existing value untouched. It is safe to run on every start.
+func (s *Service) SeedOrg(ctx context.Context, orgID string) error {
+	return s.db.Write(ctx, func(tx store.Tx) error {
+		for _, d := range defs {
+			if err := store.SeedOrgSetting(ctx, tx, orgID, d.Key, d.Default, s.now()); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func prepare(key string, raw json.RawMessage, level Level) (string, error) {
+	def, ok := Lookup(key)
+	if !ok {
+		return "", fmt.Errorf("%w: %q", ErrUnknownKey, key)
+	}
+	if def.Levels&level == 0 {
+		return "", fmt.Errorf("%w: %q", ErrWrongLevel, key)
+	}
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, raw); err != nil {
+		return "", fmt.Errorf("%w: %s: not JSON", ErrInvalid, key)
+	}
+	if err := def.Validate(buf.Bytes()); err != nil {
+		return "", fmt.Errorf("%w: %s: %v", ErrInvalid, key, err)
+	}
+	return buf.String(), nil
+}
+
+// SetOrg validates and stores an org value and audits the change.
+func (s *Service) SetOrg(ctx context.Context, actor audit.Actor, orgID, key string, raw json.RawMessage) error {
+	val, err := prepare(key, raw, LevelOrg)
+	if err != nil {
+		return err
+	}
+	return s.db.Write(ctx, func(tx store.Tx) error {
+		before, err := resolveOrgWith(ctx, tx, orgID, key)
+		if err != nil {
+			return err
+		}
+		if err := store.SetOrgSetting(ctx, tx, orgID, key, val, s.now()); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{OrgID: orgID, Actor: actor, Action: "setting.update",
+			Target: "org:" + orgID + "/" + key, Before: before.Raw, After: json.RawMessage(val)})
+	})
+}
+
+// SetApp validates and stores an app override and audits the change.
+func (s *Service) SetApp(ctx context.Context, actor audit.Actor, appID, key string, raw json.RawMessage) error {
+	val, err := prepare(key, raw, LevelApp)
+	if err != nil {
+		return err
+	}
+	return s.db.Write(ctx, func(tx store.Tx) error {
+		app, err := store.GetApp(ctx, tx, appID)
+		if err != nil {
+			return fmt.Errorf("settings: app %s: %w", appID, err)
+		}
+		before, err := ResolveWith(ctx, tx, appID, key)
+		if err != nil {
+			return err
+		}
+		if err := store.SetAppSetting(ctx, tx, appID, key, val, s.now()); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{OrgID: app.OrgID, Actor: actor, Action: "setting.update",
+			Target: "app:" + appID + "/" + key, Before: before.Raw, After: json.RawMessage(val)})
+	})
+}
+
+// ResetApp removes an app override so the app inherits the org value again.
+// It is a no-op (and writes no audit entry) when there is no override.
+func (s *Service) ResetApp(ctx context.Context, actor audit.Actor, appID, key string) error {
+	if _, ok := Lookup(key); !ok {
+		return fmt.Errorf("%w: %q", ErrUnknownKey, key)
+	}
+	return s.db.Write(ctx, func(tx store.Tx) error {
+		app, err := store.GetApp(ctx, tx, appID)
+		if err != nil {
+			return fmt.Errorf("settings: app %s: %w", appID, err)
+		}
+		old, found, err := store.GetAppSetting(ctx, tx, appID, key)
+		if err != nil || !found {
+			return err
+		}
+		if err := store.DeleteAppSetting(ctx, tx, appID, key); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{OrgID: app.OrgID, Actor: actor, Action: "setting.reset",
+			Target: "app:" + appID + "/" + key, Before: json.RawMessage(old)})
+	})
+}

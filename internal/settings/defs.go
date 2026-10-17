@@ -1,0 +1,280 @@
+package settings
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"slices"
+)
+
+// Level says where a setting may be set (spec section 8a, "Level" column).
+type Level int
+
+const (
+	LevelOrg Level = 1 << iota
+	LevelApp
+)
+
+// Def describes one setting: its built-in default (a JSON document) and the
+// check that enforces the "Allowed" column.
+type Def struct {
+	Key      string
+	Default  string
+	Levels   Level
+	Validate func(json.RawMessage) error
+}
+
+// Defs returns every setting definition, ordered by key.
+func Defs() []Def {
+	out := slices.Clone(defs)
+	slices.SortFunc(out, func(a, b Def) int {
+		switch {
+		case a.Key < b.Key:
+			return -1
+		case a.Key > b.Key:
+			return 1
+		}
+		return 0
+	})
+	return out
+}
+
+// Lookup returns the definition of key.
+func Lookup(key string) (Def, bool) {
+	for _, d := range defs {
+		if d.Key == key {
+			return d, true
+		}
+	}
+	return Def{}, false
+}
+
+const orgApp = LevelOrg | LevelApp
+
+// The built-in defaults live here, in code (spec section 8a). They are copied
+// into the org values on first start.
+//
+// TODO(spec): pdf_signing (tax-entity level) is owned by the invoicing lane.
+// TODO(spec): billing_details defaults to "off" when invoicing is off; the
+// default here is the invoicing-on value and the pay-page lane must apply the
+// conditional.
+// TODO(spec): invoice/credit-note prefixes also exist per tax entity; only the
+// org and app levels are settable here.
+// TODO(spec): the UPI cap of 3 dunning retries per cycle is enforced by the
+// subscriptions lane, which knows the mandate method.
+var defs = []Def{
+	{"routing", `{"rules":[{"currency":"INR","connectors":["razorpay","zoho","payu"]},{"currency":"BDT","connectors":["razorpay","whop"]}],"catch_all":{"connectors":["razorpay","whop"]}}`, orgApp, validRouting},
+	{"duplicate_payment_action", `"review"`, orgApp, oneOf("review", "auto_refund")},
+	{"billing_details", `"state_required"`, orgApp, oneOf("off", "state_required", "optional", "required")},
+	{"payment_ttl", `60`, orgApp, intRange(10, 7*24*60)}, // minutes
+	{"pay_page_retry_buttons", `{"try_again":true,"pay_another_way":true}`, orgApp, validRetryButtons},
+	{"invoice_delivery", `"app"`, orgApp, oneOf("app", "paymux", "both")},
+	{"issue_invoices", `true`, LevelApp, isBool},
+	{"sac_code", `"998315"`, LevelApp, matches(`^[0-9]{6}$`)},
+	{"gst_rate_bp", `1800`, LevelApp, intRange(0, 2800)},
+	{"prices_include_tax", `true`, LevelApp, isBool},
+	{"invoice_series_prefix", `"INV"`, orgApp, matches(`^[A-Z0-9]{1,5}$`)},
+	{"credit_note_series_prefix", `"CN"`, orgApp, matches(`^[A-Z0-9]{1,5}$`)},
+	{"dispute_credit_note", `"manual"`, orgApp, oneOf("manual", "on_loss")},
+	{"dunning_schedule", `[24,72,120]`, orgApp, validDunning}, // hours after the failure, 0-6 retries
+	{"dunning_final_action", `"cancel"`, orgApp, oneOf("cancel", "keep_past_due")},
+	{"predebit_lead", `48`, orgApp, intRange(25, 7*24)}, // hours
+	{"mandate_headroom", `1.5`, orgApp, floatRange(1.0, 5.0)},
+	{"mandate_afa_limit", `1500000`, LevelOrg, intRange(1, 10000000)}, // INR paise (Rs 15,000)
+	{"mandate_validity", `5`, orgApp, intRange(1, 30)},                // years
+	// upi_execution_windows are the peak windows to avoid: debits run outside them (IST).
+	{"upi_execution_windows", `[{"start":"10:00","end":"13:00"},{"start":"17:00","end":"21:30"}]`, LevelOrg, validWindows},
+	{"webhook_retry_schedule", `[0,60,300,1800,7200,21600,43200,86400,86400]`, LevelOrg, validRetrySchedule}, // seconds
+	{"recon_time", `"03:00"`, LevelOrg, validClock},
+	{"provider_event_retention", `400`, LevelOrg, zeroOrAtLeast(30)}, // days; 0 = forever
+	{"document_retention", `0`, LevelOrg, zeroOrAtLeast(8)},          // years; 0 = forever
+}
+
+var clockRE = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
+
+func decodeStrict(raw json.RawMessage, dst any) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		return fmt.Errorf("must be %T: %v", dst, err)
+	}
+	if dec.More() {
+		return fmt.Errorf("trailing data")
+	}
+	return nil
+}
+
+func oneOf(allowed ...string) func(json.RawMessage) error {
+	return func(raw json.RawMessage) error {
+		var s string
+		if err := decodeStrict(raw, &s); err != nil {
+			return err
+		}
+		if !slices.Contains(allowed, s) {
+			return fmt.Errorf("must be one of %v", allowed)
+		}
+		return nil
+	}
+}
+
+func matches(pattern string) func(json.RawMessage) error {
+	re := regexp.MustCompile(pattern)
+	return func(raw json.RawMessage) error {
+		var s string
+		if err := decodeStrict(raw, &s); err != nil {
+			return err
+		}
+		if !re.MatchString(s) {
+			return fmt.Errorf("must match %s", pattern)
+		}
+		return nil
+	}
+}
+
+func intRange(lo, hi int64) func(json.RawMessage) error {
+	return func(raw json.RawMessage) error {
+		var n int64
+		if err := decodeStrict(raw, &n); err != nil {
+			return err
+		}
+		if n < lo || n > hi {
+			return fmt.Errorf("must be between %d and %d", lo, hi)
+		}
+		return nil
+	}
+}
+
+func zeroOrAtLeast(lo int64) func(json.RawMessage) error {
+	return func(raw json.RawMessage) error {
+		var n int64
+		if err := decodeStrict(raw, &n); err != nil {
+			return err
+		}
+		if n != 0 && n < lo {
+			return fmt.Errorf("must be 0 (forever) or at least %d", lo)
+		}
+		return nil
+	}
+}
+
+func floatRange(lo, hi float64) func(json.RawMessage) error {
+	return func(raw json.RawMessage) error {
+		var f float64
+		if err := decodeStrict(raw, &f); err != nil {
+			return err
+		}
+		if f < lo || f > hi {
+			return fmt.Errorf("must be between %v and %v", lo, hi)
+		}
+		return nil
+	}
+}
+
+func isBool(raw json.RawMessage) error {
+	var b bool
+	return decodeStrict(raw, &b)
+}
+
+func validClock(raw json.RawMessage) error {
+	var s string
+	if err := decodeStrict(raw, &s); err != nil {
+		return err
+	}
+	if !clockRE.MatchString(s) {
+		return fmt.Errorf("must be HH:MM")
+	}
+	return nil
+}
+
+func validRetryButtons(raw json.RawMessage) error {
+	var v struct {
+		TryAgain      *bool `json:"try_again"`
+		PayAnotherWay *bool `json:"pay_another_way"`
+	}
+	if err := decodeStrict(raw, &v); err != nil {
+		return err
+	}
+	if v.TryAgain == nil || v.PayAnotherWay == nil {
+		return fmt.Errorf("try_again and pay_another_way are both required")
+	}
+	return nil
+}
+
+func validDunning(raw json.RawMessage) error {
+	var hours []int64
+	if err := decodeStrict(raw, &hours); err != nil {
+		return err
+	}
+	if len(hours) > 6 {
+		return fmt.Errorf("at most 6 retries")
+	}
+	for _, h := range hours {
+		if h < 1 || h > 30*24 {
+			return fmt.Errorf("each retry must be 1 to 720 hours after the failure")
+		}
+	}
+	return nil
+}
+
+func validRetrySchedule(raw json.RawMessage) error {
+	var secs []int64
+	if err := decodeStrict(raw, &secs); err != nil {
+		return err
+	}
+	if len(secs) < 1 || len(secs) > 15 {
+		return fmt.Errorf("must have 1 to 15 steps")
+	}
+	for _, s := range secs {
+		if s < 0 {
+			return fmt.Errorf("steps must not be negative")
+		}
+	}
+	return nil
+}
+
+func validWindows(raw json.RawMessage) error {
+	var ws []struct {
+		Start string `json:"start"`
+		End   string `json:"end"`
+	}
+	if err := decodeStrict(raw, &ws); err != nil {
+		return err
+	}
+	for _, w := range ws {
+		if !clockRE.MatchString(w.Start) || !clockRE.MatchString(w.End) || w.Start >= w.End {
+			return fmt.Errorf("each window needs HH:MM start < end")
+		}
+	}
+	return nil
+}
+
+var currencyRE = regexp.MustCompile(`^[A-Z]{3}$`)
+
+func validRouting(raw json.RawMessage) error {
+	var v struct {
+		Rules []struct {
+			Currency   string   `json:"currency"`
+			Connectors []string `json:"connectors"`
+		} `json:"rules"`
+		CatchAll *struct {
+			Connectors []string `json:"connectors"`
+			Reject     bool     `json:"reject"`
+		} `json:"catch_all"`
+	}
+	if err := decodeStrict(raw, &v); err != nil {
+		return err
+	}
+	if v.CatchAll == nil || v.Rules == nil {
+		return fmt.Errorf("rules and catch_all are required")
+	}
+	for _, r := range v.Rules {
+		if !currencyRE.MatchString(r.Currency) || len(r.Connectors) == 0 || slices.Contains(r.Connectors, "") {
+			return fmt.Errorf("each rule needs an upper-case ISO currency and at least one connector")
+		}
+	}
+	if !v.CatchAll.Reject && (len(v.CatchAll.Connectors) == 0 || slices.Contains(v.CatchAll.Connectors, "")) {
+		return fmt.Errorf("catch_all needs connectors or reject")
+	}
+	return nil
+}
