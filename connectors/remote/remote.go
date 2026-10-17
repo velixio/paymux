@@ -12,12 +12,11 @@
 // that checks every address a name resolves to and does not follow redirects.
 // allow_insecure: true lifts both checks, for tests and local development.
 //
-// TODO(spec): the registered Info is a placeholder; per-account facts such as
-// merchant_of_record are only known after discovery, so anything that reads the
-// registry instead of the live connector (invoice suppression for
-// merchant-of-record connectors) cannot see them yet.
-// TODO(spec): the account's secret and URL are not validated against the
-// remote until the first call; account creation could probe GET /info.
+// The registered Info is a placeholder: per-account facts such as
+// merchant_of_record are only known after discovery. The host reads the live
+// connector's Info when an account is created (it builds the connector, which
+// is what probes GET /info and so also validates the URL and the secret) and
+// records merchant_of_record on the account, which is where invoicing looks.
 package remote
 
 //go:generate go run gen.go

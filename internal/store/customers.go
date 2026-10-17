@@ -77,7 +77,10 @@ type ProviderAccount struct {
 	ConfigEnc                                []byte
 	StatementDescriptor, ProviderGSTIN       string
 	AcceptedCurrencies, EnabledPurposes      []string
-	CreatedAt                                time.Time
+	// MerchantOfRecord says the provider sells as merchant of record for this
+	// account, as its live connector reported when the account was created.
+	MerchantOfRecord bool
+	CreatedAt        time.Time
 }
 
 // InsertProviderAccount inserts pa. Nil currency or purpose lists store [] and
@@ -90,25 +93,27 @@ func InsertProviderAccount(ctx context.Context, tx Tx, pa ProviderAccount) error
 	}
 	pur, _ := json.Marshal(purposes)
 	_, err := tx.ExecContext(ctx, `INSERT INTO provider_accounts (id, org_id, mode, connector, name, config_enc, status,
-		statement_descriptor, provider_gstin, accepted_currencies, enabled_purposes, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, pa.ID, pa.OrgID, pa.Mode, pa.Connector, pa.Name, pa.ConfigEnc,
+		statement_descriptor, provider_gstin, accepted_currencies, enabled_purposes, merchant_of_record, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, pa.ID, pa.OrgID, pa.Mode, pa.Connector, pa.Name, pa.ConfigEnc,
 		pa.Status, nullIfEmpty(pa.StatementDescriptor), nullIfEmpty(pa.ProviderGSTIN), string(cur), string(pur),
-		ms(pa.CreatedAt), ms(pa.CreatedAt))
+		boolInt(pa.MerchantOfRecord), ms(pa.CreatedAt), ms(pa.CreatedAt))
 	return err
 }
 
 const providerAccountCols = `id, org_id, mode, connector, name, config_enc, status, COALESCE(statement_descriptor,''),
-	COALESCE(provider_gstin,''), accepted_currencies, enabled_purposes, created_at`
+	COALESCE(provider_gstin,''), accepted_currencies, enabled_purposes, merchant_of_record, created_at`
 
 func scanProviderAccount(row interface{ Scan(...any) error }) (ProviderAccount, error) {
 	var pa ProviderAccount
 	var cur, pur string
 	var created int64
+	var mor int
 	err := row.Scan(&pa.ID, &pa.OrgID, &pa.Mode, &pa.Connector, &pa.Name, &pa.ConfigEnc, &pa.Status,
-		&pa.StatementDescriptor, &pa.ProviderGSTIN, &cur, &pur, &created)
+		&pa.StatementDescriptor, &pa.ProviderGSTIN, &cur, &pur, &mor, &created)
 	if err != nil {
 		return ProviderAccount{}, notFound(err)
 	}
+	pa.MerchantOfRecord = mor == 1
 	if err := json.Unmarshal([]byte(cur), &pa.AcceptedCurrencies); err != nil {
 		return ProviderAccount{}, err
 	}

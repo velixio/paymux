@@ -247,7 +247,7 @@ func (s *Service) IssueForPayment(ctx context.Context, tx store.Tx, p store.Paym
 	if err != nil {
 		return nil, fmt.Errorf("invoice: provider account of attempt %s: %w", a.ID, err)
 	}
-	if s.isMoR(pa.Connector) {
+	if pa.MerchantOfRecord || s.isMoR(pa.Connector) {
 		return nil, nil
 	}
 	if existing, err := store.InvoicesForPayment(ctx, tx, p.ID); err != nil {
