@@ -1,6 +1,7 @@
 package invoice_test
 
 import (
+	"bytes"
 	"context"
 	"sync"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/paymux/paymux/internal/invoice"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/notify"
+	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/tax"
@@ -135,7 +137,11 @@ func newEnv(t *testing.T, db *store.DB, tw ...tweak) *env {
 		e.events = append(e.events, ev)
 		return nil
 	})
-	e.inv = invoice.New(invoice.Options{DB: db, Settings: e.set, Jobs: e.q, Emitter: emitter, Mailer: e.mailer, BaseURL: baseURL, Alerter: e.alerts,
+	box, err := secrets.NewBox(bytes.Repeat([]byte{7}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.inv = invoice.New(invoice.Options{Box: box, DB: db, Settings: e.set, Jobs: e.q, Emitter: emitter, Mailer: e.mailer, BaseURL: baseURL, Alerter: e.alerts,
 		Now: e.clock, IsMerchantOfRecord: func(name string) bool { return name == "mor" }})
 	e.inv.RegisterJobs(e.q)
 	e.core = core.NewService(core.Options{DB: db, Settings: e.set, Jobs: e.q, Emitter: emitter, Now: e.clock,
@@ -150,7 +156,7 @@ func newEnv(t *testing.T, db *store.DB, tw ...tweak) *env {
 	for _, f := range tw {
 		f(&ent, &prof)
 	}
-	err := db.Write(ctx, func(tx store.Tx) error {
+	err = db.Write(ctx, func(tx store.Tx) error {
 		if err := store.SeedOrg(ctx, tx, "Paymux", e.now); err != nil {
 			return err
 		}
