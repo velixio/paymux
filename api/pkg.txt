@@ -215,6 +215,8 @@ func Register(name string, f Factory, info Info)
 
 func ResetRegistryForTest()
 
+func WithAttemptHook(ctx context.Context, fn func(*http.Request)) context.Context
+
 type BillingMode string
 
 const (

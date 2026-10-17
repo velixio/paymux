@@ -48,6 +48,19 @@ type HTTPOptions struct {
 	Sleep func(ctx context.Context, d time.Duration) error
 }
 
+type attemptKey struct{}
+
+// WithAttemptHook returns a context for a request sent through a NewHTTPClient
+// client: fn is called with each attempt's copy of the request (the first and
+// every retry) just before it is sent, and may change its headers. A signature
+// that must be unique per attempt, such as a replay-protected message id, is
+// made here, not once before the client retries the same bytes. Clients that
+// do not come from NewHTTPClient never call it, so the request must also be
+// valid as built.
+func WithAttemptHook(ctx context.Context, fn func(*http.Request)) context.Context {
+	return context.WithValue(ctx, attemptKey{}, fn)
+}
+
 // NewHTTPClient returns an *http.Client with per-attempt timeouts, retries of
 // idempotent GETs, redacted request/response logging and a token-bucket rate
 // limiter. Create one client per provider account so the limiter is per account.
@@ -128,7 +141,7 @@ type transport struct {
 }
 
 func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	retryable := (req.Method == http.MethodGet || req.Method == http.MethodHead) && req.Body == nil
+	retryable := (req.Method == http.MethodGet || req.Method == http.MethodHead) && (req.Body == nil || req.Body == http.NoBody)
 	retries := 0
 	if retryable {
 		retries = t.o.MaxRetries
@@ -161,6 +174,9 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 func (t *transport) once(req *http.Request) (*http.Response, error) {
 	ctx, cancel := context.WithTimeout(req.Context(), t.o.Timeout)
 	r := req.Clone(ctx)
+	if fn, ok := req.Context().Value(attemptKey{}).(func(*http.Request)); ok {
+		fn(r) // e.g. sign this attempt afresh
+	}
 	start := t.o.Now()
 	t.logRequest(r)
 	resp, err := t.o.Base.RoundTrip(r)

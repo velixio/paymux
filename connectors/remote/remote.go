@@ -33,6 +33,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/paymux/paymux/pkg/connector"
 	"github.com/paymux/paymux/pkg/connector/wire"
@@ -148,12 +149,28 @@ func (r *remote) call(ctx context.Context, method string, in, out any) error {
 			return fmt.Errorf("remote: encoding %s: %w", method, err)
 		}
 	}
-	req, err := http.NewRequestWithContext(ctx, verb, r.base+"/"+method, bytes.NewReader(body))
+	// Every attempt (the host's client retries a GET after a 5xx) is signed
+	// afresh: a retry that reused the first attempt's message id would be
+	// refused by the service's replay cache. The response is bound to the id of
+	// the attempt that produced it, which is the last one signed.
+	var idMu sync.Mutex
+	var requestID string
+	sign := func(h http.Header) {
+		id := r.signer.SignRequest(h, verb, method, body, r.deps.Now())
+		idMu.Lock()
+		requestID = id
+		idMu.Unlock()
+	}
+	var reader io.Reader // nil for an empty body, so that the client may retry a GET
+	if len(body) > 0 {
+		reader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(connector.WithAttemptHook(ctx, func(a *http.Request) { sign(a.Header) }), verb, r.base+"/"+method, reader)
 	if err != nil {
 		return fmt.Errorf("remote: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	requestID := r.signer.SignRequest(req.Header, verb, method, body, r.deps.Now())
+	sign(req.Header) // valid as built, for clients that do not call the hook
 	resp, err := r.deps.HTTP.Do(req)
 	if errors.Is(err, connector.ErrPrivateAddress) {
 		return fmt.Errorf("remote %s: %w", method, err) // permanent: the account points at an internal address
@@ -166,7 +183,10 @@ func (r *remote) call(ctx context.Context, method string, in, out any) error {
 	if err != nil {
 		return fmt.Errorf("%w: remote %s: reading response: %v", connector.ErrTemporary, method, err)
 	}
-	if err := r.signer.VerifyResponse(resp.Header, requestID, data, r.deps.Now()); err != nil {
+	idMu.Lock()
+	answered := requestID
+	idMu.Unlock()
+	if err := r.signer.VerifyResponse(resp.Header, answered, data, r.deps.Now()); err != nil {
 		if resp.Header.Get(wire.HeaderSignature) == "" && resp.StatusCode >= 500 {
 			return fmt.Errorf("%w: remote %s: HTTP %d", connector.ErrTemporary, method, resp.StatusCode) // a proxy or crash, not the service
 		}
