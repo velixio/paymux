@@ -2,14 +2,14 @@ package config
 
 import (
 	"encoding/base64"
-	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-var goodKey = strings.Repeat("ab", 32) // 64 hex chars = 32 bytes
+var goodKey = base64.StdEncoding.EncodeToString(make([]byte, 32))
+var goodHex = strings.Repeat("ab", 32) // 64 hex chars: valid base64 of 48 bytes
 
 func env(kv ...string) func(string) (string, bool) {
 	m := map[string]string{}
@@ -73,12 +73,17 @@ func TestMasterKeyNoneSet(t *testing.T) {
 }
 
 func TestMasterKeyWrongLength(t *testing.T) {
-	_, err := Load(base("PAYMUX_MASTER_KEY", hex.EncodeToString(make([]byte, 16))))
+	_, err := Load(base("PAYMUX_MASTER_KEY", base64.StdEncoding.EncodeToString(make([]byte, 16))))
 	wantErr(t, err, "PAYMUX_MASTER_KEY must decode to 32 bytes, got 16")
 }
 
+func TestMasterKeyHexRejected(t *testing.T) {
+	_, err := Load(base("PAYMUX_MASTER_KEY", goodHex))
+	wantErr(t, err, "must decode to 32 bytes, got 48")
+}
+
 func TestMasterKeyBase64AndInvalid(t *testing.T) {
-	b64 := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	b64 := base64.RawStdEncoding.EncodeToString(make([]byte, 32))
 	c, err := Load(base("PAYMUX_MASTER_KEY", b64))
 	if err != nil || len(c.MasterKey) != 32 {
 		t.Fatalf("%v %v", c.MasterKey, err)

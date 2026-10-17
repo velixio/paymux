@@ -56,7 +56,12 @@ func isSecretKey(k string) bool {
 
 func maskString(s string) string {
 	s = reURLCreds.ReplaceAllString(s, "${1}xxxxx${2}")
-	s = rePAN.ReplaceAllString(s, "[PAN]")
+	s = rePAN.ReplaceAllStringFunc(s, func(m string) string {
+		if !luhnValid(m) {
+			return m
+		}
+		return "[PAN]"
+	})
 	s = reGSTIN.ReplaceAllStringFunc(s, func(m string) string {
 		return m[:2] + strings.Repeat("*", len(m)-5) + m[len(m)-3:]
 	})
@@ -65,4 +70,25 @@ func maskString(s string) string {
 	})
 	s = reEmail.ReplaceAllString(s, "${1}***@${2}")
 	return s
+}
+
+// luhnValid reports whether the digits in s (separators ignored) pass the
+// Luhn check.
+func luhnValid(s string) bool {
+	sum, alt := 0, false
+	for i := len(s) - 1; i >= 0; i-- {
+		c := s[i]
+		if c < '0' || c > '9' {
+			continue
+		}
+		d := int(c - '0')
+		if alt {
+			if d *= 2; d > 9 {
+				d -= 9
+			}
+		}
+		sum += d
+		alt = !alt
+	}
+	return sum%10 == 0
 }

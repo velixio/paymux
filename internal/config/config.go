@@ -3,7 +3,6 @@ package config
 
 import (
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -131,7 +130,7 @@ func parseBaseURL(raw string) (*url.URL, error) {
 }
 
 // loadMasterKey reads exactly one of PAYMUX_MASTER_KEY or
-// PAYMUX_MASTER_KEY_FILE. The value is hex or base64 and must decode to 32
+// PAYMUX_MASTER_KEY_FILE. The value is standard base64 and must decode to 32
 // bytes. Errors never include the key material.
 func loadMasterKey(lookupEnv func(string) (string, bool)) ([]byte, error) {
 	direct, hasDirect := lookupEnv("PAYMUX_MASTER_KEY")
@@ -153,7 +152,7 @@ func loadMasterKey(lookupEnv func(string) (string, bool)) ([]byte, error) {
 	val = strings.TrimSpace(val)
 	key, ok := decodeKey(val)
 	if !ok {
-		return nil, fmt.Errorf("%s must be hex or base64 encoded", name)
+		return nil, fmt.Errorf("%s must be base64 encoded", name)
 	}
 	if len(key) != 32 {
 		return nil, fmt.Errorf("%s must decode to 32 bytes, got %d", name, len(key))
@@ -162,10 +161,7 @@ func loadMasterKey(lookupEnv func(string) (string, bool)) ([]byte, error) {
 }
 
 func decodeKey(s string) ([]byte, bool) {
-	if b, err := hex.DecodeString(s); err == nil {
-		return b, true
-	}
-	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
+	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding} {
 		if b, err := enc.DecodeString(s); err == nil {
 			return b, true
 		}

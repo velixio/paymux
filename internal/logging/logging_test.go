@@ -73,6 +73,17 @@ func TestMasksCardLikeDigits(t *testing.T) {
 	}
 }
 
+func TestDoesNotMaskNonLuhnDigits(t *testing.T) {
+	for _, in := range []string{"1760700000000", "1234567890123456"} {
+		if got := maskStr(t, in); got == "[PAN]" {
+			t.Errorf("%q masked as PAN", in)
+		}
+	}
+	if got := maskStr(t, "1760700000000"); got != "1760700000000" {
+		t.Fatal(got)
+	}
+}
+
 func TestMasksPhone(t *testing.T) {
 	for _, in := range []string{"+91 98765 43210", "9876543210"} {
 		if got := maskStr(t, in); got != "******3210" {
