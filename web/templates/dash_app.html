@@ -1,0 +1,86 @@
+{{define "title"}}{{.Title}} - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+{{with .App}}
+<p><a href="/dashboard/apps">&larr; Apps</a></p>
+<h2>{{.Name}} <small class="muted">{{.Slug}} &middot; {{.ID}}</small></h2>
+<nav class="tabs" aria-label="App sections">{{range .Tabs}}<a href="/dashboard/apps/{{$.App.ID}}?tab={{.}}"{{if eq . $.App.Tab}} class="active"{{end}}>{{.}}</a>{{end}}</nav>
+{{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+{{with $.Reveal}}<div class="reveal" role="alert">
+<p><strong>{{.Label}}</strong></p>
+<p class="secret" id="revealed-secret">{{.Value}}</p>
+<p class="muted">This is the only time it is shown. Copy it now; it cannot be retrieved later.</p>
+</div>{{end}}
+
+{{if eq .Tab "keys"}}
+<table class="grid">
+<thead><tr><th>Key</th><th>Mode</th><th>Created</th><th>Last used</th><th></th></tr></thead>
+<tbody>{{range .Keys}}<tr><td><code>{{.Prefix}}&hellip;</code></td><td>{{.Mode}}</td><td>{{.Created}}</td><td>{{.LastUsed}}</td>
+<td>{{if .Revoked}}revoked{{else if $.App.CanKeys}}<form class="inline" method="post" action="/dashboard/apps/{{$.App.ID}}/keys/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="linkbtn" type="submit">Revoke</button></form>{{end}}</td></tr>
+{{else}}<tr><td colspan="5" class="muted">No API keys.</td></tr>{{end}}</tbody>
+</table>
+{{if .CanKeys}}<form method="post" action="/dashboard/apps/{{.ID}}/keys" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<select name="mode" class="field" aria-label="Key mode"><option value="test">test</option><option value="live">live</option></select>
+<button class="btn" type="submit">Create API key</button>
+</form>{{end}}
+{{end}}
+
+{{if eq .Tab "webhooks"}}
+<table class="grid">
+<thead><tr><th>Endpoint</th><th>Events</th><th>Status</th><th></th></tr></thead>
+<tbody>{{range .Endpoints}}<tr><td>{{.URL}}</td><td>{{if .Events}}{{.Events}}{{else}}all{{end}}</td><td>{{if .Enabled}}enabled{{else}}disabled{{end}}</td>
+<td><a href="/dashboard/apps/{{$.App.ID}}?tab=webhooks&amp;endpoint={{.ID}}">Deliveries</a>
+{{if and .Enabled $.App.CanEndpoints}}<form class="inline" method="post" action="/dashboard/apps/{{$.App.ID}}/endpoints/{{.ID}}/disable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="linkbtn" type="submit">Disable</button></form>{{end}}</td></tr>
+{{else}}<tr><td colspan="4" class="muted">No webhook endpoints.</td></tr>{{end}}</tbody>
+</table>
+{{if .CanEndpoints}}<form method="post" action="/dashboard/apps/{{.ID}}/endpoints" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<input class="field" name="url" type="url" placeholder="https://example.com/webhooks" required>
+<input class="field" name="events" placeholder="Event types, comma separated (blank = all)">
+<button class="btn" type="submit">Add endpoint</button>
+</form>{{end}}
+{{if .EndpointID}}
+<h3>Deliveries</h3>
+<table class="grid">
+<thead><tr><th>Event</th><th>Status</th><th>Attempts</th><th>Last result</th><th>Updated</th>{{if .CanReplay}}<th></th>{{end}}</tr></thead>
+<tbody>{{range .EndpointDeliveries}}<tr><td>{{.EventType}}</td><td>{{.Status}}</td><td>{{.Attempts}}</td><td>{{if .LastStatus}}HTTP {{.LastStatus}}{{end}} {{.LastError}}</td><td>{{.At}}</td>
+{{if $.App.CanReplay}}<td><form class="inline" method="post" action="/dashboard/deliveries/{{.ID}}/replay"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Path}}"><button class="linkbtn" type="submit">Replay</button></form></td>{{end}}</tr>
+{{else}}<tr><td colspan="6" class="muted">No deliveries yet.</td></tr>{{end}}</tbody>
+</table>
+{{end}}
+{{end}}
+
+{{if eq .Tab "branding"}}
+<form method="post" action="/dashboard/apps/{{.ID}}/branding" enctype="multipart/form-data" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Display name<input class="field" name="display_name" value="{{.Brand.Name}}" maxlength="100"></label>
+<label>Accent colour<input class="field" name="accent" value="{{.Brand.Accent}}" placeholder="#2563eb"></label>
+<label>Default return URL<input class="field" name="return_url" type="url" value="{{.Brand.ReturnURL}}"></label>
+{{if .Brand.HasLogo}}<p>Current logo:<br><img src="/dashboard/apps/{{.ID}}/logo" alt="Logo" class="logo-preview"></p>
+<label><input type="checkbox" name="remove_logo" value="1"> Remove the logo</label>{{end}}
+<label>Logo (PNG or JPEG, up to 512 KB)<input class="field" type="file" name="logo" accept="image/png,image/jpeg"></label>
+{{if .CanBrand}}<button class="btn" type="submit">Save branding</button>{{end}}
+</form>
+{{end}}
+
+{{if eq .Tab "providers"}}
+<p class="muted">Provider accounts this app may use. Routing only considers the ticked accounts.</p>
+<form method="post" action="/dashboard/apps/{{.ID}}/providers">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<table class="grid">
+<thead><tr><th>Allowed</th><th>Account</th><th>Connector</th><th>Mode</th><th>Status</th><th>Currencies</th></tr></thead>
+<tbody>{{range .Accounts}}<tr><td><input type="checkbox" name="account" value="{{.ID}}"{{if .Allowed}} checked{{end}}{{if not $.App.CanProviders}} disabled{{end}}></td><td>{{.Name}}</td><td>{{.Connector}}</td><td>{{.Mode}}</td><td>{{.Status}}</td><td>{{.Currencies}}</td></tr>
+{{else}}<tr><td colspan="6" class="muted">No provider accounts yet.</td></tr>{{end}}</tbody>
+</table>
+{{if .CanProviders}}<button class="btn" type="submit">Save</button>{{end}}
+</form>
+{{end}}
+
+{{if eq .Tab "settings"}}
+<p class="muted">Effective values for this app. An override replaces the org value for this app only.</p>
+{{template "dash_settings_table" $}}
+{{end}}
+{{end}}
+{{template "dash_close" .}}{{end}}
