@@ -30,3 +30,25 @@ func TestSDKPageLaunchesTheZohoWidget(t *testing.T) {
 		t.Error("a TODO is shipped to the browser")
 	}
 }
+
+// Cashfree's v3 SDK defines Cashfree(); the page opens its checkout with the
+// order's payment session id, in this tab so the order's return URL brings the
+// customer back through Paymux.
+func TestSDKPageLaunchesCashfreeCheckout(t *testing.T) {
+	r, err := NewRenderer(Embedded())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	err = r.Render(&buf, "pay_sdk", PayPage{AppName: "Voicestudio", ScriptURL: "https://sdk.cashfree.com/js/v3/cashfree.js", Launcher: "cashfree",
+		Options: map[string]any{"mode": "sandbox", "payment_session_id": "session_1", "return_url": "https://pay.example.com/return/pa_1/ref_1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{`launcher === "cashfree"`, "window.Cashfree({mode: options.mode})", "paymentSessionId: options.payment_session_id", `redirectTarget: "_self"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the page lacks %q:\n%s", want, out)
+		}
+	}
+}
