@@ -913,7 +913,7 @@ components:
         allowed_connectors:
           type: array
           items: { type: string }
-          description: Restricts routing to these connectors.
+          description: Restricts routing to these connectors, for the whole life of the payment (the pay page, retries and fallbacks included); a payment no listed connector can take is refused with 422 `no_route`.
         country: { type: string, description: Buyer country, matched by routing rules. }
       additionalProperties: false
     Payment:
@@ -933,6 +933,11 @@ components:
         customer_id: { type: string }
         metadata: { type: object, additionalProperties: { type: string } }
         return_url: { type: string }
+        allowed_connectors:
+          type: array
+          items: { type: string }
+          description: The connectors the payment was restricted to when it was created. Every routing decision for the payment (the pay page, a retry, "pay another way", a fallback) stays inside them. Absent when unrestricted.
+        country: { type: string, description: The buyer country given when the payment was created, which routing rules can match on. Absent when none was given. }
         expires_at: { type: string, format: date-time }
         created_at: { type: string, format: date-time }
         version: { type: integer, description: Increments on every change. }
