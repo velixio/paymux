@@ -50,7 +50,8 @@ func validateURL(raw string) error {
 
 // CreateEndpoint creates an enabled endpoint with a fresh signing secret. The
 // returned secret ("whsec_...") is shown once; only its ciphertext is kept.
-// TODO(spec): check that AppID exists once the apps table lands (another lane).
+// The app must exist; the endpoint belongs to the app's org (OrgID may be left
+// empty, and must match when given).
 func (s *Service) CreateEndpoint(ctx context.Context, in CreateEndpointInput) (Endpoint, string, error) {
 	if strings.TrimSpace(in.AppID) == "" {
 		return Endpoint{}, "", errors.New("endpoint needs an app id")
@@ -58,13 +59,21 @@ func (s *Service) CreateEndpoint(ctx context.Context, in CreateEndpointInput) (E
 	if err := validateURL(in.URL); err != nil {
 		return Endpoint{}, "", err
 	}
-	if in.OrgID == "" {
-		org, err := s.db.FirstOrgID(ctx)
-		if err != nil {
-			return Endpoint{}, "", fmt.Errorf("no org found for the endpoint (pass an org id or run setup first): %w", err)
-		}
-		in.OrgID = org
+	var app store.App
+	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+		app, err = store.GetApp(ctx, q, in.AppID)
+		return
+	})
+	if errors.Is(err, store.ErrNotFound) {
+		return Endpoint{}, "", fmt.Errorf("outbound: no app %q", in.AppID)
 	}
+	if err != nil {
+		return Endpoint{}, "", err
+	}
+	if in.OrgID != "" && in.OrgID != app.OrgID {
+		return Endpoint{}, "", fmt.Errorf("outbound: app %q does not belong to org %q", in.AppID, in.OrgID)
+	}
+	in.OrgID = app.OrgID
 	secret, err := stdwebhooks.GenerateSecret()
 	if err != nil {
 		return Endpoint{}, "", err
