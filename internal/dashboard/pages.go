@@ -36,6 +36,14 @@ type Page struct {
 	Route    *routeResult
 	TestForm testForm
 
+	// invoices and credit notes
+	DocRows        []docRow
+	DocFilter      docFilter
+	DocFlags       []string
+	Entities       []entityOpt
+	FlaggedRefunds []flaggedRefund
+	Doc            *docView
+
 	// audit log and overview
 	AuditRows   []auditRow
 	AuditFilter auditFilter
@@ -54,6 +62,7 @@ func (d *Dashboard) routesPages() {
 	d.routesApps()
 	d.routesSettings()
 	d.routesAuditOverview()
+	d.routesInvoices()
 }
 
 // orgID returns the single org's id (cached once found).

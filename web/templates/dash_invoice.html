@@ -1,0 +1,62 @@
+{{define "title"}}{{.Title}} - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+{{with .Doc}}
+<p><a href="/dashboard/invoices{{if eq .Kind "credit_note"}}?type=credit_note{{end}}">&larr; {{if eq .Kind "credit_note"}}Credit notes{{else}}Invoices{{end}}</a></p>
+<h2>{{if eq .Kind "credit_note"}}Credit note{{else}}Tax invoice{{end}} {{.Number}}</h2>
+{{with $.Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+{{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<dl class="facts">
+<dt>Issued</dt><dd>{{.Date}}</dd>
+<dt>App</dt><dd>{{.App}}</dd>
+<dt>Tax entity</dt><dd><a href="/dashboard/tax-entities/{{.EntityID}}">{{.Entity}}</a> - {{.Supplier.LegalName}} ({{.Supplier.GSTIN}})</dd>
+{{if eq .Kind "invoice"}}
+<dt>Customer</dt><dd>{{.RecipientView.Name}}{{if .RecipientView.GSTIN}}, GSTIN {{.RecipientView.GSTIN}}{{end}}<br><small>{{.RecipientView.Address}} {{.RecipientView.StateName}} {{.RecipientView.CountryName}}</small></dd>
+<dt>Supply</dt><dd>{{.SupplyType}}, place of supply {{.PlaceOfSupply}}</dd>
+{{if .FXRate}}<dt>FX rate</dt><dd>1 {{.Currency}} = INR {{.FXRate}}</dd>{{end}}
+{{else}}
+<dt>Against invoice</dt><dd><a href="/dashboard/invoices/{{.InvoiceID}}">{{.InvoiceNumber}}</a></dd>
+<dt>Reason</dt><dd>{{.Reason}}</dd>
+{{end}}
+<dt>Payment</dt><dd><a href="/dashboard/payments/{{.PaymentID}}">{{.PaymentID}}</a></dd>
+{{if .Flags}}<dt>Flags</dt><dd>{{range .Flags}}<span class="flag">{{.}}</span> {{end}}</dd>{{end}}
+<dt>PDF</dt><dd>{{if .PDFReady}}<a href="{{.PDFHref}}">Download PDF</a>{{else}}<span class="muted">not rendered yet</span>{{end}}</dd>
+</dl>
+
+<table class="grid">
+<thead><tr><th>Description</th><th>SAC</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th></tr></thead>
+<tbody>{{range .Lines}}<tr><td>{{.Description}}</td><td>{{.SAC}}</td><td>{{.Taxable}}</td><td>{{.CGST}}</td><td>{{.SGST}}</td><td>{{.IGST}}</td></tr>{{end}}
+<tr><th colspan="2">Total</th><th>{{.Taxable}}</th><th>{{.CGST}}</th><th>{{.SGST}}</th><th>{{.IGST}}</th></tr></tbody>
+</table>
+<p><strong>Total {{.Total}}</strong></p>
+
+{{if .CreditNotes}}<h3>Credit notes</h3>
+<table class="grid"><thead><tr><th>Number</th><th>Date</th><th>Total</th><th>Reason</th></tr></thead>
+<tbody>{{range .CreditNotes}}<tr><td><a href="{{.Href}}">{{.Number}}</a></td><td>{{.Date}}</td><td>{{.Total}}</td><td>{{.Note}}</td></tr>{{end}}</tbody></table>{{end}}
+
+<h3>Emails</h3>
+<table class="grid"><thead><tr><th>To</th><th>Status</th><th>When</th><th></th></tr></thead>
+<tbody>{{range .Sends}}<tr><td>{{.To}}</td><td>{{.Status}}</td><td>{{.At}}</td><td>{{.Error}}</td></tr>{{else}}<tr><td colspan="4" class="muted">Not emailed by Paymux.</td></tr>{{end}}</tbody></table>
+{{if .CanResend}}<form method="post" action="/dashboard/{{if eq .Kind "credit_note"}}credit-notes{{else}}invoices{{end}}/{{.ID}}/resend" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn" type="submit">Resend email</button></form>{{end}}
+
+{{if and .CanReissue (eq .Kind "invoice")}}
+<h3>Reissue with corrected billing details</h3>
+<p class="muted">Issues a full credit note against this invoice and a new invoice for the same payment, using the details below. The customer's saved billing details are updated. This cannot be undone.</p>
+<form method="post" action="/dashboard/invoices/{{.ID}}/reissue" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<input class="field" name="legal_name" placeholder="Name or registered business name" value="{{.Billing.LegalName}}" required>
+<input class="field" name="gstin" placeholder="GSTIN (if registered)" value="{{.Billing.GSTIN}}">
+<input class="field" name="state_code" placeholder="State code (e.g. 29)" value="{{.Billing.StateCode}}">
+<input class="field" name="line1" placeholder="Address line 1" value="{{.Billing.Line1}}">
+<input class="field" name="line2" placeholder="Address line 2" value="{{.Billing.Line2}}">
+<input class="field" name="city" placeholder="City" value="{{.Billing.City}}">
+<input class="field" name="postal_code" placeholder="PIN code" value="{{.Billing.PostalCode}}">
+<input class="field" name="country" placeholder="Country (IN)" value="{{.Billing.Country}}" maxlength="2">
+<input class="field" name="reason" placeholder="Reason" value="{{.ReissueReason}}" maxlength="200">
+<button class="btn" type="submit">Reissue invoice</button>
+</form>
+{{end}}
+{{end}}
+{{template "dash_close" .}}{{end}}

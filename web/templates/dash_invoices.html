@@ -1,0 +1,28 @@
+{{define "title"}}Invoices - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h2>Invoices and credit notes <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h2>
+<form class="filters" method="get" action="/dashboard/invoices">
+<select name="type" aria-label="Type"><option value="invoice"{{if eq .DocFilter.Type "invoice"}} selected{{end}}>Invoices</option><option value="credit_note"{{if eq .DocFilter.Type "credit_note"}} selected{{end}}>Credit notes</option></select>
+<select name="entity" aria-label="Tax entity"><option value="">All entities</option>{{range .Entities}}<option value="{{.ID}}"{{if eq .ID $.DocFilter.Entity}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+<select name="app" aria-label="App"><option value="">All apps</option>{{range .AppOpts}}<option value="{{.ID}}"{{if eq .ID $.DocFilter.App}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+<input name="month" type="month" value="{{.DocFilter.Month}}" aria-label="Month">
+<select name="flag" aria-label="Flag"><option value="">Any flag</option>{{range .DocFlags}}<option value="{{.}}"{{if eq . $.DocFilter.Flag}} selected{{end}}>{{.}}</option>{{end}}</select>
+<button class="btn small" type="submit">Filter</button>
+</form>
+{{if eq .DocFilter.Flag "credit_note_cutoff_passed"}}
+<p class="muted">Refunds whose credit note could not be issued because the statutory deadline had passed. Issue a manual adjustment with your accountant.</p>
+<table class="grid">
+<thead><tr><th>Refund</th><th>Payment</th><th>Flag</th><th>Raised</th></tr></thead>
+<tbody>{{range .FlaggedRefunds}}<tr><td>{{.RefundID}}</td><td><a href="/dashboard/payments/{{.PaymentID}}">{{.PaymentID}}</a></td><td>{{.Flag}}</td><td>{{.At}}</td></tr>{{else}}<tr><td colspan="4" class="muted">None.</td></tr>{{end}}</tbody>
+</table>
+{{else}}
+<table class="grid">
+<thead><tr><th>Number</th><th>Date</th><th>App</th><th>Entity</th><th>{{if eq .DocFilter.Type "invoice"}}Customer{{else}}Reason{{end}}</th><th>Total</th><th>Flags</th></tr></thead>
+<tbody>{{range .DocRows}}<tr><td><a href="{{.Href}}">{{.Number}}</a></td><td>{{.Date}}</td><td>{{.App}}</td><td>{{.Entity}}</td><td>{{if .Party}}{{.Party}}{{else}}{{.Note}}{{end}}</td><td>{{.Total}}</td><td>{{.Flags}}</td></tr>
+{{else}}<tr><td colspan="7" class="muted">No documents match.</td></tr>{{end}}</tbody>
+</table>
+{{with .NextURL}}<p><a class="next" href="{{.}}">Older documents &rarr;</a></p>{{end}}
+{{end}}
+{{template "dash_close" .}}{{end}}
