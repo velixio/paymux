@@ -20,6 +20,7 @@ import (
 	"github.com/paymux/paymux/internal/authz"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/invoice"
+	"github.com/paymux/paymux/internal/paylinks"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/server"
 	"github.com/paymux/paymux/internal/store"
@@ -38,6 +39,8 @@ type Options struct {
 	Invoices *invoice.Service
 	// Subscriptions serves /v1/subscriptions; nil answers 404.
 	Subscriptions *subscriptions.Service
+	// PaymentLinks serves /v1/payment_links; nil answers 404.
+	PaymentLinks *paylinks.Service
 	// BaseURL is PAYMUX_BASE_URL, the origin of checkout_url.
 	BaseURL *url.URL
 	Log     *slog.Logger
@@ -65,6 +68,7 @@ type API struct {
 
 	invoices *invoice.Service
 	subs     *subscriptions.Service
+	links    *paylinks.Service
 }
 
 // New builds the API.
@@ -75,7 +79,7 @@ func New(o Options) (*API, error) {
 	if o.Log == nil {
 		o.Log = slog.Default()
 	}
-	a := &API{core: o.Core, db: o.DB, box: o.Box, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log, invoices: o.Invoices, subs: o.Subscriptions}
+	a := &API{core: o.Core, db: o.DB, box: o.Box, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log, invoices: o.Invoices, subs: o.Subscriptions, links: o.PaymentLinks}
 	if o.RatePerSecond >= 0 {
 		a.limit = newLimiter(o.RatePerSecond, o.RateBurst, o.Now)
 	}
@@ -100,6 +104,10 @@ func (a *API) Register(m Mux) {
 	m.HandleFunc("POST /v1/subscriptions/{id}/cancel", a.wrap(a.cancelSubscription, true))
 	m.HandleFunc("POST /v1/subscriptions/{id}/update", a.wrap(a.updateSubscription, true))
 	m.HandleFunc("POST /v1/subscriptions/{id}/payment_method", a.wrap(a.subscriptionPaymentMethod, true))
+	m.HandleFunc("POST /v1/payment_links", a.wrap(a.createPaymentLink, true))
+	m.HandleFunc("GET /v1/payment_links/{id}", a.wrap(a.getPaymentLink, false))
+	m.HandleFunc("GET /v1/payment_links", a.wrap(a.listPaymentLinks, false))
+	m.HandleFunc("POST /v1/payment_links/{id}/deactivate", a.wrap(a.deactivatePaymentLink, true))
 	m.HandleFunc("GET /v1/invoices/{id}", a.wrap(a.getInvoice, false))
 	m.HandleFunc("GET /v1/invoices/{id}/pdf", a.wrap(a.getInvoicePDF, false))
 	m.HandleFunc("GET /v1/invoices", a.wrap(a.listInvoices, false))

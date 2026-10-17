@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/core"
@@ -61,8 +62,9 @@ func newLinkFixture(t *testing.T, db *store.DB, withLinks bool) *fixture {
 func TestPaymentLinkAPI(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		f := newLinkFixture(t, db, true)
+		expires := time.Now().UTC().AddDate(1, 0, 0).Truncate(time.Second).Format(time.RFC3339)
 		body := map[string]any{"amount": 49900, "currency": "INR", "description": "Course fee", "single_use": true,
-			"metadata": map[string]string{"sku": "c1"}, "expires_at": "2099-01-02T03:04:05Z", "return_url": "https://shop.example.com/thanks"}
+			"metadata": map[string]string{"sku": "c1"}, "expires_at": expires, "return_url": "https://shop.example.com/thanks"}
 		r := f.do("POST", "/v1/payment_links", f.testKey, body, "Idempotency-Key", "k1")
 		if r.status != 201 {
 			t.Fatalf("create: %d %s", r.status, r.raw)
@@ -70,7 +72,7 @@ func TestPaymentLinkAPI(t *testing.T) {
 		l := r.json(t)
 		id := l["id"].(string)
 		if l["object"] != "payment_link" || !strings.HasPrefix(id, "plink_") || l["amount"] != float64(49900) || l["currency"] != "INR" ||
-			l["single_use"] != true || l["active"] != true || l["expires_at"] != "2099-01-02T03:04:05Z" || l["metadata"].(map[string]any)["sku"] != "c1" ||
+			l["single_use"] != true || l["active"] != true || l["expires_at"] != expires || l["metadata"].(map[string]any)["sku"] != "c1" ||
 			l["url"] != "https://pay.example.com/l/"+l["slug"].(string) || l["return_url"] != "https://shop.example.com/thanks" {
 			t.Fatalf("link = %v", l)
 		}
