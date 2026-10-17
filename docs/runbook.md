@@ -20,7 +20,7 @@ Contents: [Layout](#layout) · [Install](#install) · [First admin and 2FA](#fir
 
 ```sh
 # 1. The binary (build with `make build`, or download a release) and a service user.
-install -m 0755 dist/paymux /usr/local/bin/paymux
+install -m 0755 bin/paymux /usr/local/bin/paymux
 useradd --system --home /var/lib/paymux --shell /usr/sbin/nologin paymux
 install -d -o paymux -g paymux -m 0700 /var/lib/paymux
 install -d -m 0750 -g paymux /etc/paymux
@@ -65,6 +65,8 @@ curl -fsS http://127.0.0.1:8080/readyz
 ### Caddy
 
 Install Caddy, copy `deploy/Caddyfile` to `/etc/caddy/Caddyfile`, replace `pay.example.com` and the e-mail address, and `systemctl reload caddy`. Point DNS for the hub's host at this server. App custom domains (added on the app's *Domains* tab) get certificates on demand, but only for hosts the hub knows: Caddy asks `http://127.0.0.1:9100/internal/tls-allow?domain=...` before it requests one.
+
+**nginx on another device instead of Caddy:** [`deploy/nginx/paymux.shimul.me.conf`](../deploy/nginx/paymux.shimul.me.conf) proxies `paymux.shimul.me` to the Paymux host on the LAN (`192.168.0.174:8050`). On the Paymux host set `PAYMUX_TRUSTED_PROXIES=<nginx device IP>/32` and allow port 8050 only from that device. nginx has no on-demand TLS, so each app custom domain needs its own server block and certificate.
 
 ### Docker
 

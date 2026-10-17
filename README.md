@@ -55,7 +55,7 @@ app C ─┘ ◄─ signed webhooks ─┘          ├─ Zoho Payments
 **Databases and deployment**
 
 - **SQLite or Postgres**, the same code and the same tests on both (`PAYMUX_DATABASE_URL`). SQLite backs up continuously with Litestream; Postgres with `pg_dump` or WAL archiving.
-- **Deploy kit** in [`deploy/`](deploy): Caddyfile with on-demand TLS, a hardened systemd unit, a Litestream config and a distroless Docker image (`Dockerfile`, non-root, static). `scripts/release.sh` builds linux and darwin archives for amd64 and arm64 with `SHA256SUMS` and optional cosign signatures; GitHub Actions workflows run the CI gate and tagged releases.
+- **Deploy kit** in [`deploy/`](deploy): Caddyfile with on-demand TLS, an nginx site for a proxy on another device (`deploy/nginx/`), a hardened systemd unit, a Litestream config and a distroless Docker image (`Dockerfile`, non-root, static). `scripts/release.sh` builds linux and darwin archives for amd64 and arm64 with `SHA256SUMS` and optional cosign signatures; GitHub Actions workflows run the CI gate and tagged releases.
 
 **Extending**
 
@@ -85,15 +85,15 @@ New here? [`docs/quickstart.md`](docs/quickstart.md) takes you from nothing to a
 You need a Go toolchain of version 1.21 or later. `go.mod` pins `toolchain go1.27.2`, and Go downloads it automatically.
 
 ```bash
-make build                       # → dist/paymux
+make build                       # → bin/paymux
 cp .env.example .env             # set PAYMUX_MASTER_KEY: head -c32 /dev/urandom | base64
-./dist/paymux serve              # the log prints a one-time setup code
+./bin/paymux serve              # the log prints a one-time setup code
 ```
 
 Open `http://localhost:8080/setup`, enter the code and create the administrator (the first-run wizard also offers a first app and its API keys). Prefer the command line? This works too (with SQLite, while `serve` is stopped):
 
 ```bash
-./dist/paymux app create --name "Voicestudio" --slug voicestudio --mode test   # prints an API key once
+./bin/paymux app create --name "Voicestudio" --slug voicestudio --mode test   # prints an API key once
 ```
 
 Create a payment:
