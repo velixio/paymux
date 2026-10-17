@@ -25,8 +25,11 @@ import (
 	"github.com/paymux/paymux/internal/authz"
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/disputes"
 	"github.com/paymux/paymux/internal/invoice"
+	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/outbound"
+	"github.com/paymux/paymux/internal/reconcile"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
@@ -73,6 +76,12 @@ type Options struct {
 	Outbound   *outbound.Service
 	Invoice    *invoice.Service
 	Connectors *connectors.Service
+	Disputes   *disputes.Service
+	Recon      *reconcile.Service
+	// Jobs takes the "run reconciliation now" job (*jobs.Queue).
+	Jobs interface {
+		Enqueue(ctx context.Context, tx store.Tx, j jobs.Job) error
+	}
 	// Location is the time zone of "today" and of date filters (default UTC).
 	Location *time.Location
 	// PageSize is the number of rows per list page (default 25).
@@ -99,8 +108,8 @@ type Dashboard struct {
 // New builds a Dashboard.
 func New(o Options) (*Dashboard, error) {
 	if o.DB == nil || o.Box == nil || o.Renderer == nil || o.BaseURL == nil || len(o.MasterKey) == 0 ||
-		o.Core == nil || o.Settings == nil || o.Outbound == nil || o.Invoice == nil || o.Connectors == nil {
-		return nil, errors.New("dashboard: DB, Box, Renderer, BaseURL, MasterKey, Core, Settings, Outbound, Invoice and Connectors are required")
+		o.Core == nil || o.Settings == nil || o.Outbound == nil || o.Invoice == nil || o.Connectors == nil || o.Disputes == nil || o.Recon == nil || o.Jobs == nil {
+		return nil, errors.New("dashboard: DB, Box, Renderer, BaseURL, MasterKey, Core, Settings, Outbound, Invoice, Connectors, Disputes, Recon and Jobs are required")
 	}
 	if o.Location == nil {
 		o.Location = time.UTC

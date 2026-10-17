@@ -73,13 +73,18 @@ func (e *env) taxApp(slug, entityGSTIN string) (store.App, store.TaxEntity) {
 
 // pay creates and captures a payment, which issues the invoice.
 func (e *env) pay(app store.App, amount int64, currency string, cust *core.CustomerInput) store.Payment {
+	return e.payVia(app, amount, currency, cust, "pa_live")
+}
+
+// payVia is pay through a chosen provider account.
+func (e *env) payVia(app store.App, amount int64, currency string, cust *core.CustomerInput, accountID string) store.Payment {
 	e.t.Helper()
 	sc := core.Scope{AppID: app.ID, Mode: "live"}
 	res, err := e.core.CreatePayment(ctx, core.CreatePaymentInput{Scope: sc, Amount: amount, Currency: currency, OrderRef: "ord", Description: "Pro plan", Customer: cust})
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	a, err := e.core.CreateAttempt(ctx, res.Payment.ID, "pa_live")
+	a, err := e.core.CreateAttempt(ctx, res.Payment.ID, accountID)
 	if err != nil {
 		e.t.Fatal(err)
 	}

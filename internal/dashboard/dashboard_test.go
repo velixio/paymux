@@ -22,10 +22,12 @@ import (
 	"github.com/paymux/paymux/internal/auth"
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/disputes"
 	"github.com/paymux/paymux/internal/invoice"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/outbound"
+	"github.com/paymux/paymux/internal/reconcile"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
@@ -58,6 +60,8 @@ type env struct {
 	set  *settings.Service
 	out  *outbound.Service
 	inv  *invoice.Service
+	disp *disputes.Service
+	rec  *reconcile.Service
 	conn *connectors.Service
 	mail *recMailer
 	q    *jobs.Queue
@@ -99,8 +103,13 @@ func newEnv(t *testing.T, db *store.DB, opts ...envOpt) *env {
 	conns := connectors.New(connectors.Options{DB: db, Box: box, BaseURL: base, Now: clk.Now})
 	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: out, Now: clk.Now,
 		OnPaymentSucceeded: inv.OnPaymentSucceeded, OnRefundSucceeded: inv.OnRefundSucceeded})
+	disp := disputes.New(disputes.Options{DB: db, Settings: set, Emitter: out, Credit: inv, CutoffErr: invoice.ErrCreditNoteCutoff, Conns: conns, Now: clk.Now})
+	rec := reconcile.New(reconcile.Options{DB: db, Core: svc, Conns: conns, Settings: set, Loc: time.UTC, Logger: slog.New(slog.DiscardHandler), Now: clk.Now})
+	if err := rec.Register(q); err != nil {
+		t.Fatal(err)
+	}
 	o := Options{DB: db, Box: box, Renderer: rend, MasterKey: make([]byte, 32), BaseURL: base,
-		Logger: slog.New(slog.DiscardHandler), Now: clk.Now, Core: svc, Settings: set, Outbound: out, Invoice: inv, Connectors: conns, PageSize: 2}
+		Logger: slog.New(slog.DiscardHandler), Now: clk.Now, Core: svc, Settings: set, Outbound: out, Invoice: inv, Connectors: conns, Disputes: disp, Recon: rec, Jobs: q, PageSize: 2}
 	for _, f := range opts {
 		f(&o)
 	}
@@ -110,7 +119,7 @@ func newEnv(t *testing.T, db *store.DB, opts ...envOpt) *env {
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/dashboard/", d)
-	e := &env{t: t, db: db, box: box, core: svc, set: set, out: out, inv: inv, conn: conns, mail: rec, q: q, d: d, srv: httptest.NewServer(mux), clk: clk}
+	e := &env{t: t, db: db, box: box, core: svc, set: set, out: out, inv: inv, disp: disp, rec: rec, conn: conns, mail: rec, q: q, d: d, srv: httptest.NewServer(mux), clk: clk}
 	t.Cleanup(e.srv.Close)
 	e.c = e.client()
 	return e
