@@ -10,13 +10,13 @@
 <input name="to" type="date" value="{{.AuditFilter.To}}" aria-label="To date">
 <button class="btn small" type="submit">Filter</button>
 </form>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>IP</th><th>Change</th></tr></thead>
 <tbody>
 {{range .AuditRows}}<tr><td>{{.At}}</td><td>{{.Actor}}</td><td>{{.Action}}</td><td>{{.Target}}</td><td>{{.IP}}</td>
 <td>{{if or .Before .After}}<details><summary>show</summary>{{if .Before}}<p><small>before</small><br><code class="wrap">{{.Before}}</code></p>{{end}}{{if .After}}<p><small>after</small><br><code class="wrap">{{.After}}</code></p>{{end}}</details>{{end}}</td></tr>
 {{else}}<tr><td colspan="6" class="muted">No entries match.</td></tr>{{end}}
 </tbody>
-</table>
+</table></div>
 {{with .NextURL}}<p><a class="next" href="{{.}}">Older entries &rarr;</a></p>{{end}}
 {{template "dash_close" .}}{{end}}

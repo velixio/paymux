@@ -26,3 +26,9 @@ label.muted { display: block; text-align: left; }
 
 .einvoice { text-align: left; margin-top: 16px; }
 svg.qr { display: block; width: 100%; max-width: 260px; height: auto; margin: 8px 0; background: #fff; }
+
+/* Phones: nothing may be wider than the screen. */
+img, svg, input, select, textarea { max-width: 100%; }
+pre { overflow: auto; }
+code { overflow-wrap: anywhere; }
+.table-scroll { overflow-x: auto; max-width: 100%; }

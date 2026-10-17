@@ -24,16 +24,16 @@
 <dt>PDF</dt><dd>{{if .PDFReady}}<a href="{{.PDFHref}}">Download PDF</a>{{else}}<span class="muted">not rendered yet</span>{{end}}</dd>
 </dl>
 
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Description</th><th>SAC</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th></tr></thead>
 <tbody>{{range .Lines}}<tr><td>{{.Description}}</td><td>{{.SAC}}</td><td>{{.Taxable}}</td><td>{{.CGST}}</td><td>{{.SGST}}</td><td>{{.IGST}}</td></tr>{{end}}
 <tr><th colspan="2">Total</th><th>{{.Taxable}}</th><th>{{.CGST}}</th><th>{{.SGST}}</th><th>{{.IGST}}</th></tr></tbody>
-</table>
+</table></div>
 <p><strong>Total {{.Total}}</strong></p>
 
 {{if .CreditNotes}}<h3>Credit notes</h3>
-<table class="grid"><thead><tr><th>Number</th><th>Date</th><th>Total</th><th>Reason</th></tr></thead>
-<tbody>{{range .CreditNotes}}<tr><td><a href="{{.Href}}">{{.Number}}</a></td><td>{{.Date}}</td><td>{{.Total}}</td><td>{{.Note}}</td></tr>{{end}}</tbody></table>{{end}}
+<div class="table-scroll"><table class="grid"><thead><tr><th>Number</th><th>Date</th><th>Total</th><th>Reason</th></tr></thead>
+<tbody>{{range .CreditNotes}}<tr><td><a href="{{.Href}}">{{.Number}}</a></td><td>{{.Date}}</td><td>{{.Total}}</td><td>{{.Note}}</td></tr>{{end}}</tbody></table></div>{{end}}
 
 {{with .EInvoice}}<h3>e-Invoice</h3>
 <p class="muted">B2B and export invoices can be registered with the GST Invoice Registration Portal (IRP). Download the JSON, upload it at the portal, then record the IRN, acknowledgement number and date and the signed QR code it returns. They are then printed on the PDF and the customer's page.</p>
@@ -55,8 +55,8 @@
 {{end}}
 
 <h3>Emails</h3>
-<table class="grid"><thead><tr><th>To</th><th>Status</th><th>When</th><th></th></tr></thead>
-<tbody>{{range .Sends}}<tr><td>{{.To}}</td><td>{{.Status}}</td><td>{{.At}}</td><td>{{.Error}}</td></tr>{{else}}<tr><td colspan="4" class="muted">Not emailed by Paymux.</td></tr>{{end}}</tbody></table>
+<div class="table-scroll"><table class="grid"><thead><tr><th>To</th><th>Status</th><th>When</th><th></th></tr></thead>
+<tbody>{{range .Sends}}<tr><td>{{.To}}</td><td>{{.Status}}</td><td>{{.At}}</td><td>{{.Error}}</td></tr>{{else}}<tr><td colspan="4" class="muted">Not emailed by Paymux.</td></tr>{{end}}</tbody></table></div>
 {{if .CanResend}}<form method="post" action="/dashboard/{{if eq .Kind "credit_note"}}credit-notes{{else}}invoices{{end}}/{{.ID}}/resend" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn" type="submit">Resend email</button></form>{{end}}
 

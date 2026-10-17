@@ -20,7 +20,7 @@
 </dl>
 
 <h3>Attempts</h3>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Attempt</th><th>Status</th><th>Provider</th><th>Provider ids</th><th>Method</th><th>Failure</th><th>Created</th></tr></thead>
 <tbody>
 {{range .Attempts}}<tr>
@@ -29,19 +29,19 @@
 <td>{{.Method}}</td><td>{{if .FailureCode}}{{.FailureCode}}{{if .FailureMessage}}: {{.FailureMessage}}{{end}}{{end}}</td><td>{{.Created}}</td>
 </tr>{{else}}<tr><td colspan="7" class="muted">No attempts yet.</td></tr>{{end}}
 </tbody>
-</table>
+</table></div>
 
 <h3>Ledger</h3>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Entry</th><th>Amount</th><th>At</th></tr></thead>
 <tbody>{{range .Ledger}}<tr><td>{{.Kind}}</td><td>{{.Amount}}</td><td>{{.At}}</td></tr>{{else}}<tr><td colspan="3" class="muted">No ledger entries.</td></tr>{{end}}</tbody>
-</table>
+</table></div>
 
 <h3>Refunds</h3>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Refund</th><th>Amount</th><th>Status</th><th>Reason</th><th>Initiated by</th><th>Created</th></tr></thead>
 <tbody>{{range .Refunds}}<tr><td>{{.ID}}</td><td>{{.Amount}}</td><td>{{.Status}}</td><td>{{.Reason}}</td><td>{{.InitiatedBy}}{{if .Actor}} ({{.Actor}}){{end}}</td><td>{{.Created}}</td></tr>{{else}}<tr><td colspan="6" class="muted">No refunds.</td></tr>{{end}}</tbody>
-</table>
+</table></div>
 {{if .CanRefund}}
 <form method="post" action="/dashboard/payments/{{.ID}}/refund" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
@@ -54,7 +54,7 @@
 {{end}}
 
 <h3>Webhook deliveries</h3>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Event</th><th>Endpoint</th><th>Status</th><th>Attempts</th><th>Last result</th><th>Updated</th>{{if .CanReplay}}<th></th>{{end}}</tr></thead>
 <tbody>
 {{range .Deliveries}}<tr><td>{{.EventType}}</td><td>{{.Endpoint}}</td><td>{{.Status}}</td><td>{{.Attempts}}</td>
@@ -62,12 +62,12 @@
 {{if $.Pay.CanReplay}}<td><form class="inline" method="post" action="/dashboard/deliveries/{{.ID}}/replay"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Path}}"><button class="linkbtn" type="submit">Replay</button></form></td>{{end}}
 </tr>{{else}}<tr><td colspan="7" class="muted">No deliveries.</td></tr>{{end}}
 </tbody>
-</table>
+</table></div>
 
 <h3>Events</h3>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Type</th><th>Object</th><th>Version</th><th>At</th></tr></thead>
 <tbody>{{range .Events}}<tr><td>{{.Type}}</td><td>{{.Object}}</td><td>{{.Version}}</td><td>{{.At}}</td></tr>{{else}}<tr><td colspan="4" class="muted">No events.</td></tr>{{end}}</tbody>
-</table>
+</table></div>
 {{end}}
 {{template "dash_close" .}}{{end}}

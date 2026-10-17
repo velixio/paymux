@@ -11,10 +11,10 @@ GSTIN {{.SupplierGSTIN}}</p>
 {{with .RecipientAddress}}{{.}}<br>{{end}}
 {{with .RecipientGSTIN}}GSTIN {{.}}<br>{{end}}
 Place of supply: {{.PlaceOfSupply}}</p>
-<table>
+<div class="table-scroll"><table>
 <thead><tr><th>Description</th><th>SAC</th><th>Taxable</th></tr></thead>
 <tbody>{{range .Lines}}<tr><td>{{.Description}}</td><td>{{.SAC}}</td><td>{{.Taxable}}</td></tr>{{end}}</tbody>
-</table>
+</table></div>
 <p>{{range .Taxes}}{{.Label}}: {{.Amount}}<br>{{end}}<strong>Total: {{.Total}}</strong></p>
 {{with .TotalWords}}<p class="muted">{{.}}</p>{{end}}
 {{range .Notes}}<p class="muted">{{.}}</p>{{end}}

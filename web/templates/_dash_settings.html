@@ -1,5 +1,5 @@
 {{define "dash_settings_table"}}{{with .Table}}
-<table class="grid settings">
+<div class="table-scroll"><table class="grid settings">
 <thead><tr><th>Setting</th><th>Effective value</th><th>Source</th>{{if .CanWrite}}<th>Change</th>{{end}}</tr></thead>
 <tbody>
 {{range .Rows}}<tr id="setting-{{.Key}}">
@@ -26,5 +26,5 @@
 </td>{{end}}
 </tr>{{end}}
 </tbody>
-</table>
+</table></div>
 {{end}}{{end}}

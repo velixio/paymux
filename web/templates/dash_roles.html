@@ -6,7 +6,7 @@
 {{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <p class="muted">The built-in roles cannot be changed. Custom roles grant a chosen set of actions; the user-management and role-management actions stay with admins. Assign a role to a user on the <a href="/dashboard/users">Users</a> page.</p>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Role</th><th>Kind</th><th>Users</th><th>Actions</th><th></th></tr></thead>
 <tbody>
 {{range .RoleRows}}<tr>
@@ -29,7 +29,7 @@
 {{end}}</td>
 </tr>{{end}}
 </tbody>
-</table>
+</table></div>
 <h3>New role</h3>
 <form method="post" action="/dashboard/roles" class="stack">
 <input type="hidden" name="csrf" value="{{.CSRF}}">

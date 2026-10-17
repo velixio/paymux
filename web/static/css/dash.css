@@ -26,6 +26,13 @@ code.wrap { word-break: break-all; font-size: 12px; }
 @media (max-width: 640px) {
   .dash-body { flex-direction: column; }
   .dash-nav { width: auto; flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--color-line); }
+  .dash-main { padding: 12px; }
+  /* filter bars and forms: one control per line, as wide as the screen */
+  form.filters { flex-direction: column; align-items: stretch; }
+  .dash-main form select,
+  .dash-main form textarea,
+  .dash-main form input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=submit]):not([type=button]) { width: 100%; }
+  .dash-main form.filters .btn, .dash-main form.filters button { width: 100%; }
 }
 .mode { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
 .mode-live { background: #166534; color: #fff; }
@@ -99,3 +106,9 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .badge.badge-critical { background: #b91c1c; }
 .status-critical { color: #b91c1c; font-weight: 600; }
 .status-warning { color: #b45309; }
+
+/* After the base rules above, so that these win on a phone. */
+@media (max-width: 640px) {
+  dl.facts { grid-template-columns: 1fr; }
+  dl.facts dd { margin-left: 0; }
+}

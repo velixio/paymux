@@ -5,11 +5,11 @@
 <h2>Tax entities</h2>
 <p class="muted">One per legal entity and GSTIN. Apps point to one of them for their invoices.</p>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Name</th><th>GSTIN</th><th>State</th><th>Series</th><th>LUT</th><th>LUT valid to</th></tr></thead>
 <tbody>{{range .TaxEnts}}<tr><td><a href="/dashboard/tax-entities/{{.ID}}">{{.Name}}</a><br><small class="muted">{{.LegalName}}</small></td><td>{{.GSTIN}}</td><td>{{.State}}</td><td>{{.Prefixes}}</td><td>{{.LUT}}</td><td>{{.LUTTo}}</td></tr>
 {{else}}<tr><td colspan="6" class="muted">No tax entities yet.</td></tr>{{end}}</tbody>
-</table>
+</table></div>
 {{if .CanManage}}
 <h3>Add a tax entity</h3>
 <form method="post" action="/dashboard/tax-entities" enctype="multipart/form-data" class="stack">

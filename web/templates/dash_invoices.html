@@ -13,16 +13,16 @@
 </form>
 {{if eq .DocFilter.Flag "credit_note_cutoff_passed"}}
 <p class="muted">Refunds whose credit note could not be issued because the statutory deadline had passed. Issue a manual adjustment with your accountant.</p>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Refund</th><th>Payment</th><th>Flag</th><th>Raised</th></tr></thead>
 <tbody>{{range .FlaggedRefunds}}<tr><td>{{.RefundID}}</td><td><a href="/dashboard/payments/{{.PaymentID}}">{{.PaymentID}}</a></td><td>{{.Flag}}</td><td>{{.At}}</td></tr>{{else}}<tr><td colspan="4" class="muted">None.</td></tr>{{end}}</tbody>
-</table>
+</table></div>
 {{else}}
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Number</th><th>Date</th><th>App</th><th>Entity</th><th>{{if eq .DocFilter.Type "invoice"}}Customer{{else}}Reason{{end}}</th><th>Total</th><th>Flags</th></tr></thead>
 <tbody>{{range .DocRows}}<tr><td><a href="{{.Href}}">{{.Number}}</a></td><td>{{.Date}}</td><td>{{.App}}</td><td>{{.Entity}}</td><td>{{if .Party}}{{.Party}}{{else}}{{.Note}}{{end}}</td><td>{{.Total}}</td><td>{{.Flags}}</td></tr>
 {{else}}<tr><td colspan="7" class="muted">No documents match.</td></tr>{{end}}</tbody>
-</table>
+</table></div>
 {{with .NextURL}}<p><a class="next" href="{{.}}">Older documents &rarr;</a></p>{{end}}
 {{end}}
 {{template "dash_close" .}}{{end}}

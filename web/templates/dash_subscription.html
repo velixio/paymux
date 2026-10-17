@@ -29,18 +29,18 @@
 </dl>
 
 <h3>Mandates</h3>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Mandate</th><th>Role</th><th>Method</th><th>Status</th><th>Max per debit</th><th>Valid until</th><th>Provider reference</th></tr></thead>
 <tbody>{{range .Mandates}}<tr><td>{{.ID}}</td><td>{{.Role}}</td><td>{{.Method}}</td><td>{{.Status}}</td><td>{{.MaxAmount}}</td><td>{{.ValidUntil}}</td>
 <td><small>{{.ProviderRef}}{{if .ProviderID}}<br>{{.ProviderID}}{{end}}</small></td></tr>{{else}}<tr><td colspan="7" class="muted">No mandate (the provider manages the billing).</td></tr>{{end}}</tbody>
-</table>
+</table></div>
 
 <h3>Periods and renewals</h3>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Period</th><th>State</th><th>Amount</th><th>Retries</th><th>Notice sent</th><th>Next run</th><th>Payment</th></tr></thead>
 <tbody>{{range .Cycles}}<tr><td>{{.Period}}</td><td>{{.State}}</td><td>{{.Amount}}</td><td>{{.Retries}}</td><td>{{.Notified}}</td><td>{{.NextRun}}</td>
 <td>{{if .PaymentID}}<a href="/dashboard/payments/{{.PaymentID}}">{{.PaymentID}}</a> {{.PaymentStatus}}{{end}}</td></tr>{{else}}<tr><td colspan="7" class="muted">No renewals yet.</td></tr>{{end}}</tbody>
-</table>
+</table></div>
 
 {{if .CanLink}}
 <form method="post" action="/dashboard/subscriptions/{{.ID}}/checkout-link" class="stack">

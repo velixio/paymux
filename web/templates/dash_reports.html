@@ -12,10 +12,10 @@
 </form>
 {{if .Files}}
 <h3>{{.Month}}</h3>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>File</th></tr></thead>
 <tbody>{{range .Files}}<tr><td><a href="{{.Href}}">{{.Name}}</a></td></tr>{{end}}</tbody>
-</table>
+</table></div>
 <p><a class="btn small" href="{{.ZipHref}}">Download all as a zip</a></p>
 {{end}}
 {{with .EInvoice}}

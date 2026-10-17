@@ -6,10 +6,10 @@
 <p class="muted">The RBI / FBIL reference rate (INR per 1 unit of the foreign currency) for an IST calendar day. Invoices issued that day in that currency use it.</p>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <h3>Invoices pending a rate</h3>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Currency</th><th>Day (IST)</th><th>Invoices</th></tr></thead>
 <tbody>{{range .FXPending}}<tr><td>{{.Currency}}</td><td>{{.Date}}</td><td>{{.Count}}</td></tr>{{else}}<tr><td colspan="3" class="muted">None. Every foreign-currency invoice has its rate.</td></tr>{{end}}</tbody>
-</table>
+</table></div>
 {{if .CanManage}}
 <form method="post" action="/dashboard/fx" class="filters">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
@@ -20,8 +20,8 @@
 </form>
 {{end}}
 <h3>Recent rates</h3>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <thead><tr><th>Currency</th><th>Day</th><th>INR per unit</th><th>Source</th></tr></thead>
 <tbody>{{range .FXRates}}<tr><td>{{.Currency}}</td><td>{{.Date}}</td><td>{{.Rate}}</td><td>{{.Source}}</td></tr>{{else}}<tr><td colspan="4" class="muted">No rates yet.</td></tr>{{end}}</tbody>
-</table>
+</table></div>
 {{template "dash_close" .}}{{end}}
