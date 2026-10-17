@@ -98,3 +98,12 @@ func (p mandatePart) RevokeMandate(ctx context.Context, ref connector.MandateRef
 	_, err := rpc[wire.Empty](ctx, p.r, wire.MethodRevokeMandate, ref)
 	return err
 }
+
+type payoutPart struct{ r *remote }
+
+func (p payoutPart) CreatePayout(ctx context.Context, req connector.PayoutRequest) (connector.PayoutSnapshot, error) {
+	return rpc[connector.PayoutSnapshot](ctx, p.r, wire.MethodCreatePayout, req)
+}
+func (p payoutPart) FetchPayout(ctx context.Context, ref connector.PayoutRef) (connector.PayoutSnapshot, error) {
+	return rpc[connector.PayoutSnapshot](ctx, p.r, wire.MethodFetchPayout, ref)
+}

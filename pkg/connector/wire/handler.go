@@ -230,6 +230,15 @@ func (h *handler) dispatch(ctx context.Context, method string, body []byte) (any
 			})
 		}
 		return ack(body, func(in UpdateAmountRequest) error { return x.UpdateSubscriptionAmount(ctx, in.Subscription, in.Amount) })
+	case MethodCreatePayout, MethodFetchPayout:
+		x, err := optional[connector.Payouter](c, method)
+		if err != nil {
+			return nil, err
+		}
+		if method == MethodCreatePayout {
+			return call(body, func(in connector.PayoutRequest) (connector.PayoutSnapshot, error) { return x.CreatePayout(ctx, in) })
+		}
+		return call(body, func(in connector.PayoutRef) (connector.PayoutSnapshot, error) { return x.FetchPayout(ctx, in) })
 	case MethodCreateMandateCheckout, MethodFetchMandate, MethodNotifyPreDebit, MethodChargeMandate, MethodRevokeMandate:
 		x, err := optional[connector.MandateManager](c, method)
 		if err != nil {

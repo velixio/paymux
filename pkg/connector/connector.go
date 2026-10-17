@@ -73,6 +73,16 @@ type MandateManager interface {
 	RevokeMandate(ctx context.Context, ref MandateRef) error
 }
 
+// Payouter is optional, for sending money out (CapPayout). CreatePayout must
+// pass PayoutRequest.ProviderRef to the provider as the idempotency token: the
+// same request repeated returns the same payout and never pays twice. A
+// request the provider cannot take (a bad beneficiary, an amount over a limit)
+// is an error; one it has taken is a snapshot, whatever its status.
+type Payouter interface {
+	CreatePayout(ctx context.Context, req PayoutRequest) (PayoutSnapshot, error)
+	FetchPayout(ctx context.Context, ref PayoutRef) (PayoutSnapshot, error)
+}
+
 // URLs builds the URLs a connector hands to the provider.
 type URLs interface {
 	// ReturnURL is the customer return URL for an attempt's provider_ref.

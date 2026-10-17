@@ -49,6 +49,8 @@ const (
 	MethodNotifyPreDebit             = "notify_pre_debit"
 	MethodChargeMandate              = "charge_mandate"
 	MethodRevokeMandate              = "revoke_mandate"
+	MethodCreatePayout               = "create_payout"
+	MethodFetchPayout                = "fetch_payout"
 )
 
 // Request envelopes for methods with more than one argument. Methods with a
