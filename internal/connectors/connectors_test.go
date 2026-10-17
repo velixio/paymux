@@ -394,9 +394,15 @@ func TestVerifiers(t *testing.T) {
 		if err != nil || id != "evt_1" {
 			t.Errorf("signed: %q %v", id, err)
 		}
-		id, err = v.Verify(http.Header{}, body)
+		id, err = v.Verify(http.Header{"X-Fake-Sig": {"unsigned"}}, body)
 		if !errors.Is(err, inbound.ErrUnsigned) || id != "evt_1" {
-			t.Errorf("unsigned must report ErrUnsigned and still return the event id: %q %v", id, err)
+			t.Errorf("an event type the provider does not sign must report ErrUnsigned with its event id: %q %v", id, err)
+		}
+		for name, h := range map[string]http.Header{"missing": {}, "wrong": {"X-Fake-Sig": {"nope"}}} {
+			id, err = v.Verify(h, body)
+			if err == nil || errors.Is(err, inbound.ErrUnsigned) || id != "" {
+				t.Errorf("%s signature must be a hard failure (401), got id=%q err=%v", name, id, err)
+			}
 		}
 		id, err = v.Verify(http.Header{"X-Fake-Sig": {"ok"}}, []byte(`not json`))
 		if err != nil || id != "" {

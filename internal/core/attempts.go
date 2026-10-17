@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/core/state"
 	"github.com/paymux/paymux/internal/ids"
+	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector/money"
@@ -122,8 +124,9 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 		return ApplyResult{}, err
 	}
 	var res ApplyResult
+	var alerts []notify.Alert
 	err := s.db.Write(ctx, func(tx store.Tx) error {
-		res = ApplyResult{}
+		res, alerts = ApplyResult{}, nil
 		a, err := store.GetAttempt(ctx, tx, attemptID)
 		if err != nil {
 			return mapStoreErr(err, "attempt")
@@ -181,12 +184,12 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 			po := state.PaymentNext(state.PaymentStatus(p.Status), ev)
 			switch po.Action {
 			case state.Apply:
-				if err := s.applyPaymentTransition(ctx, tx, &p, a.ID, ev, po, snap, now); err != nil {
+				if err := s.applyPaymentTransition(ctx, tx, &p, a.ID, ev, po, snap, now, &alerts); err != nil {
 					return err
 				}
 			case state.Duplicate:
 				a.Duplicate = true
-				if err := s.handleDuplicate(ctx, tx, &p, a, snap, now); err != nil {
+				if err := s.handleDuplicate(ctx, tx, &p, a, snap, now, &alerts); err != nil {
 					return err
 				}
 			}
@@ -203,6 +206,9 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 		res.Payment, res.Attempt = p, a
 		return nil
 	})
+	if err == nil {
+		s.raise(ctx, alerts)
+	}
 	return res, err
 }
 
@@ -216,7 +222,7 @@ func firstNonEmpty(a, b string) string {
 // applyPaymentTransition writes an Apply outcome: status, amount received,
 // flags, version bump and the matching payment.* event.
 func (s *Service) applyPaymentTransition(ctx context.Context, tx store.Tx, p *store.Payment, attemptID string,
-	ev state.PaymentEvent, po state.PaymentOutcome, snap Snapshot, now time.Time) error {
+	ev state.PaymentEvent, po state.PaymentOutcome, snap Snapshot, now time.Time, alerts *[]notify.Alert) error {
 	p.Status = string(po.Next)
 	if ev == state.EvSucceeded || ev == state.EvSucceededMismatch {
 		p.AmountReceived = snap.Amount
@@ -230,12 +236,22 @@ func (s *Service) applyPaymentTransition(ctx context.Context, tx store.Tx, p *st
 	if err := store.UpdatePayment(ctx, tx, p, now); err != nil {
 		return err
 	}
+	if po.Next == state.PaymentNeedsReview {
+		sev, msg := notify.SeverityWarning, fmt.Sprintf("Payment %s needs review: the provider reports %d %s but %d %s was expected. Check it in the dashboard.",
+			p.ID, snap.Amount, snap.Currency, p.Amount, p.Currency)
+		if po.Reason == state.ReasonSuccessAfterCancel {
+			sev, msg = notify.SeverityCritical, fmt.Sprintf("Payment %s was paid (%d %s) after the app canceled it. It needs review and is never refunded automatically.",
+				p.ID, snap.Amount, snap.Currency)
+		}
+		*alerts = append(*alerts, notify.Alert{Severity: sev, Kind: "payment.needs_review", Message: msg,
+			Refs: map[string]string{"payment": p.ID, "attempt": attemptID, "app": p.AppID, "reason": po.Reason}})
+	}
 	return s.emitPayment(ctx, tx, "payment."+p.Status, *p, po.Reason, attemptID)
 }
 
 // handleDuplicate deals with a second successful attempt on a succeeded
 // payment, following the duplicate_payment_action setting.
-func (s *Service) handleDuplicate(ctx context.Context, tx store.Tx, p *store.Payment, extra store.Attempt, snap Snapshot, now time.Time) error {
+func (s *Service) handleDuplicate(ctx context.Context, tx store.Tx, p *store.Payment, extra store.Attempt, snap Snapshot, now time.Time, alerts *[]notify.Alert) error {
 	addFlag(p, FlagDuplicateSuccess)
 	if err := store.UpdatePayment(ctx, tx, p, now); err != nil {
 		return err
@@ -251,11 +267,17 @@ func (s *Service) handleDuplicate(ctx context.Context, tx store.Tx, p *store.Pay
 	if action == "auto_refund" {
 		// A full refund of the EXTRA attempt only. The duplicate is not a
 		// supply, so it gets no invoice and its refund no credit note.
-		// TODO(spec): raise an info alert (alerts are not built yet).
 		_, err := s.insertRefund(ctx, tx, *p, extra, snap.Amount, "duplicate_payment", "system", audit.System)
+		if err == nil {
+			*alerts = append(*alerts, notify.Alert{Severity: notify.SeverityInfo, Kind: "payment.duplicate_refunded",
+				Message: fmt.Sprintf("Payment %s was paid twice; the extra %d %s is being refunded automatically.", p.ID, snap.Amount, snap.Currency),
+				Refs:    map[string]string{"payment": p.ID, "attempt": extra.ID, "app": p.AppID}})
+		}
 		return err
 	}
-	// TODO(spec): raise an ops alert (alerts are not built yet); an operator
-	// refunds the extra attempt from the dashboard.
+	// An operator refunds the extra attempt from the dashboard.
+	*alerts = append(*alerts, notify.Alert{Severity: notify.SeverityWarning, Kind: "payment.duplicate_success",
+		Message: fmt.Sprintf("Payment %s was paid twice (extra %d %s). Refund the extra attempt from the dashboard.", p.ID, snap.Amount, snap.Currency),
+		Refs:    map[string]string{"payment": p.ID, "attempt": extra.ID, "app": p.AppID}})
 	return s.emitPayment(ctx, tx, "payment.needs_review", *p, FlagDuplicateSuccess, extra.ID)
 }

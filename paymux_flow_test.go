@@ -50,6 +50,7 @@ type fakeRazorpay struct {
 	orders   map[string]map[string]any
 	payments map[string]map[string]any
 	refunds  map[string]map[string]any
+	disputes map[string]map[string]any
 	idem     map[string]string // refund idempotency header -> refund id
 	calls    []string
 	idemSeen []string
@@ -57,7 +58,7 @@ type fakeRazorpay struct {
 
 func newFakeRazorpay() *fakeRazorpay {
 	return &fakeRazorpay{orders: map[string]map[string]any{}, payments: map[string]map[string]any{},
-		refunds: map[string]map[string]any{}, idem: map[string]string{}}
+		refunds: map[string]map[string]any{}, disputes: map[string]map[string]any{}, idem: map[string]string{}}
 }
 
 func (f *fakeRazorpay) handler() http.Handler {
@@ -149,6 +150,25 @@ func (f *fakeRazorpay) handler() http.Handler {
 		}
 		reply(w, 200, collection(items...))
 	})
+	mux.HandleFunc("GET /v1/disputes/{id}", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		d, ok := f.disputes[r.PathValue("id")]
+		if !ok {
+			reply(w, 404, map[string]any{"error": map[string]any{"code": "BAD_REQUEST_ERROR", "description": "not found"}})
+			return
+		}
+		reply(w, 200, d)
+	})
+	mux.HandleFunc("GET /v1/disputes", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		var items []any
+		for _, d := range f.disputes {
+			items = append(items, d)
+		}
+		reply(w, 200, collection(items...))
+	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, p, ok := r.BasicAuth()
 		f.mu.Lock()
@@ -191,6 +211,15 @@ func (f *fakeRazorpay) processRefunds() {
 	for _, rf := range f.refunds {
 		rf["status"] = "processed"
 	}
+}
+
+// setDispute creates or moves the dispute dsp_1 on payment pay_123.
+func (f *fakeRazorpay) setDispute(status string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.disputes["disp_1"] = map[string]any{"id": "disp_1", "entity": "dispute", "payment_id": "pay_123", "amount": 49900, "currency": "INR",
+		"status": status, "phase": "chargeback", "reason_code": "fraudulent", "respond_by": time.Now().Add(10 * 24 * time.Hour).Unix(),
+		"created_at": time.Now().Unix()}
 }
 
 func (f *fakeRazorpay) firstOrder() (string, map[string]any) {
@@ -337,11 +366,15 @@ func TestFullPaymentFlow(t *testing.T) {
 		recv := &receiver{}
 		appSrv := httptest.NewServer(recv)
 		defer appSrv.Close()
+		ops := &opsSink{}
+		opsSrv := httptest.NewServer(ops)
+		defer opsSrv.Close()
 		seed := seedFlow(t, url, dataDir, appSrv.URL)
 		recv.v, _ = stdwebhooks.NewVerifier(seed.endpointSecret)
 
 		cfg := testConfig(t, url, dataDir)
 		cfg.AllowPrivateWebhooks = true
+		cfg.OpsWebhookURL = opsSrv.URL
 		logs := &syncBuf{}
 		app, err := New(cfg, WithLogger(logging.New(logs, -4)),
 			WithConnectorHTTP(func(store.ProviderAccount, connector.Info, []string) *http.Client {
@@ -429,10 +462,9 @@ func TestFullPaymentFlow(t *testing.T) {
 			t.Fatalf("early return: %d %q", code, hdr.Get("Location"))
 		}
 
-		// 4. A forged webhook claims success before anything was paid. The
-		//    connector reports it as unsigned, so it is stored and only
-		//    triggers a fetch of the provider's truth, which says "unpaid".
-		fetchesBefore := rzp.called("GET /v1/payments/pay_123")
+		// 4. A forged webhook (wrong signature) claims success before anything was
+		//    paid: 401, stored unverified, and it never triggers a fetch.
+		fetchesBefore := rzp.called("GET /v1/payments/pay_123") + rzp.called("GET /v1/orders/"+orderID+"/payments")
 		hook := func(event, extra string, sign bool) int {
 			body := fmt.Sprintf(`{"entity":"event","account_id":"acc_test","event":%q,"contains":["payment"],"payload":{%s},"created_at":%d}`,
 				event, extra, time.Now().Unix())
@@ -450,13 +482,13 @@ func TestFullPaymentFlow(t *testing.T) {
 			return c
 		}
 		payEntity := fmt.Sprintf(`"payment":{"entity":{"id":"pay_123","entity":"payment","amount":49900,"currency":"INR","status":"captured","order_id":%q,"method":"upi","amount_refunded":0,"fee":1178,"tax":180,"created_at":%d}}`, orderID, time.Now().Unix())
-		if got := hook("payment.captured", payEntity, false); got != 200 {
-			t.Fatalf("forged webhook = %d, want 200 (fetch-only path)", got)
+		if got := hook("payment.captured", payEntity, false); got != http.StatusUnauthorized {
+			t.Fatalf("forged webhook = %d, want 401", got)
 		}
-		waitFor(t, "the fetch triggered by the forged webhook", func() bool {
-			return rzp.called("GET /v1/payments/pay_123") > fetchesBefore
-		})
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(2500 * time.Millisecond) // longer than the job poll interval
+		if n := rzp.called("GET /v1/payments/pay_123") + rzp.called("GET /v1/orders/"+orderID+"/payments"); n != fetchesBefore {
+			t.Fatalf("a forged webhook triggered %d provider fetches", n-fetchesBefore)
+		}
 		if _, p := api("GET", "/v1/payments/"+id, nil); p["status"] == "succeeded" {
 			t.Fatal("an unsigned webhook changed state")
 		}
@@ -569,6 +601,32 @@ func TestFullPaymentFlow(t *testing.T) {
 		if n != 1 {
 			t.Errorf("payment.succeeded delivered %d times", n)
 		}
+
+		// 12. A dispute: the webhook is only a hint, the dispute is fetched from
+		//     the provider, the app is told, and ops get an alert with the deadline.
+		hookNames := func(event string) string {
+			return fmt.Sprintf(`"dispute":{"entity":{"id":"disp_1","entity":"dispute","payment_id":"pay_123","amount":49900,"currency":"INR","status":%q,"phase":"chargeback","created_at":%d}}`, event, time.Now().Unix())
+		}
+		rzp.setDispute("open")
+		if got := hook("payment.dispute.created", hookNames("open"), true); got != 200 {
+			t.Fatalf("dispute webhook = %d", got)
+		}
+		waitFor(t, "dispute.opened at the app endpoint", func() bool { return recv.last("dispute.opened") != nil })
+		dobj := recv.last("dispute.opened")["data"].(map[string]any)["object"].(map[string]any)
+		if dobj["status"] != "needs_response" || dobj["payment_id"] != id || dobj["amount"] != float64(49900) {
+			t.Errorf("dispute object %v", dobj)
+		}
+		if _, p := api("GET", "/v1/payments/"+id, nil); !containsFlag(p["flags"], "disputed") {
+			t.Errorf("payment not flagged disputed: %v", p["flags"])
+		}
+		waitFor(t, "the ops alert", func() bool { return ops.contains("dispute.opened") })
+		rzp.setDispute("lost")
+		hook("payment.dispute.lost", hookNames("lost"), true)
+		waitFor(t, "dispute.lost at the app endpoint", func() bool { return recv.last("dispute.lost") != nil })
+		waitFor(t, "the loss alert", func() bool { return ops.contains("dispute.lost") })
+		if _, p := api("GET", "/v1/payments/"+id, nil); containsFlag(p["flags"], "disputed") || !containsFlag(p["flags"], "dispute_lost") {
+			t.Errorf("payment flags after the loss: %v", p["flags"])
+		}
 		shutdown(t, r)
 	}
 	t.Run("sqlite", func(t *testing.T) {
@@ -576,4 +634,40 @@ func TestFullPaymentFlow(t *testing.T) {
 		run(t, "sqlite://"+dir+"/paymux.db", dir)
 	})
 	t.Run("postgres", func(t *testing.T) { run(t, storetest.PostgresURL(t), t.TempDir()) })
+}
+
+// opsSink records the ops alerts posted to PAYMUX_OPS_WEBHOOK_URL.
+type opsSink struct {
+	mu    sync.Mutex
+	texts []string
+}
+
+func (o *opsSink) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var m map[string]string
+	_ = json.NewDecoder(r.Body).Decode(&m)
+	o.mu.Lock()
+	o.texts = append(o.texts, m["text"])
+	o.mu.Unlock()
+	w.WriteHeader(200)
+}
+
+func (o *opsSink) contains(s string) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	for _, t := range o.texts {
+		if strings.Contains(t, s) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsFlag(v any, flag string) bool {
+	l, _ := v.([]any)
+	for _, x := range l {
+		if x == flag {
+			return true
+		}
+	}
+	return false
 }

@@ -288,7 +288,7 @@ func TestVerifyWebhookHeaderCaseInsensitive(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.Headers["x-razorpay-signature"] = []string{"zz-not-hex"}
-	if err := c.VerifyWebhook(context.Background(), r); !errors.Is(err, connector.ErrUnsigned) {
+	if err := c.VerifyWebhook(context.Background(), r); !errors.Is(err, connector.ErrInvalidSignature) {
 		t.Fatalf("err = %v", err)
 	}
 }

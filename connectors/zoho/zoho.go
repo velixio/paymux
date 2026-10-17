@@ -295,14 +295,14 @@ func (z *zoho) VerifyWebhook(_ context.Context, req connector.WebhookRequest) er
 	}
 	ts, err := strconv.ParseInt(t, 10, 64)
 	if err != nil || len(sigs) == 0 {
-		return connector.ErrUnsigned
+		return connector.ErrInvalidSignature
 	}
 	now := z.deps.Now()
 	if req.ReceivedAt > 0 {
 		now = time.UnixMilli(req.ReceivedAt)
 	}
 	if d := now.Sub(time.Unix(ts, 0)); d > webhookTolerance || d < -webhookTolerance {
-		return connector.ErrUnsigned
+		return connector.ErrInvalidSignature
 	}
 	m := hmac.New(sha256.New, []byte(z.cfg.WebhookSecret))
 	m.Write([]byte(t + "."))
@@ -313,7 +313,7 @@ func (z *zoho) VerifyWebhook(_ context.Context, req connector.WebhookRequest) er
 			return nil
 		}
 	}
-	return connector.ErrUnsigned
+	return connector.ErrInvalidSignature
 }
 
 // ParseWebhook maps payment.* and refund.* events; others are ignored.
