@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/core"
@@ -246,3 +247,61 @@ func TestAddDomainAndLookup(t *testing.T) {
 }
 
 var _ = events.Event{}
+
+// otherOrgApp creates a second org with an app and returns the app id.
+func otherOrgApp(t *testing.T, e *env) string {
+	t.Helper()
+	err := e.db.Write(ctx, func(tx store.Tx) error {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO orgs (id, name, created_at) VALUES ('org_other', 'Other', 1)"); err != nil {
+			return err
+		}
+		return store.InsertApp(ctx, tx, store.App{ID: "app_other", OrgID: "org_other", Name: "O", Slug: "o", CreatedAt: time.Now()})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return "app_other"
+}
+
+func TestAddDomainRejectsOtherOrgApp(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		other := otherOrgApp(t, e)
+		mine := core.OrgScope{OrgID: store.DefaultOrgID}
+		if _, err := e.svc.AddDomain(ctx, audit.System, mine, other, "pay.example.org"); !errors.Is(err, core.ErrNotFound) {
+			t.Fatalf("cross-org AddDomain: %v", err)
+		}
+		if e.count("SELECT COUNT(*) FROM app_domains") != 0 || e.count("SELECT COUNT(*) FROM audit_log WHERE action = 'domain.add'") != 0 {
+			t.Error("rejected call left rows behind")
+		}
+		d, err := e.svc.AddDomain(ctx, audit.System, core.OrgScope{OrgID: "org_other"}, other, "pay.example.org")
+		if err != nil || d.OrgID != "org_other" {
+			t.Errorf("own-org AddDomain: %+v %v", d, err)
+		}
+		if e.count("SELECT COUNT(*) FROM audit_log WHERE action = 'domain.add' AND org_id = 'org_other'") != 1 {
+			t.Error("audit entry must use the scope's org")
+		}
+	})
+}
+
+func TestAPIKeyAndAppMutationsAreOrgScoped(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		other := otherOrgApp(t, e)
+		mine := core.OrgScope{OrgID: store.DefaultOrgID}
+		if _, _, err := e.svc.CreateAPIKey(ctx, audit.System, mine, other, "test"); !errors.Is(err, core.ErrNotFound) {
+			t.Errorf("cross-org CreateAPIKey: %v", err)
+		}
+		if e.count("SELECT COUNT(*) FROM api_keys WHERE app_id = ?", other) != 0 {
+			t.Error("key minted for another org's app")
+		}
+		app, err := e.svc.CreateApp(ctx, audit.System, core.OrgScope{OrgID: "org_other"}, core.CreateAppInput{Name: "N", Slug: "n"})
+		if err != nil || app.OrgID != "org_other" {
+			t.Errorf("CreateApp must use the scope's org: %+v %v", app, err)
+		}
+		if _, err := e.svc.AppBySlug(ctx, mine, "n"); !errors.Is(err, core.ErrNotFound) {
+			t.Errorf("AppBySlug leaked another org's app: %v", err)
+		}
+		if _, err := e.svc.CreateApp(ctx, audit.System, core.OrgScope{}, core.CreateAppInput{Name: "N", Slug: "z"}); !errors.Is(err, core.ErrInvalid) {
+			t.Errorf("empty scope: %v", err)
+		}
+	})
+}

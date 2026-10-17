@@ -513,7 +513,9 @@ func TestIdempotencyConflictDoesNotEchoRequestBody(t *testing.T) {
 
 type stubRouter func(req core.RouteRequest) error
 
-func (f stubRouter) CheckRoute(_ context.Context, _ store.Queryer, req core.RouteRequest) error { return f(req) }
+func (f stubRouter) CheckRoute(_ context.Context, _ store.Queryer, req core.RouteRequest) error {
+	return f(req)
+}
 
 func TestRoutingFailuresAre422(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {

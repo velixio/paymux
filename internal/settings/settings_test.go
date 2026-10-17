@@ -261,3 +261,28 @@ func TestEveryDefaultIsValid(t *testing.T) {
 		}
 	}
 }
+
+func TestAppSettingMutationsAreOrgScoped(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		s, app := setup(t, db)
+		err := db.Write(ctx, func(tx store.Tx) error {
+			_, err := tx.ExecContext(ctx, "INSERT INTO orgs (id, name, created_at) VALUES ('org_other', 'Other', 1)")
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.SetApp(ctx, admin, "org_other", app, "payment_ttl", json.RawMessage(`30`)); !errors.Is(err, settings.ErrUnknownApp) {
+			t.Errorf("cross-org SetApp: %v", err)
+		}
+		if err := s.SetApp(ctx, admin, store.DefaultOrgID, app, "payment_ttl", json.RawMessage(`30`)); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.ResetApp(ctx, admin, "org_other", app, "payment_ttl"); !errors.Is(err, settings.ErrUnknownApp) {
+			t.Errorf("cross-org ResetApp: %v", err)
+		}
+		if v := resolve(t, s, app, "payment_ttl"); v.Source != settings.SourceApp {
+			t.Errorf("override removed by another org: %+v", v)
+		}
+	})
+}
