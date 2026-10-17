@@ -70,13 +70,13 @@ func TestResolveOrder(t *testing.T) {
 		if v := resolve(t, s, app, "payment_ttl"); v.Source != settings.SourceOrg || string(v.Raw) != "120" {
 			t.Fatalf("org: %+v", v)
 		}
-		if err := s.SetApp(ctx, admin, app, "payment_ttl", json.RawMessage(` 30 `)); err != nil {
+		if err := s.SetApp(ctx, admin, store.DefaultOrgID, app, "payment_ttl", json.RawMessage(` 30 `)); err != nil {
 			t.Fatal(err)
 		}
 		if v := resolve(t, s, app, "payment_ttl"); v.Source != settings.SourceApp || string(v.Raw) != "30" {
 			t.Fatalf("app: %+v", v)
 		}
-		if err := s.ResetApp(ctx, admin, app, "payment_ttl"); err != nil {
+		if err := s.ResetApp(ctx, admin, store.DefaultOrgID, app, "payment_ttl"); err != nil {
 			t.Fatal(err)
 		}
 		if v := resolve(t, s, app, "payment_ttl"); v.Source != settings.SourceOrg || string(v.Raw) != "120" {
@@ -122,6 +122,12 @@ func TestSetValidation(t *testing.T) {
 			{"gst_rate_bp", `-1`, true},
 			{"invoice_series_prefix", `"toolong"`, false},
 			{"invoice_series_prefix", `"ab"`, false},
+			{"routing", `{"rules":[{"name":"x","when":{},"action":{"kind":"bogus"}}]}`, false},
+			{"routing", `{"rules":[{"name":"x","when":{},"action":{"kind":"route"}}]}`, false},
+			{"routing", `{"rules":[{"name":"x","when":{"colour":["red"]},"action":{"kind":"reject"}}]}`, false},
+			{"routing", `{"rules":[{"name":"x","when":{},"action":{"kind":"route","targets":[{}]}}]}`, false},
+			{"routing", `{"catch_all":{"name":"c","when":{},"action":{"kind":"reject","message":"no"}}}`, false},
+			{"routing", `[]`, false},
 			{"dunning_schedule", `[24,24,24,24,24,24,24]`, false},
 			{"dunning_schedule", `[0]`, false},
 			{"dunning_schedule", `[721]`, false},
@@ -137,14 +143,11 @@ func TestSetValidation(t *testing.T) {
 			{"provider_event_retention", `29`, false},
 			{"document_retention", `7`, false},
 			{"upi_execution_windows", `[{"start":"13:00","end":"10:00"}]`, false},
-			{"routing", `{"rules":[{"currency":"inr","connectors":["razorpay"]}],"catch_all":{"reject":true}}`, false},
-			{"routing", `{"rules":[],"catch_all":{}}`, false},
-			{"routing", `[]`, false},
 		}
 		for _, c := range bad {
 			var err error
 			if c.appLevel {
-				err = s.SetApp(ctx, admin, app, c.key, json.RawMessage(c.val))
+				err = s.SetApp(ctx, admin, store.DefaultOrgID, app, c.key, json.RawMessage(c.val))
 			} else {
 				err = s.SetOrg(ctx, admin, org, c.key, json.RawMessage(c.val))
 			}
@@ -159,9 +162,9 @@ func TestSetValidation(t *testing.T) {
 			{"predebit_lead", `25`}, {"mandate_headroom", `1`}, {"mandate_headroom", `2.5`}, {"mandate_validity", `30`},
 			{"recon_time", `"23:59"`}, {"provider_event_retention", `0`}, {"provider_event_retention", `30`},
 			{"document_retention", `0`}, {"document_retention", `8`}, {"invoice_series_prefix", `"A1"`},
+			{"routing", `{"rules":[{"name":"inr","when":{"currency":["INR"],"amount_min":100},"action":{"kind":"route","targets":[{"connector":"razorpay"},{"account_id":"pa_1"}]}}],"catch_all":{"name":"c","when":{},"action":{"kind":"reject","message":"not accepted"}}}`},
+			{"routing", `{"rules":[]}`},
 			{"webhook_retry_schedule", `[0]`}, {"pay_page_retry_buttons", `{"try_again":false,"pay_another_way":true}`},
-			{"routing", `{"rules":[{"currency":"INR","connectors":["razorpay","payu"]}],"catch_all":{"reject":true}}`},
-			{"routing", `{"rules":[],"catch_all":{"connectors":["razorpay"]}}`},
 		}
 		for _, c := range good {
 			if err := s.SetOrg(ctx, admin, org, c.key, json.RawMessage(c.val)); err != nil {
@@ -180,7 +183,7 @@ func TestSetValidation(t *testing.T) {
 func TestSetLevelsAndUnknownKeys(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		s, app := setup(t, db)
-		if err := s.SetApp(ctx, admin, app, "recon_time", json.RawMessage(`"04:00"`)); !errors.Is(err, settings.ErrWrongLevel) {
+		if err := s.SetApp(ctx, admin, store.DefaultOrgID, app, "recon_time", json.RawMessage(`"04:00"`)); !errors.Is(err, settings.ErrWrongLevel) {
 			t.Errorf("org-only key at app level: %v", err)
 		}
 		if err := s.SetOrg(ctx, admin, store.DefaultOrgID, "sac_code", json.RawMessage(`"998315"`)); !errors.Is(err, settings.ErrWrongLevel) {
@@ -192,10 +195,10 @@ func TestSetLevelsAndUnknownKeys(t *testing.T) {
 		if _, err := s.Resolve(ctx, app, "nope"); !errors.Is(err, settings.ErrUnknownKey) {
 			t.Errorf("unknown key resolve: %v", err)
 		}
-		if err := s.SetApp(ctx, admin, "app_missing", "payment_ttl", json.RawMessage(`30`)); err == nil {
+		if err := s.SetApp(ctx, admin, store.DefaultOrgID, "app_missing", "payment_ttl", json.RawMessage(`30`)); err == nil {
 			t.Error("unknown app accepted")
 		}
-		if err := s.SetApp(ctx, admin, app, "sac_code", json.RawMessage(`"998316"`)); err != nil {
+		if err := s.SetApp(ctx, admin, store.DefaultOrgID, app, "sac_code", json.RawMessage(`"998316"`)); err != nil {
 			t.Errorf("app-only key at app level: %v", err)
 		}
 	})
@@ -205,15 +208,15 @@ func TestSetWritesAuditEntry(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		s, app := setup(t, db)
 		_ = s.SeedOrg(ctx, store.DefaultOrgID)
-		if err := s.SetApp(ctx, admin, app, "payment_ttl", json.RawMessage(`45`)); err != nil {
+		if err := s.SetApp(ctx, admin, store.DefaultOrgID, app, "payment_ttl", json.RawMessage(`45`)); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(3 * time.Millisecond) // audit ids only order across milliseconds
-		if err := s.SetApp(ctx, admin, app, "payment_ttl", json.RawMessage(`50`)); err != nil {
+		if err := s.SetApp(ctx, admin, store.DefaultOrgID, app, "payment_ttl", json.RawMessage(`50`)); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(3 * time.Millisecond)
-		if err := s.ResetApp(ctx, admin, app, "payment_ttl"); err != nil {
+		if err := s.ResetApp(ctx, admin, store.DefaultOrgID, app, "payment_ttl"); err != nil {
 			t.Fatal(err)
 		}
 		var rows []store.AuditRow
@@ -257,4 +260,29 @@ func TestEveryDefaultIsValid(t *testing.T) {
 			t.Errorf("missing setting %s", key)
 		}
 	}
+}
+
+func TestAppSettingMutationsAreOrgScoped(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		s, app := setup(t, db)
+		err := db.Write(ctx, func(tx store.Tx) error {
+			_, err := tx.ExecContext(ctx, "INSERT INTO orgs (id, name, created_at) VALUES ('org_other', 'Other', 1)")
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.SetApp(ctx, admin, "org_other", app, "payment_ttl", json.RawMessage(`30`)); !errors.Is(err, settings.ErrUnknownApp) {
+			t.Errorf("cross-org SetApp: %v", err)
+		}
+		if err := s.SetApp(ctx, admin, store.DefaultOrgID, app, "payment_ttl", json.RawMessage(`30`)); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.ResetApp(ctx, admin, "org_other", app, "payment_ttl"); !errors.Is(err, settings.ErrUnknownApp) {
+			t.Errorf("cross-org ResetApp: %v", err)
+		}
+		if v := resolve(t, s, app, "payment_ttl"); v.Source != settings.SourceApp {
+			t.Errorf("override removed by another org: %+v", v)
+		}
+	})
 }

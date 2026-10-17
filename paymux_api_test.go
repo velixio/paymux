@@ -7,14 +7,18 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/paymux/paymux/internal/audit"
+	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/events"
+	"github.com/paymux/paymux/internal/fakeconn"
 	"github.com/paymux/paymux/internal/logging"
+	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
@@ -38,12 +42,28 @@ func seedApp(t *testing.T, url, dataDir string) string {
 		t.Fatal(err)
 	}
 	svc := core.NewService(core.Options{DB: db, Settings: set})
-	app, err := svc.CreateApp(ctx, audit.System, core.CreateAppInput{Name: "E2E", Slug: "e2e"})
+	app, err := svc.CreateApp(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, core.CreateAppInput{Name: "E2E", Slug: "e2e"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	key, _, err := svc.CreateAPIKey(ctx, audit.System, app.ID, "test")
+	key, _, err := svc.CreateAPIKey(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, app.ID, "test")
 	if err != nil {
+		t.Fatal(err)
+	}
+	// Payments need a routable provider account.
+	fake := fakeconn.Register("fake")
+	box, err := secrets.NewBox(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, _ := neturl.Parse("http://localhost:8080")
+	conns := connectors.New(connectors.Options{DB: db, Box: box, BaseURL: base})
+	if _, err := conns.CreateAccount(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, connectors.CreateAccountInput{
+		Connector: fake.Name, Name: "main", Mode: "test", Config: json.RawMessage(fakeconn.ValidConfig), AppID: app.ID}); err != nil {
+		t.Fatal(err)
+	}
+	doc := `{"rules":[],"catch_all":{"name":"all","when":{},"action":{"kind":"route","targets":[{"connector":"` + fake.Name + `"}]}}}`
+	if err := set.SetOrg(ctx, audit.System, store.DefaultOrgID, "routing", json.RawMessage(doc)); err != nil {
 		t.Fatal(err)
 	}
 	return key

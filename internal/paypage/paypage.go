@@ -1,0 +1,461 @@
+// Package paypage serves the customer-facing pages: the pay page (with the
+// billing-details form), the provider return endpoint and the static assets.
+// Pages carry no cookies; the payment's client secret in the URL
+// authenticates them, plus a per-payment CSRF token on the billing form.
+package paypage
+
+import (
+	"bytes"
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"log/slog"
+	"net/http"
+	"net/mail"
+	"net/url"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/paymux/paymux/internal/checkout"
+	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/core/state"
+	"github.com/paymux/paymux/internal/domains"
+	"github.com/paymux/paymux/internal/settings"
+	"github.com/paymux/paymux/internal/store"
+	"github.com/paymux/paymux/internal/tax"
+	"github.com/paymux/paymux/internal/web"
+	"github.com/paymux/paymux/pkg/connector"
+)
+
+// addressThreshold is Rs 50,000 in paise: from this amount an Indian buyer's
+// full address is required for the invoice (spec section 10).
+const addressThreshold = 5_000_000
+
+const maxForm = 1 << 20
+
+// Options configures the Handler.
+type Options struct {
+	Core     *core.Service
+	Flow     *checkout.Service
+	Settings *settings.Service
+	Renderer *web.Renderer
+	Assets   http.Handler // serves /assets/
+	// CSRFKey keys the billing-form CSRF token (HMAC of payment id and secret).
+	CSRFKey []byte
+	Logger  *slog.Logger
+	Now     func() time.Time
+}
+
+// Handler serves the pay, return and asset routes.
+type Handler struct{ o Options }
+
+// Mux is the part of an HTTP mux the Handler registers on.
+type Mux interface {
+	HandleFunc(pattern string, fn http.HandlerFunc)
+}
+
+// New builds a Handler.
+func New(o Options) *Handler {
+	if o.Logger == nil {
+		o.Logger = slog.Default()
+	}
+	if o.Now == nil {
+		o.Now = time.Now
+	}
+	return &Handler{o: o}
+}
+
+// Register mounts the customer routes on m.
+func (h *Handler) Register(m Mux) {
+	m.HandleFunc("GET /pay/{id}", h.pay)
+	m.HandleFunc("POST /pay/{id}", h.billingPost)
+	m.HandleFunc("GET /return/{pa}/{ref}", h.ret)
+	m.HandleFunc("POST /return/{pa}/{ref}", h.ret)
+	if h.o.Assets != nil {
+		m.HandleFunc("GET /assets/", h.o.Assets.ServeHTTP)
+	}
+}
+
+// page renders a template with hardened headers. Pay URLs carry a secret, so
+// they must never leak through Referer or caches.
+func (h *Handler) page(w http.ResponseWriter, status int, name string, data web.PayPage) {
+	hdr := w.Header()
+	hdr.Set("Content-Type", "text/html; charset=utf-8")
+	hdr.Set("Referrer-Policy", "no-referrer")
+	hdr.Set("Cache-Control", "no-store")
+	hdr.Set("X-Content-Type-Options", "nosniff")
+	hdr.Set("X-Frame-Options", "DENY")
+	var buf bytes.Buffer
+	if err := h.o.Renderer.Render(&buf, name, data); err != nil {
+		h.o.Logger.Error("paypage: render", "page", name, "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write(buf.Bytes())
+}
+
+func (h *Handler) result(w http.ResponseWriter, status int, appName, title, message, returnURL string) {
+	h.page(w, status, "pay_result", web.PayPage{AppName: appName, Title: title, Message: message, ReturnURL: returnURL})
+}
+
+func (h *Handler) notFound(w http.ResponseWriter) {
+	h.result(w, http.StatusNotFound, "", "Link not valid", "This payment link is not valid. Please go back to the shop and start again.", "")
+}
+
+// load authenticates a pay-page request: payment id plus client secret (and,
+// on a custom domain, that the payment belongs to the domain's app).
+func (h *Handler) load(w http.ResponseWriter, r *http.Request) (store.Payment, string, bool) {
+	secret := r.URL.Query().Get("t")
+	p, err := h.o.Core.GetPaymentByID(r.Context(), r.PathValue("id"))
+	if err != nil || secret == "" || !core.ClientSecretMatches(p, secret) || !h.hostMayServe(r.Context(), p.AppID) {
+		h.notFound(w)
+		return store.Payment{}, "", false
+	}
+	return p, secret, true
+}
+
+func (h *Handler) hostMayServe(ctx context.Context, appID string) bool {
+	hostApp, onCustomHost := domains.AppFrom(ctx)
+	return !onCustomHost || hostApp == appID
+}
+
+func appReturnURL(p store.Payment) string {
+	if p.ReturnURL == "" {
+		return ""
+	}
+	u, err := url.Parse(p.ReturnURL)
+	if err != nil {
+		return ""
+	}
+	q := u.Query()
+	q.Set("payment_id", p.ID)
+	q.Set("status", p.Status)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// statusPage shows the outcome of a payment that is not (or no longer)
+// payable. It reports false when the payment can still be paid.
+func (h *Handler) statusPage(w http.ResponseWriter, p store.Payment, appName string) bool {
+	back := appReturnURL(p)
+	switch state.PaymentStatus(p.Status) {
+	case state.PaymentSucceeded:
+		h.result(w, http.StatusOK, appName, "Payment received", "Thank you. Your payment was received.", back)
+	case state.PaymentCanceled:
+		h.result(w, http.StatusOK, appName, "Payment canceled", "This payment was canceled.", back)
+	case state.PaymentNeedsReview:
+		h.result(w, http.StatusOK, appName, "Payment under review", "We are reviewing this payment and will confirm it shortly.", back)
+	case state.PaymentExpired:
+		h.result(w, http.StatusOK, appName, "Payment link expired", "This payment link has expired. Please go back and start a new payment.", back)
+	default:
+		if h.o.Now().After(p.ExpiresAt) {
+			h.result(w, http.StatusOK, appName, "Payment link expired", "This payment link has expired. Please go back and start a new payment.", back)
+			return true
+		}
+		return false
+	}
+	return true
+}
+
+func (h *Handler) appName(ctx context.Context, appID string) string {
+	app, err := h.o.Core.GetApp(ctx, appID)
+	if err != nil {
+		return ""
+	}
+	return app.Name
+}
+
+func (h *Handler) pay(w http.ResponseWriter, r *http.Request) {
+	p, secret, ok := h.load(w, r)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	appName := h.appName(ctx, p.AppID)
+	if h.statusPage(w, p, appName) {
+		return
+	}
+	var cust store.Customer
+	if p.CustomerID != "" {
+		var err error
+		if cust, err = h.o.Core.GetCustomer(ctx, p.CustomerID); err != nil {
+			h.serverError(w, appName, err)
+			return
+		}
+	}
+	need, err := h.billingNeed(ctx, p, cust)
+	if err != nil {
+		h.serverError(w, appName, err)
+		return
+	}
+	if need.show {
+		h.billingForm(w, http.StatusOK, p, secret, appName, cust, need, "")
+		return
+	}
+	st, err := h.o.Flow.StartCheckout(ctx, p.ID)
+	switch {
+	case err == nil:
+		h.render(w, r, appName, st)
+	case errors.Is(err, checkout.ErrCheckoutFailed):
+		h.result(w, http.StatusBadGateway, appName, "Payment unavailable",
+			"We could not reach the payment provider. Please try again in a moment.", "")
+	case errors.Is(err, core.ErrNoRoute), errors.Is(err, core.ErrCurrencyNotAccepted):
+		h.result(w, http.StatusUnprocessableEntity, appName, "Payment unavailable", "No payment method is available for this payment.", "")
+	case errors.Is(err, core.ErrInvalidState):
+		fresh, gerr := h.o.Core.GetPaymentByID(ctx, p.ID)
+		if gerr != nil || !h.statusPage(w, fresh, appName) {
+			h.result(w, http.StatusConflict, appName, "Payment unavailable", "This payment can no longer be paid.", "")
+		}
+	default:
+		h.serverError(w, appName, err)
+	}
+}
+
+func (h *Handler) serverError(w http.ResponseWriter, appName string, err error) {
+	h.o.Logger.Error("paypage: request failed", "err", err)
+	h.result(w, http.StatusInternalServerError, appName, "Something went wrong", "Please try again in a moment.", "")
+}
+
+func (h *Handler) render(w http.ResponseWriter, r *http.Request, appName string, st checkout.Started) {
+	a := st.Action
+	switch a.Kind {
+	case connector.ActionRedirect:
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Cache-Control", "no-store")
+		http.Redirect(w, r, a.URL, http.StatusSeeOther)
+	case connector.ActionFormPost:
+		fields := make([]web.Field, 0, len(a.Fields))
+		for k, v := range a.Fields {
+			fields = append(fields, web.Field{Name: k, Value: v})
+		}
+		sort.Slice(fields, func(i, j int) bool { return fields[i].Name < fields[j].Name })
+		h.page(w, http.StatusOK, "pay_form_post", web.PayPage{AppName: appName, FormURL: a.URL, Fields: fields})
+	case connector.ActionSDK:
+		h.page(w, http.StatusOK, "pay_sdk", web.PayPage{AppName: appName, ScriptURL: a.ScriptURL, Launcher: st.Connector, Options: a.Options})
+	default:
+		h.serverError(w, appName, errors.New("unknown next action "+string(a.Kind)))
+	}
+}
+
+// ---- billing details ----
+
+type billingNeed struct {
+	show, stateRequired, addressRequired bool
+}
+
+func (h *Handler) setting(ctx context.Context, appID, key string, dst any) error {
+	v, err := h.o.Settings.Resolve(ctx, appID, key)
+	if err != nil {
+		return err
+	}
+	return v.Decode(dst)
+}
+
+// billingNeed decides what the pay page must ask (spec sections 6.2 and 10).
+// state_required only applies while the app issues invoices.
+func (h *Handler) billingNeed(ctx context.Context, p store.Payment, c store.Customer) (billingNeed, error) {
+	var mode string
+	var issue bool
+	if err := h.setting(ctx, p.AppID, "billing_details", &mode); err != nil {
+		return billingNeed{}, err
+	}
+	if err := h.setting(ctx, p.AppID, "issue_invoices", &issue); err != nil {
+		return billingNeed{}, err
+	}
+	// TODO(spec): the buyer country is not stored on the payment yet; INR
+	// payments are treated as Indian buyers. Foreign buyers' country/address
+	// prompt arrives with the invoicing lane.
+	india := p.Currency == "INR"
+	if mode == "state_required" && !issue {
+		mode = "off"
+	}
+	n := billingNeed{
+		stateRequired:   india && (mode == "state_required" || mode == "required"),
+		addressRequired: india && (mode == "required" || issue && mode != "off" && p.Amount >= addressThreshold),
+	}
+	b := c.Billing
+	n.show = n.stateRequired && b.StateCode == "" ||
+		n.addressRequired && (b.Line1 == "" || b.PostalCode == "") ||
+		mode == "required" && c.Name == "" ||
+		mode == "optional" && p.CustomerID == ""
+	return n, nil
+}
+
+func (h *Handler) csrf(paymentID, secret string) string {
+	m := hmac.New(sha256.New, h.o.CSRFKey)
+	m.Write([]byte("paymux-pay-csrf|" + paymentID + "|" + secret))
+	return hex.EncodeToString(m.Sum(nil))
+}
+
+func (h *Handler) billingForm(w http.ResponseWriter, status int, p store.Payment, secret, appName string, c store.Customer, n billingNeed, msg string) {
+	data := web.PayPage{AppName: appName, FormURL: "/pay/" + p.ID + "?t=" + url.QueryEscape(secret), CSRF: h.csrf(p.ID, secret),
+		Error: msg, StateRequired: n.stateRequired, AddressRequired: n.addressRequired,
+		Billing: web.Billing{Name: c.Name, Email: c.Email, StateCode: c.Billing.StateCode, Line1: c.Billing.Line1,
+			PostalCode: c.Billing.PostalCode, GSTIN: c.Billing.GSTIN, LegalName: c.Billing.LegalName}}
+	if p.Currency == "INR" {
+		codes := tax.StateCodes()
+		keys := make([]string, 0, len(codes))
+		for code := range codes {
+			keys = append(keys, code)
+		}
+		sort.Strings(keys)
+		for _, code := range keys {
+			data.IndiaStates = append(data.IndiaStates, web.StateOption{Code: code, Name: codes[code]})
+		}
+	}
+	h.page(w, status, "pay_billing", data)
+}
+
+var pinRE = regexp.MustCompile(`^[1-9][0-9]{5}$`)
+
+func (h *Handler) billingPost(w http.ResponseWriter, r *http.Request) {
+	p, secret, ok := h.load(w, r)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	appName := h.appName(ctx, p.AppID)
+	r.Body = http.MaxBytesReader(w, r.Body, maxForm)
+	if err := r.ParseForm(); err != nil {
+		h.result(w, http.StatusBadRequest, appName, "Invalid request", "The form could not be read.", "")
+		return
+	}
+	if !hmac.Equal([]byte(r.PostForm.Get("csrf")), []byte(h.csrf(p.ID, secret))) {
+		h.result(w, http.StatusForbidden, appName, "Session expired", "Please reload the payment page and try again.", "")
+		return
+	}
+	if h.statusPage(w, p, appName) {
+		return
+	}
+	var cust store.Customer
+	if p.CustomerID != "" {
+		var err error
+		if cust, err = h.o.Core.GetCustomer(ctx, p.CustomerID); err != nil {
+			h.serverError(w, appName, err)
+			return
+		}
+	}
+	need, err := h.billingNeed(ctx, p, cust)
+	if err != nil {
+		h.serverError(w, appName, err)
+		return
+	}
+	in, msg := h.parseBilling(r, p, need)
+	if msg != "" {
+		// Re-show what the buyer typed.
+		cust.Name, cust.Email = in.Name, in.Email
+		cust.Billing = in.Billing
+		h.billingForm(w, http.StatusBadRequest, p, secret, appName, cust, need, msg)
+		return
+	}
+	if err := h.o.Core.SetBilling(ctx, p.ID, in); err != nil {
+		h.serverError(w, appName, err)
+		return
+	}
+	http.Redirect(w, r, "/pay/"+p.ID+"?t="+url.QueryEscape(secret), http.StatusSeeOther)
+}
+
+func (h *Handler) parseBilling(r *http.Request, p store.Payment, need billingNeed) (core.BillingInput, string) {
+	f := r.PostForm
+	get := func(k string) string { return strings.TrimSpace(f.Get(k)) }
+	in := core.BillingInput{Name: get("name"), Email: get("email")}
+	b := &in.Billing
+	b.StateCode, b.Line1, b.PostalCode = get("state_code"), get("line1"), get("postal_code")
+	b.GSTIN, b.LegalName = strings.ToUpper(get("gstin")), get("legal_name")
+	if len(in.Name) > 200 || len(b.Line1) > 200 || len(b.LegalName) > 200 {
+		return in, "A field is too long."
+	}
+	if in.Name == "" {
+		return in, "Please enter your name."
+	}
+	if in.Email != "" {
+		if a, err := mail.ParseAddress(in.Email); err != nil || a.Address != in.Email {
+			return in, "Please enter a valid email address."
+		}
+	}
+	india := p.Currency == "INR"
+	if india {
+		b.Country = "IN"
+		if b.StateCode != "" {
+			if _, ok := tax.StateName(b.StateCode); !ok {
+				return in, "Please choose a valid state."
+			}
+		}
+		if need.stateRequired && b.StateCode == "" && b.GSTIN == "" {
+			return in, "Please choose your state."
+		}
+	}
+	if b.GSTIN != "" {
+		if err := tax.ValidGSTIN(b.GSTIN); err != nil {
+			return in, "That GSTIN is not valid. Please check it."
+		}
+		if b.LegalName == "" {
+			return in, "Please enter your registered business name for the GST invoice."
+		}
+		gst := tax.StateFromGSTIN(b.GSTIN)
+		switch {
+		case b.StateCode == "":
+			b.StateCode = gst
+		case b.StateCode != gst:
+			return in, "The GSTIN belongs to a different state than the one you chose."
+		}
+	}
+	if need.stateRequired && b.StateCode == "" {
+		return in, "Please choose your state."
+	}
+	if need.addressRequired {
+		if b.Line1 == "" {
+			return in, "Please enter your address."
+		}
+		if !pinRE.MatchString(b.PostalCode) {
+			return in, "Please enter a valid 6-digit PIN code."
+		}
+	}
+	return in, ""
+}
+
+// ---- return ----
+
+func (h *Handler) ret(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	r.Body = http.MaxBytesReader(w, r.Body, maxForm)
+	if err := r.ParseForm(); err != nil {
+		h.result(w, http.StatusBadRequest, "", "Invalid request", "The request could not be read.", "")
+		return
+	}
+	p, err := h.o.Flow.HandleReturn(ctx, r.PathValue("pa"), r.PathValue("ref"), checkout.ReturnInput{
+		Method: r.Method, Query: r.URL.Query(), Form: r.PostForm, Headers: r.Header})
+	if errors.Is(err, core.ErrNotFound) || err == nil && !h.hostMayServe(ctx, p.AppID) {
+		h.notFound(w)
+		return
+	}
+	if err != nil {
+		h.serverError(w, "", err)
+		return
+	}
+	if back := appReturnURL(p); back != "" {
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Cache-Control", "no-store")
+		http.Redirect(w, r, back, http.StatusSeeOther)
+		return
+	}
+	appName := h.appName(ctx, p.AppID)
+	if h.statusPage(w, p, appName) {
+		return
+	}
+	h.result(w, http.StatusOK, appName, "Confirming your payment",
+		"We are confirming your payment with the provider. You can close this page; we will update the shop as soon as it is confirmed.", "")
+}
+
+type stdMux struct{ m *http.ServeMux }
+
+func (s stdMux) HandleFunc(pattern string, fn http.HandlerFunc) { s.m.HandleFunc(pattern, fn) }
+
+// StdMux adapts an *http.ServeMux (for example the one serving custom
+// domains) to Mux.
+func StdMux(m *http.ServeMux) Mux { return stdMux{m} }

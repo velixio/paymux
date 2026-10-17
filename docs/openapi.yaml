@@ -57,6 +57,13 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
         "409":
           $ref: "#/components/responses/IdempotencyConflict"
+        "422":
+          description: |
+            `no_route` (no provider account can take this payment) or
+            `currency_not_accepted` (a routing rule rejects it; the message is the rule's).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "413":
           $ref: "#/components/responses/InvalidRequest"
     get:
@@ -370,6 +377,8 @@ components:
                 - not_refundable
                 - refund_amount_exceeds_balance
                 - conflict
+                - no_route
+                - currency_not_accepted
                 - idempotency_key_reuse
                 - idempotency_in_progress
                 - internal
@@ -416,8 +425,8 @@ components:
         allowed_connectors:
           type: array
           items: { type: string }
-          description: Accepted now, used by routing in a later release.
-        country: { type: string, description: Accepted now, used by routing in a later release. }
+          description: Restricts routing to these connectors.
+        country: { type: string, description: Buyer country, matched by routing rules. }
       additionalProperties: false
     Payment:
       type: object

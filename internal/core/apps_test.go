@@ -36,21 +36,21 @@ func TestBootstrapIsIdempotent(t *testing.T) {
 func TestCreateAppAndKeys(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
 		actor := audit.System
-		app, err := e.svc.CreateApp(ctx, actor, core.CreateAppInput{Name: "Yupcha", Slug: "yupcha"})
+		app, err := e.svc.CreateApp(ctx, actor, core.OrgScope{OrgID: store.DefaultOrgID}, core.CreateAppInput{Name: "Yupcha", Slug: "yupcha"})
 		if err != nil || !strings.HasPrefix(app.ID, "app_") || app.OrgID != store.DefaultOrgID || app.Slug != "yupcha" {
 			t.Fatalf("app %+v %v", app, err)
 		}
-		if _, err := e.svc.CreateApp(ctx, actor, core.CreateAppInput{Name: "Dup", Slug: "yupcha"}); !errors.Is(err, core.ErrConflict) {
+		if _, err := e.svc.CreateApp(ctx, actor, core.OrgScope{OrgID: store.DefaultOrgID}, core.CreateAppInput{Name: "Dup", Slug: "yupcha"}); !errors.Is(err, core.ErrConflict) {
 			t.Errorf("duplicate slug: %v", err)
 		}
 		for _, bad := range []core.CreateAppInput{{Name: "", Slug: "x"}, {Name: "X", Slug: "Bad Slug"}, {Name: "X", Slug: ""},
 			{Name: "X", Slug: "ok", DefaultReturnURL: "ftp://x"}} {
-			if _, err := e.svc.CreateApp(ctx, actor, bad); !errors.Is(err, core.ErrInvalid) {
+			if _, err := e.svc.CreateApp(ctx, actor, core.OrgScope{OrgID: store.DefaultOrgID}, bad); !errors.Is(err, core.ErrInvalid) {
 				t.Errorf("%+v: %v", bad, err)
 			}
 		}
 
-		tok, key, err := e.svc.CreateAPIKey(ctx, actor, app.ID, "live")
+		tok, key, err := e.svc.CreateAPIKey(ctx, actor, core.OrgScope{OrgID: store.DefaultOrgID}, app.ID, "live")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,10 +61,10 @@ func TestCreateAppAndKeys(t *testing.T) {
 		if e.count("SELECT COUNT(*) FROM api_keys WHERE sha256_hash = ?", tok) != 0 {
 			t.Error("plaintext key stored")
 		}
-		if _, _, err := e.svc.CreateAPIKey(ctx, actor, app.ID, "prod"); !errors.Is(err, core.ErrInvalid) {
+		if _, _, err := e.svc.CreateAPIKey(ctx, actor, core.OrgScope{OrgID: store.DefaultOrgID}, app.ID, "prod"); !errors.Is(err, core.ErrInvalid) {
 			t.Errorf("bad mode: %v", err)
 		}
-		if _, _, err := e.svc.CreateAPIKey(ctx, actor, "app_nope", "test"); !errors.Is(err, core.ErrNotFound) {
+		if _, _, err := e.svc.CreateAPIKey(ctx, actor, core.OrgScope{OrgID: store.DefaultOrgID}, "app_nope", "test"); !errors.Is(err, core.ErrNotFound) {
 			t.Errorf("missing app: %v", err)
 		}
 		if e.count("SELECT COUNT(*) FROM audit_log WHERE action IN ('app.create','api_key.create')") != 2 {
@@ -74,11 +74,11 @@ func TestCreateAppAndKeys(t *testing.T) {
 			t.Error("key leaked into the audit log")
 		}
 
-		got, err := e.svc.AppBySlug(ctx, "yupcha")
+		got, err := e.svc.AppBySlug(ctx, core.OrgScope{OrgID: store.DefaultOrgID}, "yupcha")
 		if err != nil || got.ID != app.ID {
 			t.Errorf("AppBySlug %+v %v", got, err)
 		}
-		if _, err := e.svc.AppBySlug(ctx, "nope"); !errors.Is(err, core.ErrNotFound) {
+		if _, err := e.svc.AppBySlug(ctx, core.OrgScope{OrgID: store.DefaultOrgID}, "nope"); !errors.Is(err, core.ErrNotFound) {
 			t.Errorf("AppBySlug missing: %v", err)
 		}
 	})
@@ -86,8 +86,8 @@ func TestCreateAppAndKeys(t *testing.T) {
 
 func TestAuthenticate(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
-		app, _ := e.svc.CreateApp(ctx, audit.System, core.CreateAppInput{Name: "A2", Slug: "a2"})
-		tok, key, err := e.svc.CreateAPIKey(ctx, audit.System, app.ID, "test")
+		app, _ := e.svc.CreateApp(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, core.CreateAppInput{Name: "A2", Slug: "a2"})
+		tok, key, err := e.svc.CreateAPIKey(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, app.ID, "test")
 		if err != nil {
 			t.Fatal(err)
 		}

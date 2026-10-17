@@ -40,13 +40,15 @@ type fixture struct {
 	pa       string
 }
 
-func newFixture(t *testing.T, db *store.DB) *fixture {
+func newFixture(t *testing.T, db *store.DB) *fixture { return newFixtureRouter(t, db, nil) }
+
+func newFixtureRouter(t *testing.T, db *store.DB, router core.Router) *fixture {
 	t.Helper()
 	set := settings.New(db)
 	if _, err := core.Bootstrap(ctx, db, set); err != nil {
 		t.Fatal(err)
 	}
-	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: jobs.New(db, jobs.Options{})})
+	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: jobs.New(db, jobs.Options{}), Router: router})
 	f := &fixture{t: t, db: db, svc: svc, pa: "pa_1"}
 	err := db.Write(ctx, func(tx store.Tx) error {
 		return store.InsertProviderAccount(ctx, tx, store.ProviderAccount{ID: "pa_1", OrgID: store.DefaultOrgID, Mode: "test",
@@ -55,17 +57,17 @@ func newFixture(t *testing.T, db *store.DB) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.app, err = svc.CreateApp(ctx, audit.System, core.CreateAppInput{Name: "One", Slug: "one"})
+	f.app, err = svc.CreateApp(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, core.CreateAppInput{Name: "One", Slug: "one"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := svc.CreateApp(ctx, audit.System, core.CreateAppInput{Name: "Two", Slug: "two"})
+	other, err := svc.CreateApp(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, core.CreateAppInput{Name: "Two", Slug: "two"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.testKey, _, _ = svc.CreateAPIKey(ctx, audit.System, f.app.ID, "test")
-	f.liveKey, _, _ = svc.CreateAPIKey(ctx, audit.System, f.app.ID, "live")
-	f.otherKey, _, _ = svc.CreateAPIKey(ctx, audit.System, other.ID, "test")
+	f.testKey, _, _ = svc.CreateAPIKey(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, f.app.ID, "test")
+	f.liveKey, _, _ = svc.CreateAPIKey(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, f.app.ID, "live")
+	f.otherKey, _, _ = svc.CreateAPIKey(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, other.ID, "test")
 
 	box, err := secrets.NewBox(bytes.Repeat([]byte{7}, 32))
 	if err != nil {
@@ -505,6 +507,44 @@ func TestIdempotencyConflictDoesNotEchoRequestBody(t *testing.T) {
 		r := f.do("POST", "/v1/payments", f.testKey, map[string]any{"amount": 7, "currency": "INR", "description": "secret-desc"}, "Idempotency-Key", "k-9")
 		if strings.Contains(string(r.raw), "secret-desc") || r.status != 409 {
 			t.Errorf("%d %s", r.status, r.raw)
+		}
+	})
+}
+
+type stubRouter func(req core.RouteRequest) error
+
+func (f stubRouter) CheckRoute(_ context.Context, _ store.Queryer, req core.RouteRequest) error {
+	return f(req)
+}
+
+func TestRoutingFailuresAre422(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		var seen core.RouteRequest
+		f := newFixtureRouter(t, db, stubRouter(func(req core.RouteRequest) error {
+			seen = req
+			switch req.Currency {
+			case "USD":
+				return core.NewError(core.ErrNoRoute, "no provider account can take USD")
+			case "BDT":
+				return core.NewError(core.ErrCurrencyNotAccepted, "BDT is not accepted for this app")
+			}
+			return nil
+		}))
+		for cur, want := range map[string]string{"USD": "no_route", "BDT": "currency_not_accepted"} {
+			r := f.do("POST", "/v1/payments", f.testKey, map[string]any{"amount": 100, "currency": cur})
+			if r.status != 422 || r.errType(t) != want {
+				t.Errorf("%s: %d %s", cur, r.status, r.raw)
+			}
+		}
+		if e := f.do("POST", "/v1/payments", f.testKey, map[string]any{"amount": 100, "currency": "BDT"}).json(t)["error"].(map[string]any); e["message"] != "BDT is not accepted for this app" {
+			t.Errorf("reject message not surfaced: %v", e)
+		}
+		r := f.do("POST", "/v1/payments", f.testKey, map[string]any{"amount": 100, "currency": "INR", "country": "IN", "allowed_connectors": []string{"razorpay"}})
+		if r.status != 201 || seen.Country != "IN" || len(seen.AllowedConnectors) != 1 || seen.Scope.AppID != f.app.ID || seen.Scope.Mode != "test" {
+			t.Errorf("%d %s %+v", r.status, r.raw, seen)
+		}
+		if f.count("SELECT COUNT(*) FROM payments") != 1 {
+			t.Error("unroutable requests created payments")
 		}
 	})
 }

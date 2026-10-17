@@ -195,7 +195,7 @@ func TestCreatePayment(t *testing.T) {
 
 func TestCreatePaymentHonoursTTLSetting(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
-		if err := e.set.SetApp(ctx, audit.System, "app_1", "payment_ttl", json.RawMessage(`15`)); err != nil {
+		if err := e.set.SetApp(ctx, audit.System, store.DefaultOrgID, "app_1", "payment_ttl", json.RawMessage(`15`)); err != nil {
 			t.Fatal(err)
 		}
 		before := time.Now()
@@ -486,7 +486,7 @@ func TestDoubleSuccessReview(t *testing.T) {
 
 func TestDoubleSuccessAutoRefund(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
-		if err := e.set.SetApp(ctx, audit.System, "app_1", "duplicate_payment_action", json.RawMessage(`"auto_refund"`)); err != nil {
+		if err := e.set.SetApp(ctx, audit.System, store.DefaultOrgID, "app_1", "duplicate_payment_action", json.RawMessage(`"auto_refund"`)); err != nil {
 			t.Fatal(err)
 		}
 		p := e.payment(500)

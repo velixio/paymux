@@ -23,7 +23,30 @@ var (
 	ErrInvalidState  = errors.New("invalid state")
 	ErrNotRefundable = errors.New("not refundable")
 	ErrRefundExceeds = errors.New("refund exceeds refundable balance")
+	// ErrNoRoute means no provider account can take the payment.
+	ErrNoRoute = errors.New("no route")
+	// ErrCurrencyNotAccepted means a routing rule rejects the payment.
+	ErrCurrencyNotAccepted = errors.New("currency not accepted")
 )
+
+// NewError builds a domain error of the given kind (for Router implementations).
+func NewError(kind error, format string, a ...any) error { return newErr(kind, format, a...) }
+
+// RouteRequest describes a payment to be routed (spec section 8).
+type RouteRequest struct {
+	Scope             Scope
+	Currency, Country string
+	Amount            int64
+	Purpose           string // one_time | subscription
+	Metadata          map[string]string
+	AllowedConnectors []string
+}
+
+// Router validates at create time that a payment can be routed. It returns a
+// domain error of kind ErrNoRoute or ErrCurrencyNotAccepted when it cannot.
+type Router interface {
+	CheckRoute(ctx context.Context, q store.Queryer, req RouteRequest) error
+}
 
 // Error is a typed domain error: Kind for matching with errors.Is, Message
 // for humans (and the API).
@@ -71,6 +94,7 @@ type Options struct {
 	DB       *store.DB
 	Settings *settings.Service
 	Jobs     Enqueuer
+	Router   Router // nil skips create-time routing validation
 	// Emitter receives domain events inside the state-changing transaction.
 	// Nil means events are dropped (see NoopEmitter).
 	Emitter events.Emitter
@@ -98,6 +122,7 @@ type Service struct {
 	db       *store.DB
 	settings *settings.Service
 	jobs     Enqueuer
+	router   Router
 	emitter  events.Emitter
 	now      func() time.Time
 
@@ -113,7 +138,7 @@ func NewService(o Options) *Service {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	return &Service{db: o.DB, settings: o.Settings, jobs: o.Jobs, emitter: o.Emitter, now: o.Now,
+	return &Service{db: o.DB, settings: o.Settings, jobs: o.Jobs, router: o.Router, emitter: o.Emitter, now: o.Now,
 		onPaymentSucceeded: o.OnPaymentSucceeded, onRefundSucceeded: o.OnRefundSucceeded}
 }
 

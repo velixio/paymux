@@ -48,8 +48,9 @@ type CreatePaymentInput struct {
 	Customer    *CustomerInput
 	Metadata    map[string]string
 	ReturnURL   string // default: the app's default_return_url
-	// TODO(spec): allowed_connectors and country feed routing (section 8);
-	// the routing lane accepts them.
+	// Country and AllowedConnectors feed routing (section 8).
+	Country           string
+	AllowedConnectors []string
 }
 
 // CreatedPayment is the result of CreatePayment. ClientSecret is shown once;
@@ -72,12 +73,26 @@ func newClientSecret() string {
 	return base64.RawURLEncoding.EncodeToString(b[:])
 }
 
+// ClientSecretMatches reports whether secret is the payment's client secret,
+// ignoring expiry (so a page can tell "expired" from "wrong link").
+func ClientSecretMatches(p store.Payment, secret string) bool {
+	return subtle.ConstantTimeCompare([]byte(hashSecret(secret)), []byte(p.ClientSecretHash)) == 1
+}
+
 // VerifyClientSecret reports whether secret is the payment's client secret
 // and the payment has not passed expires_at.
 func VerifyClientSecret(p store.Payment, secret string, now time.Time) bool {
-	got := hashSecret(secret)
-	ok := subtle.ConstantTimeCompare([]byte(got), []byte(p.ClientSecretHash)) == 1
-	return ok && !now.After(p.ExpiresAt)
+	return ClientSecretMatches(p, secret) && !now.After(p.ExpiresAt)
+}
+
+// GetApp returns an app by id (for branding on the pay pages).
+func (s *Service) GetApp(ctx context.Context, id string) (store.App, error) {
+	var a store.App
+	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+		a, err = store.GetApp(ctx, q, id)
+		return
+	})
+	return a, mapStoreErr(err, "app")
 }
 
 func validateCreate(in *CreatePaymentInput) error {
@@ -142,6 +157,13 @@ func (s *Service) CreatePayment(ctx context.Context, in CreatePaymentInput) (Cre
 		app, err := store.GetApp(ctx, tx, in.Scope.AppID)
 		if err != nil {
 			return mapStoreErr(err, "app")
+		}
+		if s.router != nil {
+			err := s.router.CheckRoute(ctx, tx, RouteRequest{Scope: in.Scope, Currency: in.Currency, Country: in.Country,
+				Amount: in.Amount, Purpose: "one_time", Metadata: in.Metadata, AllowedConnectors: in.AllowedConnectors})
+			if err != nil {
+				return err
+			}
 		}
 		ttl, err := settings.ResolveWith(ctx, tx, app.ID, "payment_ttl")
 		if err != nil {
@@ -295,4 +317,88 @@ func (s *Service) CancelPayment(ctx context.Context, sc Scope, actor audit.Actor
 			Target: p.ID, Before: before, After: ViewPayment(p)})
 	})
 	return p, err
+}
+
+// BillingInput is what the pay page collects about the payer.
+type BillingInput struct {
+	Name, Email, Phone string
+	Billing            store.Billing
+}
+
+func merge(dst *string, v string) {
+	if v != "" {
+		*dst = v
+	}
+}
+
+// SetBilling stores billing details on the payment's customer, creating and
+// linking the customer when the payment has none. Empty fields keep their
+// stored value.
+func (s *Service) SetBilling(ctx context.Context, paymentID string, in BillingInput) error {
+	return s.db.Write(ctx, func(tx store.Tx) error {
+		p, err := store.GetPaymentForUpdate(ctx, tx, paymentID)
+		if err != nil {
+			return mapStoreErr(err, "payment")
+		}
+		now := s.nowUTC()
+		c := store.Customer{ID: ids.New("cus"), OrgID: p.OrgID, AppID: p.AppID, Mode: p.Mode}
+		if p.CustomerID != "" {
+			if c, err = store.GetCustomer(ctx, tx, p.CustomerID); err != nil {
+				return mapStoreErr(err, "customer")
+			}
+		}
+		merge(&c.Name, in.Name)
+		merge(&c.Email, in.Email)
+		merge(&c.Phone, in.Phone)
+		b := &c.Billing
+		merge(&b.LegalName, in.Billing.LegalName)
+		merge(&b.GSTIN, in.Billing.GSTIN)
+		merge(&b.Line1, in.Billing.Line1)
+		merge(&b.Line2, in.Billing.Line2)
+		merge(&b.City, in.Billing.City)
+		merge(&b.StateCode, in.Billing.StateCode)
+		merge(&b.PostalCode, in.Billing.PostalCode)
+		merge(&b.Country, in.Billing.Country)
+		if p.CustomerID != "" {
+			return store.UpdateCustomer(ctx, tx, c, now)
+		}
+		if _, err := store.UpsertCustomer(ctx, tx, c, now); err != nil {
+			return err
+		}
+		return store.SetPaymentCustomer(ctx, tx, p.ID, c.ID, now)
+	})
+}
+
+// GetCustomer returns a customer by id.
+func (s *Service) GetCustomer(ctx context.Context, id string) (store.Customer, error) {
+	var c store.Customer
+	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+		c, err = store.GetCustomer(ctx, q, id)
+		return
+	})
+	return c, mapStoreErr(err, "customer")
+}
+
+// GetPaymentByID returns a payment without tenant scoping. It is for the
+// pay and return pages, which authenticate with the client secret or a
+// provider reference instead of an API key.
+func (s *Service) GetPaymentByID(ctx context.Context, id string) (store.Payment, error) {
+	var p store.Payment
+	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+		p, err = store.GetPayment(ctx, q, id)
+		return
+	})
+	return p, mapStoreErr(err, "payment")
+}
+
+// RecordCheckout stores the provider order id returned by CreateCheckout.
+func (s *Service) RecordCheckout(ctx context.Context, attemptID, providerOrderID string) error {
+	return s.db.Write(ctx, func(tx store.Tx) error {
+		a, err := store.GetAttempt(ctx, tx, attemptID)
+		if err != nil {
+			return mapStoreErr(err, "attempt")
+		}
+		a.ProviderOrderID = providerOrderID
+		return store.UpdateAttempt(ctx, tx, a, s.nowUTC())
+	})
 }

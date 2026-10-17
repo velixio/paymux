@@ -74,9 +74,9 @@ func ListAttempts(ctx context.Context, q Queryer, paymentID string) ([]Attempt, 
 // UpdateAttempt writes the mutable fields of a.
 func UpdateAttempt(ctx context.Context, tx Tx, a Attempt, now time.Time) error {
 	_, err := tx.ExecContext(ctx, `UPDATE payment_attempts SET status = ?, method = ?, failure_code = ?, failure_message = ?,
-		provider_payment_id = ?, amount_received = ?, currency_received = ?, duplicate = ?, updated_at = ? WHERE id = ?`,
+		provider_payment_id = ?, provider_order_id = ?, amount_received = ?, currency_received = ?, duplicate = ?, updated_at = ? WHERE id = ?`,
 		a.Status, nullIfEmpty(a.Method), nullIfEmpty(a.FailureCode), nullIfEmpty(a.FailureMessage),
-		nullIfEmpty(a.ProviderPaymentID), a.AmountReceived, nullIfEmpty(a.CurrencyReceived), boolInt(a.Duplicate),
+		nullIfEmpty(a.ProviderPaymentID), nullIfEmpty(a.ProviderOrderID), a.AmountReceived, nullIfEmpty(a.CurrencyReceived), boolInt(a.Duplicate),
 		ms(now), a.ID)
 	return err
 }

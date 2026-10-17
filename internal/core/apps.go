@@ -40,6 +40,17 @@ func Bootstrap(ctx context.Context, db *store.DB, set *settings.Service) (string
 	return store.DefaultOrgID, nil
 }
 
+// OrgScope is the org a management call acts for. Every app, API key, domain
+// and provider account mutation takes one and refuses objects of other orgs.
+type OrgScope struct{ OrgID string }
+
+func (sc OrgScope) validate() error {
+	if sc.OrgID == "" {
+		return newErr(ErrInvalid, "an org scope is required")
+	}
+	return nil
+}
+
 var slugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 
 // CreateAppInput is the input of CreateApp.
@@ -48,7 +59,10 @@ type CreateAppInput struct {
 }
 
 // CreateApp creates an app in the org and audits it.
-func (s *Service) CreateApp(ctx context.Context, actor audit.Actor, in CreateAppInput) (store.App, error) {
+func (s *Service) CreateApp(ctx context.Context, actor audit.Actor, sc OrgScope, in CreateAppInput) (store.App, error) {
+	if err := sc.validate(); err != nil {
+		return store.App{}, err
+	}
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" || len(in.Name) > 200 {
 		return store.App{}, newErr(ErrInvalid, "name is required (max 200 chars)")
@@ -61,10 +75,7 @@ func (s *Service) CreateApp(ctx context.Context, actor audit.Actor, in CreateApp
 	}
 	var app store.App
 	err := s.db.Write(ctx, func(tx store.Tx) error {
-		org, err := store.FirstOrgID(ctx, tx)
-		if err != nil {
-			return err
-		}
+		org := sc.OrgID
 		app = store.App{ID: ids.New("app"), OrgID: org, Name: in.Name, Slug: in.Slug, DefaultReturnURL: in.DefaultReturnURL,
 			CreatedAt: s.nowUTC()}
 		if err := store.InsertApp(ctx, tx, app); err != nil {
@@ -80,15 +91,14 @@ func (s *Service) CreateApp(ctx context.Context, actor audit.Actor, in CreateApp
 }
 
 // AppBySlug returns the app with the given slug.
-func (s *Service) AppBySlug(ctx context.Context, slug string) (store.App, error) {
+func (s *Service) AppBySlug(ctx context.Context, sc OrgScope, slug string) (store.App, error) {
+	if err := sc.validate(); err != nil {
+		return store.App{}, err
+	}
 	var app store.App
-	err := s.db.Read(ctx, func(q store.Querier) error {
-		org, err := store.FirstOrgID(ctx, q)
-		if err != nil {
-			return err
-		}
-		app, err = store.GetAppBySlug(ctx, q, org, slug)
-		return err
+	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+		app, err = store.GetAppBySlug(ctx, q, sc.OrgID, slug)
+		return
 	})
 	return app, mapStoreErr(err, "app")
 }
@@ -122,14 +132,17 @@ func keyPrefix(token string) string {
 
 // CreateAPIKey creates a key for the app in the given mode and returns the
 // plaintext token. It is shown once: only its SHA-256 is stored.
-func (s *Service) CreateAPIKey(ctx context.Context, actor audit.Actor, appID, mode string) (string, store.APIKey, error) {
+func (s *Service) CreateAPIKey(ctx context.Context, actor audit.Actor, sc OrgScope, appID, mode string) (string, store.APIKey, error) {
+	if err := sc.validate(); err != nil {
+		return "", store.APIKey{}, err
+	}
 	if mode != "test" && mode != "live" {
 		return "", store.APIKey{}, newErr(ErrInvalid, "mode must be test or live")
 	}
 	token := newKeyToken(mode)
 	var key store.APIKey
 	err := s.db.Write(ctx, func(tx store.Tx) error {
-		app, err := store.GetApp(ctx, tx, appID)
+		app, err := store.GetAppInOrg(ctx, tx, sc.OrgID, appID)
 		if err != nil {
 			return mapStoreErr(err, "app")
 		}

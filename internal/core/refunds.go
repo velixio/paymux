@@ -131,6 +131,17 @@ func (s *Service) insertRefund(ctx context.Context, tx store.Tx, p store.Payment
 	return r, err
 }
 
+// GetRefundByID returns a refund without tenant scoping, for jobs and
+// provider-event processing that arrive with an internal id.
+func (s *Service) GetRefundByID(ctx context.Context, id string) (store.Refund, error) {
+	var r store.Refund
+	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+		r, err = store.GetRefund(ctx, q, id)
+		return
+	})
+	return r, mapStoreErr(err, "refund")
+}
+
 // GetRefund returns a refund of the scope's app and mode.
 func (s *Service) GetRefund(ctx context.Context, sc Scope, id string) (store.Refund, error) {
 	if err := sc.validate(); err != nil {
