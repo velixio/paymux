@@ -73,12 +73,26 @@ func newClientSecret() string {
 	return base64.RawURLEncoding.EncodeToString(b[:])
 }
 
+// ClientSecretMatches reports whether secret is the payment's client secret,
+// ignoring expiry (so a page can tell "expired" from "wrong link").
+func ClientSecretMatches(p store.Payment, secret string) bool {
+	return subtle.ConstantTimeCompare([]byte(hashSecret(secret)), []byte(p.ClientSecretHash)) == 1
+}
+
 // VerifyClientSecret reports whether secret is the payment's client secret
 // and the payment has not passed expires_at.
 func VerifyClientSecret(p store.Payment, secret string, now time.Time) bool {
-	got := hashSecret(secret)
-	ok := subtle.ConstantTimeCompare([]byte(got), []byte(p.ClientSecretHash)) == 1
-	return ok && !now.After(p.ExpiresAt)
+	return ClientSecretMatches(p, secret) && !now.After(p.ExpiresAt)
+}
+
+// GetApp returns an app by id (for branding on the pay pages).
+func (s *Service) GetApp(ctx context.Context, id string) (store.App, error) {
+	var a store.App
+	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+		a, err = store.GetApp(ctx, q, id)
+		return
+	})
+	return a, mapStoreErr(err, "app")
 }
 
 func validateCreate(in *CreatePaymentInput) error {

@@ -107,7 +107,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 	h := paypage.New(paypage.Options{Core: e.core, Flow: flow, Settings: e.set, Renderer: rend, Assets: web.AssetHandler(web.Embedded()),
 		CSRFKey: bytes.Repeat([]byte{9}, 32), Now: clk.Now})
 	mux := http.NewServeMux()
-	h.Register(mux)
+	h.Register(paypage.StdMux(mux))
 	router := &domains.Router{BaseHost: "pay.example.com", Lookup: e.core, Base: mux, Customer: mux}
 	e.srv = httptest.NewServer(router)
 	t.Cleanup(e.srv.Close)
