@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -27,19 +28,25 @@ func TestSignVerify(t *testing.T) {
 	}
 	body := []byte(`{"a":1}`)
 	h := http.Header{}
-	s.Sign(h, body, now0)
-	if err := s.Verify(h, body, now0.Add(time.Minute)); err != nil {
+	s.SignRequest(h, "POST", "refund", body, now0)
+	ver := func(s *Signer, h http.Header, body []byte, at time.Time) error {
+		return s.VerifyRequest(h, "POST", "refund", body, at)
+	}
+	if err := ver(s, h, body, now0.Add(time.Minute)); err != nil {
 		t.Fatalf("valid: %v", err)
 	}
 	other, _ := NewSigner(SecretPrefix + base64.StdEncoding.EncodeToString([]byte("another secret entirely")))
 	cases := map[string]func() error{
-		"tampered body": func() error { return s.Verify(h, []byte(`{"a":2}`), now0) },
-		"wrong secret":  func() error { return other.Verify(h, body, now0) },
-		"stale":         func() error { return s.Verify(h, body, now0.Add(Tolerance+time.Second)) },
-		"future":        func() error { return s.Verify(h, body, now0.Add(-Tolerance-time.Second)) },
-		"no headers":    func() error { return s.Verify(http.Header{}, body, now0) },
-		"bad timestamp": func() error { g := h.Clone(); g.Set(HeaderTimestamp, "x"); return s.Verify(g, body, now0) },
-		"swapped id":    func() error { g := h.Clone(); g.Set(HeaderID, "msg_other"); return s.Verify(g, body, now0) },
+		"tampered body": func() error { return ver(s, h, []byte(`{"a":2}`), now0) },
+		"wrong secret":  func() error { return ver(other, h, body, now0) },
+		"stale":         func() error { return ver(s, h, body, now0.Add(Tolerance+time.Second)) },
+		"future":        func() error { return ver(s, h, body, now0.Add(-Tolerance-time.Second)) },
+		"no headers":    func() error { return ver(s, http.Header{}, body, now0) },
+		"bad timestamp": func() error { g := h.Clone(); g.Set(HeaderTimestamp, "x"); return ver(s, g, body, now0) },
+		"swapped id":    func() error { g := h.Clone(); g.Set(HeaderID, "msg_other"); return ver(s, g, body, now0) },
+		"other method":  func() error { return s.VerifyRequest(h, "POST", "fetch_payment", body, now0) },
+		"other verb":    func() error { return s.VerifyRequest(h, "GET", "refund", body, now0) },
+		"a response":    func() error { r := http.Header{}; s.Sign(r, body, now0); return ver(s, r, body, now0) },
 	}
 	for name, f := range cases {
 		if err := f(); !errors.Is(err, ErrBadSignature) {
@@ -49,12 +56,12 @@ func TestSignVerify(t *testing.T) {
 	// A rotated secret: the header may carry several signatures.
 	g := h.Clone()
 	g.Set(HeaderSignature, "v1,AAAA "+h.Get(HeaderSignature))
-	if err := s.Verify(g, body, now0); err != nil {
+	if err := ver(s, g, body, now0); err != nil {
 		t.Errorf("second signature: %v", err)
 	}
 	// Ids are fresh per message.
 	h2 := http.Header{}
-	s.Sign(h2, body, now0)
+	s.SignRequest(h2, "POST", "refund", body, now0)
 	if h2.Get(HeaderID) == h.Get(HeaderID) {
 		t.Error("message id reused")
 	}
@@ -134,7 +141,7 @@ func post(t *testing.T, h http.Handler, signer *Signer, method, path, body strin
 	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	if signer != nil {
-		signer.Sign(req.Header, []byte(body), now0)
+		signer.SignRequest(req.Header, method, pathBase(path), []byte(body), now0)
 	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -191,5 +198,49 @@ func TestHandler(t *testing.T) {
 	}
 	if _, err := NewHandler(&stub{}, "not base64!", nil); err == nil {
 		t.Error("accepted a bad secret")
+	}
+}
+
+func pathBase(p string) string { return p[strings.LastIndex(p, "/")+1:] }
+
+// A signed request is for one method: posting it to another path, even one
+// whose handler would decode the same body, is refused before any dispatch.
+func TestWireRejectsMethodSwap(t *testing.T) {
+	f := &stub{}
+	h, _ := NewHandler(f, secret, func() time.Time { return now0 })
+	signer, _ := NewSigner(secret)
+
+	body := `{"provider_ref":"R1"}`
+	req := httptest.NewRequest("POST", "/fetch_payment", strings.NewReader(body))
+	signer.SignRequest(req.Header, "POST", MethodFetchPayment, []byte(body), now0)
+
+	swapped := req.Clone(req.Context())
+	swapped.URL.Path = "/refund"
+	swapped.Body = io.NopCloser(strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, swapped)
+	if rec.Code != 401 {
+		t.Fatalf("a request signed for fetch_payment was served at /refund: %d %s", rec.Code, rec.Body)
+	}
+	// Another method that would also decode the body is refused the same way.
+	for _, m := range []string{"create_checkout", "handle_return", "charge_mandate", "revoke_mandate"} {
+		again := httptest.NewRequest("POST", "/"+m, strings.NewReader(body))
+		again.Header = req.Header.Clone()
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, again)
+		if rec.Code != 401 {
+			t.Errorf("%s: %d", m, rec.Code)
+		}
+	}
+	if len(f.calls) != 0 {
+		t.Errorf("a swapped request reached the connector: %v", f.calls)
+	}
+	// The genuine request still works.
+	ok := httptest.NewRequest("POST", "/fetch_payment", strings.NewReader(body))
+	ok.Header = req.Header.Clone()
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, ok)
+	if rec.Code == 401 {
+		t.Errorf("the genuine request was refused: %s", rec.Body)
 	}
 }

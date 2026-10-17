@@ -105,7 +105,7 @@ func (r *remote) call(ctx context.Context, method string, in, out any) error {
 		return fmt.Errorf("remote: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	r.signer.Sign(req.Header, body, r.deps.Now())
+	r.signer.SignRequest(req.Header, verb, method, body, r.deps.Now())
 	resp, err := r.deps.HTTP.Do(req)
 	if err != nil {
 		return fmt.Errorf("%w: remote %s: %v", connector.ErrTemporary, method, err)

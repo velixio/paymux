@@ -68,11 +68,11 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, errBadRequest{err})
 		return
 	}
-	if err := h.signer.Verify(r.Header, body, h.now()); err != nil {
-		h.reply(w, http.StatusUnauthorized, Envelope{Error{Code: CodeInvalidCredentials, Message: "request signature missing, wrong or stale"}})
+	method := path.Base(r.URL.Path)
+	if err := h.signer.VerifyRequest(r.Header, r.Method, method, body, h.now()); err != nil {
+		h.reply(w, http.StatusUnauthorized, Envelope{Error{Code: CodeInvalidCredentials, Message: "request signature missing, wrong, stale or for another method"}})
 		return
 	}
-	method := path.Base(r.URL.Path)
 	if r.Method == http.MethodGet && method == MethodInfo {
 		h.reply(w, http.StatusOK, h.c.Info())
 		return

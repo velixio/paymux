@@ -410,7 +410,7 @@ func TestSecurity(t *testing.T) {
 	sig := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/fetch_payment", nil)
 	signer, _ := wire.NewSigner(testSecret)
-	signer.Sign(req.Header, nil, now0.Add(-time.Hour))
+	signer.SignRequest(req.Header, "POST", "fetch_payment", nil, now0.Add(-time.Hour))
 	h.ServeHTTP(sig, req)
 	if sig.Code != 401 {
 		t.Errorf("stale request: %d", sig.Code)

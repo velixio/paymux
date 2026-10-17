@@ -682,7 +682,11 @@ func NewSigner(secret string) (*Signer, error)
 
 func (s *Signer) Sign(h http.Header, body []byte, now time.Time)
 
+func (s *Signer) SignRequest(h http.Header, verb, method string, body []byte, now time.Time) string
+
 func (s *Signer) Verify(h http.Header, body []byte, now time.Time) error
+
+func (s *Signer) VerifyRequest(h http.Header, verb, method string, body []byte, now time.Time) error
 
 type UpdateAmountRequest struct {
 	Subscription connector.SubscriptionRef `json:"subscription"`
