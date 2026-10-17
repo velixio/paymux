@@ -138,6 +138,13 @@ func (c *CounterVec) Set(v float64, values ...string) {
 	c.f.get(values).v = v
 }
 
+// Reset removes all series (before re-mirroring durable state).
+func (c *CounterVec) Reset() {
+	c.f.mu.Lock()
+	defer c.f.mu.Unlock()
+	c.f.series = map[string]*series{}
+}
+
 // Observe records one observation.
 func (h *HistogramVec) Observe(v float64, values ...string) {
 	h.f.mu.Lock()

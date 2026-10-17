@@ -627,6 +627,17 @@ func TestFullPaymentFlow(t *testing.T) {
 		if _, p := api("GET", "/v1/payments/"+id, nil); containsFlag(p["flags"], "disputed") || !containsFlag(p["flags"], "dispute_lost") {
 			t.Errorf("payment flags after the loss: %v", p["flags"])
 		}
+
+		// 13. The business metrics reflect what happened (refreshed on scrape).
+		code, mbody := fetch(t, r.app.InternalAddr(), "/metrics")
+		if code != 200 {
+			t.Fatalf("metrics %d", code)
+		}
+		for _, want := range []string{`paymux_payments_total{status="`, `connector="razorpay",mode="`, "paymux_invoices_issued_total 1", "paymux_webhook_deliveries_failed_total 0"} {
+			if !strings.Contains(mbody, want) {
+				t.Errorf("metrics missing %q:\n%s", want, mbody)
+			}
+		}
 		shutdown(t, r)
 	}
 	t.Run("sqlite", func(t *testing.T) {
