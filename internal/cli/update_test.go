@@ -272,7 +272,7 @@ func TestUpdateVerifiesACosignSignatureWhenThereIsOne(t *testing.T) {
 	}
 	args, _ := os.ReadFile(argsFile)
 	if !strings.Contains(string(args), "verify-blob") || !strings.Contains(string(args), "--key "+key) || !strings.Contains(string(args), "--signature") ||
-		!strings.Contains(out, "signature verified") {
+		!strings.Contains(out+errs, "signature verified") {
 		t.Errorf("cosign args %q, output %q", args, out)
 	}
 

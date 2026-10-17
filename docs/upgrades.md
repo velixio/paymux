@@ -51,6 +51,45 @@ know until you restart them. Migrations are written to be additive for that
 reason: they add columns and tables and avoid renaming or dropping what the
 previous release reads.
 
+## `paymux update`
+
+```sh
+paymux update --check     # report only: current version, latest release
+paymux update             # install the latest release over the running binary
+paymux update --version v1.4.0
+```
+
+It asks the GitHub releases API of `velixio/paymux` (change with `--repo
+owner/name` or `PAYMUX_UPDATE_REPO`; `GITHUB_TOKEN` is used, only for the API
+host, if you hit rate limits) and then:
+
+1. downloads `paymux_<version>_<os>_<arch>.tar.gz` for this machine;
+2. checks its SHA-256 against the release's `SHA256SUMS` and refuses to install
+   anything it cannot verify (no `SHA256SUMS`, no entry for the file, or a
+   different hash);
+3. if the release has a `SHA256SUMS.sig` and `cosign` is installed, verifies
+   that signature as well. Give it what to verify against: `--cosign-key
+   cosign.pub`, or `--cosign-identity <signer> --cosign-issuer <oidc issuer>`
+   for keyless releases (`SHA256SUMS.pem` is used when present). A signature
+   that does not verify aborts the update. With cosign missing, or nothing to
+   verify against, it says "signature not verified" and the checksum alone
+   decides;
+4. runs the new binary's `version` and requires it to report the release's
+   version;
+5. replaces the binary atomically (a rename in the same directory), keeping the
+   old one as `<binary>.prev` for a rollback, and prints how to restart.
+
+It never restarts the server itself and does not touch the database; pending
+migrations run on the next start (see above). A development build (version
+`dev`) cannot tell whether it is current, so it needs `--force`. The directory
+of the binary must be writable by you; otherwise run it as a user who can, or
+update elsewhere with `--dest` and move the file.
+
+Release layout it expects, per release tag `vX.Y.Z`: one `.tar.gz` per platform
+named `paymux_X.Y.Z_<os>_<arch>.tar.gz` holding a file called `paymux`, and a
+`SHA256SUMS` file in `sha256sum` format covering them; `SHA256SUMS.sig` (and
+`SHA256SUMS.pem`) are optional.
+
 ## How the guarantee is tested
 
 `internal/store/upgrade_test.go` takes a database as release N-1 left it and
