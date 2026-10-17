@@ -77,7 +77,10 @@ func TestSimulateDisputeFromTheDashboard(t *testing.T) {
 			t.Fatalf("the simulator's disputes: %+v %v", pg, err)
 		}
 		var aud []store.AuditRow
-		_ = db.Read(ctx, func(q store.Querier) (err error) { aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "simulator.dispute", 10); return })
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "simulator.dispute", 10)
+			return
+		})
 		if len(aud) != 1 || aud[0].Target != p.ID {
 			t.Errorf("audit %+v", aud)
 		}
@@ -94,6 +97,73 @@ func TestSimulatorBoxIsOnlyForSimulatorPayments(t *testing.T) {
 		tok := csrfOf(t, body)
 		if r, _ := e.post(op, "/dashboard/payments/"+f.pay.ID+"/simulate-dispute", url.Values{"attempt_id": {"att_ok"}, "csrf": {tok}}); r.StatusCode != 400 {
 			t.Errorf("simulating a dispute on a real provider: %d", r.StatusCode)
+		}
+	})
+}
+
+func TestSimulateRenewalFromTheDashboard(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		e.enableSubscriptions()
+		app := e.seedApp("simsub")
+		e.seedCustomer("cus_s", app.ID, "test", "s@example.com")
+		pa, err := e.conn.CreateAccount(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, connectors.CreateAccountInput{
+			Connector: simulator.Name, Name: "Simulator", Mode: "test", Config: json.RawMessage(`{}`), AppID: app.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		live, err := e.conn.Get(ctx, pa.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctl := live.Connector.(simulator.Controller)
+		res, err := live.Connector.(connector.SubscriptionManager).CreateSubscriptionCheckout(ctx, connector.SubscriptionRequest{ProviderRef: "SUBREF0000000000001", Amount: 49900, Currency: "INR", Interval: "month", IntervalCount: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ctl.Decide(ctx, "SUBREF0000000000001", simulator.ActionSucceed, 0); err != nil {
+			t.Fatal(err)
+		}
+		sub := e.seedSub("sub_sim", app.ID, "cus_s", "test", "active", func(s *store.Subscription) {
+			s.BillingMode, s.ProviderAccountID, s.ProviderSubscriptionID = "provider_managed", pa.ID, res.ProviderOrderID
+		})
+		charges := func() int {
+			pg, err := live.Connector.(connector.Lister).ListPayments(ctx, connector.TimeRange{From: 0}, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return len(pg.Items)
+		}
+		before := charges()
+		page := "/dashboard/subscriptions/" + sub.ID
+		path := page + "/simulate-renewal"
+
+		op := e.roleClient("operator")
+		body := e.pageOK(op, page)
+		has(t, body, "Simulate a renewal")
+		tok := csrfOf(t, body)
+		viewer := e.roleClient("viewer")
+		if r, _ := e.post(viewer, path, url.Values{"csrf": {csrfOf(t, e.pageOK(viewer, page))}}); r.StatusCode != 403 {
+			t.Fatalf("viewer: %d", r.StatusCode)
+		}
+		if r, out := e.post(op, path, url.Values{"csrf": {tok}}); r.StatusCode != 200 && r.StatusCode != 303 {
+			t.Fatalf("renewal: %d\n%s", r.StatusCode, out)
+		}
+		if got := charges(); got != before+1 {
+			t.Errorf("payments at the provider: %d, want %d", got, before+1)
+		}
+		if r, _ := e.post(op, path, url.Values{"fail": {"1"}, "csrf": {tok}}); r.StatusCode != 200 && r.StatusCode != 303 {
+			t.Fatalf("failed renewal: %d", r.StatusCode)
+		}
+		if s, err := live.Connector.(connector.SubscriptionManager).FetchSubscription(ctx, connector.SubscriptionRef{ProviderSubscriptionID: res.ProviderOrderID}); err != nil || s.Status != "past_due" {
+			t.Errorf("after a failed renewal: %+v %v", s, err)
+		}
+
+		// A mandate subscription, or a real provider's, has no such button.
+		other := e.seedSub("sub_real", app.ID, "cus_s", "test", "active", func(s *store.Subscription) { s.BillingMode = "provider_managed" })
+		lacks(t, e.pageOK(op, "/dashboard/subscriptions/"+other.ID), "Simulate a renewal")
+		if r, _ := e.post(op, "/dashboard/subscriptions/"+other.ID+"/simulate-renewal", url.Values{"csrf": {tok}}); r.StatusCode != 400 {
+			t.Errorf("simulating on a real provider: %d", r.StatusCode)
 		}
 	})
 }
