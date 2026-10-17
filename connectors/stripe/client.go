@@ -137,6 +137,17 @@ func classify(resp *http.Response, raw []byte) error {
 	return ae
 }
 
+// evidenceType is the MIME type of an evidence file, from its content. The
+// Files API takes only PDF, JPEG and PNG and rejects application/octet-stream
+// (verified against the live API).
+func evidenceType(content []byte) (string, error) {
+	switch ct := http.DetectContentType(content); ct {
+	case "application/pdf", "image/jpeg", "image/png":
+		return ct, nil
+	}
+	return "", errors.New("stripe: evidence files must be PDF, JPEG or PNG")
+}
+
 // upload sends a file to the Files API (multipart) and returns its id.
 func (c *client) upload(ctx context.Context, name string, content []byte, purpose string) (string, error) {
 	var buf bytes.Buffer
@@ -144,7 +155,11 @@ func (c *client) upload(ctx context.Context, name string, content []byte, purpos
 	_ = mw.WriteField("purpose", purpose)
 	h := textproto.MIMEHeader{}
 	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename=%q`, name))
-	h.Set("Content-Type", "application/octet-stream")
+	ct, err := evidenceType(content)
+	if err != nil {
+		return "", err
+	}
+	h.Set("Content-Type", ct)
 	part, err := mw.CreatePart(h)
 	if err != nil {
 		return "", err

@@ -125,6 +125,9 @@ func (s *stripe) SubmitEvidence(ctx context.Context, ref connector.DisputeRef, e
 		if taken[field] {
 			return fmt.Errorf("stripe: two files for the evidence type %q (Stripe takes one per type)", field)
 		}
+		if _, err := evidenceType(ev.Files[k]); err != nil {
+			return fmt.Errorf("%w (%s)", err, k)
+		}
 		taken[field], fieldOf[k] = true, field
 	}
 	f := url.Values{}
