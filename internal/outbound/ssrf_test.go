@@ -29,6 +29,9 @@ func TestIsBlockedIP(t *testing.T) {
 
 func fakeLookup(m map[string][]string) func(context.Context, string) ([]net.IPAddr, error) {
 	return func(_ context.Context, host string) ([]net.IPAddr, error) {
+		if ip := net.ParseIP(host); ip != nil {
+			return []net.IPAddr{{IP: ip}}, nil
+		}
 		ips, ok := m[host]
 		if !ok {
 			return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
@@ -49,6 +52,7 @@ func TestClientBlocksPrivateTargets(t *testing.T) {
 	lookup := fakeLookup(map[string][]string{
 		"rebind.test": {"127.0.0.1"},
 		"mixed.test":  {"93.184.216.34", "127.0.0.1"},
+		"localhost":   {"127.0.0.1", "::1"},
 	})
 	strict := newHTTPClient(false, lookup)
 	for _, host := range []string{"127.0.0.1", "rebind.test", "mixed.test", "localhost"} {
