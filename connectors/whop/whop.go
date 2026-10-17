@@ -13,6 +13,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -366,6 +367,7 @@ func (w *whop) CreateCheckout(ctx context.Context, req connector.CheckoutRequest
 		"plan": map[string]any{
 			"company_id": w.cfg.CompanyID, "plan_type": "one_time",
 			"currency": strings.ToLower(req.Currency), "initial_price": json.Number(price),
+			"product": oneTimeProduct(req.AppID, req.Description),
 		},
 		"metadata": map[string]string{"pay": req.PaymentID, "att": req.AttemptID, "app": req.AppID, "ref": req.ProviderRef},
 	}
@@ -515,14 +517,15 @@ func (w *whop) FetchPayment(ctx context.Context, ref connector.PaymentRef) (conn
 		}
 		return w.withRef(p, ref)
 	case ref.ProviderOrderID != "":
-		var list struct {
-			Data []paymentEntity `json:"data"`
-		}
-		q := url.Values{"checkout_configuration_id": {ref.ProviderOrderID}}
-		if err := w.do(ctx, "GET", "/payments", q, nil, &list, nil); err != nil {
+		// Whop does not apply the checkout_configuration_id filter on
+		// GET /payments (seen in the sandbox): it returns the company's
+		// payments. Only a payment whose checkout id or metadata ref is ours
+		// may count, so another customer's payment can never mark this paid.
+		mine, err := w.paymentsForCheckout(ctx, ref)
+		if err != nil {
 			return connector.PaymentSnapshot{}, err
 		}
-		if len(list.Data) == 0 {
+		if len(mine) == 0 {
 			var cc struct {
 				ID   string `json:"id"`
 				Plan struct {
@@ -541,8 +544,8 @@ func (w *whop) FetchPayment(ctx context.Context, ref connector.PaymentRef) (conn
 			return connector.PaymentSnapshot{ProviderRef: ref.ProviderRef, ProviderOrderID: ref.ProviderOrderID,
 				Status: connector.PaymentRequiresAction, RawStatus: "no_payment", Amount: amt, Currency: cur}, nil
 		}
-		best := list.Data[0]
-		for _, p := range list.Data[1:] {
+		best := mine[0]
+		for _, p := range mine[1:] {
 			if rank(p) > rank(best) {
 				best = p
 			}
@@ -655,4 +658,46 @@ func (w *whop) setRedirect(in map[string]any, ref string) {
 	if u := w.deps.URLs.ReturnURL(ref); strings.HasPrefix(u, "https://") {
 		in["redirect_url"] = u
 	}
+}
+
+// oneTimeProduct names the product Whop shows at checkout. Without it Whop
+// attaches the plan to an unrelated existing product. The external id is
+// stable per app and description so repeat payments share one product.
+func oneTimeProduct(appID, description string) map[string]any {
+	title := firstNonEmptyStr(description, "Payment")
+	sum := sha256.Sum256([]byte(appID + "\x00" + title))
+	return map[string]any{"title": title, "external_identifier": "paymux-" + hex.EncodeToString(sum[:8])}
+}
+
+// maxPaymentPages bounds the scan for a checkout's payments; webhooks carry the
+// payment id directly, so this list path is only the poller's fallback.
+const maxPaymentPages = 5
+
+// paymentsForCheckout lists recent payments and keeps only those that belong
+// to ref: same checkout configuration id, or our provider ref in metadata.
+func (w *whop) paymentsForCheckout(ctx context.Context, ref connector.PaymentRef) ([]paymentEntity, error) {
+	var mine []paymentEntity
+	q := url.Values{"checkout_configuration_id": {ref.ProviderOrderID}, "first": {"100"}}
+	for page := 0; page < maxPaymentPages; page++ {
+		var list struct {
+			Data     []paymentEntity `json:"data"`
+			PageInfo struct {
+				EndCursor   string `json:"end_cursor"`
+				HasNextPage bool   `json:"has_next_page"`
+			} `json:"page_info"`
+		}
+		if err := w.do(ctx, "GET", "/payments", q, nil, &list, nil); err != nil {
+			return nil, err
+		}
+		for _, p := range list.Data {
+			if p.CheckoutConfig == ref.ProviderOrderID || (ref.ProviderRef != "" && p.Metadata["ref"] == ref.ProviderRef) {
+				mine = append(mine, p)
+			}
+		}
+		if len(mine) > 0 || !list.PageInfo.HasNextPage || list.PageInfo.EndCursor == "" {
+			break
+		}
+		q.Set("after", list.PageInfo.EndCursor)
+	}
+	return mine, nil
 }
