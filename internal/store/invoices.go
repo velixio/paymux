@@ -212,7 +212,7 @@ func CreditNotesForInvoice(ctx context.Context, q Queryer, invoiceID string) ([]
 
 // CreditNotesForPayment lists a payment's credit notes, oldest first.
 func CreditNotesForPayment(ctx context.Context, q Queryer, paymentID string) ([]CreditNote, error) {
-	return listCreditNotes(ctx, q, "payment_id = ? ORDER BY issued_at, id", paymentID)
+	return listCreditNotes(ctx, q, "payment_id = ? ORDER BY issued_at, number, id", paymentID)
 }
 
 // CreditNotesInRange lists a tax entity's credit notes issued in [from, to).
