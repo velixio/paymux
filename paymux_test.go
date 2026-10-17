@@ -183,7 +183,9 @@ func TestStartupLogRedactsPassword(t *testing.T) {
 	waitReady(t, r)
 	shutdown(t, r)
 	logs := r.logs.String()
-	if strings.Contains(logs, pw) {
+	// Match the credential form: a short password such as "paymux" also
+	// appears legitimately in the database name.
+	if strings.Contains(logs, ":"+pw+"@") || strings.Contains(logs, ":"+url.QueryEscape(pw)+"@") {
 		t.Fatalf("log leaks password:\n%s", logs)
 	}
 	if !strings.Contains(logs, "xxxxx") {
