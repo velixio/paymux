@@ -36,7 +36,7 @@ const configSchema = `{
 var info = connector.Info{
 	Version:           "0.1.0",
 	DisplayName:       "Razorpay",
-	Capabilities:      []connector.Capability{connector.CapRefund, connector.CapList, connector.CapDisputeRead, connector.CapSubscriptionManager},
+	Capabilities:      []connector.Capability{connector.CapRefund, connector.CapList, connector.CapDisputeRead, connector.CapSubscriptionManager, connector.CapSettle},
 	ConfigSchema:      json.RawMessage(configSchema),
 	Currencies:        []string{"INR", "USD", "EUR", "GBP", "SGD", "AED", "AUD", "CAD"},
 	Methods:           []string{"card", "upi", "netbanking", "wallet", "emi"},

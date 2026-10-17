@@ -13,12 +13,12 @@ import (
 
 var tIST = time.FixedZone("IST", 5*3600+1800)
 
-func settlementEntity(id string, amount, fees, tax int64, status string, at time.Time) map[string]any {
+func fakeSettlement(id string, amount, fees, tax int64, status string, at time.Time) map[string]any {
 	return map[string]any{"id": id, "entity": "settlement", "amount": amount, "status": status, "fees": fees, "tax": tax,
 		"utr": "UTR" + id, "created_at": at.Unix()}
 }
 
-func reconItem(settlementID, typ, entityID string, amount, fee, tax int64) map[string]any {
+func fakeReconLine(settlementID, typ, entityID string, amount, fee, tax int64) map[string]any {
 	return map[string]any{"entity": "settlement", "entity_id": entityID, "type": typ, "amount": amount, "fee": fee, "tax": tax,
 		"settlement_id": settlementID, "currency": "INR", "settled_at": 1760000000}
 }
@@ -28,14 +28,14 @@ func TestListSettlements(t *testing.T) {
 	day2 := time.Date(2026, 10, 16, 18, 30, 0, 0, tIST)
 	f := newFake("captured")
 	f.settlements = []map[string]any{
-		settlementEntity("setl_A", 99000, 1178, 180, "processed", day1),
-		settlementEntity("setl_B", 49000, 590, 90, "created", day2),
-		settlementEntity("setl_old", 1, 0, 0, "processed", day1.AddDate(0, -2, 0)),
+		fakeSettlement("setl_A", 99000, 1178, 180, "processed", day1),
+		fakeSettlement("setl_B", 49000, 590, 90, "created", day2),
+		fakeSettlement("setl_old", 1, 0, 0, "processed", day1.AddDate(0, -2, 0)),
 	}
 	f.recon = map[string][]any{
-		"2026-10-15": {reconItem("setl_A", "payment", "pay_1", 50000, 590, 90), reconItem("setl_A", "payment", "pay_2", 50000, 588, 90),
-			reconItem("setl_A", "refund", "rfnd_1", -1000, 0, 0), reconItem("setl_A", "adjustment", "adj_1", 0, 0, 0)},
-		"2026-10-16": {reconItem("setl_B", "payment", "pay_3", 49500, 590, 90)},
+		"2026-10-15": {fakeReconLine("setl_A", "payment", "pay_1", 50000, 590, 90), fakeReconLine("setl_A", "payment", "pay_2", 50000, 588, 90),
+			fakeReconLine("setl_A", "refund", "rfnd_1", -1000, 0, 0), fakeReconLine("setl_A", "adjustment", "adj_1", 0, 0, 0)},
+		"2026-10-16": {fakeReconLine("setl_B", "payment", "pay_3", 49500, 590, 90)},
 	}
 	c := newConn(t, f)
 	st, ok := c.(connector.Settler)
@@ -86,7 +86,7 @@ func TestListSettlementsPagesAndErrors(t *testing.T) {
 	f := newFake("captured")
 	at := time.Date(2026, 10, 15, 10, 0, 0, 0, tIST)
 	for i := 0; i < 120; i++ { // more than one page of 100
-		f.settlements = append(f.settlements, settlementEntity("setl_"+string(rune('a'+i%26))+time.Duration(i).String(), 1, 0, 0, "processed", at))
+		f.settlements = append(f.settlements, fakeSettlement("setl_"+string(rune('a'+i%26))+time.Duration(i).String(), 1, 0, 0, "processed", at))
 	}
 	c := newConn(t, f)
 	got, err := c.(connector.Settler).ListSettlements(context.Background(), connector.TimeRange{From: at.Add(-time.Hour).UnixMilli(), To: at.Add(time.Hour).UnixMilli()})

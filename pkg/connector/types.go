@@ -358,6 +358,19 @@ type SettlementSnapshot struct {
 	Status               string `json:"status"`
 	UTR                  string `json:"utr,omitempty"`
 	SettledAt            int64  `json:"settled_at,omitempty"`
+	// Items are the lines of the settlement: per-payment fees and the GST on
+	// them, which Paymux attaches to its attempts.
+	Items []SettlementItem `json:"items,omitempty"`
+}
+
+// SettlementItem is one line of a settlement.
+type SettlementItem struct {
+	Kind              string `json:"kind"` // payment | refund | adjustment
+	ProviderPaymentID string `json:"provider_payment_id,omitempty"`
+	ProviderRefundID  string `json:"provider_refund_id,omitempty"`
+	Amount            int64  `json:"amount"` // gross, minor units; negative for refunds
+	Fee               int64  `json:"fee"`
+	Tax               int64  `json:"tax"` // GST charged on the fee
 }
 
 // SubscriptionRequest creates a provider-managed subscription checkout.
