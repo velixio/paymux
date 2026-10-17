@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -37,5 +39,23 @@ func TestRunNoArgs(t *testing.T) {
 	code, _, errs := run()
 	if code != 2 || !strings.Contains(errs, "usage: paymux <serve|migrate|version>") {
 		t.Fatalf("code=%d stderr=%q", code, errs)
+	}
+}
+
+func TestServeReportsMalformedDotEnv(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "bad.env")
+	if err := os.WriteFile(p, []byte("A=1\nNOEQUALS\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	lookup := func(k string) (string, bool) {
+		if k == "PAYMUX_ENV_FILE" {
+			return p, true
+		}
+		return "", false
+	}
+	code := Run(context.Background(), []string{"serve"}, lookup, &out, &errb)
+	if code != 1 || !strings.Contains(errb.String(), "line 2") {
+		t.Fatalf("code=%d stderr=%q", code, errb.String())
 	}
 }
