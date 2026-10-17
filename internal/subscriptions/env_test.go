@@ -13,6 +13,7 @@ import (
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/invoice"
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/subscriptions"
@@ -158,7 +159,26 @@ var (
 	managedMod = []connector.BillingMode{connector.ProviderManaged}
 )
 
+type recMailer struct {
+	mu   sync.Mutex
+	sent []notify.Message
+}
+
+func (m *recMailer) Send(_ context.Context, msg notify.Message) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sent = append(m.sent, msg)
+	return nil
+}
+
+func (m *recMailer) messages() []notify.Message {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]notify.Message(nil), m.sent...)
+}
+
 type env struct {
+	mailer *recMailer
 	t      *testing.T
 	db     *store.DB
 	core   *core.Service
@@ -208,7 +228,7 @@ func (e *env) eventTypes() []string {
 // routeTo to change it.
 func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 	t.Helper()
-	e := &env{t: t, db: db, set: settings.New(db), now: start, r: &rec{mandates: map[string]connector.MandateSnapshot{}}}
+	e := &env{t: t, db: db, set: settings.New(db), now: start, mailer: &recMailer{}, r: &rec{mandates: map[string]connector.MandateSnapshot{}}}
 	e.r.now = e.clock
 	t.Cleanup(e.assertNoticeBeforeEveryCharge)
 	e.q = jobs.New(db, jobs.Options{Clock: e.clock, Jitter: func() float64 { return 0 }})
@@ -228,7 +248,7 @@ func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 		"pa_enach":   mandateConn{base{name: "zoho", modes: mandateMod, limits: []connector.MandateLimit{{Method: "emandate", Currency: "INR"}}, r: e.r}},
 		"pa_managed": managedConn{base{name: "razorpay", modes: managedMod, r: e.r}},
 	}
-	e.subs = subscriptions.New(subscriptions.Options{DB: db, Core: e.core, Settings: e.set, Jobs: e.q, Emitter: emitter, BaseURL: "https://pay.example.com",
+	e.subs = subscriptions.New(subscriptions.Options{DB: db, Core: e.core, Settings: e.set, Jobs: e.q, Emitter: emitter, BaseURL: "https://pay.example.com", Mailer: e.mailer,
 		Now: e.clock, Connectors: subscriptions.ConnectorsFunc(func(_ context.Context, id string) (connector.Connector, error) {
 			if c, ok := conns[id]; ok {
 				return c, nil

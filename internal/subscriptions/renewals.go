@@ -342,13 +342,15 @@ func (s *Service) handleNotify(ctx context.Context, raw json.RawMessage) error {
 			return err // retried by the queue
 		}
 	}
-	return s.db.Write(ctx, func(tx store.Tx) error {
+	sent := true
+	err = s.db.Write(ctx, func(tx store.Tx) error {
 		sub, err := s.lockSub(ctx, tx, pl.SubscriptionID)
 		if err != nil {
 			return err
 		}
 		cy, err := store.GetCycle(ctx, tx, sub.ID, pl.Period)
 		if err != nil || !cy.NotifiedAt.IsZero() {
+			sent = false // another run already recorded (and emailed) this notice
 			return err
 		}
 		now := s.nowUTC()
@@ -359,6 +361,13 @@ func (s *Service) handleNotify(ctx context.Context, raw json.RawMessage) error {
 		ca := chargeT
 		return s.emitSub(ctx, tx, EvRenewalUpcoming, sub, eventData{ChargeAt: &ca, RenewalAmount: cy.Amount})
 	})
+	if err != nil {
+		return err
+	}
+	if sent {
+		s.sendPredebitEmail(ctx, pl.SubscriptionID, cy.Amount, chargeT)
+	}
+	return nil
 }
 
 // endsBefore reports whether the subscription ends instead of billing this
