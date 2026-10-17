@@ -11,6 +11,7 @@ import argparse
 import base64
 import hashlib
 import hmac
+import html as html_lib
 import http.cookiejar
 import json
 import re
@@ -181,7 +182,7 @@ def main():
     _, _, html = dashboard_post(f"/dashboard/apps/{app_id}/endpoints", {"url": receiver_url}, page=f"/dashboard/apps/{app_id}")
     m = re.search(r'id="revealed-secret">(whsec_[^<]+)<', html)
     expect(m, "the endpoint's signing secret was not shown")
-    secret = m.group(1)
+    secret = html_lib.unescape(m.group(1))  # html/template writes + as &#43;
 
     api = Client(args.base)  # no cookies: API key only
 
