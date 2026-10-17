@@ -567,3 +567,25 @@ func TestAssetsServed(t *testing.T) {
 		}
 	})
 }
+
+func TestWellKnownServesTheActivationToken(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		d, err := e.core.AddDomain(ctx, audit.System, org, "app_1", "pay.shop.example.org")
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := e.do("GET", "/.well-known/paymux/"+d.Token, "pay.shop.example.org", nil)
+		if r.status != 200 || strings.TrimSpace(r.body) != d.Token || !strings.HasPrefix(r.header.Get("Content-Type"), "text/plain") {
+			t.Errorf("token file: %d %q %v", r.status, r.body, r.header)
+		}
+		if r := e.do("GET", "/.well-known/paymux/wrong", "pay.shop.example.org", nil); r.status != 404 {
+			t.Errorf("wrong token: %d", r.status)
+		}
+		if r := e.do("GET", "/.well-known/paymux/"+d.Token, "", nil); r.status != 404 {
+			t.Errorf("the base host has no activation file: %d", r.status)
+		}
+		if r := e.do("GET", "/.well-known/paymux/"+d.Token, "other.example.org", nil); r.status != http.StatusMisdirectedRequest {
+			t.Errorf("unknown host: %d", r.status)
+		}
+	})
+}
