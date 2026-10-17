@@ -395,7 +395,7 @@ func (d *Dashboard) orgSettingSet(w http.ResponseWriter, r *http.Request, s *ses
 		d.fail(w, err)
 		return
 	}
-	err = d.o.Settings.SetOrg(r.Context(), s.auditActor(), org, r.PathValue("key"), json.RawMessage(strings.TrimSpace(r.PostForm.Get("value"))))
+	err = d.o.Settings.SetOrg(r.Context(), s.auditActor(), org, r.PathValue("key"), settingJSON(r.PathValue("key"), r.PostForm["value"]))
 	if msg, bad := settingErr(err); bad {
 		d.renderSettings(w, r, s, http.StatusBadRequest, msg)
 		return

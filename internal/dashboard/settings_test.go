@@ -39,7 +39,7 @@ func TestOrgSettingsPage(t *testing.T) {
 		has(t, body, "payment_ttl", "mandate_afa_limit", "recon_time", "webhook_retry_schedule", "duplicate_payment_action")
 		lacks(t, body, `id="setting-issue_invoices"`, `id="setting-sac_code"`) // app-only keys
 		row := regexpFind(t, `(?s)(<tr[^>]*id="setting-payment_ttl".*?</tr>)`, body)
-		has(t, row, ">60<", "org")
+		has(t, row, "60 minutes", "org")
 		lacks(t, body, `action="/dashboard/settings/payment_ttl"`)
 		vt := csrfOf(t, body)
 		if r, _ := e.post(viewer, "/dashboard/settings/payment_ttl", url.Values{"value": {"90"}, "csrf": {vt}}); r.StatusCode != 403 {
@@ -58,7 +58,7 @@ func TestOrgSettingsPage(t *testing.T) {
 			t.Fatalf("value %s", v.Raw)
 		}
 		row = regexpFind(t, `(?s)(<tr[^>]*id="setting-payment_ttl".*?</tr>)`, e.pageOK(admin, "/dashboard/settings"))
-		has(t, row, ">90<")
+		has(t, row, `value="90"`)
 
 		for name, c := range map[string]struct{ key, val string }{
 			"out of range":    {"payment_ttl", "1"},

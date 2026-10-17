@@ -56,8 +56,14 @@ type accountRow struct {
 }
 
 type settingRow struct {
-	Key, Value, Source string
+	Key, Value, Source string // Value is the effective JSON, indented
 	Overridden         bool
+
+	// the control
+	Help, Kind, Unit, Text, Display, Default string
+	Pattern, Min, Max, Step, Aux             string
+	Options                                  []enumOpt
+	Checked                                  bool
 }
 
 // settingsTable is what the shared settings partial renders: the rows, the
@@ -574,13 +580,7 @@ func (d *Dashboard) settingRows(ctx context.Context, appID, orgID string, level 
 		if err != nil {
 			return nil, err
 		}
-		var pretty bytes.Buffer
-		if err := json.Indent(&pretty, val.Raw, "", "  "); err != nil {
-			pretty.Reset()
-			pretty.Write(val.Raw)
-		}
-		rows = append(rows, settingRow{Key: def.Key, Value: pretty.String(), Source: string(val.Source),
-			Overridden: val.Source == settings.SourceApp})
+		rows = append(rows, describe(def, val))
 	}
 	return rows, nil
 }
@@ -599,7 +599,7 @@ func (d *Dashboard) appSettingSet(w http.ResponseWriter, r *http.Request, s *ses
 	if !ok {
 		return
 	}
-	err := d.o.Settings.SetApp(r.Context(), s.auditActor(), app.OrgID, app.ID, r.PathValue("key"), json.RawMessage(strings.TrimSpace(r.PostForm.Get("value"))))
+	err := d.o.Settings.SetApp(r.Context(), s.auditActor(), app.OrgID, app.ID, r.PathValue("key"), settingJSON(r.PathValue("key"), r.PostForm["value"]))
 	if msg, bad := settingErr(err); bad {
 		d.renderApp(w, r, s, app, http.StatusBadRequest, "settings", msg, nil)
 		return
