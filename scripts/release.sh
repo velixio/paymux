@@ -54,7 +54,7 @@ trap 'rm -rf "$stage"' EXIT
 for t in $TARGETS; do
   os="${t%/*}"
   arch="${t#*/}"
-  name="paymux_${VERSION}_${os}_${arch}"
+  name="paymux_${VERSION#v}_${os}_${arch}"
   echo "==> build $name"
   mkdir -p "$stage/$name"
   CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \

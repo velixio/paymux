@@ -38,13 +38,13 @@ const hookTimeout = 30 * time.Second
 
 // EventInfo says which event a hook is running for.
 type EventInfo struct {
-	Type          string // for example "payment.succeeded"
-	OrgID         string
-	AppID         string
-	Mode          string // "test" or "live"
-	ObjectType    string // "payment", "refund", ...
-	ObjectID      string
-	ObjectVersion int64
+	Type          string `json:"type"` // for example "payment.succeeded"
+	OrgID         string `json:"org_id"`
+	AppID         string `json:"app_id"`
+	Mode          string `json:"mode"`        // "test" or "live"
+	ObjectType    string `json:"object_type"` // "payment", "refund", ...
+	ObjectID      string `json:"object_id"`
+	ObjectVersion int64  `json:"object_version"`
 }
 
 // Payment is a snapshot of a payment.
@@ -68,15 +68,15 @@ type Payment struct {
 
 // PaymentEvent is what OnPaymentSucceeded and OnPaymentFailed hooks get.
 type PaymentEvent struct {
-	Event   EventInfo
-	Payment Payment
+	Event   EventInfo `json:"event"`
+	Payment Payment   `json:"payment"`
 	// Reason is why a payment failed, when known; AttemptID is the attempt
 	// the event is about.
-	Reason    string
-	AttemptID string
+	Reason    string `json:"reason"`
+	AttemptID string `json:"attempt_id"`
 	// Raw is the event object as JSON, the same document apps get in the
 	// webhook's data.object, for fields this snapshot does not model.
-	Raw json.RawMessage
+	Raw json.RawMessage `json:"raw"`
 }
 
 // Refund is a snapshot of a refund.
@@ -94,10 +94,10 @@ type Refund struct {
 
 // RefundEvent is what OnRefundSucceeded hooks get.
 type RefundEvent struct {
-	Event         EventInfo
-	Refund        Refund
-	FailureReason string
-	Raw           json.RawMessage
+	Event         EventInfo       `json:"event"`
+	Refund        Refund          `json:"refund"`
+	FailureReason string          `json:"failure_reason"`
+	Raw           json.RawMessage `json:"raw"`
 }
 
 // Dispute is a snapshot of a dispute (chargeback).
@@ -118,9 +118,9 @@ type Dispute struct {
 
 // DisputeEvent is what OnDisputeOpened hooks get.
 type DisputeEvent struct {
-	Event   EventInfo
-	Dispute Dispute
-	Raw     json.RawMessage
+	Event   EventInfo       `json:"event"`
+	Dispute Dispute         `json:"dispute"`
+	Raw     json.RawMessage `json:"raw"`
 }
 
 // Subscription is a snapshot of a subscription.
@@ -143,10 +143,10 @@ type Subscription struct {
 
 // SubscriptionEvent is what OnSubscriptionRenewed hooks get.
 type SubscriptionEvent struct {
-	Event        EventInfo
-	Subscription Subscription
-	Reason       string
-	Raw          json.RawMessage
+	Event        EventInfo       `json:"event"`
+	Subscription Subscription    `json:"subscription"`
+	Reason       string          `json:"reason"`
+	Raw          json.RawMessage `json:"raw"`
 }
 
 // Invoice is a snapshot of a GST invoice.
@@ -168,29 +168,29 @@ type Invoice struct {
 
 // InvoiceEvent is what OnInvoiceIssued hooks get.
 type InvoiceEvent struct {
-	Event   EventInfo
-	Invoice Invoice
-	Raw     json.RawMessage
+	Event   EventInfo       `json:"event"`
+	Invoice Invoice         `json:"invoice"`
+	Raw     json.RawMessage `json:"raw"`
 }
 
 // RouteAccount is a provider account routing allows for a payment.
 type RouteAccount struct {
-	ID        string // provider account id, what OnRoute returns
-	Connector string // for example "razorpay"
-	Name      string
+	ID        string `json:"id"`        // provider account id, what OnRoute returns
+	Connector string `json:"connector"` // for example "razorpay"
+	Name      string `json:"name"`
 }
 
 // RouteRequest is what OnRoute hooks get: the payment being routed and the
 // accounts it may use, in the order routing would try them.
 type RouteRequest struct {
-	AppID    string
-	Mode     string
-	Currency string
-	Country  string
-	Amount   int64
-	Purpose  string // "one_time" or "subscription"
-	Metadata map[string]string
-	Accounts []RouteAccount
+	AppID    string            `json:"app_id"`
+	Mode     string            `json:"mode"`
+	Currency string            `json:"currency"`
+	Country  string            `json:"country"`
+	Amount   int64             `json:"amount"`
+	Purpose  string            `json:"purpose"` // "one_time" or "subscription"
+	Metadata map[string]string `json:"metadata"`
+	Accounts []RouteAccount    `json:"accounts"`
 }
 
 // hookEvent is an event on its way to the hooks; it is also the payload of

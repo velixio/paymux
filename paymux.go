@@ -353,6 +353,7 @@ func (a *App) Start(ctx context.Context) error {
 		}
 		errc <- nil
 	}
+	a.startJSHooks(ctx)
 	go serve(main, ln)
 	go serve(internal, iln)
 	go func() { errc <- q.Start(ctx) }()

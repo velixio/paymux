@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	neturl "net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -376,6 +378,21 @@ func TestFullPaymentFlow(t *testing.T) {
 		cfg := testConfig(t, url, dataDir)
 		cfg.AllowPrivateWebhooks = true
 		cfg.OpsWebhookURL = opsSrv.URL
+		// JavaScript hooks: a script that posts to the (fake) Slack, one that
+		// throws and one that never returns.
+		jsDir := t.TempDir()
+		opsURL, _ := neturl.Parse(opsSrv.URL)
+		cfg.JSHooksDir, cfg.JSHooksAllowedHosts = jsDir, []string{opsURL.Hostname()}
+		if err := os.WriteFile(filepath.Join(jsDir, "flow.js"), []byte(`
+			onPaymentSucceeded(function (e) {
+				fetch("`+opsSrv.URL+`/slack", {method: "POST", headers: {"Content-Type": "application/json"},
+					body: JSON.stringify({text: "jshook paid " + e.payment.id + " " + e.payment.amount + " " + e.payment.currency})});
+			});
+			onRefundSucceeded(function (e) { throw new Error("script bug on " + e.refund.id); });
+			onDisputeOpened(function () { while (true) {} });
+		`), 0o600); err != nil {
+			t.Fatal(err)
+		}
 		logs := &syncBuf{}
 		app, err := New(cfg, WithLogger(logging.New(logs, -4)),
 			WithConnectorHTTP(func(store.ProviderAccount, connector.Info, []string) *http.Client {
@@ -670,6 +687,15 @@ func TestFullPaymentFlow(t *testing.T) {
 		waitFor(t, "the hook.failed alert", func() bool { return ops.contains("OnPaymentSucceeded failed") })
 		if n := seen.count("payment.succeeded"); n != 1 {
 			t.Errorf("OnPaymentSucceeded ran %d times for one payment", n)
+		}
+
+		// 14. The JavaScript hooks ran as well: the script posted to Slack, and
+		//     its failures raised alerts without touching the payments.
+		waitFor(t, "the JS hook's Slack post", func() bool { return ops.contains("jshook paid " + id + " 49900 INR") })
+		waitFor(t, "the JS error alert", func() bool { return ops.contains("script bug on " + refundID) })
+		waitFor(t, "the JS time limit alert", func() bool { return ops.contains("time limit") })
+		if _, p := api("GET", "/v1/payments/"+id, nil); p["status"] != "succeeded" {
+			t.Errorf("a failing script changed the payment: %v", p["status"])
 		}
 		shutdown(t, r)
 	}

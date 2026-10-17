@@ -53,6 +53,10 @@ type Config struct {
 	OIDCClientSecret   Secret   // PAYMUX_OIDC_CLIENT_SECRET
 	OIDCAllowedDomains []string // PAYMUX_OIDC_ALLOWED_DOMAINS: e-mail domains that may be created at first sign-in
 	OIDCDefaultRole    string   // PAYMUX_OIDC_DEFAULT_ROLE for those users (default viewer; never admin)
+
+	// JavaScript hooks (plugins/jsvm). They run only when JSHooksDir exists.
+	JSHooksDir          string   // PAYMUX_JS_HOOKS_DIR, default <data dir>/hooks
+	JSHooksAllowedHosts []string // PAYMUX_JS_HOOKS_ALLOWED_HOSTS: hosts fetch() may call; "*.example.com" matches subdomains
 }
 
 // OIDCEnabled reports whether single sign-on is configured.
@@ -133,6 +137,19 @@ func Load(lookupEnv func(string) (string, bool)) (Config, error) {
 	case "false":
 	default:
 		bad("PAYMUX_ALLOW_PRIVATE_WEBHOOKS must be true or false")
+	}
+
+	c.JSHooksDir = get("PAYMUX_JS_HOOKS_DIR", filepath.ToSlash(filepath.Join(c.DataDir, "hooks")))
+	for _, h := range strings.Split(get("PAYMUX_JS_HOOKS_ALLOWED_HOSTS", ""), ",") {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if h == "" {
+			continue
+		}
+		if !validHookHost(h) {
+			bad("PAYMUX_JS_HOOKS_ALLOWED_HOSTS: %q is not a host name (use hooks.slack.com or *.example.com, no scheme, port or path)", h)
+			continue
+		}
+		c.JSHooksAllowedHosts = append(c.JSHooksAllowedHosts, h)
 	}
 
 	c.SMTPHost = get("PAYMUX_SMTP_HOST", "")
@@ -329,4 +346,18 @@ func (c Config) RedactedDatabaseURL() string {
 		}
 	}
 	return u.String()
+}
+
+// validHookHost accepts a bare host name or "*.suffix".
+func validHookHost(h string) bool {
+	name := strings.TrimPrefix(h, "*.")
+	if name == "" || strings.ContainsAny(name, "/:@ *?#\\") {
+		return false
+	}
+	for _, label := range strings.Split(name, ".") {
+		if label == "" {
+			return false
+		}
+	}
+	return true
 }

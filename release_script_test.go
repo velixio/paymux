@@ -51,7 +51,8 @@ func TestReleaseScriptBuildsChecksumsAndStampsTheVersion(t *testing.T) {
 		t.Fatalf("release.sh: %v\n%s", err, text)
 	}
 	osName, arch, _ := strings.Cut(target, "/")
-	tarball := filepath.Join(out, "paymux_v9.8.7-test_"+osName+"_"+arch+".tar.gz")
+	// Archive names drop the tag's "v" so they match what `paymux update` looks for.
+	tarball := filepath.Join(out, "paymux_9.8.7-test_"+osName+"_"+arch+".tar.gz")
 	raw, err := os.ReadFile(tarball)
 	if err != nil {
 		t.Fatalf("expected %s: %v\n%s", tarball, err, text)
