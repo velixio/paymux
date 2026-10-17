@@ -79,7 +79,7 @@ func TestUserCreateRejections(t *testing.T) {
 	}{
 		{"duplicate", cliPW + "\n", []string{"--email", "a@example.com", "--role", "viewer", "--password-stdin"}, "already exists"},
 		{"weak password", "short\n", []string{"--email", "b@example.com", "--role", "viewer", "--password-stdin"}, "at least 12"},
-		{"bad role", cliPW + "\n", []string{"--email", "c@example.com", "--role", "root", "--password-stdin"}, "role must be"},
+		{"bad role", cliPW + "\n", []string{"--email", "c@example.com", "--role", "root", "--password-stdin"}, "unknown role"},
 		{"bad email", cliPW + "\n", []string{"--email", "nope", "--role", "viewer", "--password-stdin"}, "valid email"},
 		{"missing email", cliPW + "\n", []string{"--role", "viewer", "--password-stdin"}, "--email"},
 		{"empty stdin", "", []string{"--email", "d@example.com", "--role", "viewer", "--password-stdin"}, "password"},

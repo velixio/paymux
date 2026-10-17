@@ -19,7 +19,7 @@ type UserRow struct {
 	ID, Email, PasswordHash string
 	TOTPSecretEnc           []byte
 	TOTPLastStep            int64
-	Role                    string // admin | operator | viewer
+	Role                    string // a built-in (admin, operator, viewer) or custom role name
 	Disabled                bool
 	CreatedAt               time.Time
 }
@@ -53,6 +53,11 @@ func (db *DB) InsertUser(ctx context.Context, u UserRow) error {
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
 			return err
+		}
+		if ok, err := roleKnown(ctx, tx, u.Role); err != nil {
+			return err
+		} else if !ok {
+			return fmt.Errorf("%w: %q", ErrUnknownRole, u.Role)
 		}
 		var enc any
 		if u.TOTPSecretEnc != nil {
@@ -141,7 +146,21 @@ func (db *DB) updateUser(ctx context.Context, id, set string, args ...any) error
 
 // SetUserRole changes a user's role.
 func (db *DB) SetUserRole(ctx context.Context, id, role string) error {
-	return db.updateUser(ctx, id, `role = ?`, role)
+	return db.Write(ctx, func(tx Tx) error {
+		if ok, err := roleKnown(ctx, tx, role); err != nil {
+			return err
+		} else if !ok {
+			return fmt.Errorf("%w: %q", ErrUnknownRole, role)
+		}
+		res, err := tx.ExecContext(ctx, `UPDATE users SET role = ? WHERE id = ?`, role, id)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
 }
 
 // SetUserDisabled disables or re-enables a user.

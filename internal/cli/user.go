@@ -22,7 +22,7 @@ import (
 // Stdin is where passwords are read from; tests replace it.
 var Stdin io.Reader = os.Stdin
 
-const userUsage = "usage: paymux user create --email <email> [--role admin|operator|viewer] [--password-stdin]\n" +
+const userUsage = "usage: paymux user create --email <email> [--role <role>] [--password-stdin]\n" +
 	"       paymux user reset-2fa --email <email>"
 
 // runUser handles "paymux user ...". Like migrate, it opens the database
@@ -36,7 +36,7 @@ func runUser(ctx context.Context, args []string, env func(string) (string, bool)
 	fs := flag.NewFlagSet("user "+cmd, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	email := fs.String("email", "", "user email")
-	role := fs.String("role", dashboard.RoleViewer, "admin, operator or viewer")
+	role := fs.String("role", dashboard.RoleViewer, "admin, operator, viewer or a custom role name")
 	pwStdin := fs.Bool("password-stdin", false, "read the password from standard input")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2

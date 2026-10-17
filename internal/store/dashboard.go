@@ -62,21 +62,17 @@ func GetAppBranding(ctx context.Context, q Queryer, id string) (string, error) {
 
 // ListAPIKeys returns an app's keys, oldest first (revoked ones included).
 func ListAPIKeys(ctx context.Context, q Queryer, appID string) ([]APIKey, error) {
-	rows, err := q.QueryContext(ctx, `SELECT id, org_id, app_id, mode, prefix, sha256_hash, last_used_at, revoked_at, created_at
-		FROM api_keys WHERE app_id = ? ORDER BY created_at, id`, appID)
+	rows, err := q.QueryContext(ctx, "SELECT "+apiKeyCols+" FROM api_keys WHERE app_id = ? ORDER BY created_at, id", appID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []APIKey
 	for rows.Next() {
-		var k APIKey
-		var used, revoked sql.NullInt64
-		var created int64
-		if err := rows.Scan(&k.ID, &k.OrgID, &k.AppID, &k.Mode, &k.Prefix, &k.Hash, &used, &revoked, &created); err != nil {
+		k, err := scanAPIKey(rows)
+		if err != nil {
 			return nil, err
 		}
-		k.LastUsedAt, k.RevokedAt, k.CreatedAt = fromNullMS(used), fromNullMS(revoked), fromMS(created)
 		out = append(out, k)
 	}
 	return out, rows.Err()

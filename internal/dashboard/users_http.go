@@ -30,7 +30,10 @@ func (d *Dashboard) renderUsers(w http.ResponseWriter, r *http.Request, s *sessi
 	v := d.shell(r, s, "users", "Users")
 	v.Error, v.Notice = errMsg, notices[r.URL.Query().Get("n")]
 	v.CanManage = s.can(authz.UserManage)
-	v.Roles = Roles
+	if v.Roles, err = d.roleNames(r.Context()); err != nil {
+		d.fail(w, err)
+		return
+	}
 	for _, u := range list {
 		v.Users = append(v.Users, userRow{ID: u.ID, Email: u.Email, Role: u.Role, Disabled: u.Disabled,
 			Enrolled: u.TOTPLastStep >= 0, Created: u.CreatedAt.UTC().Format("2006-01-02"), IsSelf: u.ID == s.User.ID})
@@ -75,9 +78,14 @@ func (d *Dashboard) userRole(w http.ResponseWriter, r *http.Request, s *session)
 		return
 	}
 	role := r.PostForm.Get("role")
+	known, err := d.o.DB.RoleExists(r.Context(), role)
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
 	switch {
-	case roleRank(role) == 0:
-		d.renderUsers(w, r, s, http.StatusBadRequest, "Role must be admin, operator or viewer.")
+	case !known:
+		d.renderUsers(w, r, s, http.StatusBadRequest, "Unknown role.")
 		return
 	case u.ID == s.User.ID:
 		d.renderUsers(w, r, s, http.StatusBadRequest, "You cannot change your own role.")

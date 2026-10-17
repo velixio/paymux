@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
+	"time"
 
 	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/config"
@@ -17,7 +19,8 @@ import (
 )
 
 const appUsage = `usage: paymux app create --name NAME --slug SLUG [--mode test|live] [--return-url URL]
-       paymux app key --app SLUG [--mode test|live]
+       paymux app key --app SLUG [--mode test|live] [--scopes payments:read,refunds:write]
+       paymux app key --app SLUG --rotate [--mode test|live] [--grace-hours 24] [--scopes ...]
        paymux app tax --app SLUG --tax-entity ID|GSTIN [--sac 998315] [--rate 1800] [--inclusive=true]`
 
 // cliActor attributes CLI changes in the audit log.
@@ -36,14 +39,19 @@ func runApp(ctx context.Context, args []string, env func(string) (string, bool),
 	sub := args[0]
 	fs := flag.NewFlagSet("paymux app "+sub, flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	var name, slug, appSlug, mode, returnURL string
+	var name, slug, appSlug, mode, returnURL, scopes string
+	var rotate bool
+	var graceHours int
 	fs.StringVar(&mode, "mode", "test", "key mode: test or live")
+	fs.StringVar(&scopes, "scopes", "", "comma-separated scopes (default: all), e.g. payments:read,refunds:write")
 	if sub == "create" {
 		fs.StringVar(&name, "name", "", "app name")
 		fs.StringVar(&slug, "slug", "", "app slug")
 		fs.StringVar(&returnURL, "return-url", "", "default return URL")
 	} else {
 		fs.StringVar(&appSlug, "app", "", "slug of the app")
+		fs.BoolVar(&rotate, "rotate", false, "create a new key and let the live keys of this mode expire after --grace-hours")
+		fs.IntVar(&graceHours, "grace-hours", 24, "with --rotate: hours the old keys keep working")
 	}
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
@@ -69,14 +77,28 @@ func runApp(ctx context.Context, args []string, env func(string) (string, bool),
 	}
 	defer db.Close()
 
-	if err := runAppCommand(ctx, db, sub, name, slug, appSlug, mode, returnURL, stdout); err != nil {
+	keyOpts := core.KeyOptions{}
+	if scopes != "" {
+		keyOpts.Scopes = strings.Split(scopes, ",")
+	}
+	if rotate && graceHours < 1 {
+		fmt.Fprintf(stderr, "paymux app key: --grace-hours must be at least 1\n")
+		return 1
+	}
+	rot := time.Duration(0)
+	if rotate {
+		rot = time.Duration(graceHours) * time.Hour
+	}
+	if err := runAppCommand(ctx, db, sub, name, slug, appSlug, mode, returnURL, keyOpts, rot, stdout); err != nil {
 		fmt.Fprintf(stderr, "paymux app %s: %v\n", sub, err)
 		return 1
 	}
 	return 0
 }
 
-func runAppCommand(ctx context.Context, db *store.DB, sub, name, slug, appSlug, mode, returnURL string, stdout io.Writer) error {
+// runAppCommand creates the app (sub "create") and a key for it. rotate > 0
+// (sub "key" only) makes the key a rotation with that grace period.
+func runAppCommand(ctx context.Context, db *store.DB, sub, name, slug, appSlug, mode, returnURL string, keyOpts core.KeyOptions, rotate time.Duration, stdout io.Writer) error {
 	if err := db.Migrate(ctx, migrations.FS); err != nil {
 		return err
 	}
@@ -97,7 +119,22 @@ func runAppCommand(ctx context.Context, db *store.DB, sub, name, slug, appSlug, 
 	} else if app, err = svc.AppBySlug(ctx, sc, appSlug); err != nil {
 		return err
 	}
-	key, _, err := svc.CreateAPIKey(ctx, cliActor, sc, app.ID, mode)
+	if rotate > 0 {
+		key, nk, expiring, err := svc.RotateAPIKey(ctx, cliActor, sc, app.ID, mode, rotate, keyOpts)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "%s API key for %s, shown only once (store it now):\n%s\n", mode, app.Slug, key)
+		fmt.Fprintf(stdout, "scopes: %s\n", scopesText(nk.Scopes))
+		for _, k := range expiring {
+			fmt.Fprintf(stdout, "previous key %s… stops working at %s\n", k.Prefix, k.ExpiresAt.UTC().Format(time.RFC3339))
+		}
+		if len(expiring) == 0 {
+			fmt.Fprintln(stdout, "there was no previous key to expire")
+		}
+		return nil
+	}
+	key, nk, err := svc.CreateAPIKeyWith(ctx, cliActor, sc, app.ID, mode, keyOpts)
 	if err != nil {
 		if sub == "create" {
 			err = errors.Join(err, fmt.Errorf("the app was created; run \"paymux app key --app %s --mode %s\" to get a key", app.Slug, mode))
@@ -105,5 +142,15 @@ func runAppCommand(ctx context.Context, db *store.DB, sub, name, slug, appSlug, 
 		return err
 	}
 	fmt.Fprintf(stdout, "%s API key for %s, shown only once (store it now):\n%s\n", mode, app.Slug, key)
+	if nk.Scopes != nil {
+		fmt.Fprintf(stdout, "scopes: %s\n", scopesText(nk.Scopes))
+	}
 	return nil
+}
+
+func scopesText(scopes []string) string {
+	if scopes == nil {
+		return "all"
+	}
+	return strings.Join(scopes, ",")
 }

@@ -203,6 +203,10 @@ var (
 	ErrMandateLimit       = errors.New("connector: amount exceeds mandate limit")
 )
 
+var ErrPrivateAddress = errors.New("connector: target is a private or special-use address")
+
+func IsPrivateIP(ip net.IP) bool
+
 func Lookup(name string) (Factory, Info, bool)
 
 func NewHTTPClient(o HTTPOptions) *http.Client
@@ -343,16 +347,18 @@ type Evidence struct {
 type Factory func(cfg json.RawMessage, deps Deps) (Connector, error)
 
 type HTTPOptions struct {
-	Timeout    time.Duration
-	MaxRetries int
-	Backoff    time.Duration
-	Logger     *slog.Logger
-	Secrets    []string
-	RateLimit  RateLimit
-	Observer   Observer
-	Base       http.RoundTripper
-	Now        func() time.Time
-	Sleep      func(ctx context.Context, d time.Duration) error
+	Timeout     time.Duration
+	MaxRetries  int
+	Backoff     time.Duration
+	Logger      *slog.Logger
+	Secrets     []string
+	RateLimit   RateLimit
+	Observer    Observer
+	DenyPrivate bool
+	LookupIP    func(ctx context.Context, host string) ([]net.IP, error)
+	Base        http.RoundTripper
+	Now         func() time.Time
+	Sleep       func(ctx context.Context, d time.Duration) error
 }
 
 type Info struct {
@@ -366,6 +372,7 @@ type Info struct {
 	MerchantOfRecord         bool            `json:"merchant_of_record"`
 	SubscriptionModes        []BillingMode   `json:"subscription_modes"`
 	PreDebitPerAttempt       bool            `json:"pre_debit_per_attempt"`
+	DenyPrivateNetwork       bool            `json:"deny_private_network,omitempty"`
 	MandateLimits            []MandateLimit  `json:"mandate_limits"`
 	MandateSetupAmount       int64           `json:"mandate_setup_amount,omitempty"`
 	RefundsVerificationDebit bool            `json:"refunds_verification_debit,omitempty"`
@@ -806,9 +813,11 @@ const (
 	CodeBadRequest         = "bad_request"
 )
 
+const DefaultReplayCacheSize = 10000
+
 var ErrBadSignature = errors.New("wire: missing, wrong or stale signature")
 
-func NewHandler(c connector.Connector, secret string, now func() time.Time) (http.Handler, error)
+func NewHandler(c connector.Connector, secret string, now func() time.Time, opts ...HandlerOption) (http.Handler, error)
 
 type CancelSubscriptionRequest struct {
 	Subscription connector.SubscriptionRef `json:"subscription"`
@@ -837,6 +846,10 @@ type EvidenceRequest struct {
 	Evidence connector.Evidence   `json:"evidence"`
 }
 
+type HandlerOption func(replayCacheSize *int)
+
+func WithReplayCacheSize(n int) HandlerOption
+
 type ListRequest struct {
 	Range  connector.TimeRange `json:"range"`
 	Cursor connector.Cursor    `json:"cursor,omitempty"`
@@ -861,9 +874,13 @@ type Signer struct {
 
 func NewSigner(secret string) (*Signer, error)
 
-func (s *Signer) Sign(h http.Header, body []byte, now time.Time)
+func (s *Signer) SignRequest(h http.Header, verb, method string, body []byte, now time.Time) string
 
-func (s *Signer) Verify(h http.Header, body []byte, now time.Time) error
+func (s *Signer) SignResponse(h http.Header, requestID string, body []byte, now time.Time)
+
+func (s *Signer) VerifyRequest(h http.Header, verb, method string, body []byte, now time.Time) error
+
+func (s *Signer) VerifyResponse(h http.Header, requestID string, body []byte, now time.Time) error
 
 type UpdateAmountRequest struct {
 	Subscription connector.SubscriptionRef `json:"subscription"`

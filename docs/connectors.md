@@ -329,10 +329,50 @@ hop. A 5xx without a valid signature (a proxy, a crash) and any network error
 are `ErrTemporary`; a response whose signature does not verify is
 `ErrInvalidCredentials` (almost always a wrong secret).
 
-**Signing.** Both directions use Standard Webhooks: headers `webhook-id`,
-`webhook-timestamp` and `webhook-signature: v1,<base64 HMAC-SHA256(id.timestamp.body)>`
-under the shared `whsec_` secret, with a five minute tolerance. Requests
-without a valid signature get `401`. `GET /info` is signed too (empty body).
+**Signing.** Both directions use the Standard Webhooks headers `webhook-id`,
+`webhook-timestamp` and `webhook-signature: v1,<base64 HMAC-SHA256(...)>` under
+the shared `whsec_` secret, with a five minute tolerance. What the HMAC covers
+is bound to the message's purpose, so a captured message cannot be reused:
+
+* a request signs `id.timestamp.VERB.method.body`, for example
+  `msg_x.1760000000.POST.refund.{...}`. The server verifies against the method
+  taken from the URL path, so a request posted to another path (a signed
+  `fetch_payment` sent to `/refund`) fails with `401`. `GET /info` signs
+  `GET.info` with an empty body;
+* the server accepts each `webhook-id` once: a replay of a signed request within
+  the tolerance window is refused with `401`. The ids are kept in an in-memory
+  cache bounded by size (`wire.DefaultReplayCacheSize`, oldest forgotten first,
+  `wire.WithReplayCacheSize`) and time (twice the tolerance). The cache is per
+  process: a service running several instances needs a shared store, or sticky
+  routing, to reject a replay sent to another instance;
+* a response signs `id.timestamp.response.<request webhook-id>.body`, so the
+  client refuses a genuine response that was recorded for a different request.
+  A service in another language must implement exactly these strings.
+
+`connectors/remote` also refuses a plain-http `base_url` unless its host is
+loopback (`localhost`, `127.0.0.1`, `::1`) or the account config sets
+`"allow_insecure": true` (tests only): the signature authenticates messages but
+does not encrypt them, and customer data travels in the bodies.
+
+**Network guard (SSRF).** `base_url` is supplied by whoever configures the
+account, so it must not reach internal services. The remote connector declares
+`Info.DenyPrivateNetwork`; the host then builds its HTTP client with
+`connector.HTTPOptions{DenyPrivate: true}`, which
+
+* resolves the host name and refuses it if *any* resolved address is loopback,
+  RFC 1918 or ULA private, carrier-grade NAT (100.64/10), link-local
+  (169.254/16 including the cloud metadata address, fe80::/10), multicast or
+  unspecified (`connector.IsPrivateIP`);
+* checks the address again at connect time in the dialer's `Control` function,
+  which defeats DNS rebinding (a second answer that differs from the first);
+* ignores proxy environment variables and never follows a redirect (the remote
+  connector refuses redirects even if the host's client would follow them);
+* is lifted only by `"allow_insecure": true` in the account config, for tests
+  and local development (`http://127.0.0.1:8090`).
+
+Literal private addresses in `base_url` are also refused when the account is
+built, so a bad config fails early with `ErrPrivateAddress`. Any other connector
+that calls an operator-supplied URL should set the same `Info` flag.
 
 **Serving a connector.** In Go, `wire.NewHandler(connector, secret, nil)` is the
 whole server. `examples/remote-connector` is a runnable reference that wraps the

@@ -14,7 +14,9 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/authz"
@@ -36,7 +38,8 @@ type appRow struct{ ID, Name, Slug, ReturnURL, Created string }
 
 type keyRow struct {
 	ID, Mode, Prefix, Created, LastUsed string
-	Revoked                             bool
+	Scopes, Expires                     string
+	Revoked, Expired                    bool
 }
 
 type endpointRow struct {
@@ -79,6 +82,7 @@ type appView struct {
 	Tabs                           []string
 
 	Keys               []keyRow
+	ScopeChoices       []string
 	Endpoints          []endpointRow
 	EndpointID         string
 	EndpointDeliveries []deliveryRow
@@ -101,6 +105,7 @@ func (d *Dashboard) routesApps() {
 	m.HandleFunc("GET "+prefix+"/apps/{id}", d.authed(authz.SettingsRead, d.appPage))
 	m.HandleFunc("GET "+prefix+"/apps/{id}/logo", d.authed(authz.SettingsRead, d.logoGet))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/keys", d.authed(authz.APIKeyCreate, d.keyCreate))
+	m.HandleFunc("POST "+prefix+"/apps/{id}/keys/rotate", d.authed(authz.APIKeyCreate, d.keyRotate))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/keys/{kid}/revoke", d.authed(authz.APIKeyCreate, d.keyRevoke))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints", d.authed(authz.SettingsWrite, d.endpointCreate))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints/{eid}/disable", d.authed(authz.SettingsWrite, d.endpointDisable))
@@ -217,9 +222,15 @@ func (d *Dashboard) renderApp(w http.ResponseWriter, r *http.Request, s *session
 	case "keys":
 		var keys []store.APIKey
 		err = d.o.DB.Read(ctx, func(q store.Querier) (err error) { keys, err = store.ListAPIKeys(ctx, q, app.ID); return })
+		av.ScopeChoices = authz.AllScopes
 		for _, k := range keys {
-			av.Keys = append(av.Keys, keyRow{ID: k.ID, Mode: k.Mode, Prefix: k.Prefix, Created: d.fmtTime(k.CreatedAt),
-				LastUsed: d.fmtTime(k.LastUsedAt), Revoked: !k.RevokedAt.IsZero()})
+			row := keyRow{ID: k.ID, Mode: k.Mode, Prefix: k.Prefix, Created: d.fmtTime(k.CreatedAt),
+				LastUsed: d.fmtTime(k.LastUsedAt), Revoked: !k.RevokedAt.IsZero(), Scopes: "all", Expires: d.fmtTime(k.ExpiresAt),
+				Expired: !k.ExpiresAt.IsZero() && !d.o.Now().Before(k.ExpiresAt)}
+			if k.Scopes != nil {
+				row.Scopes = strings.Join(k.Scopes, ", ")
+			}
+			av.Keys = append(av.Keys, row)
 		}
 	case "webhooks":
 		var eps []outbound.Endpoint
@@ -287,10 +298,42 @@ func (d *Dashboard) keyCreate(w http.ResponseWriter, r *http.Request, s *session
 	if !ok {
 		return
 	}
-	token, _, err := d.o.Core.CreateAPIKey(r.Context(), s.auditActor(), core.OrgScope{OrgID: app.OrgID}, app.ID, r.PostForm.Get("mode"))
+	// No scope ticked means a full-access key.
+	opts := core.KeyOptions{Scopes: r.PostForm["scope"]}
+	token, _, err := d.o.Core.CreateAPIKeyWith(r.Context(), s.auditActor(), core.OrgScope{OrgID: app.OrgID}, app.ID, r.PostForm.Get("mode"), opts)
 	switch {
 	case err == nil:
 		d.renderApp(w, r, s, app, http.StatusOK, "keys", "", &secretReveal{Kind: "key", Label: "API key (" + r.PostForm.Get("mode") + ")", Value: token})
+	case errors.Is(err, core.ErrInvalid):
+		d.renderApp(w, r, s, app, http.StatusBadRequest, "keys", err.Error(), nil)
+	default:
+		d.fail(w, err)
+	}
+}
+
+// keyRotate makes a new key and gives the live keys of that mode an expiry
+// (grace_hours, default 24): both work until then.
+func (d *Dashboard) keyRotate(w http.ResponseWriter, r *http.Request, s *session) {
+	app, ok := d.loadApp(w, r)
+	if !ok {
+		return
+	}
+	hours := 24
+	if v := strings.TrimSpace(r.PostForm.Get("grace_hours")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 24*90 {
+			d.renderApp(w, r, s, app, http.StatusBadRequest, "keys", "The grace period is a whole number of hours, 1 to 2160.", nil)
+			return
+		}
+		hours = n
+	}
+	// With no scope ticked the new key takes the scopes of the one it replaces.
+	token, _, expiring, err := d.o.Core.RotateAPIKey(r.Context(), s.auditActor(), core.OrgScope{OrgID: app.OrgID}, app.ID,
+		r.PostForm.Get("mode"), time.Duration(hours)*time.Hour, core.KeyOptions{Scopes: r.PostForm["scope"]})
+	switch {
+	case err == nil:
+		label := "New API key (" + r.PostForm.Get("mode") + "); " + strconv.Itoa(len(expiring)) + " previous key(s) stop working in " + strconv.Itoa(hours) + " h"
+		d.renderApp(w, r, s, app, http.StatusOK, "keys", "", &secretReveal{Kind: "key", Label: label, Value: token})
 	case errors.Is(err, core.ErrInvalid):
 		d.renderApp(w, r, s, app, http.StatusBadRequest, "keys", err.Error(), nil)
 	default:

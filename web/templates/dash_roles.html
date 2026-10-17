@@ -1,0 +1,40 @@
+{{define "title"}}Roles - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h2>Roles</h2>
+{{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<p class="muted">The built-in roles cannot be changed. Custom roles grant a chosen set of actions; the user-management and role-management actions stay with admins. Assign a role to a user on the <a href="/dashboard/users">Users</a> page.</p>
+<table class="grid">
+<thead><tr><th>Role</th><th>Kind</th><th>Users</th><th>Actions</th><th></th></tr></thead>
+<tbody>
+{{range .RoleRows}}<tr>
+<td>{{.Name}}</td>
+<td>{{.Kind}}</td>
+<td>{{.Users}}</td>
+<td>{{range $i, $a := .Actions}}{{if $i}}, {{end}}{{$a}}{{else}}<span class="muted">none</span>{{end}}</td>
+<td>{{if .Editable}}
+<details><summary>Edit</summary>
+<form method="post" action="/dashboard/roles/{{.Name}}" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+{{range .Boxes}}<label><input type="checkbox" name="action" value="{{.Action}}"{{if .Checked}} checked{{end}}> {{.Action}}</label>
+{{end}}<button class="btn" type="submit">Save actions</button>
+</form>
+<form method="post" action="/dashboard/roles/{{.Name}}/delete" class="inline">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<button class="linkbtn" type="submit">Delete role</button>
+</form>
+</details>
+{{end}}</td>
+</tr>{{end}}
+</tbody>
+</table>
+<h3>New role</h3>
+<form method="post" action="/dashboard/roles" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<input class="field" name="name" placeholder="Role name, e.g. auditor" pattern="[a-z][a-z0-9_-]{1,31}" required>
+{{range .NewBoxes}}<label><input type="checkbox" name="action" value="{{.Action}}"> {{.Action}}</label>
+{{end}}<button class="btn" type="submit">Create role</button>
+</form>
+{{template "dash_close" .}}{{end}}
