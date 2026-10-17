@@ -158,7 +158,7 @@ func (a *App) Start(ctx context.Context) error {
 		emitter = a.emitter
 	}
 	breaker := routing.NewBreaker(nil)
-	rt := checkout.NewRouting(breaker)
+	rt := checkout.NewRouting(breaker).WithSettings(set)
 	conns := connectors.New(connectors.Options{DB: db, Box: box, BaseURL: a.cfg.BaseURL, Logger: a.log, HTTPClient: a.connHTTP})
 	// GST invoicing: documents are issued by hooks inside the transaction in
 	// which a payment or refund succeeds.

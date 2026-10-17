@@ -18,12 +18,39 @@ import (
 // against the app's provider accounts in the payment's mode. It implements
 // core.Router for create-time validation; the account is picked later, on
 // the pay page, with the circuit breaker applied.
-type Routing struct{ breaker *routing.Breaker }
+type Routing struct {
+	breaker  *routing.Breaker
+	settings *settings.Service // when set, routing rules come through its cache
+}
 
 var _ core.Router = (*Routing)(nil)
 
 // NewRouting returns a Routing using b to deprioritise failing accounts.
 func NewRouting(b *routing.Breaker) *Routing { return &Routing{breaker: b} }
+
+// WithSettings makes Routing read the routing setting through s's short-TTL
+// cache instead of querying it for every payment. It returns r.
+func (r *Routing) WithSettings(s *settings.Service) *Routing { r.settings = s; return r }
+
+// ruleSource reads a routing setting for an org or an app.
+type ruleSource struct {
+	org func(orgID string) (settings.Value, error)
+	app func(appID string) (settings.Value, error)
+}
+
+func directSource(ctx context.Context, q store.Queryer) ruleSource {
+	return ruleSource{
+		org: func(orgID string) (settings.Value, error) { return settings.ResolveOrgWith(ctx, q, orgID, "routing") },
+		app: func(appID string) (settings.Value, error) { return settings.ResolveWith(ctx, q, appID, "routing") },
+	}
+}
+
+func cachedSource(ctx context.Context, q store.Queryer, s *settings.Service) ruleSource {
+	return ruleSource{
+		org: func(orgID string) (settings.Value, error) { return s.ResolveOrgCachedWith(ctx, q, orgID, "routing") },
+		app: func(appID string) (settings.Value, error) { return s.ResolveCachedWith(ctx, q, appID, "routing") },
+	}
+}
 
 type routingDoc struct {
 	Rules    []routing.Rule `json:"rules"`
@@ -33,8 +60,12 @@ type routingDoc struct {
 // OrgRoutingConfig loads the org-level routing setting: the org rules and the
 // catch-all.
 func OrgRoutingConfig(ctx context.Context, q store.Queryer, orgID string) (routing.Config, error) {
+	return orgRoutingConfig(directSource(ctx, q), orgID)
+}
+
+func orgRoutingConfig(src ruleSource, orgID string) (routing.Config, error) {
 	var cfg routing.Config
-	org, err := settings.ResolveOrgWith(ctx, q, orgID, "routing")
+	org, err := src.org(orgID)
 	if err != nil {
 		return cfg, err
 	}
@@ -53,11 +84,15 @@ func OrgRoutingConfig(ctx context.Context, q store.Queryer, orgID string) (routi
 // has one) ahead of the org rules and the org catch-all. Payments are routed
 // with exactly this configuration.
 func AppRoutingConfig(ctx context.Context, q store.Queryer, app store.App) (routing.Config, error) {
-	cfg, err := OrgRoutingConfig(ctx, q, app.OrgID)
+	return appRoutingConfig(directSource(ctx, q), app)
+}
+
+func appRoutingConfig(src ruleSource, app store.App) (routing.Config, error) {
+	cfg, err := orgRoutingConfig(src, app.OrgID)
 	if err != nil {
 		return cfg, err
 	}
-	ov, err := settings.ResolveWith(ctx, q, app.ID, "routing")
+	ov, err := src.app(app.ID)
 	if err != nil {
 		return cfg, err
 	}
@@ -82,6 +117,9 @@ func RoutingAccounts(pas []store.ProviderAccount) []routing.Account {
 }
 
 func (r *Routing) config(ctx context.Context, q store.Queryer, app store.App) (routing.Config, error) {
+	if r.settings != nil {
+		return appRoutingConfig(cachedSource(ctx, q, r.settings), app)
+	}
 	return AppRoutingConfig(ctx, q, app)
 }
 

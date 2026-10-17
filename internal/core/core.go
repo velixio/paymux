@@ -185,3 +185,13 @@ func (s *Service) RefundSucceeded(ctx context.Context, tx store.Tx, r store.Refu
 	}
 	return s.onRefundSucceeded(ctx, tx, r, p, a)
 }
+
+// policy reads a policy value for an app through the settings cache when the
+// service has settings, else straight from q. Cached values may be a few
+// seconds old; money-moving decisions that must not lag use ResolveWith.
+func (s *Service) policy(ctx context.Context, q store.Queryer, appID, key string) (settings.Value, error) {
+	if s.settings == nil {
+		return settings.ResolveWith(ctx, q, appID, key)
+	}
+	return s.settings.ResolveCachedWith(ctx, q, appID, key)
+}

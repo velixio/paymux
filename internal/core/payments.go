@@ -16,7 +16,6 @@ import (
 	"github.com/paymux/paymux/internal/core/state"
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector/money"
 )
@@ -165,7 +164,7 @@ func (s *Service) CreatePayment(ctx context.Context, in CreatePaymentInput) (Cre
 				return err
 			}
 		}
-		ttl, err := settings.ResolveWith(ctx, tx, app.ID, "payment_ttl")
+		ttl, err := s.policy(ctx, tx, app.ID, "payment_ttl")
 		if err != nil {
 			return err
 		}
