@@ -16,7 +16,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
 	"regexp"
 	"slices"
 	"strings"
@@ -391,7 +393,7 @@ func (s *Service) handleSubmit(ctx context.Context, raw json.RawMessage) error {
 	switch {
 	case err == nil:
 		return s.apply(ctx, p.ID, snap)
-	case errors.Is(err, connector.ErrTemporary) || isRateLimited(err):
+	case errors.Is(err, connector.ErrTemporary) || isRateLimited(err) || isAmbiguous(err):
 		_ = s.countAttempt(ctx, p.ID)
 		return err // retried by the queue with the same reference
 	default:
@@ -400,6 +402,16 @@ func (s *Service) handleSubmit(ctx context.Context, raw json.RawMessage) error {
 		return s.apply(ctx, p.ID, connector.PayoutSnapshot{ProviderRef: p.ProviderRef, Status: connector.PayoutFailed,
 			RawStatus: "rejected", ErrorCode: "rejected", ErrorMessage: truncate(err.Error(), 300)})
 	}
+}
+
+// isAmbiguous says whether err is a transport failure that tells nothing of
+// what the provider did: the request may have been received and acted on.
+// Only an answer from the provider can mark a payout refused.
+func isAmbiguous(err error) bool {
+	var ne net.Error
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
+		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.As(err, &ne)
 }
 
 func isRateLimited(err error) bool {
