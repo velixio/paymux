@@ -1,0 +1,1 @@
+{"id":"evt_5","object":"event","api_version":"2024-06-20","created":1760000000,"livemode":false,"type":"refund.updated","data":{"object":{"id":"re_3A1","object":"refund","amount":10000,"currency":"inr","payment_intent":"pi_3A1","charge":"ch_3A1","status":"succeeded","metadata":{"paymux_ref":"ref_01"},"created":1759999940}}}

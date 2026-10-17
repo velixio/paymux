@@ -1,0 +1,1 @@
+{"id":"evt_12","object":"event","api_version":"2024-06-20","created":1760000000,"livemode":false,"type":"customer.created","data":{"object":{"id":"cus_1","object":"customer"}}}
