@@ -5,5 +5,6 @@ package main
 import (
 	_ "github.com/paymux/paymux/connectors/payu"
 	_ "github.com/paymux/paymux/connectors/razorpay"
+	_ "github.com/paymux/paymux/connectors/whop"
 	_ "github.com/paymux/paymux/connectors/zoho"
 )
