@@ -81,6 +81,10 @@ type State struct {
 	Configs      []json.RawMessage
 	Deps         []connector.Deps
 	Built        int
+	// LiveMerchantOfRecord makes the connector instances report themselves
+	// merchant of record, as a remote connector can after discovery although
+	// its registry entry cannot say.
+	LiveMerchantOfRecord bool
 }
 
 var seq atomic.Int64
@@ -128,6 +132,9 @@ type Conn struct{ st *State }
 // Info implements connector.Connector.
 func (c *Conn) Info() connector.Info {
 	_, info, _ := connector.Lookup(c.st.Name)
+	c.st.mu.Lock()
+	defer c.st.mu.Unlock()
+	info.MerchantOfRecord = info.MerchantOfRecord || c.st.LiveMerchantOfRecord
 	return info
 }
 

@@ -168,6 +168,9 @@ func newEnv(t *testing.T, db *store.DB, tw ...tweak) *env {
 			{ID: "pa_1", OrgID: store.DefaultOrgID, Mode: "live", Connector: "fake", Name: "Fake", Status: "active", CreatedAt: e.now},
 			{ID: "pa_mor", OrgID: store.DefaultOrgID, Mode: "live", Connector: "mor", Name: "MoR", Status: "active", CreatedAt: e.now},
 			{ID: "pa_test", OrgID: store.DefaultOrgID, Mode: "test", Connector: "fake", Name: "FakeT", Status: "active", CreatedAt: e.now},
+			// An account of a connector that is not merchant of record in the
+			// registry but said so when the account was created (a remote connector).
+			{ID: "pa_dynmor", OrgID: store.DefaultOrgID, Mode: "live", Connector: "fake", Name: "DynMoR", Status: "active", MerchantOfRecord: true, CreatedAt: e.now},
 		} {
 			if err := store.InsertProviderAccount(ctx, tx, pa); err != nil {
 				return err
