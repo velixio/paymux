@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/paymux/paymux/internal/audit"
@@ -44,21 +45,110 @@ type Value struct {
 // Decode unmarshals the value into dst.
 func (v Value) Decode(dst any) error { return json.Unmarshal(v.Raw, dst) }
 
+// DefaultCacheTTL is how long a resolved value is reused. Changes made through
+// this Service show at once (every Set clears the cache); a change made by
+// another process, such as a second node on a shared PostgreSQL, shows within
+// this time.
+const DefaultCacheTTL = 3 * time.Second
+
 // Service reads and writes settings.
 type Service struct {
 	db  *store.DB
 	now func() time.Time
+
+	mu    sync.Mutex
+	ttl   time.Duration
+	gen   uint64 // bumped by every change; a load only fills the cache if it did not move
+	cache map[string]cacheEntry
 }
 
-// New returns a Service on db.
-func New(db *store.DB) *Service { return &Service{db: db, now: time.Now} }
+type cacheEntry struct {
+	v  Value
+	at time.Time
+}
+
+// New returns a Service on db with the default cache TTL.
+func New(db *store.DB) *Service {
+	return &Service{db: db, now: time.Now, ttl: DefaultCacheTTL, cache: map[string]cacheEntry{}}
+}
+
+// SetCacheTTL sets how long resolved values are reused; zero or less turns the
+// cache off.
+func (s *Service) SetCacheTTL(d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ttl = d
+	s.gen++
+	clear(s.cache)
+}
+
+// SetClock replaces the clock (tests).
+func (s *Service) SetClock(now func() time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.now = now
+}
+
+// cached returns the value under k if it is fresh, else loads and remembers
+// it. A value loaded while a change was being made is returned but not kept.
+func (s *Service) cached(k string, load func() (Value, error)) (Value, error) {
+	s.mu.Lock()
+	if s.ttl <= 0 {
+		s.mu.Unlock()
+		return load()
+	}
+	now := s.now()
+	if e, ok := s.cache[k]; ok && now.Sub(e.at) < s.ttl {
+		s.mu.Unlock()
+		return e.v.clone(), nil
+	}
+	gen := s.gen
+	s.mu.Unlock()
+
+	v, err := load()
+	if err != nil {
+		return Value{}, err
+	}
+	s.mu.Lock()
+	if s.gen == gen && s.ttl > 0 {
+		s.cache[k] = cacheEntry{v: v.clone(), at: now}
+	}
+	s.mu.Unlock()
+	return v, nil
+}
+
+func (v Value) clone() Value {
+	return Value{Raw: append(json.RawMessage(nil), v.Raw...), Source: v.Source}
+}
+
+// invalidate drops every cached value. It runs after a change has committed.
+func (s *Service) invalidate() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.gen++
+	clear(s.cache)
+}
+
+// ResolveCachedWith is Resolve for a caller that already holds a reader (often
+// a write transaction on another table): a fresh cached value needs no query,
+// otherwise the value is read through q. Unlike ResolveWith it may be up to
+// the cache TTL old and does not see uncommitted writes, so use it for policy
+// reads, never to read back what the same transaction just set.
+func (s *Service) ResolveCachedWith(ctx context.Context, q store.Queryer, appID, key string) (Value, error) {
+	return s.cached("a\x00"+appID+"\x00"+key, func() (Value, error) { return ResolveWith(ctx, q, appID, key) })
+}
+
+// ResolveOrgCachedWith is the org-level ResolveCachedWith.
+func (s *Service) ResolveOrgCachedWith(ctx context.Context, q store.Queryer, orgID, key string) (Value, error) {
+	return s.cached("o\x00"+orgID+"\x00"+key, func() (Value, error) { return ResolveOrgWith(ctx, q, orgID, key) })
+}
 
 // Resolve returns the effective value of key for an app. An empty appID
 // resolves at the org level.
 func (s *Service) Resolve(ctx context.Context, appID, key string) (Value, error) {
 	var v Value
 	err := s.db.Read(ctx, func(q store.Querier) (err error) {
-		v, err = ResolveWith(ctx, q, appID, key)
+		v, err = s.ResolveCachedWith(ctx, q, appID, key)
 		return
 	})
 	return v, err
@@ -68,7 +158,7 @@ func (s *Service) Resolve(ctx context.Context, appID, key string) (Value, error)
 func (s *Service) ResolveOrg(ctx context.Context, orgID, key string) (Value, error) {
 	var v Value
 	err := s.db.Read(ctx, func(q store.Querier) (err error) {
-		v, err = ResolveOrgWith(ctx, q, orgID, key)
+		v, err = s.ResolveOrgCachedWith(ctx, q, orgID, key)
 		return
 	})
 	return v, err
@@ -119,6 +209,7 @@ func ResolveOrgWith(ctx context.Context, q store.Queryer, orgID, key string) (Va
 // SeedOrg copies every built-in default into the org's values, leaving any
 // existing value untouched. It is safe to run on every start.
 func (s *Service) SeedOrg(ctx context.Context, orgID string) error {
+	defer s.invalidate()
 	return s.db.Write(ctx, func(tx store.Tx) error {
 		for _, d := range defs {
 			if err := store.SeedOrgSetting(ctx, tx, orgID, d.Key, d.Default, s.now()); err != nil {
@@ -153,6 +244,7 @@ func (s *Service) SetOrg(ctx context.Context, actor audit.Actor, orgID, key stri
 	if err != nil {
 		return err
 	}
+	defer s.invalidate()
 	return s.db.Write(ctx, func(tx store.Tx) error {
 		before, err := ResolveOrgWith(ctx, tx, orgID, key)
 		if err != nil {
@@ -172,6 +264,7 @@ func (s *Service) SetApp(ctx context.Context, actor audit.Actor, orgID, appID, k
 	if err != nil {
 		return err
 	}
+	defer s.invalidate()
 	return s.db.Write(ctx, func(tx store.Tx) error {
 		app, err := store.GetAppInOrg(ctx, tx, orgID, appID)
 		if err != nil {
@@ -195,6 +288,7 @@ func (s *Service) ResetApp(ctx context.Context, actor audit.Actor, orgID, appID,
 	if _, ok := Lookup(key); !ok {
 		return fmt.Errorf("%w: %q", ErrUnknownKey, key)
 	}
+	defer s.invalidate()
 	return s.db.Write(ctx, func(tx store.Tx) error {
 		app, err := store.GetAppInOrg(ctx, tx, orgID, appID)
 		if err != nil {
