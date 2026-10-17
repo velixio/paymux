@@ -198,6 +198,8 @@ type UpdateAccountInput struct {
 	Status     *string // active | disabled
 	Config     json.RawMessage
 	Currencies []string
+	// Purposes replaces the enabled purposes (one_time, subscription).
+	Purposes []string
 }
 
 // UpdateAccount changes an account of the scope's org. A new config is
@@ -235,6 +237,15 @@ func (s *Service) UpdateAccount(ctx context.Context, actor audit.Actor, sc core.
 		pa.AcceptedCurrencies = in.Currencies
 		changed = append(changed, "currencies")
 	}
+	if len(in.Purposes) > 0 {
+		for _, p := range in.Purposes {
+			if !slices.Contains(validPurposes, p) {
+				return invalid("unknown purpose %q", p)
+			}
+		}
+		pa.EnabledPurposes = in.Purposes
+		changed = append(changed, "purposes")
+	}
 	if in.Config != nil {
 		if err := ValidateConfig(info.ConfigSchema, in.Config); err != nil {
 			return invalid("config: %v", err)
@@ -256,6 +267,39 @@ func (s *Service) UpdateAccount(ctx context.Context, actor audit.Actor, sc core.
 	})
 	s.Invalidate(id)
 	return err
+}
+
+// TestResult is the outcome of TestConnection.
+type TestResult struct {
+	OK      bool
+	Message string
+}
+
+// testRef is the payment reference TestConnection asks the provider about.
+// No provider has a payment with it.
+const testRef = "paymux-connection-test"
+
+// TestConnection checks an account's credentials by asking the provider for a
+// payment that cannot exist. "Not found" proves the credentials were accepted;
+// "invalid credentials" proves they were not; anything else (network, rate
+// limit, provider outage) is reported as inconclusive rather than as a pass.
+func (s *Service) TestConnection(ctx context.Context, sc core.OrgScope, accountID string) (TestResult, error) {
+	if _, err := s.Account(ctx, sc, accountID); err != nil {
+		return TestResult{}, err
+	}
+	live, err := s.Get(ctx, accountID)
+	if err != nil {
+		return TestResult{OK: false, Message: "could not build the connector: " + err.Error()}, nil
+	}
+	_, err = live.Connector.FetchPayment(ctx, connector.PaymentRef{ProviderRef: testRef})
+	switch {
+	case err == nil || errors.Is(err, connector.ErrNotFound):
+		return TestResult{OK: true, Message: "The provider accepted the credentials."}, nil
+	case errors.Is(err, connector.ErrInvalidCredentials):
+		return TestResult{Message: "The provider rejected the credentials (invalid credentials)."}, nil
+	default:
+		return TestResult{Message: "Could not tell: " + err.Error()}, nil
+	}
 }
 
 // LinkApp lets an app of the scope's org use an account of the same org.
