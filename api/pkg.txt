@@ -2,6 +2,15 @@
 
 package connector // import "github.com/paymux/paymux/pkg/connector"
 
+const (
+	OutcomeOK           = "ok"
+	OutcomeClientError  = "client_error"
+	OutcomeRateLimited  = "rate_limited"
+	OutcomeServerError  = "server_error"
+	OutcomeTimeout      = "timeout"
+	OutcomeNetworkError = "network_error"
+)
+
 var (
 	ErrNotFound           = errors.New("connector: not found")
 	ErrInvalidCredentials = errors.New("connector: invalid credentials")
@@ -159,6 +168,7 @@ type HTTPOptions struct {
 	Logger     *slog.Logger
 	Secrets    []string
 	RateLimit  RateLimit
+	Observer   Observer
 	Base       http.RoundTripper
 	Now        func() time.Time
 	Sleep      func(ctx context.Context, d time.Duration) error
@@ -289,6 +299,8 @@ const (
 	NotifySubscription NotificationKind = "subscription"
 )
 
+type Observer func(RequestObservation)
+
 type Page[T any] struct {
 	Items []T    `json:"items"`
 	Next  Cursor `json:"next,omitempty"`
@@ -385,6 +397,13 @@ type Refunder interface {
 	FetchRefund(ctx context.Context, ref RefundRef) (RefundSnapshot, error)
 }
 
+type RequestObservation struct {
+	Method   string        `json:"method"`
+	Status   int           `json:"status,omitempty"`
+	Duration time.Duration `json:"duration"`
+	Outcome  string        `json:"outcome"`
+}
+
 type ReturnRequest struct {
 	ProviderRef string              `json:"provider_ref"`
 	Method      string              `json:"method"`
@@ -475,6 +494,8 @@ func (w WebhookRequest) Header(name string) string
 
 
 package connectortest // import "github.com/paymux/paymux/pkg/connector/connectortest"
+
+func CheckNotifications(ns []connector.Notification) error
 
 func NewDeps(srv *httptest.Server, now time.Time) connector.Deps
 
