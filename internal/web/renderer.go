@@ -94,6 +94,11 @@ type registry struct {
 	mu      sync.Mutex
 	entries map[string]*entry
 	alerted map[string]bool
+	amu     sync.Mutex // guards alerted
+
+	cmu      sync.Mutex // guards the catalogs; taken after mu, never before
+	catalogs map[string]map[string]string
+	langs    []string
 }
 
 type entry struct {
@@ -109,14 +114,14 @@ func (g *registry) plain() fs.FS {
 	return &Overlay{Base: g.base, Custom: g.custom}
 }
 
-func (g *registry) notify(theme string, err error) {
-	k := theme + "|" + err.Error()
-	if g.alerted[k] {
-		return
-	}
+func (g *registry) notify(what string, err error) {
+	g.amu.Lock()
+	k := what + "|" + err.Error()
+	seen := g.alerted[k]
 	g.alerted[k] = true
-	if g.alert != nil {
-		g.alert(theme, err)
+	g.amu.Unlock()
+	if !seen && g.alert != nil {
+		g.alert(what, err)
 	}
 }
 
@@ -125,6 +130,9 @@ func (g *registry) get(theme, lang string) (*entry, error) {
 	defer g.mu.Unlock()
 	if g.themes == nil {
 		theme = ""
+	}
+	if !(&Renderer{reg: g}).HasLang(lang) {
+		lang = defaultLang
 	}
 	key := theme + "|" + lang
 	e := g.entries[key]
@@ -151,14 +159,14 @@ func (g *registry) get(theme, lang string) (*entry, error) {
 	if th != nil {
 		var overlay fs.FS = &Overlay{Base: g.base, Theme: th.FS, Custom: g.custom}
 		var err error
-		if pages, err = buildPages(overlay, funcsFor("/theme/"+th.Name+"/theme.css?v="+th.Fingerprint, lang)); err != nil {
+		if pages, err = buildPages(overlay, g.funcs("/theme/"+th.Name+"/theme.css?v="+th.Fingerprint, lang)); err != nil {
 			g.notify(theme, fmt.Errorf("theme %s: %w", theme, err))
 			pages = nil
 		}
 	}
 	if pages == nil {
 		var err error
-		if pages, err = buildPages(g.plain(), funcsFor("", lang)); err != nil {
+		if pages, err = buildPages(g.plain(), g.funcs("", lang)); err != nil {
 			return nil, err
 		}
 	}
@@ -167,9 +175,11 @@ func (g *registry) get(theme, lang string) (*entry, error) {
 	return e, nil
 }
 
-func funcsFor(themeCSS, lang string) template.FuncMap {
+func (g *registry) funcs(themeCSS, lang string) template.FuncMap {
 	return template.FuncMap{
 		"themeCSS": func() string { return themeCSS },
+		"t":        func(key string, args ...any) string { return g.translate(lang, key, args...) },
+		"lang":     func() string { return lang },
 	}
 }
 
