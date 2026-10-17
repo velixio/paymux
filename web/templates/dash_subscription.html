@@ -1,0 +1,62 @@
+{{define "title"}}{{.Title}} - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+{{with .Sub}}
+<p><a href="/dashboard/subscriptions">&larr; Subscriptions</a></p>
+<h2>{{.ID}} <span class="status status-{{.Status}}">{{.Status}}</span> <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h2>
+{{with $.Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+{{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+{{with $.Link}}<div class="notice" role="status">
+<label for="checkout-link"><strong>Checkout link</strong> (shown once; send it to the customer)</label><br>
+<input id="checkout-link" class="field" readonly value="{{.}}" size="80"> <button class="btn small" type="button" data-copy="checkout-link">Copy</button>
+</div><script src="/assets/js/copy.js" defer></script>{{end}}
+<dl class="facts">
+<dt>App</dt><dd>{{.App}}</dd>
+<dt>Customer</dt><dd>{{.Customer}}</dd>
+<dt>Amount</dt><dd>{{.Amount}}{{if .PendingAmount}} <span class="flag">changes to {{.PendingAmount}} next period</span>{{end}}</dd>
+<dt>Billing</dt><dd>{{.Billing}}{{if .ProviderSubscription}} <small>({{.ProviderSubscription}})</small>{{end}}</dd>
+{{if .Description}}<dt>Description</dt><dd>{{.Description}}</dd>{{end}}
+<dt>Current period</dt><dd>{{.PeriodStart}} &rarr; {{.PeriodEnd}}</dd>
+{{if .TrialEnd}}<dt>Trial ends</dt><dd>{{.TrialEnd}}</dd>{{end}}
+<dt>Renewals paid</dt><dd>{{.Renewals}}</dd>
+{{if .CancelAtPeriodEnd}}<dt>Cancellation</dt><dd>cancels at the end of the period</dd>{{end}}
+{{if .CanceledAt}}<dt>Canceled</dt><dd>{{.CanceledAt}}</dd>{{end}}
+{{if .EndedAt}}<dt>Ended</dt><dd>{{.EndedAt}}</dd>{{end}}
+{{if .Dunning}}<dt>Dunning</dt><dd>retry {{.Dunning}}{{if .NextRetry}}, next at {{.NextRetry}}{{end}}</dd>{{end}}
+{{if .RequiresReauth}}<dt>Re-authorization</dt><dd><span class="flag">required</span> the customer must authorise a new mandate</dd>{{end}}
+<dt>Created</dt><dd>{{.Created}}</dd>
+</dl>
+
+<h3>Mandates</h3>
+<table class="grid">
+<thead><tr><th>Mandate</th><th>Role</th><th>Method</th><th>Status</th><th>Max per debit</th><th>Valid until</th><th>Provider reference</th></tr></thead>
+<tbody>{{range .Mandates}}<tr><td>{{.ID}}</td><td>{{.Role}}</td><td>{{.Method}}</td><td>{{.Status}}</td><td>{{.MaxAmount}}</td><td>{{.ValidUntil}}</td>
+<td><small>{{.ProviderRef}}{{if .ProviderID}}<br>{{.ProviderID}}{{end}}</small></td></tr>{{else}}<tr><td colspan="7" class="muted">No mandate (the provider manages the billing).</td></tr>{{end}}</tbody>
+</table>
+
+<h3>Periods and renewals</h3>
+<table class="grid">
+<thead><tr><th>Period</th><th>State</th><th>Amount</th><th>Retries</th><th>Notice sent</th><th>Next run</th><th>Payment</th></tr></thead>
+<tbody>{{range .Cycles}}<tr><td>{{.Period}}</td><td>{{.State}}</td><td>{{.Amount}}</td><td>{{.Retries}}</td><td>{{.Notified}}</td><td>{{.NextRun}}</td>
+<td>{{if .PaymentID}}<a href="/dashboard/payments/{{.PaymentID}}">{{.PaymentID}}</a> {{.PaymentStatus}}{{end}}</td></tr>{{else}}<tr><td colspan="7" class="muted">No renewals yet.</td></tr>{{end}}</tbody>
+</table>
+
+{{if .CanLink}}
+<form method="post" action="/dashboard/subscriptions/{{.ID}}/checkout-link" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<h4>Re-authorization link</h4>
+<p class="muted">Creates a fresh link for the customer to set up or re-authorise the mandate. It replaces any earlier link.</p>
+<button class="btn" type="submit">Create checkout link</button>
+</form>
+{{end}}
+{{if .CanCancel}}
+<form method="post" action="/dashboard/subscriptions/{{.ID}}/cancel" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<h4>Cancel</h4>
+<select name="when" class="field" aria-label="When"><option value="period_end">At the end of the current period</option><option value="now">Now (revokes the mandate)</option></select>
+<button class="btn" type="submit">Cancel subscription</button>
+</form>
+{{end}}
+{{end}}
+{{template "dash_close" .}}{{end}}
