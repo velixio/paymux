@@ -157,3 +157,11 @@ func ClaimPaymentLink(ctx context.Context, tx Tx, id, holder string, until, now 
 	n, _ := res.RowsAffected()
 	return n == 1, nil
 }
+
+// ReleasePaymentLink drops holder's claim on a link, for example when the
+// payment it was taken for could not be created. Another holder's claim stays.
+func ReleasePaymentLink(ctx context.Context, tx Tx, id, holder string, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `UPDATE payment_links SET claim_hash = '', claim_until = 0, updated_at = ?
+		WHERE id = ? AND claim_hash = ?`, ms(now), id, claimHash(holder))
+	return err
+}

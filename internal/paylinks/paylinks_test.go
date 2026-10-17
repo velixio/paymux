@@ -136,7 +136,10 @@ func TestCreateFixedLinkStoresEmitsAndAudits(t *testing.T) {
 			t.Errorf("event data %s", raw)
 		}
 		var aud []store.AuditRow
-		_ = db.Read(ctx, func(q store.Querier) (err error) { aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "payment_link.create", 10); return })
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "payment_link.create", 10)
+			return
+		})
 		if len(aud) != 1 || aud[0].ActorID != "key_1" || aud[0].Target != l.ID {
 			t.Errorf("audit %+v", aud)
 		}
@@ -280,7 +283,10 @@ func TestDeactivateIsIdempotentAndEmitsOnce(t *testing.T) {
 			t.Errorf("event data %s", raw)
 		}
 		var aud []store.AuditRow
-		_ = db.Read(ctx, func(q store.Querier) (err error) { aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "payment_link.deactivate", 10); return })
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "payment_link.deactivate", 10)
+			return
+		})
 		if len(aud) != 1 {
 			t.Errorf("audit rows %d, want 1", len(aud))
 		}
