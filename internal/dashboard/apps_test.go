@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"errors"
+	"html"
 	"image"
 	"image/color"
 	"image/gif"
@@ -209,7 +210,7 @@ func TestWebhookEndpointsFromDashboard(t *testing.T) {
 		if r.StatusCode != 200 {
 			t.Fatalf("add endpoint: %d\n%s", r.StatusCode, body)
 		}
-		secret := secretRE.FindString(body)
+		secret := secretRE.FindString(html.UnescapeString(body))
 		if secret == "" {
 			t.Fatalf("secret not shown: %s", body)
 		}
