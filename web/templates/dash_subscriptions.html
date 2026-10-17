@@ -1,0 +1,23 @@
+{{define "title"}}Subscriptions - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h2>Subscriptions <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h2>
+<form class="filters" method="get" action="/dashboard/subscriptions">
+<select name="app" aria-label="App"><option value="">All apps</option>{{range .SubApps}}<option value="{{.ID}}"{{if eq .ID $.SubFilter.App}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+<select name="status" aria-label="Status"><option value="">Any status</option>{{range .SubStatuses}}<option value="{{.}}"{{if eq . $.SubFilter.Status}} selected{{end}}>{{.}}</option>{{end}}</select>
+<input name="q" type="search" value="{{.SubFilter.Q}}" placeholder="Subscription id or customer email" aria-label="Search" size="34">
+<button class="btn small" type="submit">Filter</button>
+</form>
+<table class="grid">
+<thead><tr><th>Subscription</th><th>App</th><th>Customer</th><th>Status</th><th>Amount</th><th>Billing</th><th>Period ends</th><th>Created</th></tr></thead>
+<tbody>
+{{range .Subs}}<tr>
+<td><a href="/dashboard/subscriptions/{{.ID}}">{{.ID}}</a></td><td>{{.App}}</td><td>{{.Customer}}</td>
+<td><span class="status status-{{.Status}}">{{.Status}}</span>{{range .Notes}} <span class="flag">{{.}}</span>{{end}}</td>
+<td>{{.Amount}}</td><td>{{.Billing}}</td><td>{{.PeriodEnd}}</td><td>{{.Created}}</td>
+</tr>{{else}}<tr><td colspan="8" class="muted">No subscriptions match.</td></tr>{{end}}
+</tbody>
+</table>
+{{with .SubNext}}<p><a class="next" href="{{.}}">Older subscriptions &rarr;</a></p>{{end}}
+{{template "dash_close" .}}{{end}}

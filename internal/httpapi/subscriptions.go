@@ -147,7 +147,7 @@ func (a *API) cancelSubscription(w http.ResponseWriter, r *http.Request, pr core
 	if !a.decodeBody(w, r, body, &req, true) {
 		return
 	}
-	sub, err := a.subs.Cancel(r.Context(), scope(pr), r.PathValue("id"), req.AtPeriodEnd)
+	sub, err := a.subs.CancelBy(r.Context(), scope(pr), r.PathValue("id"), req.AtPeriodEnd, auditActor(pr))
 	if err != nil {
 		a.failSub(w, r, err)
 		return

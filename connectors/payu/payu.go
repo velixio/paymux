@@ -44,6 +44,7 @@ var info = connector.Info{
 	// for every debit attempt, retries included. The e-NACH ceiling is Rs 1 crore.
 	SubscriptionModes:  []connector.BillingMode{connector.MerchantTriggered},
 	PreDebitPerAttempt: true,
+	MandateSetupAmount: 100, // the Rs 1 verification debit of a registration without a charge due (trials)
 	MandateLimits: []connector.MandateLimit{{Method: "upi", Currency: "INR"}, {Method: "card", Currency: "INR"},
 		{Method: "emandate", Currency: "INR", MaxAmount: 1_000_000_000}},
 	// TODO(spec): Chargeback API (separate token, 20-day window) is not built;

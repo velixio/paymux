@@ -114,7 +114,11 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == "POST" && r.URL.Path == "/api/v1/mandates":
 		write(w, 200, map[string]any{"code": 0, "mandate": map[string]any{"mandate_id": "md_z1", "payments_session_id": "ps_m1", "status": "created", "max_amount": 748.5, "currency": "INR"}})
 	case r.Method == "GET" && r.URL.Path == "/api/v1/mandates/md_z1":
-		write(w, 200, map[string]any{"code": 0, "mandate": map[string]any{"mandate_id": "md_z1", "status": f.mandateStat, "max_amount": "748.50", "currency": "INR"}})
+		md := map[string]any{"mandate_id": "md_z1", "status": f.mandateStat, "max_amount": "748.50", "currency": "INR", "reference_number": "MANDREF01"}
+		if f.mandateStat == "active" { // the registration transaction paid the first period
+			md["payment"] = map[string]any{"payment_id": "pay_zreg", "status": "succeeded", "amount": 499.0, "currency": "INR", "payment_method": "upi"}
+		}
+		write(w, 200, map[string]any{"code": 0, "mandate": md})
 	case r.Method == "POST" && r.URL.Path == "/api/v1/mandates/md_z1/charges":
 		if f.chargeCode != 0 {
 			write(w, f.chargeCode, map[string]any{"code": 9, "message": f.chargeMsg})

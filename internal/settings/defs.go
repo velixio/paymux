@@ -89,6 +89,9 @@ var defs = []Def{
 	{"dunning_schedule", `[24,72,120]`, orgApp, validDunning}, // hours after the failure, 0-6 retries
 	{"dunning_final_action", `"cancel"`, orgApp, oneOf("cancel", "keep_past_due")},
 	{"predebit_lead", `48`, orgApp, intRange(25, 7*24)}, // hours
+	// predebit_email: also email the customer a pre-debit notice (merchant,
+	// amount, date, mandate reference, reason), on top of the provider's own.
+	{"predebit_email", `true`, orgApp, isBool},
 	{"mandate_headroom", `1.5`, orgApp, floatRange(1.0, 5.0)},
 	{"mandate_afa_limit", `1500000`, LevelOrg, intRange(1, 10000000)}, // INR paise (Rs 15,000)
 	{"mandate_validity", `5`, orgApp, intRange(1, 30)},                // years
