@@ -359,6 +359,26 @@ func TestFetchRefund(t *testing.T) {
 	}
 }
 
+// A payment with several refunds returns them all under one payment id; the
+// one asked for is picked by its request id, never by map order.
+func TestFetchRefundPicksTheRequestedEntryOfSeveral(t *testing.T) {
+	f := &fake{check: `{"status":1,"msg":"ok","transaction_details":{"403993715521":{
+	  "7800001":{"mihpayid":"403993715521","request_id":"7800001","status":"success","amt":"10.00"},
+	  "7800002":{"mihpayid":"403993715521","request_id":"7800002","status":"success","amt":"20.00"},
+	  "7800003":{"mihpayid":"403993715521","request_id":"7800003","status":"success","amt":"30.00"}}}}`}
+	c := newConn(t, f).(connector.Refunder)
+	for i := 0; i < 20; i++ { // map order is random; the answer must not be
+		s, err := c.FetchRefund(context.Background(), connector.RefundRef{ProviderRefundID: "7800002"})
+		if err != nil || s.Amount != 2000 || s.ProviderRefundID != "7800002" {
+			t.Fatalf("round %d: %+v %v", i, s, err)
+		}
+	}
+	// A token that matches none of several entries is not guessed at.
+	if _, err := c.FetchRefund(context.Background(), connector.RefundRef{ProviderRefundID: "9999999"}); !errors.Is(err, connector.ErrNotFound) {
+		t.Errorf("no entry matches: %v", err)
+	}
+}
+
 func TestListPayments(t *testing.T) {
 	f := &fake{listing: `{"status":1,"msg":"ok","Transaction_details":[
 	  {"mihpayid":"1","txnid":"a","status":"success","amt":"10.00","addedon":"2026-10-17 17:30:00"},
