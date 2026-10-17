@@ -16,12 +16,12 @@
 </form>
 <form method="post" action="{{.Action}}">
 <input type="hidden" name="action" value="pending_succeed">
-<p>Pending, then succeed after <input type="number" name="delay" value="10" min="1" max="3600" size="4"> seconds
+<p>Pending, then succeed after <input class="field" type="number" name="delay" value="10" min="1" max="3600" size="4"> seconds
 <button class="btn" type="submit">Pending &rarr; succeed</button></p>
 </form>
 <form method="post" action="{{.Action}}">
 <input type="hidden" name="action" value="late_succeed">
-<p>Late success after <input type="number" name="delay" value="90" min="1" max="3600" size="4"> seconds
+<p>Late success after <input class="field" type="number" name="delay" value="90" min="1" max="3600" size="4"> seconds
 <button class="btn" type="submit">Late success after expiry</button></p>
 <p class="muted">The customer goes back to the merchant at once. Cancel or expire the payment meanwhile to see how a success that arrives too late is handled.</p>
 </form>
