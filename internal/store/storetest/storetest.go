@@ -14,6 +14,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/paymux/paymux/internal/store"
+	"github.com/paymux/paymux/migrations"
 )
 
 // SQLite opens a fresh SQLite store in a temp dir.
@@ -80,4 +81,15 @@ func Each(t *testing.T, fn func(t *testing.T, db *store.DB)) {
 	t.Helper()
 	t.Run("sqlite", func(t *testing.T) { fn(t, SQLite(t)) })
 	t.Run("postgres", func(t *testing.T) { fn(t, Postgres(t)) })
+}
+
+// EachMigrated is Each with every migration already applied.
+func EachMigrated(t *testing.T, fn func(t *testing.T, db *store.DB)) {
+	t.Helper()
+	Each(t, func(t *testing.T, db *store.DB) {
+		if err := db.Migrate(context.Background(), migrations.FS); err != nil {
+			t.Fatal(err)
+		}
+		fn(t, db)
+	})
 }
