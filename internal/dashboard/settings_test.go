@@ -285,7 +285,7 @@ func TestRoutingEditorRulesAreCardsWithOrderNumbers(t *testing.T) {
 		if cards < 4 { // two seeded rules, the catch-all and blank rows
 			t.Fatalf("rule cards: %d", cards)
 		}
-		has(t, body, `name="r_order"`, `value="1"`, `value="2"`, `<label>Name`, `<label>Targets`, `<label>Currencies`, `class="rule-card catch-all"`)
+		has(t, body, `name="r_order"`, `value="1"`, `value="2"`, `Name<input class="field" name="r_name"`, `Targets<input class="field" name="r_targets"`, `<label>Currencies`, `class="rule-card catch-all"`)
 		lacks(t, regexpFind(t, `(?s)(<form[^>]*routing-editor.*?</form>)`, body), "<table")
 
 		order := func(a, b string) []string {
@@ -324,8 +324,9 @@ func TestRoutingEditorRulesAreCardsWithOrderNumbers(t *testing.T) {
 		}
 		// the page numbers the stored rules 1..n, in order
 		page := e.pageOK(admin, "/dashboard/settings")
-		if strings.Index(page, `value="second-written"`) > strings.Index(page, `value="first-written"`) && strings.Contains(page, "first-written") {
-			t.Log("rules shown in stored order")
+		has(t, page, `value="first-written"`, `value="second-written"`)
+		if strings.Index(page, `value="first-written"`) > strings.Index(page, `value="second-written"`) {
+			t.Error("rules are not shown in their stored order")
 		}
 	})
 }

@@ -19,6 +19,7 @@ import (
 
 // ruleEdit is one routing rule laid out as form fields.
 type ruleEdit struct {
+	Order                                                            string
 	Name, Currency, Country, Purpose, AmountMin, AmountMax, Metadata string
 	Action, Targets, Message                                         string
 }
@@ -129,8 +130,10 @@ func (d *Dashboard) routingFor(ctx context.Context, orgID string) (*routingView,
 		return nil, err
 	}
 	rv := &routingView{CatchAll: ruleEdit{Action: "none"}}
-	for _, r := range doc.Rules {
-		rv.Rules = append(rv.Rules, toEdit(r))
+	for i, r := range doc.Rules {
+		e := toEdit(r)
+		e.Order = strconv.Itoa(i + 1)
+		rv.Rules = append(rv.Rules, e)
 	}
 	if doc.CatchAll != nil {
 		rv.CatchAll = toEdit(*doc.CatchAll)
@@ -325,10 +328,20 @@ func (d *Dashboard) routingSave(w http.ResponseWriter, r *http.Request, s *sessi
 		return ""
 	}
 	doc := routingDoc{Rules: []routing.Rule{}}
+	var orders []int
 	for i := range f["r_name"] {
 		if get("r_name", i)+get("r_currency", i)+get("r_country", i)+get("r_purpose", i)+get("r_amin", i)+get("r_amax", i)+
 			get("r_meta", i)+get("r_targets", i)+get("r_message", i) == "" {
 			continue // a blank row
+		}
+		order := i + 1 // blank: keep the written position
+		if o := get("r_order", i); o != "" {
+			n, err := strconv.Atoi(o)
+			if err != nil || n < 0 {
+				d.renderSettings(w, r, s, http.StatusBadRequest, "The order of a rule must be a whole number like 1, 2, 3.")
+				return
+			}
+			order = n
 		}
 		rule := routing.Rule{Name: get("r_name", i)}
 		if rule.Name == "" {
@@ -361,7 +374,20 @@ func (d *Dashboard) routingSave(w http.ResponseWriter, r *http.Request, s *sessi
 			rule.Action.Targets = nil
 		}
 		doc.Rules = append(doc.Rules, rule)
+		orders = append(orders, order)
 	}
+	// Rules are tried in the order of their numbers; equal numbers keep the
+	// order they were written in.
+	idx := make([]int, len(doc.Rules))
+	for i := range idx {
+		idx[i] = i
+	}
+	slices.SortStableFunc(idx, func(a, b int) int { return orders[a] - orders[b] })
+	sorted := make([]routing.Rule, len(doc.Rules))
+	for i, j := range idx {
+		sorted[i] = doc.Rules[j]
+	}
+	doc.Rules = sorted
 	switch kind := strings.TrimSpace(f.Get("ca_action")); kind {
 	case "none":
 	default:
