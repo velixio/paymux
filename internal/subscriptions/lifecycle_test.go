@@ -1,6 +1,7 @@
 package subscriptions_test
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -196,8 +197,9 @@ func TestReauthorizationFlow(t *testing.T) {
 		if len(ev) != 1 {
 			t.Fatalf("events = %v", e.eventTypes())
 		}
-		if d, _ := ev[0].Data.(interface{}); d == nil {
-			t.Fatal("no event data")
+		if raw, _ := json.Marshal(ev[0].Data); !strings.Contains(string(raw), `"checkout_url":"https://pay.example.com/s/`+sub.ID+`?t=`) ||
+			!strings.Contains(string(raw), `"reason":"amount_above_mandate_max"`) {
+			t.Fatalf("event data = %s", raw)
 		}
 		got := e.sub(sub.ID)
 		if got.PendingMandateID == "" || got.MandateID != oldMandate.ID {
