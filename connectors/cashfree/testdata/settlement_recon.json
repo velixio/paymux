@@ -1,0 +1,29 @@
+{
+  "cursor": null,
+  "limit": 3,
+  "data": [
+    {
+      "customer_details": {"customer_id": "c1", "customer_email": null, "customer_phone": "9876543210"},
+      "dispute_details": [{"closed_in_favor_of": null, "dispute_category": null}],
+      "event_details": {"entity": "recon", "event_amount": 200, "event_currency": "INR", "event_id": "43594", "event_service_charge": 2, "event_service_tax": 0.36, "event_settlement_amount": 197.64, "event_status": "SUCCESS", "event_time": "2026-01-16T15:06:41+05:30", "event_type": "PAYMENT", "sale_type": "CREDIT"},
+      "order_details": {"order_amount": 200, "order_currency": "INR", "order_id": "pay_ref_01", "order_tags": null},
+      "payment_details": {"bank_reference": "210396", "cf_payment_id": "1234881617186388204", "payment_amount": 200, "payment_currency": "INR", "payment_group": "UPI", "status": "SUCCESS"},
+      "refund_details": [{"refund_arn": null, "refund_id": null, "refund_note": null, "refund_processed_at": null}],
+      "settlement_details": {"adjustment": null, "amount_settled": 187.64, "cf_settlement_id": "1639775422", "settlement_date": "2026-01-16T18:33:51+05:30", "settlement_initiated_on": "2026-01-16T15:33:51+05:30", "settlement_utr": "PGI45406"}
+    },
+    {
+      "event_details": {"entity": "recon", "event_amount": 10, "event_currency": "INR", "event_id": "74882039", "event_service_charge": 0, "event_service_tax": 0, "event_settlement_amount": 10, "event_status": "SUCCESS", "event_time": "2026-01-15T11:42:08+05:30", "event_type": "REFUND", "sale_type": "DEBIT"},
+      "order_details": {"order_amount": 200, "order_currency": "INR", "order_id": "pay_ref_01"},
+      "payment_details": {"cf_payment_id": "1234881617186388204", "payment_amount": 200, "payment_currency": "INR", "status": "SUCCESS"},
+      "refund_details": [{"refund_arn": "ARN1", "refund_id": "rf_ref_01", "refund_note": "n", "refund_processed_at": "2026-01-15T11:42:08+05:30"}],
+      "settlement_details": {"amount_settled": 187.64, "cf_settlement_id": "1639775422", "settlement_date": "2026-01-16T18:33:51+05:30", "settlement_utr": "PGI45406"}
+    },
+    {
+      "event_details": {"event_amount": 5, "event_currency": "INR", "event_id": "9", "event_service_charge": 0, "event_service_tax": 0, "event_settlement_amount": 5, "event_status": "SUCCESS", "event_time": "2026-01-17T11:42:08+05:30", "event_type": "OTHER_ADJUSTMENT", "sale_type": "CREDIT"},
+      "order_details": {},
+      "payment_details": {},
+      "refund_details": [],
+      "settlement_details": {"amount_settled": null, "cf_settlement_id": "1639775999", "settlement_date": null, "settlement_utr": null}
+    }
+  ]
+}
