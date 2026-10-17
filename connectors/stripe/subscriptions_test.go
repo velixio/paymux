@@ -42,20 +42,26 @@ func TestSubscriptionCheckoutCreatesAnInlinePrice(t *testing.T) {
 			t.Errorf("%s = %q, want %q", k, c0.Form.Get(k), v)
 		}
 	}
-	if c0.Form.Has("subscription_data[trial_end]") || c0.Form.Has("subscription_data[cancel_at]") || c0.Header.Get("Idempotency-Key") != "subcheckout:SUBREF01" {
+	if c0.Form.Has("subscription_data[trial_end]") || c0.Header.Get("Idempotency-Key") != "subcheckout:SUBREF01" {
 		t.Errorf("form = %v", c0.Form)
 	}
 
-	// A start far enough ahead is a trial, a total count an end date.
+	// A start far enough ahead is a trial.
 	start := time.Unix(nowUnix, 0).Add(10 * 24 * time.Hour)
 	if _, err := c.CreateSubscriptionCheckout(bg, connector.SubscriptionRequest{ProviderRef: "SUBREF02", Amount: 100, Currency: "USD", Interval: "month", IntervalCount: 1,
-		StartAt: start.UnixMilli(), TotalCount: 12}); err != nil {
+		StartAt: start.UnixMilli()}); err != nil {
 		t.Fatal(err)
 	}
 	c1 := f.to("POST /v1/checkout/sessions")[1]
-	end := start.AddDate(0, 12, 0).Add(-12 * time.Hour)
-	if c1.Form.Get("subscription_data[trial_end]") != itoa(start.Unix()) || c1.Form.Get("subscription_data[cancel_at]") != itoa(end.Unix()) {
-		t.Errorf("trial/cancel_at = %q / %q (want %d / %d)", c1.Form.Get("subscription_data[trial_end]"), c1.Form.Get("subscription_data[cancel_at]"), start.Unix(), end.Unix())
+	if c1.Form.Get("subscription_data[trial_end]") != itoa(start.Unix()) {
+		t.Errorf("trial_end = %q (want %d)", c1.Form.Get("subscription_data[trial_end]"), start.Unix())
+	}
+	// Checkout rejects subscription_data[cancel_at] ("Received unknown parameter",
+	// verified against the live API), so a plan that ends after N cycles cannot be
+	// sold through it: refused up front instead of selling an endless subscription.
+	before := f.count()
+	if _, err := c.CreateSubscriptionCheckout(bg, connector.SubscriptionRequest{ProviderRef: "SUBREF09", Amount: 100, Currency: "USD", Interval: "month", IntervalCount: 1, TotalCount: 12}); !errors.Is(err, connector.ErrUnsupported) || f.count() != before {
+		t.Errorf("total_count: err=%v requests=%d", err, f.count()-before)
 	}
 	// A start inside the 48 hours Checkout needs is not turned into a trial.
 	if _, err := c.CreateSubscriptionCheckout(bg, connector.SubscriptionRequest{ProviderRef: "SUBREF03", Amount: 100, Currency: "USD", Interval: "week", IntervalCount: 1,

@@ -21,8 +21,9 @@ import (
 // Paymux keeps ISO minor units everywhere; these functions are the only place
 // that knows about the difference.
 //
-// TODO(spec): re-check the list against https://docs.stripe.com/currencies
-// when adding a currency; HUF and TWD are two-decimal for charges.
+// INR, USD, EUR, JPY and HUF were accepted by the live Checkout. TODO(spec):
+// re-check the list against https://docs.stripe.com/currencies when adding a
+// currency; HUF and TWD are two-decimal for charges.
 var (
 	stripeZero  = fields("BIF CLP DJF GNF JPY KMF KRW MGA PYG RWF VND VUV XAF XOF XPF")
 	stripeThree = fields("BHD JOD KWD OMR TND")

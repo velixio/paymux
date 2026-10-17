@@ -12,10 +12,14 @@ import (
 // Settlements are Stripe payouts. A payout's lines are the balance
 // transactions it settles, with the fee and the tax on the fee of each.
 //
-// TODO(spec): wire details to re-verify against the live API: the payout list
-// filter arrival_date, the balance_transactions payout filter, fee_details
-// entries of type "tax", payout.trace_id.value as the UTR (bank reference), and
-// that expanding data.source gives the PaymentIntent of a charge.
+// Verified live: the payout list accepts the arrival_date filter, the
+// balance_transactions payout filter exists, fee_details gives the fee
+// (type stripe_fee) and expanding data.source gives the charge with its
+// PaymentIntent. The test account has no payout bank account, so no payout
+// could be made.
+//
+// TODO(spec): fee_details entries of type "tax" (seen only on accounts that pay
+// GST on fees) and payout.trace_id.value as the UTR were not observed.
 
 type payoutWire struct {
 	ID          string `json:"id"`

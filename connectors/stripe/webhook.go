@@ -83,6 +83,15 @@ type invoiceWire struct {
 	SubscriptionDetails struct {
 		Metadata map[string]string `json:"metadata"`
 	} `json:"subscription_details"`
+	// Parent is where API versions from 2025 on put the subscription: they have no
+	// top-level subscription or payment_intent on an invoice (verified against a
+	// real account on 2026-09-30).
+	Parent struct {
+		SubscriptionDetails struct {
+			Subscription expandable[struct{}] `json:"subscription"`
+			Metadata     map[string]string    `json:"metadata"`
+		} `json:"subscription_details"`
+	} `json:"parent"`
 	Lines struct {
 		Data []struct {
 			Period struct {
@@ -149,6 +158,12 @@ func (s *stripe) ParseWebhook(_ context.Context, req connector.WebhookRequest) (
 		var inv invoiceWire
 		if err := json.Unmarshal(obj, &inv); err != nil {
 			return nil, fmt.Errorf("stripe: %s object: %w", ev.Type, err)
+		}
+		if inv.Subscription.ID == "" {
+			inv.Subscription = inv.Parent.SubscriptionDetails.Subscription
+			if inv.SubscriptionDetails.Metadata == nil {
+				inv.SubscriptionDetails.Metadata = inv.Parent.SubscriptionDetails.Metadata
+			}
 		}
 		if inv.Subscription.ID == "" {
 			return nil, nil // not a subscription invoice

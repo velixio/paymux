@@ -51,6 +51,10 @@ func TestSubmitEvidenceUpdatesThenSubmits(t *testing.T) {
 	f := newFake()
 	var uploads [][]byte
 	var order []string
+	pdf := []byte("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n")
+	png := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
+	jpg := []byte("\xff\xd8\xff\xe0\x00\x10JFIF")
+	wantTypes := map[string]string{"shipping_documentation": "application/pdf", "receipt_2": "image/png", "mystery": "image/jpeg"}
 	f.on("POST /v1/files", func(w http.ResponseWriter, c call) {
 		_, params, _ := mime.ParseMediaType(c.Header.Get("Content-Type"))
 		mr := multipart.NewReader(strings.NewReader(string(c.Body)), params["boundary"])
@@ -70,6 +74,11 @@ func TestSubmitEvidenceUpdatesThenSubmits(t *testing.T) {
 			case "file":
 				name = p.FileName()
 				uploads = append(uploads, buf[:n])
+				// The real Files API accepts only PDF, JPEG and PNG and rejects
+				// application/octet-stream (verified against the live API).
+				if ct := p.Header.Get("Content-Type"); ct != wantTypes[name] {
+					t.Errorf("file %s sent as %q, want %q", name, ct, wantTypes[name])
+				}
 			}
 		}
 		order = append(order, "upload:"+name)
@@ -86,7 +95,7 @@ func TestSubmitEvidenceUpdatesThenSubmits(t *testing.T) {
 	c := newConn(t, f)
 	err := c.SubmitEvidence(bg, connector.DisputeRef{ProviderDisputeID: "dp_1"}, connector.Evidence{
 		Text:  "The customer received the goods on 2026-10-12.",
-		Files: map[string][]byte{"shipping_documentation": []byte("pdf-bytes"), "receipt_2": []byte("receipt"), "mystery": []byte("other")}})
+		Files: map[string][]byte{"shipping_documentation": pdf, "receipt_2": png, "mystery": jpg}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,6 +126,11 @@ func TestSubmitEvidenceUpdatesThenSubmits(t *testing.T) {
 	}
 	if err := c.SubmitEvidence(bg, connector.DisputeRef{ProviderDisputeID: "dp_1"}, connector.Evidence{}); err == nil {
 		t.Error("empty evidence accepted")
+	}
+	// Stripe takes only PDF, JPEG and PNG: anything else is refused up front, and
+	// before an earlier file of the same call has been uploaded.
+	if err := c.SubmitEvidence(bg, connector.DisputeRef{ProviderDisputeID: "dp_1"}, connector.Evidence{Files: map[string][]byte{"receipt": pdf, "shipping_documentation": []byte("plain text")}}); err == nil {
+		t.Error("a text file was accepted as evidence")
 	}
 	if f.count() != before {
 		t.Errorf("%d requests for refused evidence", f.count()-before)

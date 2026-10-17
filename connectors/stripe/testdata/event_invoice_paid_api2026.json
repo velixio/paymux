@@ -1,0 +1,169 @@
+{
+  "id": "evt_1TEST",
+  "object": "event",
+  "api_version": "2026-09-30.endive",
+  "created": 1792276233,
+  "data": {
+    "object": {
+      "id": "in_1TEST",
+      "object": "invoice",
+      "account_country": "US",
+      "account_name": null,
+      "account_tax_ids": null,
+      "amount_due": 1000,
+      "amount_overpaid": 0,
+      "amount_paid": 1000,
+      "amount_remaining": 0,
+      "amount_shipping": 0,
+      "application": null,
+      "attempt_count": 1,
+      "attempted": true,
+      "auto_advance": false,
+      "automatic_tax": {
+        "disabled_reason": null,
+        "enabled": false,
+        "liability": null,
+        "provider": null,
+        "status": null
+      },
+      "automatically_finalizes_at": null,
+      "billing_reason": "subscription_create",
+      "collection_method": "charge_automatically",
+      "created": 1792276231,
+      "currency": "usd",
+      "custom_fields": null,
+      "customer": "cus_TEST",
+      "customer_account": null,
+      "customer_address": null,
+      "customer_email": "buyer@example.com",
+      "customer_name": null,
+      "customer_phone": null,
+      "customer_shipping": null,
+      "customer_tax_exempt": "none",
+      "customer_tax_ids": [],
+      "default_payment_method": null,
+      "default_source": null,
+      "default_tax_rates": [],
+      "description": null,
+      "discounts": [],
+      "due_date": null,
+      "effective_at": 1792276231,
+      "ending_balance": 0,
+      "footer": null,
+      "from_invoice": null,
+      "hosted_invoice_url": "https://example.com/stripe",
+      "invoice_pdf": "https://example.com/stripe",
+      "issuer": {
+        "type": "self"
+      },
+      "last_finalization_error": null,
+      "latest_revision": null,
+      "lines": {
+        "object": "list",
+        "data": [
+          {
+            "id": "il_1TEST",
+            "object": "line_item",
+            "amount": 1000,
+            "currency": "usd",
+            "description": "1 \u00d7 Paymux sandbox plan (at $10.00 / month)",
+            "discount_amounts": [],
+            "discountable": true,
+            "discounts": [],
+            "invoice": "in_1TEST",
+            "livemode": false,
+            "metadata": {
+              "paymux_ref": "sub_ref_01"
+            },
+            "parent": {
+              "invoice_item_details": null,
+              "subscription_item_details": {
+                "invoice_item": null,
+                "proration": false,
+                "proration_details": {
+                  "credited_items": null
+                },
+                "subscription": "sub_1TEST",
+                "subscription_item": "si_TEST"
+              },
+              "type": "subscription_item_details"
+            },
+            "period": {
+              "end": 1794954631,
+              "start": 1792276231
+            },
+            "pretax_credit_amounts": [],
+            "pricing": {
+              "price_TEST": {
+                "price": "price_TEST",
+                "product": "prod_TEST"
+              },
+              "type": "price_TEST",
+              "unit_amount_decimal": "1000"
+            },
+            "quantity": 1,
+            "quantity_decimal": "1",
+            "subtotal": 1000,
+            "taxes": []
+          }
+        ],
+        "has_more": false,
+        "total_count": 1,
+        "url": "/v1/invoices/in_1TEST/lines"
+      },
+      "livemode": false,
+      "metadata": {},
+      "next_payment_attempt": null,
+      "number": "VASONGB1-0001",
+      "on_behalf_of": null,
+      "parent": {
+        "quote_details": null,
+        "subscription_details": {
+          "metadata": {
+            "paymux_ref": "sub_ref_01"
+          },
+          "subscription": "sub_1TEST"
+        },
+        "type": "subscription_details"
+      },
+      "payment_settings": {
+        "default_mandate": null,
+        "payment_method_options": null,
+        "payment_method_types": null
+      },
+      "period_end": 1792276231,
+      "period_start": 1792276231,
+      "post_payment_credit_notes_amount": 0,
+      "pre_payment_credit_notes_amount": 0,
+      "receipt_number": null,
+      "rendering": null,
+      "shipping_cost": null,
+      "shipping_details": null,
+      "starting_balance": 0,
+      "statement_descriptor": null,
+      "status": "paid",
+      "status_transitions": {
+        "finalized_at": 1792276231,
+        "marked_uncollectible_at": null,
+        "paid_at": 1792276231,
+        "voided_at": null
+      },
+      "subtotal": 1000,
+      "subtotal_excluding_tax": 1000,
+      "test_clock": null,
+      "total": 1000,
+      "total_discount_amounts": [],
+      "total_excluding_tax": 1000,
+      "total_pretax_credit_amounts": [],
+      "total_taxes": [],
+      "webhooks_delivered_at": 1792276231
+    }
+  },
+  "livemode": false,
+  "pending_webhooks": 0,
+  "request": {
+    "id": "req_TEST",
+    "idempotency_key": "788c3375-2be5-406d-b42f-85705b1b4849"
+  },
+  "type": "invoice.paid"
+}
