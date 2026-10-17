@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http/httptest"
 	"net/url"
 	"slices"
 	"sync"
@@ -953,6 +954,73 @@ func TestRegisterInstallsHandlersAndSchedule(t *testing.T) {
 		}
 		if e.count("SELECT COUNT(*) FROM jobs WHERE state = 'dead'") != 0 {
 			t.Error("a handler is missing")
+		}
+	})
+}
+
+// ---- forged webhooks ----
+
+func (e *env) hook(account, eventID, sigHeader string, notes any) (int, *httptest.ResponseRecorder) {
+	e.t.Helper()
+	h := inbound.New(inbound.Options{DB: e.db, Queue: e.q, Verifiers: e.conns.Verifiers(), Now: e.clk.Now})
+	body, _ := json.Marshal(notes)
+	req := httptest.NewRequest("POST", "/hooks/"+account, bytes.NewReader(body))
+	req.SetPathValue("provider_account_id", account)
+	if sigHeader != "" {
+		req.Header.Set("X-Fake-Sig", sigHeader)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Code, rec
+}
+
+func TestForgedWebhookGets401AndNoFetch(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p, st := startedAttempt(t, e)
+		ref := st.Attempt.ProviderRef
+		e.setPayment(ref, succeeded(50000, "INR", "pay_1")) // the provider really has the money
+		notes := []connector.Notification{{Kind: connector.NotifyPayment, EventID: "evt_forged",
+			Payment: &connector.PaymentSnapshot{ProviderRef: ref, Status: connector.PaymentSucceeded, Amount: 50000, Currency: "INR"}}}
+
+		// No signature, or a wrong one: 401, stored verified=false, no job.
+		for name, sig := range map[string]string{"missing": "", "wrong": "nope"} {
+			code, _ := e.hook(st.AccountID, "evt_forged", sig, notes)
+			if code != 401 {
+				t.Errorf("%s signature: %d, want 401", name, code)
+			}
+		}
+		if e.count("SELECT COUNT(*) FROM jobs WHERE kind IN ('provider_event.process', 'provider_event.fetch_only')") != 0 {
+			t.Error("a forged webhook enqueued processing")
+		}
+		if e.count("SELECT COUNT(*) FROM provider_events WHERE verified = 0 AND error LIKE 'verification failed%'") == 0 {
+			t.Error("forged webhook not stored as unverified")
+		}
+		if e.count("SELECT COUNT(*) FROM provider_events WHERE verified = 1") != 0 {
+			t.Error("forged webhook stored as verified")
+		}
+		for i := 0; i < 3; i++ {
+			e.clk.Add(2 * time.Minute)
+			_, _ = e.q.RunOnce(ctx)
+		}
+		e.fake.Locked(func() {
+			if len(e.fake.Fetches) != 0 {
+				t.Errorf("forged webhook triggered %d fetches", len(e.fake.Fetches))
+			}
+		})
+		if got := e.get(p.ID); got.Status == "succeeded" {
+			t.Fatal("a forged webhook changed state")
+		}
+
+		// A genuinely unsigned event type (the provider never signs it) still
+		// takes the fetch-only path.
+		code, _ := e.hook(st.AccountID, "evt_unsigned", "unsigned", notes)
+		if code != 200 || e.count("SELECT COUNT(*) FROM jobs WHERE kind = 'provider_event.fetch_only'") != 1 {
+			t.Errorf("unsigned event type: %d", code)
+		}
+		// A signed one is processed normally.
+		code, _ = e.hook(st.AccountID, "evt_ok", "ok", notes)
+		if code != 200 || e.count("SELECT COUNT(*) FROM jobs WHERE kind = 'provider_event.process'") != 1 {
+			t.Errorf("signed: %d", code)
 		}
 	})
 }

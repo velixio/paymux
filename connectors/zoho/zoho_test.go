@@ -364,7 +364,7 @@ func TestVerifyWebhookTimestampWindow(t *testing.T) {
 	r := signedWebhook(testSecret, paymentSucceededBody, nowUnix, nowUnix)
 	r.Headers["x-zoho-webhook-signature"] = []string{"v=abc"}
 	delete(r.Headers, "X-Zoho-Webhook-Signature")
-	if err := c.VerifyWebhook(context.Background(), r); !errors.Is(err, connector.ErrUnsigned) {
+	if err := c.VerifyWebhook(context.Background(), r); !errors.Is(err, connector.ErrInvalidSignature) {
 		t.Errorf("no t: %v", err)
 	}
 }

@@ -267,13 +267,13 @@ func TestWebhookToleranceAndFormats(t *testing.T) {
 	// The id is part of the signed content.
 	r = webhook(t, "payment_succeeded", "msg_2Kx", secret, nowUnix)
 	r.Headers["Webhook-Id"] = []string{"msg_other"}
-	if err := c.VerifyWebhook(context.Background(), r); !errors.Is(err, connector.ErrUnsigned) {
+	if err := c.VerifyWebhook(context.Background(), r); !errors.Is(err, connector.ErrInvalidSignature) {
 		t.Errorf("swapped id: %v", err)
 	}
 	// Garbage timestamp.
 	r = webhook(t, "payment_succeeded", "msg_2Kx", secret, nowUnix)
 	r.Headers["Webhook-Timestamp"] = []string{"soon"}
-	if err := c.VerifyWebhook(context.Background(), r); !errors.Is(err, connector.ErrUnsigned) {
+	if err := c.VerifyWebhook(context.Background(), r); !errors.Is(err, connector.ErrInvalidSignature) {
 		t.Errorf("bad ts: %v", err)
 	}
 }
