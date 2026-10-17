@@ -151,6 +151,15 @@ func TestParseWebhookEvents(t *testing.T) {
 	if n := parse("event_invoice_paid_free")[0]; n.Kind != connector.NotifySubscription || n.Payment != nil || n.Subscription.ProviderRef != "SUBREF01" {
 		t.Errorf("free invoice = %+v", n)
 	}
+	// Recorded from a real account on API version 2026-09-30: invoices no longer
+	// carry subscription or payment_intent at the top level; the subscription and
+	// its metadata are under parent.subscription_details. A webhook endpoint's
+	// payloads follow the endpoint's own API version, so both shapes are accepted.
+	n = parse("event_invoice_paid_api2026")[0]
+	if n.Kind != connector.NotifySubscription || n.Subscription == nil || n.Subscription.ProviderSubscriptionID != "sub_1TEST" || n.Subscription.ProviderRef != "sub_ref_01" ||
+		n.Subscription.Amount != 1000 || n.Subscription.Currency != "USD" || n.Payment != nil {
+		t.Errorf("new API version invoice.paid = %+v / %+v", n.Subscription, n.Payment)
+	}
 	n = parse("event_invoice_payment_failed")[0]
 	if n.Subscription.Status != "past_due" || n.Payment == nil || n.Payment.Status != connector.PaymentFailed || n.Payment.Amount != 49900 {
 		t.Errorf("payment failed = %+v / %+v", n.Subscription, n.Payment)

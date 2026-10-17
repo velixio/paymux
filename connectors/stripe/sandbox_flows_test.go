@@ -5,7 +5,9 @@ package stripe
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"strconv"
@@ -13,7 +15,55 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/pkg/connector"
+	"github.com/paymux/paymux/pkg/connector/connectortest"
 )
+
+// Real events from /v1/events are what Stripe delivers to a webhook endpoint
+// (same object). Each is signed here with the connector's test secret, then
+// verified and parsed: none may fail, and the money events must be recognised.
+func TestSandboxRealEventsVerifyAndParse(t *testing.T) {
+	s := sandboxConnector(t)
+	ctx := context.Background()
+	var list struct {
+		Data []json.RawMessage `json:"data"`
+	}
+	if err := s.api.do(ctx, "GET", "/v1/events", url.Values{"limit": {"100"}}, nil, &list, ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Data) == 0 {
+		t.Skip("the account has no events yet")
+	}
+	ts := time.Now().Unix()
+	seen := map[string]int{}
+	for _, raw := range list.Data {
+		var head struct{ Type string }
+		_ = json.Unmarshal(raw, &head)
+		req := connector.WebhookRequest{Method: "POST", Body: raw, ReceivedAt: ts * 1000,
+			Headers: map[string][]string{"Stripe-Signature": {fmt.Sprintf("t=%d,v1=%s", ts, sign("whsec_unused", ts, raw))}}}
+		if err := s.VerifyWebhook(ctx, req); err != nil {
+			t.Errorf("%s: verify: %v", head.Type, err)
+			continue
+		}
+		ns, err := s.ParseWebhook(ctx, req)
+		if err != nil {
+			t.Errorf("%s: parse: %v", head.Type, err)
+			continue
+		}
+		if err := connectortest.CheckNotifications(ns); err != nil {
+			t.Errorf("%s: %v", head.Type, err)
+		}
+		if seen[fmt.Sprintf("%s -> %d", head.Type, len(ns))] == 0 {
+			for _, n := range ns {
+				b, _ := json.Marshal(n)
+				t.Logf("%s: %s", head.Type, b)
+			}
+		}
+		seen[fmt.Sprintf("%s -> %d", head.Type, len(ns))]++
+	}
+	for k, n := range seen {
+		t.Logf("%3d  %s", n, k)
+	}
+}
 
 // More sandbox flows; same environment as sandbox_test.go. Payments are made
 // through the API with Stripe's test payment methods (pm_card_visa,
