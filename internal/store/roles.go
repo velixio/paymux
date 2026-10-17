@@ -46,6 +46,13 @@ func roleKnown(ctx context.Context, q Queryer, name string) (bool, error) {
 	return err == nil, err
 }
 
+// RoleExists reports whether name is a built-in or stored role.
+func (db *DB) RoleExists(ctx context.Context, name string) (bool, error) {
+	var ok bool
+	err := db.Read(ctx, func(q Querier) (err error) { ok, err = roleKnown(ctx, q, name); return })
+	return ok, err
+}
+
 // ListRoles returns every stored role, built-ins first, then by name.
 func (db *DB) ListRoles(ctx context.Context) ([]RoleRow, error) {
 	var out []RoleRow
@@ -87,6 +94,29 @@ func (db *DB) SeedBuiltinRoles(ctx context.Context, roles []RoleRow, now time.Ti
 			}
 		}
 		return nil
+	})
+}
+
+// CreateRole creates a custom role. An existing name (built-in or not) is
+// ErrDuplicate or ErrBuiltinRole, and nothing is changed.
+func (db *DB) CreateRole(ctx context.Context, name string, actions []string, now time.Time) error {
+	for _, b := range BuiltinRoleNames {
+		if b == name {
+			return ErrBuiltinRole
+		}
+	}
+	enc, _ := json.Marshal(nonNilStrings(actions))
+	return db.Write(ctx, func(tx Tx) error {
+		var one int
+		switch e := tx.QueryRowContext(ctx, `SELECT 1 FROM roles WHERE name = ?`, name).Scan(&one); {
+		case e == nil:
+			return ErrDuplicate
+		case !errors.Is(e, sql.ErrNoRows):
+			return e
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO roles (name, builtin, actions, created_at, updated_at) VALUES (?, 0, ?, ?, ?)`,
+			name, string(enc), ms(now), ms(now))
+		return err
 	})
 }
 

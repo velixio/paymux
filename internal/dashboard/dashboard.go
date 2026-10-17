@@ -43,6 +43,7 @@ const (
 	// MaxSessionAge ends a session regardless of activity.
 	MaxSessionAge = 7 * 24 * time.Hour
 
+	rolesTTL      = 5 * time.Second // how long a role change may take to reach other processes
 	ticketTTL     = 5 * time.Minute
 	touchEvery    = time.Minute
 	loginFailures = 5
@@ -86,6 +87,9 @@ type Dashboard struct {
 	orgMu sync.Mutex
 	org   string
 
+	// roles resolves custom roles from the roles table (short TTL cache).
+	roles *authz.Cache
+
 	dummyOnce sync.Once
 	dummyHash string
 }
@@ -115,6 +119,7 @@ func New(o Options) (*Dashboard, error) {
 		modeKey:   derive(o.MasterKey, "dashboard-mode"),
 		// Cookies are Secure everywhere except plain-http local development.
 		secure: o.BaseURL.Scheme == "https"}
+	d.roles = authz.NewCache(d.loadRoles, rolesTTL, o.Now)
 	d.routes()
 	return d, nil
 }
@@ -138,7 +143,8 @@ var navItems = func() []navItem {
 	items := []navItem{{"overview", "Overview", prefix + "/overview"}, {"payments", "Payments", prefix + "/payments"}}
 	items = append(items, sections...)
 	return append(items, navItem{"apps", "Apps", prefix + "/apps"}, navItem{"settings", "Settings", prefix + "/settings"},
-		navItem{"audit", "Audit", prefix + "/audit"}, navItem{"users", "Users", prefix + "/users"})
+		navItem{"audit", "Audit", prefix + "/audit"}, navItem{"users", "Users", prefix + "/users"},
+		navItem{"roles", "Roles", prefix + "/roles"})
 }()
 
 type navItem struct{ Key, Label, Href string }
@@ -158,6 +164,12 @@ func (d *Dashboard) routes() {
 	m.HandleFunc("POST "+prefix+"/users", d.authed(authz.UserManage, d.userCreate))
 	m.HandleFunc("POST "+prefix+"/users/{id}/role", d.authed(authz.UserManage, d.userRole))
 	m.HandleFunc("POST "+prefix+"/users/{id}/disable", d.authed(authz.UserManage, d.userDisable))
+
+	// Roles: admin only (role.manage is never grantable to a custom role).
+	m.HandleFunc("GET "+prefix+"/roles", d.authed(authz.RoleManage, d.rolesPage))
+	m.HandleFunc("POST "+prefix+"/roles", d.authed(authz.RoleManage, d.roleCreate))
+	m.HandleFunc("POST "+prefix+"/roles/{name}", d.authed(authz.RoleManage, d.roleUpdate))
+	m.HandleFunc("POST "+prefix+"/roles/{name}/delete", d.authed(authz.RoleManage, d.roleDelete))
 
 	d.routesPages()
 	d.routesSubscriptions()
@@ -204,6 +216,8 @@ type view struct {
 	// users
 	Users     []userRow
 	Roles     []string
+	RoleRows  []roleRow
+	NewBoxes  []actionBox
 	CanManage bool
 	Self      string
 	// section placeholder
@@ -351,6 +365,7 @@ type session struct {
 	ID      string
 	User    store.UserRow
 	CSRFKey []byte
+	roles   authz.Resolver
 }
 
 func (s *session) csrf() string { return auth.CSRFToken(s.CSRFKey, s.ID) }
@@ -409,7 +424,7 @@ func (d *Dashboard) currentSession(r *http.Request) (*session, bool) {
 			d.o.Logger.Warn("dashboard: touch session", "err", err)
 		}
 	}
-	return &session{ID: s.ID, User: u, CSRFKey: s.CSRFKey}, true
+	return &session{ID: s.ID, User: u, CSRFKey: s.CSRFKey, roles: d.roles}, true
 }
 
 type authedHandler func(w http.ResponseWriter, r *http.Request, s *session)
@@ -421,7 +436,7 @@ func (s *session) actor() authz.Actor {
 
 // can reports whether the session's user may perform action.
 func (s *session) can(action authz.Action) bool {
-	return authz.Can(s.actor(), action, authz.Resource{})
+	return authz.CanWith(s.roles, s.actor(), action, authz.Resource{})
 }
 
 // authed wraps h: it needs a live session, checks CSRF on POST, then asks

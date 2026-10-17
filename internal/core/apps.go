@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/internal/audit"
+	"github.com/paymux/paymux/internal/authz"
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
@@ -35,6 +36,18 @@ func Bootstrap(ctx context.Context, db *store.DB, set *settings.Service) (string
 		return "", err
 	}
 	if err := set.SeedOrg(ctx, store.DefaultOrgID); err != nil {
+		return "", err
+	}
+	// List the built-in roles in the roles table (their actions come from code).
+	var builtin []store.RoleRow
+	for _, name := range store.BuiltinRoleNames {
+		row := store.RoleRow{Name: name}
+		for _, a := range authz.BuiltinRoles()[authz.Role(name)] {
+			row.Actions = append(row.Actions, string(a))
+		}
+		builtin = append(builtin, row)
+	}
+	if err := db.SeedBuiltinRoles(ctx, builtin, time.Now()); err != nil {
 		return "", err
 	}
 	return store.DefaultOrgID, nil
