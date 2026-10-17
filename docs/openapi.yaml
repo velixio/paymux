@@ -13,10 +13,11 @@ info:
 
     **Scopes.** An API key may be limited to some scopes: `payments:read`,
     `payments:write`, `refunds:read`, `refunds:write`, `subscriptions:read`,
-    `subscriptions:write` and `invoices:read`. `x:write` also allows the reads
+    `subscriptions:write`, `invoices:read`, `payouts:read` and `payouts:write`. `x:write` also allows the reads
     of `x`. Each operation names the scope it needs in `x-required-scope`; a key
     without it gets 403 `insufficient_scope`. Keys created before scopes
-    existed, and keys created without any, have every scope.
+    existed, and keys created without any, have every scope except the payouts ones (`payouts:read`,
+    `payouts:write`), which a key has only when they are listed: sending money out is always a deliberate grant.
 
     **Idempotency.** `POST` requests may carry an `Idempotency-Key` header
     (up to 255 characters). The same key with the same method, path and body
@@ -346,6 +347,107 @@ paths:
           content:
             application/pdf:
               schema: { type: string, format: binary }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/payouts:
+    post:
+      operationId: createPayout
+      x-required-scope: payouts:write
+      summary: Send money out to a beneficiary
+      description: |
+        Records the payout (`pending`) and submits it to the provider in the background; follow it with
+        `payout.processing`, `payout.succeeded`, `payout.failed` and `payout.reversed` events or `GET`. The
+        provider is sent the payout's own reference as an idempotency token, so a retry never pays twice; use an
+        `Idempotency-Key` for your own retries as well.
+
+        This is the only operation an ordinary key cannot do: the key must list `payouts:write` explicitly (keys
+        with no scope list do not have it), and a provider account of the app must have the `payout` purpose and a
+        connector that can pay out. The beneficiary is stored encrypted and shown masked.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, currency, beneficiary]
+              properties:
+                amount: { type: integer, minimum: 1, description: Minor units. }
+                currency: { type: string, examples: [INR] }
+                beneficiary:
+                  type: object
+                  description: Either a bank account (`account_number` and `ifsc`) or a `upi` id.
+                  required: [name]
+                  properties:
+                    name: { type: string, maxLength: 100 }
+                    account_number: { type: string, pattern: "^[0-9]{6,20}$" }
+                    ifsc: { type: string, pattern: "^[A-Z]{4}0[A-Z0-9]{6}$" }
+                    upi: { type: string }
+                    email: { type: string }
+                    phone: { type: string }
+                  additionalProperties: false
+                narration: { type: string, maxLength: 100 }
+                metadata: { type: object, additionalProperties: { type: string } }
+                provider_account_id: { type: string, description: Pick the provider account (default the app's first that accepts payouts in the currency). }
+              additionalProperties: false
+      responses:
+        "201":
+          description: The pending payout.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payout"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "422":
+          description: "`no_route`: no provider account of the app accepts payouts in this currency."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    get:
+      operationId: listPayouts
+      x-required-scope: payouts:read
+      summary: List payouts
+      parameters:
+        - { name: status, in: query, required: false, schema: { $ref: "#/components/schemas/PayoutStatus" } }
+        - { name: starting_after, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 10 } }
+      responses:
+        "200":
+          description: A page of payouts, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayoutList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+  /v1/payouts/{id}:
+    get:
+      operationId: getPayout
+      x-required-scope: payouts:read
+      summary: Retrieve a payout
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^po_[0-9a-z]{26}$" } }
+      responses:
+        "200":
+          description: The payout.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payout"
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
@@ -879,6 +981,44 @@ components:
           format: date-time
           description: When an `immediate` charge will be made, at the earliest.
         reason: { type: string, description: Why the mode differs from the request, or why nothing was prorated. }
+    PayoutStatus:
+      type: string
+      enum: [pending, processing, succeeded, failed, reversed]
+      description: |
+        `pending` is recorded and not yet with the provider; `processing` is on its way; `succeeded` has arrived;
+        `failed` will not arrive (the money stays with you); `reversed` arrived and came back. A status the
+        provider reports that Paymux does not know stays `processing`.
+    Payout:
+      type: object
+      required: [id, object, status, amount, currency, beneficiary, metadata, created_at, version]
+      properties:
+        id: { type: string, pattern: "^po_[0-9a-z]{26}$" }
+        object: { type: string, const: payout }
+        status: { $ref: "#/components/schemas/PayoutStatus" }
+        amount: { type: integer }
+        currency: { type: string }
+        beneficiary:
+          type: object
+          required: [label]
+          properties:
+            label: { type: string, description: "Masked destination, e.g. `••••9012 HDFC` or `ra•••@okbank`." }
+        narration: { type: string }
+        metadata: { type: object, additionalProperties: { type: string } }
+        failure_code: { type: string }
+        failure_message: { type: string }
+        created_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+        version: { type: integer }
+    PayoutList:
+      type: object
+      required: [object, data, has_more]
+      properties:
+        object: { type: string, const: list }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Payout" }
+        has_more: { type: boolean }
+        next_cursor: { type: string }
     SubscriptionList:
       type: object
       required: [object, data, has_more]
