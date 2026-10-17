@@ -113,6 +113,7 @@ func themedBase() fstest.MapFS {
 	return fstest.MapFS{
 		"templates/layout.html": {Data: []byte(`{{define "layout"}}<html><head><link rel="stylesheet" href="{{themeCSS}}"></head><body>{{template "content" .}}</body></html>{{end}}`)},
 		"templates/hello.html":  {Data: []byte(`{{define "content"}}hello {{.Name}}{{end}}`)},
+		"templates/other.html":  {Data: []byte(`{{define "content"}}embedded other{{end}}`)},
 	}
 }
 
@@ -144,25 +145,35 @@ func TestThemedRendererOverlayOrderIsEmbeddedThemeCustom(t *testing.T) {
 	writeTheme(t, themes, "mine", map[string]string{
 		"theme.json":           manifest("mine"),
 		"templates/hello.html": `{{define "content"}}theme says hello {{.Name}}{{end}}`,
+		"templates/other.html": `{{define "content"}}theme other{{end}}`,
 	})
+	writeTheme(t, custom, "", map[string]string{"templates/other.html": `{{define "content"}}custom other{{end}}`})
 	al := &alertLog{}
 	r, err := NewThemedRenderer(ThemedOptions{Base: themedBase(), CustomDir: custom, Themes: NewThemes(Bundled(), themes), Alert: al.add, Recheck: -1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := render(t, r); !strings.Contains(got, "hello x") || strings.Contains(got, "theme says") {
-		t.Fatalf("default: %s", got)
+	page := func(r *Renderer, name string) string {
+		var b bytes.Buffer
+		if err := r.Render(&b, name, map[string]string{"Name": "x"}); err != nil {
+			t.Fatal(err)
+		}
+		return b.String()
 	}
-	if got := render(t, r.With("mine", "")); !strings.Contains(got, "theme says hello x") {
+	if got := page(r, "hello"); !strings.Contains(got, "hello x") || strings.Contains(got, "theme says") {
+		t.Fatalf("no theme should be the embedded page: %s", got)
+	}
+	if got := page(r.With("mine", ""), "hello"); !strings.Contains(got, "theme says hello x") {
 		t.Fatalf("active theme should override embedded: %s", got)
 	}
-	if !strings.Contains(render(t, r.With("mine", "")), `/theme/mine/theme.css`) {
+	if !strings.Contains(page(r.With("mine", ""), "hello"), `/theme/mine/theme.css`) {
 		t.Fatal("layout should link the theme stylesheet")
 	}
-	// custom/ wins over the theme.
-	writeTheme(t, custom, "", map[string]string{"templates/hello.html": `{{define "content"}}custom says hello{{end}}`})
-	if got := render(t, r.With("mine", "")); !strings.Contains(got, "custom says hello") {
+	if got := page(r.With("mine", ""), "other"); !strings.Contains(got, "custom other") {
 		t.Fatalf("custom should beat the theme: %s", got)
+	}
+	if got := page(r, "other"); !strings.Contains(got, "custom other") {
+		t.Fatalf("custom should beat embedded: %s", got)
 	}
 	if al.count() != 0 {
 		t.Fatalf("unexpected alerts: %v", al.n)
@@ -253,7 +264,7 @@ func TestThemeHandlerServesTokensCSSAndAssets(t *testing.T) {
 		t.Errorf("asset: %d", w.Code)
 	}
 	for _, p := range []string{"/theme/mine/secret.txt", "/theme/mine/theme.json", "/theme/mine/assets/../secret.txt", "/theme/mine/assets/nope.svg",
-		"/theme/nope/theme.css", "/theme/..%2fmine/theme.css", "/theme/Bad Name/theme.css"} {
+		"/theme/nope/theme.css", "/theme/..%2fmine/theme.css", "/theme/Bad%20Name/theme.css"} {
 		if w := get(p); w.Code != http.StatusNotFound {
 			t.Errorf("%s: want 404, got %d", p, w.Code)
 		}

@@ -7,5 +7,5 @@ import "embed"
 // FS holds templates/ and static/. "all:" keeps the _partial.html files, which
 // a plain directory embed would silently drop.
 //
-//go:embed all:templates static
+//go:embed all:templates static all:themes
 var FS embed.FS

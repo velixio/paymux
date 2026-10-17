@@ -1,0 +1,11 @@
+{
+  "name": "default",
+  "version": "1.0.0",
+  "description": "The standard Paymux look: light, with a dark variant that follows the visitor's system setting.",
+  "tokens": {
+    "--color-accent": "#2563eb",
+    "--color-danger": "#dc2626",
+    "--radius": "10px"
+  },
+  "font_stack": "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
+}
