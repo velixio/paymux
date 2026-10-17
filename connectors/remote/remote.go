@@ -6,8 +6,11 @@
 // implements exactly those interfaces.
 //
 // Account config: {"base_url": "https://connector.example.com/v1", "secret": "whsec_..."}.
-// base_url must be https unless its host is loopback (allow_insecure: true
-// lifts that, for tests).
+// base_url must be https unless its host is loopback, and must not point at a
+// loopback, private or link-local address (169.254.169.254, 10.0.0.0/8, ...):
+// the host builds the HTTP client with a dial-time guard (Info.DenyPrivateNetwork)
+// that checks every address a name resolves to and does not follow redirects.
+// allow_insecure: true lifts both checks, for tests and local development.
 //
 // TODO(spec): the registered Info is a placeholder; per-account facts such as
 // merchant_of_record are only known after discovery, so anything that reads the
@@ -41,6 +44,8 @@ var info = connector.Info{
 	Name:        "remote",
 	DisplayName: "Remote connector (HTTP)",
 	Version:     "1",
+	// base_url is operator-supplied, so the host guards the client (SSRF).
+	DenyPrivateNetwork: true,
 	ConfigSchema: json.RawMessage(`{"type":"object","required":["base_url","secret"],"properties":{
 		"base_url":{"type":"string","title":"Base URL of the connector service"},
 		"secret":{"type":"string","title":"Signing secret (whsec_...)","x-secret":true}}}`),
@@ -101,6 +106,11 @@ func New(raw json.RawMessage, deps connector.Deps) (connector.Connector, error) 
 	if err := checkBaseURL(cfg.BaseURL, cfg.AllowInsecure); err != nil {
 		return nil, err
 	}
+	// The host's client refuses private targets at dial time (names included);
+	// a literal address is also refused here so the account is rejected early.
+	if u, _ := url.Parse(cfg.BaseURL); !cfg.AllowInsecure && (isLoopback(u.Hostname()) || (net.ParseIP(u.Hostname()) != nil && connector.IsPrivateIP(net.ParseIP(u.Hostname())))) {
+		return nil, fmt.Errorf("%w: base_url %s (set allow_insecure for local development)", connector.ErrPrivateAddress, u.Hostname())
+	}
 	signer, err := wire.NewSigner(cfg.Secret)
 	if err != nil {
 		return nil, fmt.Errorf("remote: %w", err)
@@ -108,6 +118,11 @@ func New(raw json.RawMessage, deps connector.Deps) (connector.Connector, error) 
 	if deps.HTTP == nil {
 		return nil, errors.New("remote: no HTTP client")
 	}
+	// Never follow a redirect, whatever the host's client does: the target could
+	// be an internal address the base_url checks never saw.
+	hc := *deps.HTTP
+	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	deps.HTTP = &hc
 	r := &remote{base: strings.TrimRight(cfg.BaseURL, "/"), signer: signer, deps: deps}
 	var ri connector.Info
 	if err := r.call(context.Background(), wire.MethodInfo, nil, &ri); err != nil {
@@ -140,6 +155,9 @@ func (r *remote) call(ctx context.Context, method string, in, out any) error {
 	req.Header.Set("Content-Type", "application/json")
 	requestID := r.signer.SignRequest(req.Header, verb, method, body, r.deps.Now())
 	resp, err := r.deps.HTTP.Do(req)
+	if errors.Is(err, connector.ErrPrivateAddress) {
+		return fmt.Errorf("remote %s: %w", method, err) // permanent: the account points at an internal address
+	}
 	if err != nil {
 		return fmt.Errorf("%w: remote %s: %v", connector.ErrTemporary, method, err)
 	}

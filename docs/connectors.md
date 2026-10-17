@@ -354,6 +354,26 @@ loopback (`localhost`, `127.0.0.1`, `::1`) or the account config sets
 `"allow_insecure": true` (tests only): the signature authenticates messages but
 does not encrypt them, and customer data travels in the bodies.
 
+**Network guard (SSRF).** `base_url` is supplied by whoever configures the
+account, so it must not reach internal services. The remote connector declares
+`Info.DenyPrivateNetwork`; the host then builds its HTTP client with
+`connector.HTTPOptions{DenyPrivate: true}`, which
+
+* resolves the host name and refuses it if *any* resolved address is loopback,
+  RFC 1918 or ULA private, carrier-grade NAT (100.64/10), link-local
+  (169.254/16 including the cloud metadata address, fe80::/10), multicast or
+  unspecified (`connector.IsPrivateIP`);
+* checks the address again at connect time in the dialer's `Control` function,
+  which defeats DNS rebinding (a second answer that differs from the first);
+* ignores proxy environment variables and never follows a redirect (the remote
+  connector refuses redirects even if the host's client would follow them);
+* is lifted only by `"allow_insecure": true` in the account config, for tests
+  and local development (`http://127.0.0.1:8090`).
+
+Literal private addresses in `base_url` are also refused when the account is
+built, so a bad config fails early with `ErrPrivateAddress`. Any other connector
+that calls an operator-supplied URL should set the same `Info` flag.
+
 **Serving a connector.** In Go, `wire.NewHandler(connector, secret, nil)` is the
 whole server. `examples/remote-connector` is a runnable reference that wraps the
 Razorpay connector (see its header comment for the environment it reads), and

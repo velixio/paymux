@@ -37,7 +37,7 @@ func TestServiceIsDiscoveredThroughTheRemoteConnector(t *testing.T) {
 	defer srv.Close()
 	deps := connectortest.NewDeps(nil, time.Now()) // the service signs with the wall clock
 	deps.HTTP = srv.Client()
-	c, err := remote.New(json.RawMessage(fmt.Sprintf(`{"base_url":%q,"secret":%q}`, srv.URL, secret)), deps)
+	c, err := remote.New(json.RawMessage(fmt.Sprintf(`{"base_url":%q,"secret":%q,"allow_insecure":true}`, srv.URL, secret)), deps)
 	if err != nil {
 		t.Fatal(err)
 	}

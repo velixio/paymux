@@ -334,7 +334,10 @@ func (s *Service) deps(pa store.ProviderAccount, info connector.Info, cfg json.R
 	if s.o.HTTPClient != nil {
 		hc = s.o.HTTPClient(pa, info, secretValues)
 	} else {
-		opts := connector.HTTPOptions{Logger: logger, Secrets: secretValues, RateLimit: info.RateLimit}
+		opts := connector.HTTPOptions{Logger: logger, Secrets: secretValues, RateLimit: info.RateLimit,
+			// A connector that calls an operator-supplied URL gets a client that
+			// refuses internal addresses, unless the account opts out.
+			DenyPrivate: info.DenyPrivateNetwork && !allowInsecure(cfg)}
 		if s.o.Observe != nil {
 			opts.Observer = func(o connector.RequestObservation) { s.o.Observe(info.Name, o) }
 		}
@@ -342,6 +345,15 @@ func (s *Service) deps(pa store.ProviderAccount, info connector.Info, cfg json.R
 	}
 	return connector.Deps{HTTP: hc, KV: &kvStore{s: s, account: pa.ID}, Clock: s.o.Now, Logger: logger,
 		URLs: &urls{s: s, account: pa.ID}}
+}
+
+// allowInsecure reports whether the account config sets "allow_insecure": true,
+// the explicit opt-out from the private-network guard (local development).
+func allowInsecure(cfg json.RawMessage) bool {
+	var c struct {
+		AllowInsecure bool `json:"allow_insecure"`
+	}
+	return json.Unmarshal(cfg, &c) == nil && c.AllowInsecure
 }
 
 // secretValues returns the string values of config keys marked "x-secret".

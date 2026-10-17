@@ -32,7 +32,7 @@ func TestConformanceThroughRemote(t *testing.T) {
 		t.Cleanup(srv.Close)
 		rdeps := deps
 		rdeps.HTTP = srv.Client() // the remote client talks to the service, not to the provider
-		return remote.New(json.RawMessage(fmt.Sprintf(`{"base_url":%q,"secret":%q}`, srv.URL, secret)), rdeps)
+		return remote.New(json.RawMessage(fmt.Sprintf(`{"base_url":%q,"secret":%q,"allow_insecure":true}`, srv.URL, secret)), rdeps)
 	}
 	connectortest.Run(t, factory, conformanceFixtures(t))
 }
