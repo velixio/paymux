@@ -253,7 +253,10 @@ func (s *Service) reconcile(ctx context.Context, pa store.ProviderAccount, run *
 	if err := s.reconcilePayments(ctx, pa, run, theirsPay); err != nil {
 		return err
 	}
-	return s.reconcileRefunds(ctx, pa, run, theirsRef)
+	if err := s.reconcileRefunds(ctx, pa, run, theirsRef); err != nil {
+		return err
+	}
+	return s.reconcileSettlements(ctx, pa, run, live.Connector)
 }
 
 // ---- payments ----
@@ -326,7 +329,7 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 				fixed = true
 			}
 		}
-		if err := s.record(ctx, pa, run, it, fixed); err != nil {
+		if err := s.record(ctx, pa, run, it, fixed, ""); err != nil {
 			return err
 		}
 	}
@@ -400,7 +403,7 @@ func (s *Service) reconcileRefunds(ctx context.Context, pa store.ProviderAccount
 				fixed = true
 			}
 		}
-		if err := s.record(ctx, pa, run, it, fixed); err != nil {
+		if err := s.record(ctx, pa, run, it, fixed, ""); err != nil {
 			return err
 		}
 	}
@@ -411,7 +414,7 @@ func (s *Service) reconcileRefunds(ctx context.Context, pa store.ProviderAccount
 
 // record stores an item. Auto-fixed items are always stored. Anything else is
 // stored and alerted once per object and kind while it stays open.
-func (s *Service) record(ctx context.Context, pa store.ProviderAccount, run *store.ReconRun, it recon.Item, fixed bool) error {
+func (s *Service) record(ctx context.Context, pa store.ProviderAccount, run *store.ReconRun, it recon.Item, fixed bool, detail string) error {
 	ours := ""
 	if it.Ours != nil {
 		b, _ := json.Marshal(it.Ours)
@@ -456,11 +459,14 @@ func (s *Service) record(ctx context.Context, pa store.ProviderAccount, run *sto
 		return nil
 	}
 	s.raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: "recon." + it.Kind,
-		Message: describe(it, pa), Refs: map[string]string{"provider_account": pa.ID, "provider_id": it.ProviderID, "run": run.ID}})
+		Message: describe(it, pa, detail), Refs: map[string]string{"provider_account": pa.ID, "provider_id": it.ProviderID, "run": run.ID}})
 	return nil
 }
 
-func describe(it recon.Item, pa store.ProviderAccount) string {
+func describe(it recon.Item, pa store.ProviderAccount, detail string) string {
+	if detail != "" {
+		return detail
+	}
 	switch it.Kind {
 	case recon.KindAmountMismatch, recon.KindCurrencyMismatch:
 		return fmt.Sprintf("%s account %s: %s differs for %s: ours %d %s, provider %d %s", pa.Connector, pa.Name, it.Kind, it.ProviderID,
