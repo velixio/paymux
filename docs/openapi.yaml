@@ -178,6 +178,126 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
         "404":
           $ref: "#/components/responses/NotFound"
+  /v1/invoices:
+    get:
+      operationId: listInvoices
+      summary: List the invoices of a payment
+      description: Empty when the payment has no invoice (the app issues none, or the provider is merchant of record).
+      parameters:
+        - name: payment_id
+          in: query
+          required: true
+          schema: { type: string, pattern: "^pay_[0-9a-z]{26}$" }
+      responses:
+        "200":
+          description: The invoices.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+  /v1/invoices/{id}:
+    get:
+      operationId: getInvoice
+      summary: Retrieve an invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^inv_[0-9a-z]{26}$" }
+      responses:
+        "200":
+          description: The invoice.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/invoices/{id}/pdf:
+    get:
+      operationId: getInvoicePdf
+      summary: Download an invoice as PDF
+      description: 404 with `Retry-After` while the PDF is still being rendered (`pdf_ready` is false).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^inv_[0-9a-z]{26}$" }
+      responses:
+        "200":
+          description: The PDF.
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/credit_notes:
+    get:
+      operationId: listCreditNotes
+      summary: List the credit notes of a payment
+      parameters:
+        - name: payment_id
+          in: query
+          required: true
+          schema: { type: string, pattern: "^pay_[0-9a-z]{26}$" }
+      responses:
+        "200":
+          description: The credit notes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreditNoteList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+  /v1/credit_notes/{id}:
+    get:
+      operationId: getCreditNote
+      summary: Retrieve a credit note
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^crn_[0-9a-z]{26}$" }
+      responses:
+        "200":
+          description: The credit note.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreditNote"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/credit_notes/{id}/pdf:
+    get:
+      operationId: getCreditNotePdf
+      summary: Download a credit note as PDF
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: "^crn_[0-9a-z]{26}$" }
+      responses:
+        "200":
+          description: The PDF.
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   securitySchemes:
     bearerAuth:
@@ -365,3 +485,79 @@ components:
         reason: { type: string }
         initiated_by: { type: string, enum: [api, dashboard, provider, system] }
         created_at: { type: string, format: date-time }
+    Invoice:
+      type: object
+      description: |
+        A GST tax invoice. Amounts are minor units of `currency`; the total always
+        equals the amount received. Immutable once issued; corrections are credit
+        notes. Customers open it at `/i/<id>?t=<token>` (the `invoice.issued`
+        event carries the signed `hosted_url` and `pdf_url`).
+      required: [id, object, number, payment_id, issued_at, supply_type, place_of_supply, currency, taxable, cgst, sgst, igst, total, flags, template_version, pdf_ready]
+      properties:
+        id: { type: string, pattern: "^inv_[0-9a-z]{26}$" }
+        object: { type: string, const: invoice }
+        number: { type: string, examples: ["INV/2627/000123"] }
+        payment_id: { type: string }
+        subscription_id: { type: string }
+        issued_at: { type: string, format: date-time }
+        supply_type: { type: string, enum: [b2b, b2c, export_lut, export_igst] }
+        place_of_supply: { type: string, description: 2-digit state code or OUTSIDE_INDIA. }
+        currency: { type: string }
+        supplier: { type: object, description: Supplier snapshot at issue time. }
+        recipient: { type: object, description: Recipient snapshot at issue time. }
+        lines: { type: array, items: { type: object } }
+        taxable: { type: integer }
+        cgst: { type: integer }
+        sgst: { type: integer }
+        igst: { type: integer }
+        total: { type: integer }
+        fx_rate_inr: { type: string, description: INR per unit of a foreign currency, for exports. }
+        flags:
+          type: array
+          items:
+            type: string
+            examples: [pos_defaulted, fx_pending, export_igst, recipient_invalid]
+        template_version: { type: string }
+        pdf_ready: { type: boolean }
+    InvoiceList:
+      type: object
+      required: [object, data, has_more]
+      properties:
+        object: { type: string, const: list }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Invoice" }
+        has_more: { type: boolean }
+    CreditNote:
+      type: object
+      description: A credit note issued when a refund succeeds. Credits taxable value and tax in proportion; all credit notes of an invoice sum to at most its total.
+      required: [id, object, number, invoice_id, payment_id, issued_at, reason, currency, taxable, cgst, sgst, igst, total, flags, template_version, pdf_ready]
+      properties:
+        id: { type: string, pattern: "^crn_[0-9a-z]{26}$" }
+        object: { type: string, const: credit_note }
+        number: { type: string, examples: ["CN/2627/000045"] }
+        invoice_id: { type: string }
+        payment_id: { type: string }
+        refund_id: { type: string }
+        dispute_id: { type: string }
+        issued_at: { type: string, format: date-time }
+        reason: { type: string }
+        currency: { type: string }
+        lines: { type: array, items: { type: object } }
+        taxable: { type: integer }
+        cgst: { type: integer }
+        sgst: { type: integer }
+        igst: { type: integer }
+        total: { type: integer }
+        flags: { type: array, items: { type: string } }
+        template_version: { type: string }
+        pdf_ready: { type: boolean }
+    CreditNoteList:
+      type: object
+      required: [object, data, has_more]
+      properties:
+        object: { type: string, const: list }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/CreditNote" }
+        has_more: { type: boolean }

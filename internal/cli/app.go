@@ -17,7 +17,8 @@ import (
 )
 
 const appUsage = `usage: paymux app create --name NAME --slug SLUG [--mode test|live] [--return-url URL]
-       paymux app key --app SLUG [--mode test|live]`
+       paymux app key --app SLUG [--mode test|live]
+       paymux app tax --app SLUG --tax-entity ID|GSTIN [--sac 998315] [--rate 1800] [--inclusive=true]`
 
 // cliActor attributes CLI changes in the audit log.
 var cliActor = audit.Actor{Type: audit.ActorSystem, ID: "cli"}
@@ -25,6 +26,9 @@ var cliActor = audit.Actor{Type: audit.ActorSystem, ID: "cli"}
 // runApp implements "paymux app create" and "paymux app key". On SQLite it
 // needs the data-dir lock, so stop "paymux serve" first (or use Postgres).
 func runApp(ctx context.Context, args []string, env func(string) (string, bool), stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "tax" {
+		return runAppTax(ctx, args[1:], env, stdout, stderr)
+	}
 	if len(args) == 0 || (args[0] != "create" && args[0] != "key") {
 		fmt.Fprintln(stderr, appUsage)
 		return 2

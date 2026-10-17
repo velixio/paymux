@@ -16,6 +16,7 @@ import (
 	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/authz"
 	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/invoice"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/server"
 	"github.com/paymux/paymux/internal/store"
@@ -29,6 +30,8 @@ type Options struct {
 	DB   *store.DB
 	// Box seals stored idempotent responses (they contain checkout secrets).
 	Box *secrets.Box
+	// Invoices serves /v1/invoices and /v1/credit_notes; nil answers 404.
+	Invoices *invoice.Service
 	// BaseURL is PAYMUX_BASE_URL, the origin of checkout_url.
 	BaseURL *url.URL
 	Log     *slog.Logger
@@ -46,6 +49,8 @@ type API struct {
 	box     *secrets.Box
 	baseURL string
 	log     *slog.Logger
+
+	invoices *invoice.Service
 }
 
 // New builds the API.
@@ -56,7 +61,7 @@ func New(o Options) (*API, error) {
 	if o.Log == nil {
 		o.Log = slog.Default()
 	}
-	return &API{core: o.Core, db: o.DB, box: o.Box, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log}, nil
+	return &API{core: o.Core, db: o.DB, box: o.Box, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log, invoices: o.Invoices}, nil
 }
 
 // handler is an authenticated route handler. body is the already-read
@@ -71,6 +76,12 @@ func (a *API) Register(m Mux) {
 	m.HandleFunc("POST /v1/payments/{id}/cancel", a.wrap(a.cancelPayment, true))
 	m.HandleFunc("POST /v1/payments/{id}/refunds", a.wrap(a.createRefund, true))
 	m.HandleFunc("GET /v1/refunds/{id}", a.wrap(a.getRefund, false))
+	m.HandleFunc("GET /v1/invoices/{id}", a.wrap(a.getInvoice, false))
+	m.HandleFunc("GET /v1/invoices/{id}/pdf", a.wrap(a.getInvoicePDF, false))
+	m.HandleFunc("GET /v1/invoices", a.wrap(a.listInvoices, false))
+	m.HandleFunc("GET /v1/credit_notes/{id}", a.wrap(a.getCreditNote, false))
+	m.HandleFunc("GET /v1/credit_notes/{id}/pdf", a.wrap(a.getCreditNotePDF, false))
+	m.HandleFunc("GET /v1/credit_notes", a.wrap(a.listCreditNotes, false))
 	m.HandleFunc("/v1/", a.wrap(func(w http.ResponseWriter, r *http.Request, _ core.Principal, _ []byte) {
 		a.fail(w, r, http.StatusNotFound, "not_found", "no such endpoint")
 	}, false))

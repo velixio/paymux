@@ -13,7 +13,7 @@ import (
 	"github.com/paymux/paymux/migrations"
 )
 
-const usage = "usage: paymux <serve|migrate|app|version>"
+const usage = "usage: paymux <serve|migrate|app|tax-entity|report|fx|endpoint|version>"
 
 // Run executes the CLI and returns the process exit code.
 func Run(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer) int {
@@ -39,6 +39,19 @@ func Run(ctx context.Context, args []string, lookupEnv func(string) (string, boo
 			return 1
 		}
 		return runEndpoint(ctx, args[1:], env, stdout, stderr)
+	case "tax-entity", "report", "fx":
+		env, err := envWithDotEnv(lookupEnv)
+		if err != nil {
+			fmt.Fprintf(stderr, "paymux %s: %v\n", args[0], err)
+			return 1
+		}
+		switch args[0] {
+		case "tax-entity":
+			return runTaxEntity(ctx, args[1:], env, stdout, stderr)
+		case "report":
+			return runReport(ctx, args[1:], env, stdout, stderr)
+		}
+		return runFX(ctx, args[1:], env, stdout, stderr)
 	case "serve", "migrate", "app":
 		env, err := envWithDotEnv(lookupEnv)
 		if err != nil {
