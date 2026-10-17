@@ -121,7 +121,6 @@ func TestUserResetTOTP(t *testing.T) {
 		t.Fatalf("stdout=%q", out)
 	}
 	db = openDB(t, lookup)
-	defer db.Close()
 	u, _ = db.UserByID(ctx, u.ID)
 	if u.TOTPSecretEnc != nil || u.TOTPLastStep != -1 {
 		t.Fatalf("not reset: %+v", u)
@@ -129,6 +128,7 @@ func TestUserResetTOTP(t *testing.T) {
 	if _, _, err := db.SessionByTokenHash(ctx, "h"); err == nil {
 		t.Fatal("sessions survive a 2FA reset")
 	}
+	db.Close() // release the SQLite lock for the next CLI runs
 	if code, _, errs := runWithStdin(t, "", lookup, "user", "reset-2fa", "--email", "ghost@example.com"); code == 0 || !strings.Contains(errs, "no user") {
 		t.Fatalf("unknown user: code=%d %q", code, errs)
 	}
