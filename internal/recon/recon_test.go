@@ -24,11 +24,11 @@ func TestDiffPayments(t *testing.T) {
 		{ProviderID: "pay_SUB", Status: "succeeded", Amount: 1000, Currency: "INR"},
 	}
 	theirs := []Record{
-		{ProviderID: "pay_A", Status: "succeeded", Amount: 49900, Currency: "INR"},           // match
-		{ProviderID: "pay_B", Status: "succeeded", Amount: 10000, Currency: "INR"},           // status mismatch -> auto-fix
-		{ProviderID: "pay_C", Status: "succeeded", Amount: 9900, Currency: "INR"},            // amount mismatch -> flag
-		{ProviderID: "pay_D", Status: "succeeded", Amount: 500, Currency: "USD"},             // currency mismatch -> flag
-		{ProviderID: "pay_X", Status: "succeeded", Amount: 700, Currency: "INR"},             // unknown
+		{ProviderID: "pay_A", Status: "succeeded", Amount: 49900, Currency: "INR"},                             // match
+		{ProviderID: "pay_B", Status: "succeeded", Amount: 10000, Currency: "INR"},                             // status mismatch -> auto-fix
+		{ProviderID: "pay_C", Status: "succeeded", Amount: 9900, Currency: "INR"},                              // amount mismatch -> flag
+		{ProviderID: "pay_D", Status: "succeeded", Amount: 500, Currency: "USD"},                               // currency mismatch -> flag
+		{ProviderID: "pay_X", Status: "succeeded", Amount: 700, Currency: "INR"},                               // unknown
 		{ProviderID: "pay_R", Status: "succeeded", Amount: 1000, Currency: "INR", SubscriptionID: "sub_rzp_1"}, // renewal of known sub
 	}
 	known := func(providerSubID string) bool { return providerSubID == "sub_rzp_1" }
