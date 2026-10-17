@@ -1,0 +1,34 @@
+{
+  "data": {
+    "order": {
+      "order_id": "pay_ref_01",
+      "order_amount": 499.0,
+      "order_currency": "INR",
+      "order_tags": null
+    },
+    "payment": {
+      "cf_payment_id": 5114911111111,
+      "payment_status": "SUCCESS",
+      "payment_amount": 499.0,
+      "payment_currency": "INR",
+      "payment_message": "",
+      "payment_time": "2026-10-17T10:15:30+05:30",
+      "bank_reference": "1234567890",
+      "payment_group": "upi",
+      "payment_method": {
+        "upi": {
+          "channel": "collect",
+          "upi_id": "asha@upi"
+        }
+      }
+    },
+    "customer_details": {
+      "customer_name": "Asha",
+      "customer_id": "c_1",
+      "customer_email": "asha@example.com",
+      "customer_phone": "9876543210"
+    }
+  },
+  "event_time": "2026-10-17T10:15:32+05:30",
+  "type": "PAYMENT_SUCCESS_WEBHOOK"
+}

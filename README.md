@@ -69,6 +69,8 @@ Which provider can do what, generated from each connector's declared `Info` (the
 | PayU India | yes | - | yes | - | - | yes |
 | Zoho Payments | yes | - | - | - | - | yes |
 | Whop (merchant of record) | yes | - | - | - | yes | - |
+| Stripe | yes | yes / yes | yes | yes | yes | - |
+| Cashfree | yes | - | - | yes | - | - |
 | Remote (your service) | per service | per service | per service | per service | per service | per service |
 
 Whop is a merchant of record, so no GST invoice is issued for its payments. The matrix is regenerated with `go run ./scripts/capmatrix -w`; CI fails when it is stale.
