@@ -40,7 +40,11 @@ func TestGetPaymentListsItsAttempts(t *testing.T) {
 		if len(list) != 2 {
 			t.Fatalf("attempts: %v", got["attempts"])
 		}
+		// Attempts created in the same millisecond have no defined order: pick them by id.
 		x, y := list[0].(map[string]any), list[1].(map[string]any)
+		if x["id"] != a1.ID {
+			x, y = y, x
+		}
 		if x["id"] != a1.ID || x["status"] != "failed" || x["provider"] != "fake" || x["provider_payment_id"] != "pay_bad" || x["method"] != "card" ||
 			x["failure_code"] != "card_declined" || x["failure_message"] != "Your card was declined." || x["created_at"] == nil {
 			t.Errorf("first attempt %v", x)
