@@ -1,6 +1,7 @@
 package jobs_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -42,6 +43,16 @@ func newQueue(db *store.DB, c *clock) *jobs.Queue {
 		Jitter:       func() float64 { return 0 },
 		Logger:       slog.New(slog.DiscardHandler),
 	})
+}
+
+// newMigrated opens a SQLite store, migrates it, and returns it with a fake clock.
+func newMigrated(t *testing.T) (*store.DB, *clock) {
+	t.Helper()
+	db := storetest.SQLite(t)
+	if err := db.Migrate(ctx, migrations.FS); err != nil {
+		t.Fatal(err)
+	}
+	return db, &clock{t: t0}
 }
 
 // fixture migrates db and returns a queue with a controllable clock.
@@ -419,6 +430,97 @@ func TestExpiredLeaseBeyondMaxAttemptsIsDead(t *testing.T) {
 		r := one(t, db, "over")
 		if ran.Load() != 0 || r.State != "dead" || r.LastError == "" {
 			t.Fatalf("ran=%d %+v", ran.Load(), r)
+		}
+	})
+}
+
+func TestStaleWorkerCannotCompleteReclaimedJob(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		q, c := fixture(t, db)
+		enqueue(t, db, q, jobs.Job{Kind: "stale", Payload: 1})
+		first, err := db.ClaimJobs(ctx, c.Now(), 5*time.Minute, 10)
+		if err != nil || len(first) != 1 {
+			t.Fatalf("first claim: %d %v", len(first), err)
+		}
+		c.Add(5 * time.Minute)
+		second, err := db.ClaimJobs(ctx, c.Now(), 5*time.Minute, 10)
+		if err != nil || len(second) != 1 || second[0].Attempts != 2 {
+			t.Fatalf("second claim: %+v %v", second, err)
+		}
+		id := first[0].ID
+
+		// The old worker (attempt 1) must not touch the newer run.
+		if ok, err := db.CompleteJob(ctx, id, first[0].Attempts, c.Now()); err != nil || ok {
+			t.Fatalf("stale complete ok=%v err=%v", ok, err)
+		}
+		if ok, err := db.FailJob(ctx, id, first[0].Attempts, c.Now(), c.Now(), "stale", true); err != nil || ok {
+			t.Fatalf("stale fail ok=%v err=%v", ok, err)
+		}
+		if r := one(t, db, "stale"); r.State != "running" || r.Attempts != 2 || r.LastError != "" {
+			t.Fatalf("row changed by stale worker: %+v", r)
+		}
+		if ok, err := db.CompleteJob(ctx, id, second[0].Attempts, c.Now()); err != nil || !ok {
+			t.Fatalf("current complete ok=%v err=%v", ok, err)
+		}
+		if r := one(t, db, "stale"); r.State != "done" {
+			t.Fatalf("%+v", r)
+		}
+	})
+}
+
+func TestQueueLogsWarningForStaleCompletion(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		if err := db.Migrate(ctx, migrations.FS); err != nil {
+			t.Fatal(err)
+		}
+		c := &clock{t: t0}
+		var logs bytes.Buffer
+		q := jobs.New(db, jobs.Options{
+			Workers: 1, Lease: 5 * time.Minute, Clock: c.Now,
+			Jitter: func() float64 { return 0 },
+			Logger: slog.New(slog.NewTextHandler(&logs, nil)),
+		})
+		// While the handler runs, its lease expires and another worker reclaims the job.
+		q.Register("slow", func(context.Context, json.RawMessage) error {
+			c.Add(5 * time.Minute)
+			if got, err := db.ClaimJobs(ctx, c.Now(), 5*time.Minute, 10); err != nil || len(got) != 1 {
+				t.Errorf("reclaim: %d %v", len(got), err)
+			}
+			return nil
+		})
+		enqueue(t, db, q, jobs.Job{Kind: "slow", Payload: 1})
+		runOnce(t, q)
+		if r := one(t, db, "slow"); r.State != "running" || r.Attempts != 2 {
+			t.Fatalf("stale completion overwrote newer run: %+v", r)
+		}
+		if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), "stale") {
+			t.Fatalf("expected stale warning, logs=%q", logs.String())
+		}
+	})
+}
+
+func TestInsertJobDuplicateIDStillErrors(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		fixture(t, db)
+		j := store.JobRow{ID: "job_dupid", Kind: "k", Payload: json.RawMessage(`1`), RunAt: t0, MaxAttempts: 3}
+		insert := func(j store.JobRow) error {
+			return db.Write(ctx, func(tx store.Tx) error { return db.InsertJob(ctx, tx, j) })
+		}
+		if err := insert(j); err != nil {
+			t.Fatal(err)
+		}
+		if err := insert(j); err == nil {
+			t.Fatal("duplicate primary key must be an error, not a silent dedupe")
+		}
+		// Dedupe conflicts, by contrast, are silent no-ops.
+		a := store.JobRow{ID: "job_a", Kind: "k", Payload: json.RawMessage(`1`), RunAt: t0, MaxAttempts: 3, DedupeKey: "dk"}
+		b := a
+		b.ID = "job_b"
+		if err := insert(a); err != nil {
+			t.Fatal(err)
+		}
+		if err := insert(b); err != nil {
+			t.Fatalf("dedupe conflict must be a no-op: %v", err)
 		}
 	})
 }
