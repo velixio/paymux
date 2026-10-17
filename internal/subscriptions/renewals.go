@@ -165,11 +165,6 @@ func (s *Service) activate(ctx context.Context, tx store.Tx, sub *store.Subscrip
 	return nil
 }
 
-// setupBooking is a registration transaction that pays period 0: payment,
-// attempt and cycle exist (the attempt still "created"); settleSetup captures
-// it once the creating transaction has committed.
-type setupBooking struct{ subID, cycleID string }
-
 // startBilling begins billing of a merchant-triggered subscription that just
 // became active (or trialing). The registration transaction already debited
 // the first period with the customer's authentication, so a succeeded setup
