@@ -36,6 +36,8 @@ type fake struct {
 	listPages     int  // number of full pages to serve for lists
 	plans         int  // plans created
 	subStatus     string
+	settlements   []map[string]any // GET /v1/settlements
+	recon         map[string][]any // GET /v1/settlements/recon/combined, keyed "Y-M-D"
 }
 
 func newFake(status string) *fake { return &fake{payStatus: status, refundStatus: "processed"} }
@@ -153,6 +155,32 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		writeJSON(w, 200, fakeCollection(items...))
+	case r.Method == "GET" && p == "/v1/settlements":
+		q := r.URL.Query()
+		from, _ := strconv.ParseInt(q.Get("from"), 10, 64)
+		to, _ := strconv.ParseInt(q.Get("to"), 10, 64)
+		var items []any
+		for _, s := range f.settlements {
+			if at := s["created_at"].(int64); at >= from && at <= to {
+				items = append(items, s)
+			}
+		}
+		skip, _ := strconv.Atoi(q.Get("skip"))
+		count, _ := strconv.Atoi(q.Get("count"))
+		if skip > len(items) {
+			skip = len(items)
+		}
+		items = items[skip:min(skip+count, len(items))]
+		writeJSON(w, 200, fakeCollection(items...))
+	case r.Method == "GET" && p == "/v1/settlements/recon/combined":
+		q := r.URL.Query()
+		items := f.recon[q.Get("year")+"-"+q.Get("month")+"-"+q.Get("day")]
+		skip, _ := strconv.Atoi(q.Get("skip"))
+		count, _ := strconv.Atoi(q.Get("count"))
+		if skip > len(items) {
+			skip = len(items)
+		}
+		writeJSON(w, 200, fakeCollection(items[skip:min(skip+count, len(items))]...))
 	case r.Method == "GET" && p == "/v1/disputes":
 		writeJSON(w, 200, fakeCollection(disputeJSON("open")))
 	case r.Method == "GET" && p == "/v1/disputes/disp_Nx3":
