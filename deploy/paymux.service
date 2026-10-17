@@ -1,0 +1,65 @@
+# systemd unit for the Paymux hub.
+#
+#   install -m 0755 paymux /usr/local/bin/paymux
+#   useradd --system --home /var/lib/paymux --shell /usr/sbin/nologin paymux
+#   install -d -o paymux -g paymux -m 0700 /var/lib/paymux
+#   install -d -m 0750 -g paymux /etc/paymux
+#   (create /etc/paymux/paymux.env, mode 0640 root:paymux - see docs/runbook.md)
+#   cp deploy/paymux.service /etc/systemd/system/ && systemctl daemon-reload
+#   systemctl enable --now paymux
+#
+# Check the hardening score with: systemd-analyze security paymux
+
+[Unit]
+Description=Paymux payments hub
+Documentation=https://example.com/paymux/runbook
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=paymux
+Group=paymux
+EnvironmentFile=/etc/paymux/paymux.env
+ExecStart=/usr/local/bin/paymux serve
+Restart=on-failure
+RestartSec=3
+# The hub drains in-flight jobs for up to 30 s after SIGTERM.
+TimeoutStopSec=45
+KillSignal=SIGTERM
+
+# --- hardening -------------------------------------------------------------
+NoNewPrivileges=yes
+ProtectSystem=strict
+# The data dir (SQLite file, lock, custom theme files) is the only writable path.
+ReadWritePaths=/var/lib/paymux
+StateDirectory=paymux
+StateDirectoryMode=0700
+UMask=0077
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+CapabilityBoundingSet=
+AmbientCapabilities=
+# Binding :8080 needs no privilege.
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
