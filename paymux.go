@@ -38,6 +38,7 @@ import (
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/web"
 	"github.com/paymux/paymux/migrations"
+	"github.com/paymux/paymux/pkg/connector"
 )
 
 // Version is the build version; overridden via -ldflags -X.
@@ -58,6 +59,7 @@ type App struct {
 	emitter events.Emitter // nil means the outbound service
 
 	verifiers inbound.VerifierFunc
+	connHTTP  func(store.ProviderAccount, connector.Info, []string) *http.Client
 
 	mu          sync.Mutex
 	addr, iaddr string
@@ -72,6 +74,13 @@ type Option func(*App)
 
 // WithLogger sets the logger. The default writes redacted JSON to stderr.
 func WithLogger(l *slog.Logger) Option { return func(a *App) { a.log = l } }
+
+// WithConnectorHTTP overrides the HTTP client given to each connector (tests
+// point connectors at a fake provider). The default is
+// connector.NewHTTPClient with per-account rate limiting and log redaction.
+func WithConnectorHTTP(f func(pa store.ProviderAccount, info connector.Info, secretValues []string) *http.Client) Option {
+	return func(a *App) { a.connHTTP = f }
+}
 
 // WithEmitter replaces the domain-event emitter. The default is the outbound
 // webhooks service.
@@ -146,7 +155,7 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	breaker := routing.NewBreaker(nil)
 	rt := checkout.NewRouting(breaker)
-	conns := connectors.New(connectors.Options{DB: db, Box: box, BaseURL: a.cfg.BaseURL, Logger: a.log})
+	conns := connectors.New(connectors.Options{DB: db, Box: box, BaseURL: a.cfg.BaseURL, Logger: a.log, HTTPClient: a.connHTTP})
 	// GST invoicing: documents are issued by hooks inside the transaction in
 	// which a payment or refund succeeds.
 	inv := invoice.New(invoice.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter, Mailer: notify.New(a.cfg),

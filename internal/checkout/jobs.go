@@ -64,6 +64,7 @@ func (s *Service) ProcessProviderEvent(ctx context.Context, payload json.RawMess
 	if ev.ProviderAccountID != jp.ProviderAccountID {
 		return jobs.Permanent(errors.New("checkout: provider event belongs to another account"))
 	}
+	s.o.Logger.Debug("checkout: processing provider event", "event", ev.ID, "account", ev.ProviderAccountID, "verified", ev.Verified)
 	live, err := s.o.Conns.Get(ctx, ev.ProviderAccountID)
 	if err != nil {
 		return jobs.Permanent(err)
@@ -73,6 +74,7 @@ func (s *Service) ProcessProviderEvent(ctx context.Context, payload json.RawMess
 	notes, err := live.Connector.ParseWebhook(ctx, connector.WebhookRequest{Method: "POST", Headers: headers, Body: ev.Body,
 		ReceivedAt: ev.ReceivedAt.UnixMilli()})
 	if err != nil {
+		s.o.Logger.Warn("checkout: provider event does not parse", "event", ev.ID, "account", ev.ProviderAccountID, "err", err)
 		s.markProcessed(ctx, ev.ID, "parse: "+err.Error())
 		return jobs.Permanent(err)
 	}
