@@ -1,0 +1,16 @@
+{{define "title"}}Overview - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h2>Overview <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h2>
+<p class="muted">Gross charges, refunds and net, per app and currency, from the ledger.</p>
+{{range .Periods}}
+<section id="period-{{.ID}}">
+<h3>{{.Label}}</h3>
+<table class="grid">
+<thead><tr><th>App</th><th>Currency</th><th>Gross</th><th>Refunds</th><th>Net</th></tr></thead>
+<tbody>{{range .Rows}}<tr><td>{{.App}}</td><td>{{.Currency}}</td><td>{{.Gross}}</td><td>{{.Refunds}}</td><td>{{.Net}}</td></tr>{{else}}<tr><td colspan="5" class="muted">No activity.</td></tr>{{end}}</tbody>
+</table>
+</section>
+{{end}}
+{{template "dash_close" .}}{{end}}

@@ -35,6 +35,11 @@ type Page struct {
 	Routing  *routingView
 	Route    *routeResult
 	TestForm testForm
+
+	// audit log and overview
+	AuditRows   []auditRow
+	AuditFilter auditFilter
+	Periods     []periodView
 }
 
 type appOpt struct{ ID, Name string }
@@ -48,6 +53,7 @@ func (d *Dashboard) routesPages() {
 	m.HandleFunc("POST "+prefix+"/deliveries/{id}/replay", d.authed(authz.WebhookReplay, d.replaySubmit))
 	d.routesApps()
 	d.routesSettings()
+	d.routesAuditOverview()
 }
 
 // orgID returns the single org's id (cached once found).

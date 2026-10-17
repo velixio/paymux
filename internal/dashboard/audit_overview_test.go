@@ -138,11 +138,15 @@ func TestOverviewTotalsFromLedger(t *testing.T) {
 		body = e.pageOK(c, "/dashboard/overview")
 		has(t, period(t, body, "today"), "1234.56 INR")
 		lacks(t, body, "100.00 INR")
-
-		// nothing to show in a quiet mode
-		e.clk.Add(60 * 24 * time.Hour)
-		body = e.pageOK(c, "/dashboard/overview")
-		has(t, period(t, body, "30d"), "No activity")
 	})
 }
 
+func TestOverviewEmpty(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		body := e.pageOK(e.roleClient("viewer"), "/dashboard/overview")
+		for _, id := range []string{"today", "7d", "30d"} {
+			has(t, period(t, body, id), "No activity")
+		}
+	})
+}
