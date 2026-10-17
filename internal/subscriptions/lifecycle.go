@@ -418,8 +418,9 @@ func (s *Service) UpdatePaymentMethod(ctx context.Context, sc core.Scope, id, me
 			return newErr(ErrInvalidState, "the payment method of a %s subscription cannot be changed", sub.Status)
 		}
 		if sub.BillingMode != string(connector.MerchantTriggered) {
-			// TODO(spec): provider-managed payment-method updates need the
-			// provider's own update link; Razorpay offers none through the API.
+			// A provider limitation, not a gap: a provider-managed subscription's
+			// payment method is changed with the provider's own update link, which
+			// Razorpay does not offer through its API.
 			return newErr(ErrUnsupported, "this subscription's payment method is managed at the provider")
 		}
 		pol, err := s.loadPolicy(ctx, tx, sub.AppID)

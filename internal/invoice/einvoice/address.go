@@ -8,8 +8,9 @@ import (
 
 // The portal wants an address as lines, a locality and a 6-digit PIN. Invoices
 // store either those parts (newer ones) or one comma-separated string.
-// TODO(spec): the split of free text is a best effort (the last comma
-// segment before the PIN, minus a trailing state name, is the locality).
+// The split of free text is a best effort (the last comma segment before the
+// PIN, minus a trailing state name, is the locality); what cannot be split is
+// reported to the operator as a problem to fix, never guessed.
 
 type address struct {
 	addr1, addr2, loc string

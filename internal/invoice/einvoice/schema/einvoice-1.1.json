@@ -24,7 +24,7 @@
     "Irn": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$",
-      "$comment": "TODO(spec): the IRP returns the IRN; an upload normally omits it"
+      "$comment": "The IRP returns the IRN; an upload normally omits it"
     },
     "TranDtls": {
       "type": "object",
@@ -167,7 +167,7 @@
           "Unit": {
             "type": "string",
             "pattern": "^[A-Z]{3}$",
-            "$comment": "TODO(spec): the portal restricts this to its UQC list (OTH, NOS, ...)"
+            "$comment": "The portal restricts this to its UQC list (OTH, NOS, ...); Paymux generates OTH only"
           },
           "UnitPrice": {
             "type": "number",
@@ -319,7 +319,7 @@
     },
     "PayDtls": {
       "type": "object",
-      "$comment": "TODO(spec): payment details are optional and not generated"
+      "$comment": "Payment details are optional and not generated"
     },
     "RefDtls": {
       "type": "object",
@@ -350,19 +350,19 @@
     },
     "AddlDocDtls": {
       "type": "array",
-      "$comment": "TODO(spec): supporting documents are optional and not generated"
+      "$comment": "Supporting documents are optional and not generated"
     },
     "EwbDtls": {
       "type": "object",
-      "$comment": "TODO(spec): e-way bill details do not apply to services"
+      "$comment": "E-way bill details do not apply to services"
     },
     "DispDtls": {
       "type": "object",
-      "$comment": "TODO(spec): dispatch details do not apply to services"
+      "$comment": "Dispatch details do not apply to services"
     },
     "ShipDtls": {
       "type": "object",
-      "$comment": "TODO(spec): shipping details do not apply to services"
+      "$comment": "Shipping details do not apply to services"
     }
   },
   "definitions": {

@@ -65,14 +65,18 @@ const defaultRouting = `{"rules":[` +
 // The built-in defaults live here, in code (spec section 8a). They are copied
 // into the org values on first start.
 //
-// TODO(spec): pdf_signing (tax-entity level) is owned by the invoicing lane.
-// TODO(spec): billing_details defaults to "off" when invoicing is off; the
-// default here is the invoicing-on value and the pay-page lane must apply the
-// conditional.
-// TODO(spec): invoice/credit-note prefixes also exist per tax entity; only the
-// org and app levels are settable here.
-// TODO(spec): the UPI cap of 3 dunning retries per cycle is enforced by the
-// subscriptions lane, which knows the mandate method.
+// Notes on rows of the table that are not settings here:
+//   - pdf_signing (tax-entity level) is not a setting: a PDF is signed
+//     exactly when the tax entity holds a digital signature certificate
+//     (internal/invoice, Service.SetTaxEntityDSC), else the signatory note is
+//     printed. Removing the certificate is how to choose the note.
+//   - billing_details defaults to "off" when invoicing is off: the default here
+//     is the invoicing-on value and the pay page applies the conditional
+//     (internal/paypage billingNeed).
+//   - invoice and credit-note prefixes also exist per tax entity and per app
+//     profile; the order is app profile, tax entity, then these settings.
+//   - the UPI cap of 3 dunning retries per cycle is enforced by the
+//     subscriptions service, which knows the mandate method.
 var defs = []Def{
 	{"routing", defaultRouting, orgApp, validRouting},
 	{"duplicate_payment_action", `"review"`, orgApp, oneOf("review", "auto_refund")},

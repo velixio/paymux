@@ -7,8 +7,11 @@
 // payout.create action and the explicit payouts:write key scope, an account
 // must opt in with the "payout" purpose, and the beneficiary is stored sealed.
 //
-// TODO(spec): provider webhooks for payouts are not mapped yet (there is no
-// payout notification kind); status comes from polling.
+// A connector that can tell Paymux of payout changes sends them as payout
+// notifications (connector.NotifyPayout); like every webhook they are only a
+// hint: the payout is fetched, checked against ours, and that is applied. A
+// payout is also followed by polling, which is the only source for a provider
+// that sends no webhook.
 package payouts
 
 import (
