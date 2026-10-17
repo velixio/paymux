@@ -217,7 +217,7 @@ func (r *receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	defer r.mu.Unlock()
 	if _, err := r.v.Verify(req.Header, body); err != nil {
 		r.bad++
-		http.Error(w, "bad signature", 401)
+		http.Error(w, "bad signature", http.StatusUnauthorized)
 		return
 	}
 	var ev map[string]any
