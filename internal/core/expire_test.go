@@ -90,11 +90,9 @@ func TestExpireDue(t *testing.T) {
 
 func TestExpireDueRespectsLimitAndIgnoresStaleAttempts(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
-		var ids []string
 		for i := 0; i < 3; i++ {
 			p := e.payment(100)
 			e.backdate(p.ID, time.Minute)
-			ids = append(ids, p.ID)
 		}
 		if n, _ := e.svc.ExpireDue(ctx, 2); n != 2 {
 			t.Errorf("limit: %d", n)
