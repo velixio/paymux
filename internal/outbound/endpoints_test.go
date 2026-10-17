@@ -82,27 +82,27 @@ func TestCreateEndpointValidation(t *testing.T) {
 	})
 }
 
-func TestCreateEndpointDefaultsToTheOnlyOrg(t *testing.T) {
+// An endpoint belongs to an app that exists, in the org the caller names; with
+// no org named, the app's own org is used.
+func TestCreateEndpointChecksTheApp(t *testing.T) {
 	storetest.Each(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
-		in := outbound.CreateEndpointInput{AppID: "app_1", URL: "https://example.com/h"}
-		if _, _, err := e.svc.CreateEndpoint(ctx, in); err == nil {
-			t.Fatal("no org and no OrgID must fail")
+		if _, _, err := e.svc.CreateEndpoint(ctx, outbound.CreateEndpointInput{OrgID: "org_1", AppID: "app_nosuch", URL: "https://example.com/h"}); err == nil {
+			t.Error("an endpoint for an app that does not exist was created")
 		}
-		err := db.Write(ctx, func(tx store.Tx) error {
-			_, err := tx.ExecContext(ctx, `INSERT INTO orgs (id, name, created_at) VALUES ('org_9', 'Acme', 1)`)
-			return err
-		})
-		if err != nil {
-			t.Fatal(err)
+		if _, _, err := e.svc.CreateEndpoint(ctx, outbound.CreateEndpointInput{OrgID: "org_other", AppID: "app_1", URL: "https://example.com/h"}); err == nil {
+			t.Error("an endpoint for another org's app was created")
 		}
-		ep, _, err := e.svc.CreateEndpoint(ctx, in)
+		if list, _ := e.svc.ListEndpoints(ctx, ""); len(list) != 0 {
+			t.Errorf("refused endpoints were stored: %+v", list)
+		}
+		ep, _, err := e.svc.CreateEndpoint(ctx, outbound.CreateEndpointInput{AppID: "app_1", URL: "https://example.com/h"})
 		if err != nil {
 			t.Fatal(err)
 		}
 		row, _ := db.GetEndpoint(ctx, ep.ID)
-		if row.OrgID != "org_9" {
-			t.Fatalf("org %q", row.OrgID)
+		if row.OrgID != "org_1" {
+			t.Fatalf("org %q, want the app's org_1", row.OrgID)
 		}
 	})
 }

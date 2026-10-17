@@ -56,6 +56,21 @@ func newEnv(t *testing.T, db *store.DB, allowPrivate bool) *env {
 		t.Fatal(err)
 	}
 	clk := &clock{t: time.UnixMilli(1_800_000_000_000).UTC()}
+	// An endpoint belongs to an app that exists: org_1 owns app_1 and app_2.
+	err = db.Write(ctx, func(tx store.Tx) error {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO orgs (id, name, created_at) VALUES ('org_1', 'Acme', 1)`); err != nil {
+			return err
+		}
+		for _, id := range []string{"app_1", "app_2"} {
+			if err := store.InsertApp(ctx, tx, store.App{ID: id, OrgID: "org_1", Name: id, Slug: id, CreatedAt: clk.t}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	q := jobs.New(db, jobs.Options{Clock: clk.Now, Logger: slog.New(slog.DiscardHandler)})
 	svc := outbound.New(outbound.Options{DB: db, Queue: q, Box: box, AllowPrivate: allowPrivate, Now: clk.Now,
 		Logger: slog.New(slog.DiscardHandler)})
