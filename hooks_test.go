@@ -123,7 +123,10 @@ func TestAHookFailureIsReportedAndNeverStopsTheOthers(t *testing.T) {
 		failures = append(failures, failure{hook, e, err})
 	}
 	var ran []string
-	app.OnPaymentSucceeded(func(context.Context, PaymentEvent) error { ran = append(ran, "error"); return errors.New("crm is down") })
+	app.OnPaymentSucceeded(func(context.Context, PaymentEvent) error {
+		ran = append(ran, "error")
+		return errors.New("crm is down")
+	})
 	app.OnPaymentSucceeded(func(context.Context, PaymentEvent) error { ran = append(ran, "panic"); panic("boom") })
 	app.OnPaymentSucceeded(func(context.Context, PaymentEvent) error { ran = append(ran, "ok"); return nil })
 	app.runHooks(context.Background(), ev("payment.succeeded", "payment", "pay_9", `{"id":"pay_9"}`))

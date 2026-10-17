@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -383,6 +384,16 @@ func TestFullPaymentFlow(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// Go hooks: one recorder per hook, plus a hook that fails and one that
+		// panics, to show money is unaffected.
+		seen := &hookLog{}
+		app.OnPaymentSucceeded(func(_ context.Context, e PaymentEvent) error { seen.add("payment.succeeded", e); return nil })
+		app.OnPaymentSucceeded(func(context.Context, PaymentEvent) error { return errors.New("crm is down") })
+		app.OnPaymentSucceeded(func(context.Context, PaymentEvent) error { panic("hook bug") })
+		app.OnRefundSucceeded(func(_ context.Context, e RefundEvent) error { seen.add("refund.succeeded", e); return nil })
+		app.OnDisputeOpened(func(_ context.Context, e DisputeEvent) error { seen.add("dispute.opened", e); return nil })
+		app.OnInvoiceIssued(func(_ context.Context, e InvoiceEvent) error { seen.add("invoice.issued", e); return nil })
+		app.OnRoute(func(RouteRequest) []string { return nil }) // one account only: never asked, must not matter
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
 		go func() { done <- app.Start(ctx) }()
@@ -627,6 +638,29 @@ func TestFullPaymentFlow(t *testing.T) {
 		if _, p := api("GET", "/v1/payments/"+id, nil); containsFlag(p["flags"], "disputed") || !containsFlag(p["flags"], "dispute_lost") {
 			t.Errorf("payment flags after the loss: %v", p["flags"])
 		}
+
+		// 13. The Go hooks ran after commit with read-only snapshots, a failing
+		//     or panicking hook changed nothing, and ops were told about it.
+		waitFor(t, "the hooks", func() bool {
+			return seen.has("payment.succeeded") && seen.has("refund.succeeded") && seen.has("dispute.opened") && seen.has("invoice.issued")
+		})
+		if pe := seen.first("payment.succeeded").(PaymentEvent); pe.Payment.ID != id || pe.Payment.Status != "succeeded" || pe.Payment.Amount != 49900 ||
+			pe.Payment.AmountReceived != 49900 || pe.Event.Type != "payment.succeeded" || pe.Event.AppID != seed.appID || pe.Event.Mode != "test" {
+			t.Errorf("OnPaymentSucceeded saw %+v", pe)
+		}
+		if re := seen.first("refund.succeeded").(RefundEvent); re.Refund.ID != refundID || re.Refund.PaymentID != id || re.Refund.Amount != 10000 {
+			t.Errorf("OnRefundSucceeded saw %+v", re)
+		}
+		if de := seen.first("dispute.opened").(DisputeEvent); de.Dispute.PaymentID != id || de.Dispute.Amount != 49900 || de.Dispute.Status != "needs_response" {
+			t.Errorf("OnDisputeOpened saw %+v", de)
+		}
+		if ie := seen.first("invoice.issued").(InvoiceEvent); ie.Invoice.PaymentID != id || ie.Invoice.Total != 49900 || ie.Invoice.Number == "" {
+			t.Errorf("OnInvoiceIssued saw %+v", ie)
+		}
+		waitFor(t, "the hook.failed alert", func() bool { return ops.contains("OnPaymentSucceeded failed") })
+		if n := seen.count("payment.succeeded"); n != 1 {
+			t.Errorf("OnPaymentSucceeded ran %d times for one payment", n)
+		}
 		shutdown(t, r)
 	}
 	t.Run("sqlite", func(t *testing.T) {
@@ -634,6 +668,43 @@ func TestFullPaymentFlow(t *testing.T) {
 		run(t, "sqlite://"+dir+"/paymux.db", dir)
 	})
 	t.Run("postgres", func(t *testing.T) { run(t, storetest.PostgresURL(t), t.TempDir()) })
+}
+
+// hookLog records what the Go hooks were called with.
+type hookLog struct {
+	mu   sync.Mutex
+	kind []string
+	val  []any
+}
+
+func (h *hookLog) add(kind string, v any) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.kind, h.val = append(h.kind, kind), append(h.val, v)
+}
+
+func (h *hookLog) count(kind string) (n int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, k := range h.kind {
+		if k == kind {
+			n++
+		}
+	}
+	return n
+}
+
+func (h *hookLog) has(kind string) bool { return h.count(kind) > 0 }
+
+func (h *hookLog) first(kind string) any {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i, k := range h.kind {
+		if k == kind {
+			return h.val[i]
+		}
+	}
+	return nil
 }
 
 // opsSink records the ops alerts posted to PAYMUX_OPS_WEBHOOK_URL.
