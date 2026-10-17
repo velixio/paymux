@@ -65,6 +65,12 @@ func (s *Service) CreateRefund(ctx context.Context, in CreateRefundInput) (store
 		if p.AppID != in.Scope.AppID || p.Mode != in.Scope.Mode {
 			return newErr(ErrNotFound, "payment not found")
 		}
+		// The card network has taken (or is holding) this money back; a refund of
+		// ours as well would pay the customer twice. Refunds the provider made
+		// itself are booked through ImportProviderRefund, not here.
+		if in.InitiatedBy != "provider" && (p.HasFlag("disputed") || p.HasFlag("dispute_lost")) {
+			return newErr(ErrNotRefundable, "the payment is in dispute or its dispute was lost; the money is already being taken back")
+		}
 		attempts, err := store.ListAttempts(ctx, tx, p.ID)
 		if err != nil {
 			return err
