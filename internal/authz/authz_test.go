@@ -26,6 +26,7 @@ func TestRoleMatrix(t *testing.T) {
 		{UserManage, true, false, false},
 		{AuditRead, true, false, false},
 		{RoleManage, true, false, false},
+		{PayoutCreate, true, false, false},
 	}
 	if len(rows) != len(AllActions) {
 		t.Fatalf("matrix has %d rows for %d actions", len(rows), len(AllActions))
@@ -65,7 +66,7 @@ func TestSystemActorAllowed(t *testing.T) {
 
 func TestAPIKeyScopedToItsApp(t *testing.T) {
 	key := Actor{Kind: KindAPIKey, ID: "key_1", AppID: "app_1", Mode: "test"}
-	allowed := []Action{PaymentCreate, PaymentRead, PaymentCancel, RefundCreate, RefundRead}
+	allowed := []Action{PaymentCreate, PaymentRead, PaymentCancel, RefundCreate, RefundRead, PayoutCreate} // payouts are gated by the explicit payouts:write scope
 	for _, a := range AllActions {
 		isAllowed := false
 		for _, x := range allowed {

@@ -181,6 +181,14 @@ func TestSubscriptionAPI(t *testing.T) {
 		if u := f.do("POST", "/v1/subscriptions/"+id+"/update", f.liveKey, map[string]any{}); u.status != 400 {
 			t.Errorf("update without amount: %d", u.status)
 		}
+		if u := f.do("POST", "/v1/subscriptions/"+id+"/update", f.liveKey, map[string]any{"amount": 60000, "proration": "sometimes"}); u.status != 400 || u.errType(t) != "invalid_request" {
+			t.Errorf("unknown proration mode: %d %s", u.status, u.raw)
+		}
+		for _, mode := range []string{"none", "next_invoice", "immediate"} {
+			if u := f.do("POST", "/v1/subscriptions/"+id+"/update", f.liveKey, map[string]any{"amount": 60000, "proration": mode}); u.status != 409 {
+				t.Errorf("proration %s while incomplete: %d %s", mode, u.status, u.raw)
+			}
+		}
 		if u := f.do("POST", "/v1/subscriptions/"+id+"/payment_method", f.liveKey, nil); u.status != 409 {
 			t.Errorf("payment_method while incomplete: %d", u.status)
 		}

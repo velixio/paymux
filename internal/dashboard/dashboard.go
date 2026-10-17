@@ -31,6 +31,7 @@ import (
 	"github.com/paymux/paymux/internal/look"
 	"github.com/paymux/paymux/internal/oidc"
 	"github.com/paymux/paymux/internal/outbound"
+	"github.com/paymux/paymux/internal/paylinks"
 	"github.com/paymux/paymux/internal/reconcile"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/settings"
@@ -96,6 +97,8 @@ type Options struct {
 	OIDC               *oidc.Client
 	OIDCAllowedDomains []string
 	OIDCDefaultRole    string
+	// PaymentLinks serves the payment links page.
+	PaymentLinks *paylinks.Service
 	// Location is the time zone of "today" and of date filters (default UTC).
 	Location *time.Location
 	// PageSize is the number of rows per list page (default 25).
@@ -130,8 +133,8 @@ type Dashboard struct {
 // New builds a Dashboard.
 func New(o Options) (*Dashboard, error) {
 	if o.DB == nil || o.Box == nil || o.Renderer == nil || o.BaseURL == nil || len(o.MasterKey) == 0 ||
-		o.Core == nil || o.Settings == nil || o.Outbound == nil || o.Invoice == nil || o.Connectors == nil || o.Disputes == nil || o.Recon == nil || o.Jobs == nil {
-		return nil, errors.New("dashboard: DB, Box, Renderer, BaseURL, MasterKey, Core, Settings, Outbound, Invoice, Connectors, Disputes, Recon and Jobs are required")
+		o.Core == nil || o.Settings == nil || o.Outbound == nil || o.Invoice == nil || o.Connectors == nil || o.Disputes == nil || o.Recon == nil || o.Jobs == nil || o.PaymentLinks == nil {
+		return nil, errors.New("dashboard: DB, Box, Renderer, BaseURL, MasterKey, Core, Settings, Outbound, Invoice, Connectors, Disputes, Recon, Jobs and PaymentLinks are required")
 	}
 	if o.Location == nil {
 		o.Location = time.UTC
@@ -173,7 +176,7 @@ var sections = []navItem{
 
 // navItems is the full menu; built pages and placeholders interleaved.
 var navItems = []navItem{
-	{"overview", "Overview", prefix + "/overview"}, {"payments", "Payments", prefix + "/payments"},
+	{"overview", "Overview", prefix + "/overview"}, {"payments", "Payments", prefix + "/payments"}, {"payment-links", "Payment links", prefix + "/payment-links"},
 	{"subscriptions", "Subscriptions", prefix + "/subscriptions"}, {"disputes", "Disputes", prefix + "/disputes"},
 	{"reconciliation", "Reconciliation", prefix + "/reconciliation"},
 	{"invoices", "Invoices", prefix + "/invoices"}, {"reports", "Reports", prefix + "/reports"},

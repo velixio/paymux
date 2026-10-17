@@ -13,10 +13,11 @@ info:
 
     **Scopes.** An API key may be limited to some scopes: `payments:read`,
     `payments:write`, `refunds:read`, `refunds:write`, `subscriptions:read`,
-    `subscriptions:write` and `invoices:read`. `x:write` also allows the reads
+    `subscriptions:write`, `invoices:read`, `payouts:read` and `payouts:write`. `x:write` also allows the reads
     of `x`. Each operation names the scope it needs in `x-required-scope`; a key
     without it gets 403 `insufficient_scope`. Keys created before scopes
-    existed, and keys created without any, have every scope.
+    existed, and keys created without any, have every scope except the payouts ones (`payouts:read`,
+    `payouts:write`), which a key has only when they are listed: sending money out is always a deliberate grant.
 
     **Idempotency.** `POST` requests may carry an `Idempotency-Key` header
     (up to 255 characters). The same key with the same method, path and body
@@ -352,6 +353,100 @@ paths:
           $ref: "#/components/responses/InsufficientScope"
         "404":
           $ref: "#/components/responses/NotFound"
+  /v1/payment_links:
+    post:
+      operationId: createPaymentLink
+      x-required-scope: payments:write
+      summary: Create a payment link
+      description: |
+        A payment link is a shareable page at `<PAYMUX_BASE_URL>/l/<slug>` (also served on the app's custom domains).
+        The customer enters their name, email and optionally phone (and, where the usual rules require it, their billing
+        details), and Paymux creates a normal payment for them with `metadata.payment_link_id` set to the link's id and
+        `order_ref` set to the link's id, then sends them into the usual pay flow. You get the usual `payment.*` events.
+
+        Give either a fixed `amount`, or `min_amount` (and optionally `max_amount`) to let the customer choose.
+        A **reusable** link takes any number of payments. A **single-use** link is held by the first visitor while their
+        payment is open (other visitors are asked to try later), and switches itself off when the first payment succeeds
+        (`payment_link.deactivated` with `deactivated_reason: used`). An `expires_at` makes the page stop taking payments.
+        The `payment_link.created` and `payment_link.deactivated` events carry the link.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePaymentLinkRequest"
+      responses:
+        "201":
+          description: The link, with its public `url`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentLink"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+    get:
+      operationId: listPaymentLinks
+      x-required-scope: payments:read
+      summary: List payment links
+      parameters:
+        - { name: active, in: query, required: false, schema: { type: boolean }, description: Only active (true) or switched-off (false) links. }
+        - { name: starting_after, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        "200":
+          description: A page of links of this key's app and mode, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentLinkList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+  /v1/payment_links/{id}:
+    get:
+      operationId: getPaymentLink
+      x-required-scope: payments:read
+      summary: Retrieve a payment link
+      parameters:
+        - $ref: "#/components/parameters/PaymentLinkId"
+      responses:
+        "200":
+          description: The link.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentLink"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/payment_links/{id}/deactivate:
+    post:
+      operationId: deactivatePaymentLink
+      x-required-scope: payments:write
+      summary: Deactivate a payment link
+      description: |
+        Switches the link off for good: its page shows that the link is no longer active and creates no more payments.
+        Payments already started keep working. Repeating the call returns the link unchanged and sends no second event.
+      parameters:
+        - $ref: "#/components/parameters/PaymentLinkId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: The inactive link.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentLink"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /v1/subscriptions:
     post:
       operationId: createSubscription
@@ -466,9 +561,27 @@ paths:
     post:
       operationId: updateSubscription
       x-required-scope: subscriptions:write
-      summary: Change the amount from the next period
+      summary: Change the amount from the next period, optionally prorating the current one
       description: |
-        No proration. If the new amount is above the mandate's maximum the response has
+        The new amount applies from the next period. `proration` says what happens to the rest of the current
+        period (merchant-triggered subscriptions; the difference is `(new - old) x remaining seconds / period
+        seconds`, rounded to the nearest minor unit):
+
+        - `none` (default): nothing; the current period stays as paid.
+        - `next_invoice`: the difference is added to the next renewal (an upgrade) or taken off it (a downgrade).
+        - `immediate`: an upgrade's difference is charged as soon as the rules allow: the customer gets a
+          pre-debit notice now and the debit runs at least 24 hours later, as a separate charge (`charge_at` in
+          the `proration` object). If that cannot be done now (no active mandate, a re-authorization under way,
+          the amount above the mandate maximum) it is added to the next renewal instead and `proration.reason`
+          says why. A downgrade is a credit on the next renewal, as with `next_invoice`.
+
+        A credit is never refunded automatically; one larger than the next renewal carries over to the ones after
+        it (a renewal is never below one minor unit). The prorated amounts appear as separate lines on the invoice.
+        Provider-managed subscriptions are billed by the provider and answer 422 `unsupported` to any proration
+        other than `none`. A change on a subscription that is not active, or at the very end of the period, has
+        nothing to prorate (`proration.reason`).
+
+        If the new amount is above the mandate's maximum the response has
         `requires_reauthorization: true` and a new `checkout_url`, and `subscription.reauthorization_required`
         fires; the new amount applies once the customer authorises the larger mandate.
       parameters:
@@ -483,10 +596,14 @@ paths:
               required: [amount]
               properties:
                 amount: { type: integer, minimum: 1, description: Minor units per period. }
+                proration:
+                  type: string
+                  enum: [none, next_invoice, immediate]
+                  default: none
               additionalProperties: false
       responses:
         "200":
-          description: The subscription (with `checkout_url` when re-authorization is needed).
+          description: The subscription (with `checkout_url` when re-authorization is needed, and `proration` when a prorated change was requested).
           content:
             application/json:
               schema:
@@ -540,6 +657,107 @@ paths:
           $ref: "#/components/responses/StateConflict"
         "422":
           $ref: "#/components/responses/SubscriptionUnprocessable"
+  /v1/payouts:
+    post:
+      operationId: createPayout
+      x-required-scope: payouts:write
+      summary: Send money out to a beneficiary
+      description: |
+        Records the payout (`pending`) and submits it to the provider in the background; follow it with
+        `payout.processing`, `payout.succeeded`, `payout.failed` and `payout.reversed` events or `GET`. The
+        provider is sent the payout's own reference as an idempotency token, so a retry never pays twice; use an
+        `Idempotency-Key` for your own retries as well.
+
+        This is the only operation an ordinary key cannot do: the key must list `payouts:write` explicitly (keys
+        with no scope list do not have it), and a provider account of the app must have the `payout` purpose and a
+        connector that can pay out. The beneficiary is stored encrypted and shown masked.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, currency, beneficiary]
+              properties:
+                amount: { type: integer, minimum: 1, description: Minor units. }
+                currency: { type: string, examples: [INR] }
+                beneficiary:
+                  type: object
+                  description: Either a bank account (`account_number` and `ifsc`) or a `upi` id.
+                  required: [name]
+                  properties:
+                    name: { type: string, maxLength: 100 }
+                    account_number: { type: string, pattern: "^[0-9]{6,20}$" }
+                    ifsc: { type: string, pattern: "^[A-Z]{4}0[A-Z0-9]{6}$" }
+                    upi: { type: string }
+                    email: { type: string }
+                    phone: { type: string }
+                  additionalProperties: false
+                narration: { type: string, maxLength: 100 }
+                metadata: { type: object, additionalProperties: { type: string } }
+                provider_account_id: { type: string, description: Pick the provider account (default the app's first that accepts payouts in the currency). }
+              additionalProperties: false
+      responses:
+        "201":
+          description: The pending payout.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payout"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "422":
+          description: "`no_route`: no provider account of the app accepts payouts in this currency."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    get:
+      operationId: listPayouts
+      x-required-scope: payouts:read
+      summary: List payouts
+      parameters:
+        - { name: status, in: query, required: false, schema: { $ref: "#/components/schemas/PayoutStatus" } }
+        - { name: starting_after, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 10 } }
+      responses:
+        "200":
+          description: A page of payouts, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayoutList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+  /v1/payouts/{id}:
+    get:
+      operationId: getPayout
+      x-required-scope: payouts:read
+      summary: Retrieve a payout
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^po_[0-9a-z]{26}$" } }
+      responses:
+        "200":
+          description: The payout.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payout"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   securitySchemes:
     bearerAuth:
@@ -557,6 +775,11 @@ components:
       in: path
       required: true
       schema: { type: string, pattern: "^sub_[0-9a-z]{26}$" }
+    PaymentLinkId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^plink_[0-9a-z]{26}$" }
     PaymentId:
       name: id
       in: path
@@ -819,6 +1042,7 @@ components:
         canceled_at: { type: string, format: date-time }
         ended_at: { type: string, format: date-time }
         pending_amount: { type: integer, description: Amount that applies from the next period. }
+        proration_adjust: { type: integer, description: "What the next renewal changes by after a prorated plan change: a charge when positive, a credit when negative." }
         requires_reauthorization: { type: boolean }
         description: { type: string }
         metadata: { type: object, additionalProperties: { type: string } }
@@ -835,6 +1059,8 @@ components:
               type: string
               format: uri
               description: "`<PAYMUX_BASE_URL>/s/<id>?t=<secret>`. Shown only in this response."
+            proration:
+              $ref: "#/components/schemas/ProrationOutcome"
     SubscriptionList:
       type: object
       required: [object, data, has_more]
@@ -843,6 +1069,82 @@ components:
         data:
           type: array
           items: { $ref: "#/components/schemas/Subscription" }
+        has_more: { type: boolean }
+        next_cursor: { type: string }
+    CreatePaymentLinkRequest:
+      type: object
+      required: [currency]
+      description: Either `amount` (a fixed price) or `min_amount` (the customer chooses), not both.
+      example:
+        amount: 49900
+        currency: INR
+        description: Pro plan, annual
+        single_use: true
+        expires_at: "2026-12-31T18:00:00Z"
+        return_url: https://shop.example.com/thanks
+        metadata: { sku: pro-annual }
+      properties:
+        amount: { type: integer, minimum: 1, description: Fixed price in minor units. }
+        min_amount: { type: integer, minimum: 1, description: Smallest amount the customer may enter. }
+        max_amount: { type: integer, minimum: 1, description: Largest amount the customer may enter; omit for no limit. }
+        currency: { type: string, pattern: "^[A-Za-z]{3}$" }
+        description: { type: string, maxLength: 1000, description: Shown on the link's page and copied to each payment. }
+        single_use: { type: boolean, default: false, description: Switch the link off after the first successful payment. }
+        expires_at: { type: string, format: date-time, description: After this the page takes no payments. At most five years ahead. }
+        return_url: { type: string, format: uri, description: Where the customer returns after paying; default is the app's. }
+        metadata:
+          type: object
+          maxProperties: 19
+          additionalProperties: { type: string, maxLength: 500 }
+          description: Copied to every payment created from the link. The key `payment_link_id` is reserved.
+      additionalProperties: false
+    PaymentLink:
+      type: object
+      example:
+        id: plink_01hxyzabcdefghjkmnpqrstvw0
+        object: payment_link
+        url: https://pay.example.com/l/k3n9x0q7vb2m
+        slug: k3n9x0q7vb2m
+        app_id: app_01hxyzabcdefghjkmnpqrstvw0
+        amount: 49900
+        currency: INR
+        description: Pro plan, annual
+        return_url: https://shop.example.com/thanks
+        single_use: true
+        active: true
+        expires_at: "2026-12-31T18:00:00Z"
+        metadata: { sku: pro-annual }
+        created_at: "2026-10-17T12:00:00Z"
+        version: 1
+      required: [id, object, url, slug, app_id, amount, currency, single_use, active, expires_at, metadata, created_at, version]
+      properties:
+        id: { type: string, pattern: "^plink_[0-9a-z]{26}$" }
+        object: { type: string, const: payment_link }
+        url: { type: string, format: uri, description: "`<PAYMUX_BASE_URL>/l/<slug>`; share this." }
+        slug: { type: string, pattern: "^[a-z0-9]{12}$" }
+        app_id: { type: string }
+        amount: { type: [integer, "null"], description: The fixed price; null when the customer chooses. }
+        min_amount: { type: integer }
+        max_amount: { type: integer }
+        currency: { type: string }
+        description: { type: string }
+        return_url: { type: string }
+        single_use: { type: boolean }
+        active: { type: boolean }
+        expires_at: { type: [string, "null"], format: date-time }
+        metadata: { type: object, additionalProperties: { type: string } }
+        deactivated_at: { type: string, format: date-time }
+        deactivated_reason: { type: string, enum: [manual, used] }
+        created_at: { type: string, format: date-time }
+        version: { type: integer }
+    PaymentLinkList:
+      type: object
+      required: [object, data, has_more]
+      properties:
+        object: { type: string, const: list }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/PaymentLink" }
         has_more: { type: boolean }
         next_cursor: { type: string }
     Invoice:
@@ -921,3 +1223,60 @@ components:
           type: array
           items: { $ref: "#/components/schemas/CreditNote" }
         has_more: { type: boolean }
+    ProrationOutcome:
+      type: object
+      description: What a prorated plan change did.
+      required: [requested, mode, amount]
+      properties:
+        requested: { type: string, enum: [none, next_invoice, immediate] }
+        mode:
+          type: string
+          enum: [none, next_invoice, immediate]
+          description: What happened; differs from `requested` when an immediate charge fell back to the next renewal, or there was nothing to prorate.
+        amount:
+          type: integer
+          description: Signed difference for the rest of the period in minor units; positive is a charge, negative a credit.
+        description: { type: string }
+        charge_at:
+          type: string
+          format: date-time
+          description: When an `immediate` charge will be made, at the earliest.
+        reason: { type: string, description: Why the mode differs from the request, or why nothing was prorated. }
+    PayoutStatus:
+      type: string
+      enum: [pending, processing, succeeded, failed, reversed]
+      description: |
+        `pending` is recorded and not yet with the provider; `processing` is on its way; `succeeded` has arrived;
+        `failed` will not arrive (the money stays with you); `reversed` arrived and came back. A status the
+        provider reports that Paymux does not know stays `processing`.
+    Payout:
+      type: object
+      required: [id, object, status, amount, currency, beneficiary, metadata, created_at, version]
+      properties:
+        id: { type: string, pattern: "^po_[0-9a-z]{26}$" }
+        object: { type: string, const: payout }
+        status: { $ref: "#/components/schemas/PayoutStatus" }
+        amount: { type: integer }
+        currency: { type: string }
+        beneficiary:
+          type: object
+          required: [label]
+          properties:
+            label: { type: string, description: "Masked destination, e.g. `••••9012 HDFC` or `ra•••@okbank`." }
+        narration: { type: string }
+        metadata: { type: object, additionalProperties: { type: string } }
+        failure_code: { type: string }
+        failure_message: { type: string }
+        created_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+        version: { type: integer }
+    PayoutList:
+      type: object
+      required: [object, data, has_more]
+      properties:
+        object: { type: string, const: list }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Payout" }
+        has_more: { type: boolean }
+        next_cursor: { type: string }

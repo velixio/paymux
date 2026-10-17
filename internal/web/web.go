@@ -123,6 +123,8 @@ type PayPage struct {
 	Title, Message, ReturnURL string
 	// the simulator's hosted page
 	Sim *SimPage
+	// payment link page
+	Link *LinkForm
 }
 
 // SimPage is what the simulator's hosted checkout page shows.
@@ -133,6 +135,19 @@ type SimPage struct {
 	// Open: the customer can still choose. Authorized: a capture is waiting.
 	// Waiting: a delayed success is on its way. Done: nothing left to choose.
 	Open, Authorized, Waiting, Done, Late bool
+}
+
+// LinkForm is what the payment link page shows and keeps between attempts.
+type LinkForm struct {
+	Description string
+	// FixedAmount is the price ("INR 499.00") of a fixed-price link.
+	FixedAmount string
+	// Choose is set when the customer enters the amount; Currency, Hint and
+	// Amount (as typed) belong to that input.
+	Choose             bool
+	Currency, Hint     string
+	Amount             string
+	Name, Email, Phone string
 }
 
 // AssetHandler serves static/ from fsys under /assets/.

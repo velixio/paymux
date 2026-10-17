@@ -18,6 +18,9 @@ go vet -tags loadtest ./...
 step "API snapshot (pkg/... exported API == api/pkg.txt)"
 go run ./scripts/apisnap -check
 
+step "Connector capability matrix (docs/capabilities.md == what the connectors declare)"
+go run ./scripts/capmatrix -check
+
 step "staticcheck ${STATICCHECK_VERSION}"
 go run "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}" ./...
 

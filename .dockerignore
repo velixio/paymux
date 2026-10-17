@@ -7,4 +7,6 @@ dist
 *.db
 *.db-wal
 *.db-shm
-docs
+docs/*
+!docs/embed.go
+!docs/openapi.yaml

@@ -55,6 +55,11 @@ type Page struct {
 	// reconciliation
 	ReconAccounts []reconAcct
 
+	// payment links
+	LinkRows   []linkRow
+	LinkFilter linkFilter
+	LinkForm   linkFormValues
+
 	// appearance
 	ThemeRows      []themeRow
 	CurrentTheme   string
@@ -105,6 +110,7 @@ func (d *Dashboard) routesPages() {
 	d.routesDomains()
 	d.routesDisputes()
 	d.routesRecon()
+	d.routesPaymentLinks()
 	d.routesAppearance()
 }
 

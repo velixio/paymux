@@ -1,0 +1,70 @@
+{{define "title"}}{{.Title}} reference{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/docs.css">{{end}}
+{{define "mainclass"}}docs{{end}}
+
+{{define "docs_type"}}{{if .Link}}<a href="{{.Link}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}{{end}}
+
+{{define "docs_fields"}}<div class="table-scroll"><table class="grid">
+<thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+<tbody>{{range .}}<tr><td><code>{{.Name}}</code></td><td>{{template "docs_type" .Type}}</td><td>{{if .Required}}yes{{end}}</td>
+<td>{{.Description}}{{with .Constraints}}<small class="muted">{{.}}</small>{{end}}</td></tr>{{end}}</tbody>
+</table></div>{{end}}
+
+{{define "docs_body"}}<p class="muted">{{.ContentType}}{{if .Type.Label}}: {{template "docs_type" .Type}}{{end}}</p>
+{{if .Fields}}{{template "docs_fields" .Fields}}{{end}}
+{{with .Example}}<details open><summary>Example</summary><pre><code>{{.}}</code></pre></details>{{end}}{{end}}
+
+{{define "content"}}
+<header class="docs-head">
+<h1>{{.Title}} <small class="muted">version {{.Version}}</small></h1>
+{{with .Summary}}<p class="muted">{{.}}</p>{{end}}
+<p><a href="/docs/openapi.yaml">Download openapi.yaml</a></p>
+</header>
+<div class="docs-layout">
+<nav class="docs-nav" aria-label="Reference">
+<a href="#intro">Overview</a>
+{{range .Groups}}<h2>{{.Name}}</h2>
+{{range .Ops}}<a href="#{{.Anchor}}"><span class="method method-{{.Method}}">{{.Method}}</span> {{.Summary}}</a>
+{{end}}{{end}}
+<h2>Schemas</h2>
+{{range .Schemas}}<a href="#{{.Anchor}}">{{.Name}}</a>
+{{end}}
+</nav>
+<div class="docs-body">
+<section id="intro">
+<h2>Overview</h2>
+{{.Intro}}
+{{with .ServerURL}}<p>Base URL: <code>{{.}}</code></p>{{end}}
+{{with .Auth}}<p>Security: {{.}}</p>{{end}}
+</section>
+{{range .Groups}}<section id="{{.Anchor}}">
+<h2 class="group">{{.Name}}</h2>
+{{range .Ops}}<article class="op" id="{{.Anchor}}">
+<h3><span class="method method-{{.Method}}">{{.Method}}</span> <code class="path">{{.Path}}</code></h3>
+<p><strong>{{.Summary}}</strong> <small class="muted">{{.ID}}</small></p>
+{{.Description}}
+{{if .Params}}<h4>Parameters</h4>
+<div class="table-scroll"><table class="grid">
+<thead><tr><th>Name</th><th>In</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+<tbody>{{range .Params}}<tr><td><code>{{.Name}}</code></td><td>{{.In}}</td><td>{{template "docs_type" .Type}}</td><td>{{if .Required}}yes{{end}}</td>
+<td>{{.Description}}{{with .Constraints}}<small class="muted">{{.}}</small>{{end}}</td></tr>{{end}}</tbody>
+</table></div>{{end}}
+{{with .Request}}<h4>Request body</h4>{{template "docs_body" .}}{{end}}
+<h4>Responses</h4>
+{{range .Responses}}<div class="resp"><div class="resp-head"><strong class="status-code">{{.Status}}</strong> {{.Description}}</div>
+{{with .Body}}{{template "docs_body" .}}{{end}}</div>{{end}}
+</article>
+{{end}}</section>
+{{end}}
+<section id="schemas">
+<h2 class="group">Schemas</h2>
+{{range .Schemas}}<article class="schema" id="{{.Anchor}}">
+<h3>{{.Name}} <small class="muted">{{.Kind}}</small></h3>
+{{.Description}}
+{{if .Fields}}{{template "docs_fields" .Fields}}{{end}}
+{{with .Example}}<details><summary>Example</summary><pre><code>{{.}}</code></pre></details>{{end}}
+</article>
+{{end}}</section>
+</div>
+</div>
+{{end}}
