@@ -27,7 +27,10 @@ const supplierGSTIN = "27AAPFU0939F1ZV"
 type rec struct {
 	mu          sync.Mutex
 	charges     []connector.ChargeRequest
+	chargeTimes []time.Time
 	notices     []connector.PreDebitRequest
+	noticeTimes []time.Time
+	now         func() time.Time
 	revoked     []string
 	mandateReqs []connector.MandateRequest
 	subReqs     []connector.SubscriptionRequest
@@ -53,7 +56,7 @@ type base struct {
 
 func (b base) Info() connector.Info {
 	return connector.Info{Name: b.name, Version: "1", DisplayName: b.name, Currencies: []string{"INR"}, SubscriptionModes: b.modes,
-		MandateLimits: b.limits, PreDebitPerAttempt: b.r.perAttempt}
+		MandateLimits: b.limits, PreDebitPerAttempt: b.r.perAttempt, MandateSetupAmount: 100}
 }
 func (b base) CreateCheckout(context.Context, connector.CheckoutRequest) (connector.CheckoutResult, error) {
 	return connector.CheckoutResult{}, connector.ErrUnsupported
@@ -99,11 +102,13 @@ func (c mandateConn) NotifyPreDebit(_ context.Context, req connector.PreDebitReq
 		return c.r.noticeErr
 	}
 	c.r.notices = append(c.r.notices, req)
+	c.r.noticeTimes = append(c.r.noticeTimes, c.r.now())
 	return nil
 }
 func (c mandateConn) ChargeMandate(_ context.Context, req connector.ChargeRequest) (connector.PaymentSnapshot, error) {
 	c.r.mu.Lock()
 	c.r.charges = append(c.r.charges, req)
+	c.r.chargeTimes = append(c.r.chargeTimes, c.r.now())
 	fn, d := c.r.chargeFn, c.r.chargeDelay
 	c.r.mu.Unlock()
 	time.Sleep(d)
@@ -204,6 +209,8 @@ func (e *env) eventTypes() []string {
 func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 	t.Helper()
 	e := &env{t: t, db: db, set: settings.New(db), now: start, r: &rec{mandates: map[string]connector.MandateSnapshot{}}}
+	e.r.now = e.clock
+	t.Cleanup(e.assertNoticeBeforeEveryCharge)
 	e.q = jobs.New(db, jobs.Options{Clock: e.clock, Jitter: func() float64 { return 0 }})
 	emitter := events.EmitterFunc(func(_ context.Context, _ store.Tx, ev events.Event) error {
 		e.mu.Lock()
@@ -340,23 +347,66 @@ func (e *env) cycles(subID string) []store.Cycle {
 	return out
 }
 
-// activate completes the mandate setup of a merchant-triggered subscription
-// the way the provider's notification would.
+// assertNoticeBeforeEveryCharge is the RBI rule as an invariant of every test:
+// no merchant-triggered debit without a pre-debit notice at least 24h earlier
+// (for the same attempt where the provider wants a notice per attempt).
+func (e *env) assertNoticeBeforeEveryCharge() {
+	e.r.mu.Lock()
+	defer e.r.mu.Unlock()
+	for i, ch := range e.r.charges {
+		ok := false
+		for j, n := range e.r.notices {
+			if n.Mandate.ProviderMandateID != ch.Mandate.ProviderMandateID || e.r.noticeTimes[j].After(e.r.chargeTimes[i].Add(-24*time.Hour)) {
+				continue
+			}
+			if e.r.perAttempt && n.ProviderRef != ch.ProviderRef {
+				continue
+			}
+			ok = true
+		}
+		if !ok {
+			e.t.Errorf("debit %d (%s, %v) ran without a notice at least 24h earlier; notices at %v", i, ch.ProviderRef, e.r.chargeTimes[i], e.r.noticeTimes)
+		}
+	}
+}
+
+// activateMandate completes the mandate setup of a merchant-triggered
+// subscription the way the provider's confirmation would. The registration
+// transaction debits the first period (no trial), so the confirmation carries
+// it as the setup payment.
 func (e *env) activateMandate(c subscriptions.Created) store.Subscription {
 	e.t.Helper()
 	sub := e.sub(c.Subscription.ID)
-	m := e.mandate(sub.MandateID)
-	pid := "pm_" + m.ID
-	e.activateMandateByID(m, pid)
+	e.activateMandateByID(e.mandate(sub.MandateID), "pm_"+sub.MandateID)
+	return e.sub(sub.ID)
+}
+
+// activateMandateNoSetup is activateMandate for a provider that does not
+// report the registration transaction.
+func (e *env) activateMandateNoSetup(c subscriptions.Created) store.Subscription {
+	e.t.Helper()
+	sub := e.sub(c.Subscription.ID)
+	e.confirmMandate(e.mandate(sub.MandateID), "pm_"+sub.MandateID, false)
 	return e.sub(sub.ID)
 }
 
 func (e *env) activateMandateByID(m store.Mandate, providerID string) {
+	e.confirmMandate(m, providerID, true)
+}
+
+func (e *env) confirmMandate(m store.Mandate, providerID string, withSetup bool) {
 	e.t.Helper()
-	// The mandate must be known by its provider id: the return flow learns it.
+	snap := connector.MandateSnapshot{ProviderMandateID: providerID, Status: "active", RawStatus: "confirmed", MaxAmount: m.MaxAmount, Currency: "INR", Method: m.Method}
+	if withSetup {
+		for _, sub := range e.subsOfMandate(m.ID) {
+			if sub.Status == "incomplete" && sub.TrialEnd.IsZero() {
+				snap.SetupPayment = &connector.PaymentSnapshot{Status: connector.PaymentSucceeded, Amount: sub.Amount, Currency: "INR",
+					ProviderPaymentID: "setup_" + providerID, ProviderRef: m.ProviderRef, Method: m.Method, RawStatus: "success"}
+			}
+		}
+	}
 	e.r.mu.Lock()
-	e.r.mandates[providerID] = connector.MandateSnapshot{ProviderMandateID: providerID, Status: "active", RawStatus: "confirmed",
-		MaxAmount: m.MaxAmount, Currency: "INR", Method: m.Method}
+	e.r.mandates[providerID] = snap
 	e.r.mu.Unlock()
 	if err := e.db.Write(ctx, func(tx store.Tx) error {
 		_, err := tx.ExecContext(ctx, "UPDATE mandates SET provider_mandate_id = ? WHERE id = ?", providerID, m.ID)
@@ -364,10 +414,18 @@ func (e *env) activateMandateByID(m store.Mandate, providerID string) {
 	}); err != nil {
 		e.t.Fatal(err)
 	}
-	if err := e.subs.HandleNotification(ctx, m.ProviderAccountID, connector.Notification{Kind: connector.NotifyMandate, EventID: "ev_" + providerID,
-		Mandate: &connector.MandateSnapshot{ProviderMandateID: providerID, Status: "active", RawStatus: "confirmed"}}); err != nil {
+	if err := e.subs.HandleNotification(ctx, m.ProviderAccountID, connector.Notification{Kind: connector.NotifyMandate, EventID: "ev_" + providerID, Mandate: &snap}); err != nil {
 		e.t.Fatal(err)
 	}
+}
+
+func (e *env) subsOfMandate(mandateID string) []store.Subscription {
+	e.t.Helper()
+	var out []store.Subscription
+	if err := e.db.Read(ctx, func(q store.Querier) (err error) { out, err = store.SubscriptionsByMandate(ctx, q, mandateID); return }); err != nil {
+		e.t.Fatal(err)
+	}
+	return out
 }
 
 // runJobs runs due jobs until none are left.
