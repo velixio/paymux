@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/paymux/paymux/internal/events"
@@ -24,6 +25,7 @@ import (
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/tax"
+	"github.com/paymux/paymux/internal/web"
 	"github.com/paymux/paymux/pkg/connector"
 )
 
@@ -61,6 +63,8 @@ type Options struct {
 	// IsMerchantOfRecord says whether a connector sells as merchant of record,
 	// in which case Paymux issues no invoice. Default: the connector registry.
 	IsMerchantOfRecord func(connectorName string) bool
+	// Pages renders hosted HTML views; nil uses the embedded templates.
+	Pages *web.Renderer
 }
 
 // Service issues and serves documents.
@@ -73,6 +77,20 @@ type Service struct {
 	baseURL  string
 	now      func() time.Time
 	isMoR    func(string) bool
+
+	pagesOnce sync.Once
+	pagesR    *web.Renderer
+	pagesErr  error
+	pagesOpt  *web.Renderer
+}
+
+// pages returns the HTML renderer (Options.Pages, or the embedded templates).
+func (s *Service) pages() (*web.Renderer, error) {
+	if s.pagesOpt != nil {
+		return s.pagesOpt, nil
+	}
+	s.pagesOnce.Do(func() { s.pagesR, s.pagesErr = web.NewRenderer(web.Embedded()) })
+	return s.pagesR, s.pagesErr
 }
 
 // New builds a Service.
@@ -93,7 +111,7 @@ func New(o Options) *Service {
 		}
 	}
 	return &Service{db: o.DB, settings: o.Settings, jobs: o.Jobs, emitter: o.Emitter, mailer: o.Mailer,
-		baseURL: strings.TrimRight(o.BaseURL, "/"), now: o.Now, isMoR: o.IsMerchantOfRecord}
+		baseURL: strings.TrimRight(o.BaseURL, "/"), now: o.Now, isMoR: o.IsMerchantOfRecord, pagesOpt: o.Pages}
 }
 
 // Supplier is the supplier snapshot stored on a document.

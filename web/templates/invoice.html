@@ -1,0 +1,22 @@
+{{define "title"}}{{.Title}}{{end}}
+{{define "content"}}
+<h3>{{.Title}}</h3>
+<p class="muted">{{.Number}} &middot; {{.Date}}</p>
+{{if .OriginalNumber}}<p class="muted">Against invoice {{.OriginalNumber}} dated {{.OriginalDate}}{{with .Reason}} &middot; {{.}}{{end}}</p>{{end}}
+<p><strong>{{.SupplierName}}</strong><br>
+{{with .SupplierAddress}}{{.}}<br>{{end}}
+GSTIN {{.SupplierGSTIN}}</p>
+<p><strong>Billed to</strong><br>
+{{.RecipientName}}<br>
+{{with .RecipientAddress}}{{.}}<br>{{end}}
+{{with .RecipientGSTIN}}GSTIN {{.}}<br>{{end}}
+Place of supply: {{.PlaceOfSupply}}</p>
+<table>
+<thead><tr><th>Description</th><th>SAC</th><th>Taxable</th></tr></thead>
+<tbody>{{range .Lines}}<tr><td>{{.Description}}</td><td>{{.SAC}}</td><td>{{.Taxable}}</td></tr>{{end}}</tbody>
+</table>
+<p>{{range .Taxes}}{{.Label}}: {{.Amount}}<br>{{end}}<strong>Total: {{.Total}}</strong></p>
+{{with .TotalWords}}<p class="muted">{{.}}</p>{{end}}
+{{range .Notes}}<p class="muted">{{.}}</p>{{end}}
+{{if .PDFURL}}<a class="btn" href="{{.PDFURL}}">Download PDF</a>{{else}}<p class="muted">The PDF is being prepared. Reload in a moment.</p>{{end}}
+{{end}}
