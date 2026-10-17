@@ -244,9 +244,9 @@ func TestES256Tokens(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]string{"issuer": srv.URL, "authorization_endpoint": srv.URL + "/a", "token_endpoint": srv.URL + "/t", "jwks_uri": srv.URL + "/jwks"})
 		case "/jwks":
 			jwksHits.Add(1)
-			pad := func(b []byte) []byte { return append(make([]byte, 32-len(b)), b...) }
+			point, _ := ec.PublicKey.Bytes() // 0x04 || X || Y
 			_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{"kty": "EC", "crv": "P-256", "kid": "ec1",
-				"x": base64.RawURLEncoding.EncodeToString(pad(ec.X.Bytes())), "y": base64.RawURLEncoding.EncodeToString(pad(ec.Y.Bytes()))}}})
+				"x": base64.RawURLEncoding.EncodeToString(point[1:33]), "y": base64.RawURLEncoding.EncodeToString(point[33:])}}})
 		}
 	}))
 	defer srv.Close()

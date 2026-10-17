@@ -415,10 +415,15 @@ func (k jwk) public() (crypto.PublicKey, bool) {
 		return &rsa.PublicKey{N: n, E: int(e.Int64())}, true
 	case "EC":
 		x, y := b(k.X), b(k.Y)
-		if k.Crv != "P-256" || x == nil || y == nil || !elliptic.P256().IsOnCurve(x, y) {
+		if k.Crv != "P-256" || x == nil || y == nil || x.BitLen() > 256 || y.BitLen() > 256 {
 			return nil, false
 		}
-		return &ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}, true
+		point := make([]byte, 65) // 0x04 || X || Y, which also checks the point is on the curve
+		point[0] = 4
+		x.FillBytes(point[1:33])
+		y.FillBytes(point[33:])
+		pk, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), point)
+		return pk, err == nil
 	}
 	return nil, false
 }
