@@ -59,6 +59,7 @@ CREATE TABLE subscriptions (
     metadata                 TEXT NOT NULL DEFAULT '{}',
     return_url               TEXT NOT NULL DEFAULT '',
     checkout_token_hash      TEXT NOT NULL,
+    checkout_action          TEXT NOT NULL DEFAULT '',
     expires_at               BIGINT NOT NULL,
     version                  BIGINT NOT NULL DEFAULT 1,
     created_at               BIGINT NOT NULL,

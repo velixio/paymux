@@ -93,6 +93,7 @@ type Subscription struct {
 	Description                                             string
 	Metadata                                                map[string]string
 	ReturnURL, CheckoutTokenHash                            string
+	CheckoutAction                                          string // JSON of the cached connector.NextAction
 	ExpiresAt                                               time.Time
 	Version                                                 int64
 	CreatedAt, UpdatedAt                                    time.Time
@@ -103,7 +104,7 @@ const subCols = `id, org_id, mode, app_id, customer_id, status, billing_mode, pr
 	currency, interval, interval_count, anchor_at, current_period_start, current_period_end, COALESCE(trial_end,0),
 	COALESCE(total_count,0), renewals_done, cancel_at_period_end, COALESCE(canceled_at,0), COALESCE(ended_at,0),
 	COALESCE(pending_amount,0), requires_reauthorization, dunning_attempt, COALESCE(next_retry_at,0), description, metadata,
-	return_url, checkout_token_hash, expires_at, version, created_at, updated_at`
+	return_url, checkout_token_hash, checkout_action, expires_at, version, created_at, updated_at`
 
 func scanSub(row interface{ Scan(...any) error }) (Subscription, error) {
 	var s Subscription
@@ -113,7 +114,7 @@ func scanSub(row interface{ Scan(...any) error }) (Subscription, error) {
 	err := row.Scan(&s.ID, &s.OrgID, &s.Mode, &s.AppID, &s.CustomerID, &s.Status, &s.BillingMode, &s.ProviderAccountID,
 		&s.ProviderSubscriptionID, &s.ProviderRef, &s.MandateID, &s.PendingMandateID, &s.Amount, &s.Currency, &s.Interval,
 		&s.IntervalCount, &anchor, &ps, &pe, &trial, &s.TotalCount, &s.RenewalsDone, &cape, &canceled, &ended,
-		&s.PendingAmount, &reauth, &s.DunningAttempt, &retry, &s.Description, &meta, &s.ReturnURL, &s.CheckoutTokenHash,
+		&s.PendingAmount, &reauth, &s.DunningAttempt, &retry, &s.Description, &meta, &s.ReturnURL, &s.CheckoutTokenHash, &s.CheckoutAction,
 		&exp, &s.Version, &created, &updated)
 	if err != nil {
 		return Subscription{}, notFound(err)
@@ -135,14 +136,14 @@ func InsertSubscription(ctx context.Context, tx Tx, s Subscription) error {
 		provider_account_id, provider_subscription_id, provider_ref, mandate_id, pending_mandate_id, amount, currency, interval,
 		interval_count, anchor_at, current_period_start, current_period_end, trial_end, total_count, renewals_done,
 		cancel_at_period_end, canceled_at, ended_at, pending_amount, requires_reauthorization, dunning_attempt, next_retry_at,
-		description, metadata, return_url, checkout_token_hash, expires_at, version, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		description, metadata, return_url, checkout_token_hash, checkout_action, expires_at, version, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.OrgID, s.Mode, s.AppID, s.CustomerID, s.Status, s.BillingMode, s.ProviderAccountID,
 		nullIfEmpty(s.ProviderSubscriptionID), s.ProviderRef, nullIfEmpty(s.MandateID), nullIfEmpty(s.PendingMandateID),
 		s.Amount, s.Currency, s.Interval, s.IntervalCount, ms(s.AnchorAt), ms(s.CurrentPeriodStart), ms(s.CurrentPeriodEnd),
 		zeroMS(s.TrialEnd), zeroInt(s.TotalCount), s.RenewalsDone, boolInt(s.CancelAtPeriodEnd), zeroMS(s.CanceledAt),
 		zeroMS(s.EndedAt), zeroInt64(s.PendingAmount), boolInt(s.RequiresReauthorization), s.DunningAttempt,
-		zeroMS(s.NextRetryAt), s.Description, string(meta), s.ReturnURL, s.CheckoutTokenHash, ms(s.ExpiresAt), s.Version,
+		zeroMS(s.NextRetryAt), s.Description, string(meta), s.ReturnURL, s.CheckoutTokenHash, s.CheckoutAction, ms(s.ExpiresAt), s.Version,
 		ms(s.CreatedAt), ms(s.UpdatedAt))
 	return err
 }
@@ -231,12 +232,12 @@ func UpdateSubscription(ctx context.Context, tx Tx, s *Subscription, now time.Ti
 	res, err := tx.ExecContext(ctx, `UPDATE subscriptions SET status = ?, provider_subscription_id = ?, mandate_id = ?,
 		pending_mandate_id = ?, amount = ?, current_period_start = ?, current_period_end = ?, trial_end = ?, anchor_at = ?,
 		renewals_done = ?, cancel_at_period_end = ?, canceled_at = ?, ended_at = ?, pending_amount = ?,
-		requires_reauthorization = ?, dunning_attempt = ?, next_retry_at = ?, checkout_token_hash = ?, expires_at = ?,
+		requires_reauthorization = ?, dunning_attempt = ?, next_retry_at = ?, checkout_token_hash = ?, checkout_action = ?, expires_at = ?,
 		version = version + 1, updated_at = ? WHERE id = ? AND version = ?`,
 		s.Status, nullIfEmpty(s.ProviderSubscriptionID), nullIfEmpty(s.MandateID), nullIfEmpty(s.PendingMandateID), s.Amount,
 		ms(s.CurrentPeriodStart), ms(s.CurrentPeriodEnd), zeroMS(s.TrialEnd), ms(s.AnchorAt), s.RenewalsDone,
 		boolInt(s.CancelAtPeriodEnd), zeroMS(s.CanceledAt), zeroMS(s.EndedAt), zeroInt64(s.PendingAmount),
-		boolInt(s.RequiresReauthorization), s.DunningAttempt, zeroMS(s.NextRetryAt), s.CheckoutTokenHash, ms(s.ExpiresAt),
+		boolInt(s.RequiresReauthorization), s.DunningAttempt, zeroMS(s.NextRetryAt), s.CheckoutTokenHash, s.CheckoutAction, ms(s.ExpiresAt),
 		ms(now), s.ID, s.Version)
 	if err != nil {
 		return err

@@ -68,3 +68,25 @@ func (s *Service) CreateRenewalPayment(ctx context.Context, tx store.Tx, in Rene
 	}
 	return p, a, nil
 }
+
+// AddAttemptTx adds a new Attempt (status created) on a provider account to
+// an existing payment inside tx: a dunning retry of a renewal. The payment may
+// be failed (a later success is a late success); canceled and expired
+// payments take none.
+func (s *Service) AddAttemptTx(ctx context.Context, tx store.Tx, p store.Payment, providerAccountID string) (store.Attempt, error) {
+	switch state.PaymentStatus(p.Status) {
+	case state.PaymentCanceled, state.PaymentExpired:
+		return store.Attempt{}, newErr(ErrInvalidState, "a payment that is %s cannot take new attempts", p.Status)
+	}
+	pa, err := store.GetProviderAccount(ctx, tx, providerAccountID)
+	if err != nil {
+		return store.Attempt{}, mapStoreErr(err, "provider account")
+	}
+	if pa.Mode != p.Mode || pa.OrgID != p.OrgID {
+		return store.Attempt{}, newErr(ErrInvalid, "provider account is in another mode")
+	}
+	now := s.nowUTC()
+	a := store.Attempt{ID: ids.New("att"), OrgID: p.OrgID, Mode: p.Mode, PaymentID: p.ID, ProviderAccountID: pa.ID,
+		ProviderRef: ids.ProviderRef(), Status: string(state.AttemptCreated), CreatedAt: now, UpdatedAt: now}
+	return a, store.InsertAttempt(ctx, tx, a)
+}

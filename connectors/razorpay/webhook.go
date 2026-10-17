@@ -169,15 +169,13 @@ func (r *razorpay) ParseWebhook(ctx context.Context, req connector.WebhookReques
 			return nil, err
 		}
 		n.Kind, n.Subscription = connector.NotifySubscription, &s
-		out := []connector.Notification{n}
 		if ev.Event == "subscription.charged" && ev.Payload.Payment != nil {
-			// A renewal: the same delivery also carries the captured payment.
+			// A renewal: the same notification carries the captured payment, so
+			// the consumer can link it to the subscription without guessing.
 			ps := ev.Payload.Payment.Entity.snapshot()
-			out = append(out, connector.Notification{
-				Kind: connector.NotifyPayment, EventID: id, EventType: ev.Event, OccurredAt: n.OccurredAt, Payment: &ps,
-			})
+			n.Payment = &ps
 		}
-		return out, nil
+		return []connector.Notification{n}, nil
 	}
 	switch ev.Event {
 	case "order.paid", "payment.captured", "payment.authorized", "payment.failed":
