@@ -76,17 +76,23 @@ func (s *Signer) VerifyRequest(h http.Header, verb, method string, body []byte, 
 	return s.verify(h, requestBinding(verb, method), body, now)
 }
 
-// Sign sets the three headers for a response body, with a fresh message id.
-func (s *Signer) Sign(h http.Header, body []byte, now time.Time) {
+// responseBinding ties a response to the request it answers; the "response"
+// label keeps a response signature from ever passing as a request signature.
+func responseBinding(requestID string) string { return "response." + requestID }
+
+// SignResponse sets the three headers of a response to the request with the
+// given message id: the signature covers that id and the body.
+func (s *Signer) SignResponse(h http.Header, requestID string, body []byte, now time.Time) {
 	id := newID()
 	h.Set(HeaderID, id)
 	h.Set(HeaderTimestamp, strconv.FormatInt(now.Unix(), 10))
-	h.Set(HeaderSignature, s.mac(id, now.Unix(), "", body))
+	h.Set(HeaderSignature, s.mac(id, now.Unix(), responseBinding(requestID), body))
 }
 
-// Verify checks the headers of a response against body.
-func (s *Signer) Verify(h http.Header, body []byte, now time.Time) error {
-	return s.verify(h, "", body, now)
+// VerifyResponse checks a response to the request with the given message id,
+// so a response recorded for one call cannot be handed back for another.
+func (s *Signer) VerifyResponse(h http.Header, requestID string, body []byte, now time.Time) error {
+	return s.verify(h, responseBinding(requestID), body, now)
 }
 
 func (s *Signer) verify(h http.Header, binding string, body []byte, now time.Time) error {

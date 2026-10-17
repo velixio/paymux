@@ -59,57 +59,57 @@ type handler struct {
 	seen   *replayCache
 }
 
-func (h *handler) reply(w http.ResponseWriter, status int, v any) {
+func (h *handler) reply(w http.ResponseWriter, r *http.Request, status int, v any) {
 	body, err := json.Marshal(v)
 	if err != nil {
 		status, body = http.StatusInternalServerError, []byte(`{"error":{"code":"internal","message":"unencodable result"}}`)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	h.signer.Sign(w.Header(), body, h.now())
+	h.signer.SignResponse(w.Header(), r.Header.Get(HeaderID), body, h.now())
 	w.WriteHeader(status)
 	_, _ = w.Write(body)
 }
 
-func (h *handler) fail(w http.ResponseWriter, err error) {
+func (h *handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	var bad errBadRequest
 	if errors.As(err, &bad) {
-		h.reply(w, http.StatusBadRequest, Envelope{Error{Code: CodeBadRequest, Message: err.Error()}})
+		h.reply(w, r, http.StatusBadRequest, Envelope{Error{Code: CodeBadRequest, Message: err.Error()}})
 		return
 	}
 	status, e := FromError(err)
-	h.reply(w, status, Envelope{e})
+	h.reply(w, r, status, Envelope{e})
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
 	if err != nil {
-		h.fail(w, errBadRequest{err})
+		h.fail(w, r, errBadRequest{err})
 		return
 	}
 	method := path.Base(r.URL.Path)
 	if err := h.signer.VerifyRequest(r.Header, r.Method, method, body, h.now()); err != nil {
-		h.reply(w, http.StatusUnauthorized, Envelope{Error{Code: CodeInvalidCredentials, Message: "request signature missing, wrong, stale or for another method"}})
+		h.reply(w, r, http.StatusUnauthorized, Envelope{Error{Code: CodeInvalidCredentials, Message: "request signature missing, wrong, stale or for another method"}})
 		return
 	}
 	// Only a correctly signed id is remembered, so unsigned junk cannot fill the cache.
 	if !h.seen.firstSeen(r.Header.Get(HeaderID), h.now()) {
-		h.reply(w, http.StatusUnauthorized, Envelope{Error{Code: CodeInvalidCredentials, Message: "message id already used (replayed request)"}})
+		h.reply(w, r, http.StatusUnauthorized, Envelope{Error{Code: CodeInvalidCredentials, Message: "message id already used (replayed request)"}})
 		return
 	}
 	if r.Method == http.MethodGet && method == MethodInfo {
-		h.reply(w, http.StatusOK, h.c.Info())
+		h.reply(w, r, http.StatusOK, h.c.Info())
 		return
 	}
 	if r.Method != http.MethodPost {
-		h.reply(w, http.StatusMethodNotAllowed, Envelope{Error{Code: CodeBadRequest, Message: "use POST"}})
+		h.reply(w, r, http.StatusMethodNotAllowed, Envelope{Error{Code: CodeBadRequest, Message: "use POST"}})
 		return
 	}
 	out, err := h.dispatch(r.Context(), method, body)
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
-	h.reply(w, http.StatusOK, out)
+	h.reply(w, r, http.StatusOK, out)
 }
 
 // call decodes the body as In, runs f and returns its result.

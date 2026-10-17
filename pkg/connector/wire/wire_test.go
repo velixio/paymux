@@ -46,7 +46,11 @@ func TestSignVerify(t *testing.T) {
 		"swapped id":    func() error { g := h.Clone(); g.Set(HeaderID, "msg_other"); return ver(s, g, body, now0) },
 		"other method":  func() error { return s.VerifyRequest(h, "POST", "fetch_payment", body, now0) },
 		"other verb":    func() error { return s.VerifyRequest(h, "GET", "refund", body, now0) },
-		"a response":    func() error { r := http.Header{}; s.Sign(r, body, now0); return ver(s, r, body, now0) },
+		"a response": func() error {
+			r := http.Header{}
+			s.SignResponse(r, h.Get(HeaderID), body, now0)
+			return ver(s, r, body, now0)
+		},
 	}
 	for name, f := range cases {
 		if err := f(); !errors.Is(err, ErrBadSignature) {
@@ -159,13 +163,19 @@ func TestHandler(t *testing.T) {
 	if rec.Code != 401 || rec.Header().Get(HeaderSignature) == "" {
 		t.Errorf("unsigned request: %d %v", rec.Code, rec.Header())
 	}
-	rec = post(t, h, signer, "GET", "/prefix/v1/info", ``)
+	req := httptest.NewRequest("GET", "/prefix/v1/info", nil)
+	reqID := signer.SignRequest(req.Header, "GET", MethodInfo, nil, now0)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
 	var info connector.Info
 	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &info) != nil || info.Name != "stub" {
 		t.Errorf("info under a prefix: %d %s", rec.Code, rec.Body)
 	}
-	if err := signer.Verify(rec.Header(), rec.Body.Bytes(), now0); err != nil {
-		t.Errorf("response is not signed: %v", err)
+	if err := signer.VerifyResponse(rec.Header(), reqID, rec.Body.Bytes(), now0); err != nil {
+		t.Errorf("response is not signed for its request: %v", err)
+	}
+	if err := signer.VerifyResponse(rec.Header(), "msg_another_request", rec.Body.Bytes(), now0); err == nil {
+		t.Error("response verifies for a different request")
 	}
 	rec = post(t, h, signer, "POST", "/create_checkout", `{"provider_ref":"R1"}`)
 	var res connector.CheckoutResult
