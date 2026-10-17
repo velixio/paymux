@@ -12,6 +12,7 @@ import (
 
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 )
@@ -95,6 +96,10 @@ type Options struct {
 	Settings *settings.Service
 	Jobs     Enqueuer
 	Router   Router // nil skips create-time routing validation
+	// Alerts receives ops alerts (duplicate success, needs_review) after the
+	// state change committed. Nil means none; a failing alert never undoes
+	// the change.
+	Alerts Alerter
 	// Emitter receives domain events inside the state-changing transaction.
 	// Nil means events are dropped (see NoopEmitter).
 	Emitter events.Emitter
@@ -103,6 +108,21 @@ type Options struct {
 	// invoicing lane uses them). Nil means none.
 	OnPaymentSucceeded PaymentHook
 	OnRefundSucceeded  RefundHook
+}
+
+// Alerter raises ops alerts (*notify.Alerts).
+type Alerter interface {
+	Raise(ctx context.Context, al notify.Alert) error
+}
+
+// raise delivers alerts after commit, ignoring delivery errors.
+func (s *Service) raise(ctx context.Context, alerts []notify.Alert) {
+	if s.alerts == nil {
+		return
+	}
+	for _, al := range alerts {
+		_ = s.alerts.Raise(ctx, al)
+	}
 }
 
 // NoopEmitter drops events. It stands in until the outbound-webhooks lane
@@ -123,6 +143,7 @@ type Service struct {
 	settings *settings.Service
 	jobs     Enqueuer
 	router   Router
+	alerts   Alerter
 	emitter  events.Emitter
 	now      func() time.Time
 
@@ -138,7 +159,7 @@ func NewService(o Options) *Service {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	return &Service{db: o.DB, settings: o.Settings, jobs: o.Jobs, router: o.Router, emitter: o.Emitter, now: o.Now,
+	return &Service{db: o.DB, settings: o.Settings, jobs: o.Jobs, router: o.Router, alerts: o.Alerts, emitter: o.Emitter, now: o.Now,
 		onPaymentSucceeded: o.OnPaymentSucceeded, onRefundSucceeded: o.OnRefundSucceeded}
 }
 

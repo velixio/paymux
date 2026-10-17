@@ -62,7 +62,7 @@ func TestDuplicateSuccessRaisesAnOpsAlertInReviewMode(t *testing.T) {
 			t.Fatalf("alerts %v", k)
 		}
 		al := e.alerts.last()
-		if al.Severity != notify.SeverityWarning || al.Refs["payment"] != p.ID || al.Refs["attempt"] != a2.ID || !strings.Contains(al.Message, "refund") {
+		if al.Severity != notify.SeverityWarning || al.Refs["payment"] != p.ID || al.Refs["attempt"] != a2.ID || !strings.Contains(strings.ToLower(al.Message), "refund") {
 			t.Errorf("alert %+v", al)
 		}
 		e.apply(a2.ID, captured(500)) // replay
