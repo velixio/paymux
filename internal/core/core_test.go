@@ -32,6 +32,7 @@ type env struct {
 	mu       sync.Mutex
 	events   []events.Event
 	failEmit bool
+	alerts   alertRec
 }
 
 func (e *env) emitted() []string {
@@ -55,7 +56,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 	e := &env{t: t, db: db, set: settings.New(db)}
 	e.q = jobs.New(db, jobs.Options{Logger: nil})
 	e.svc = core.NewService(core.Options{
-		DB: db, Settings: e.set, Jobs: e.q,
+		DB: db, Settings: e.set, Jobs: e.q, Alerts: &e.alerts,
 		Emitter: events.EmitterFunc(func(_ context.Context, _ store.Tx, ev events.Event) error {
 			e.mu.Lock()
 			defer e.mu.Unlock()
