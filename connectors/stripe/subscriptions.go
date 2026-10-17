@@ -73,13 +73,15 @@ var validIntervals = map[string]bool{"day": true, "week": true, "month": true, "
 // subscription itself (sub_...) exists only once the customer has paid.
 //
 // A StartAt in the future becomes a trial (subscription_data[trial_end]);
-// TotalCount becomes cancel_at, counted in whole intervals from the start.
-//
-// TODO(spec): Checkout requires trial_end to be at least 48 hours ahead and
-// cancel_at to be a future timestamp; verify both against the live API.
+// A start less than 48 hours ahead is ignored (Checkout needs trial_end at least
+// that far ahead; verified live). A TotalCount is refused: Checkout rejects
+// subscription_data[cancel_at], so there is no way to end the subscription.
 func (s *stripe) CreateSubscriptionCheckout(ctx context.Context, req connector.SubscriptionRequest) (connector.CheckoutResult, error) {
 	if req.ProviderRef == "" || len(req.ProviderRef) > 200 {
 		return connector.CheckoutResult{}, errors.New("stripe: provider_ref must be 1..200 chars")
+	}
+	if req.TotalCount > 0 {
+		return connector.CheckoutResult{}, fmt.Errorf("%w: Stripe Checkout cannot end a subscription after %d cycles (subscription_data[cancel_at] is rejected); use a plan without a total count", connector.ErrUnsupported, req.TotalCount)
 	}
 	if !validIntervals[req.Interval] || req.IntervalCount < 1 {
 		return connector.CheckoutResult{}, fmt.Errorf("stripe: unsupported interval %d x %q", req.IntervalCount, req.Interval)
@@ -118,21 +120,6 @@ func (s *stripe) CreateSubscriptionCheckout(ctx context.Context, req connector.S
 			f.Set("subscription_data[trial_end]", fmt.Sprint(at.Unix()))
 			start = at
 		}
-	}
-	if req.TotalCount > 0 {
-		end := start
-		switch req.Interval {
-		case "day":
-			end = end.AddDate(0, 0, req.IntervalCount*req.TotalCount)
-		case "week":
-			end = end.AddDate(0, 0, 7*req.IntervalCount*req.TotalCount)
-		case "month":
-			end = end.AddDate(0, req.IntervalCount*req.TotalCount, 0)
-		case "year":
-			end = end.AddDate(req.IntervalCount*req.TotalCount, 0, 0)
-		}
-		// Half a day before the last renewal would be due, so the term ends at the last paid period.
-		f.Set("subscription_data[cancel_at]", fmt.Sprint(end.Add(-12*time.Hour).Unix()))
 	}
 	if req.Customer.Email != "" {
 		f.Set("customer_email", req.Customer.Email)
@@ -179,8 +166,8 @@ func (s *stripe) CancelSubscription(ctx context.Context, ref connector.Subscript
 // Paymux decides itself whether and how to prorate. The request is idempotent
 // per subscription and amount.
 //
-// TODO(spec): the price_data-on-an-existing-item update is from Stripe's
-// documentation, not yet run against the live API (see docs/provider-verification.md).
+// Verified live: the price_data update is accepted, the new amount shows on the
+// subscription, and repeating it is harmless.
 func (s *stripe) UpdateSubscriptionAmount(ctx context.Context, ref connector.SubscriptionRef, amount int64) error {
 	if !strings.HasPrefix(ref.ProviderSubscriptionID, "sub_") {
 		return connector.ErrNotFound // nothing was bought yet

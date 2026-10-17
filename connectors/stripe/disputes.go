@@ -99,8 +99,8 @@ var dupSuffix = regexp.MustCompile(`_[0-9]+$`)
 // per type, so two files of one type are an error. Evidence.Text becomes
 // uncategorized_text.
 //
-// TODO(spec): re-verify the evidence field names and that submit=true may be
-// sent as a second update.
+// Verified live: update then submit=true as a second update is accepted, and the
+// Files API takes only PDF, JPEG and PNG.
 func (s *stripe) SubmitEvidence(ctx context.Context, ref connector.DisputeRef, ev connector.Evidence) error {
 	if ref.ProviderDisputeID == "" {
 		return errors.New("stripe: SubmitEvidence needs a dispute id")

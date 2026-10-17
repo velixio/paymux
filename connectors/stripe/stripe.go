@@ -7,9 +7,18 @@
 // id this connector created (and the reference stored on it): nothing is ever
 // found by searching.
 //
-// TODO(spec): written from Stripe's documentation, not yet run against the
-// real API (see sandbox_test.go). As the Whop connector showed, real APIs
-// differ from their docs: re-verify each TODO(spec) below at sandbox time.
+// Verified against Stripe test mode (see the sandbox tests): Checkout Sessions
+// in several currencies (retry with the same Idempotency-Key returns the same
+// session), payment by a browser checkout and by API with test payment methods,
+// strict matching by reference, unknown ids (404 resource_missing), bad keys
+// (401), refunds (idempotent, over-refund 400), disputes (list, fetch, evidence
+// with a real PNG, accept), subscriptions (fetch, repricing, cancel), balance
+// transactions with fees, and the parsing of real events from /v1/events.
+// Webhook payloads follow the API version of the webhook endpoint, not the
+// version this connector pins: create the endpoint with API version 2024-06-20,
+// or a renewal's invoice.paid will carry no payment intent (newer versions
+// moved it off the invoice) and no renewal payment can be reported from it.
+// Remaining TODO(spec) items are marked below.
 package stripe
 
 import (

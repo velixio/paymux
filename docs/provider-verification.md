@@ -48,25 +48,46 @@ run its `sandbox_test.go` (skipped without credentials; see
 
 ## Stripe
 
-The whole connector has been written from documentation (`stripe.go`).
+Verified against Stripe test mode on 2026-10-18 (`connectors/stripe/sandbox_test.go`,
+`sandbox_flows_test.go`, `sandbox_more_test.go`): Checkout Sessions in INR, USD,
+JPY, EUR and HUF, retry with the same Idempotency-Key, a browser-paid session
+(INR, card 4242), strict matching by reference, unknown ids and bad keys,
+refunds (create, retry, fetch by id and by reference, over-refund), disputes
+(`pm_card_createDispute`: list, fetch, evidence, accept), a subscription
+(fetch, `UpdateSubscriptionAmount`, cancel at period end and now), balance
+transactions with fees, and the verification and parsing of every kind of real
+event from `/v1/events`. Fixed on the way: evidence files are sent as their real
+type (the Files API takes only PDF, JPEG and PNG), Checkout rejects
+`subscription_data[cancel_at]` (a plan with a total count is now refused), and
+invoices of newer API versions keep the subscription under
+`parent.subscription_details`.
 
-- [ ] **Currencies** (`amounts.go`): the zero-decimal and three-decimal lists and
-  the ISK, UGX, HUF and TWD special cases, against https://docs.stripe.com/currencies.
+- [x] **Currencies** (`amounts.go`): INR, USD, JPY, EUR, HUF accepted.
+- [ ] **Currencies, the rest** (`amounts.go`): KWD and the other three-decimal
+  currencies, ISK, UGX, TWD: the test account cannot charge them. Check the
+  lists against https://docs.stripe.com/currencies.
 - [ ] **Checkout methods** (`stripe.go`): `Info.Methods` is a guess; the real
   methods depend on the account's Checkout settings.
-- [ ] **Subscription checkout** (`subscriptions.go`): Checkout requires `trial_end`
-  at least 48 hours ahead and `cancel_at` in the future.
-- [ ] **Changing a subscription's amount** (`subscriptions.go`,
-  `UpdateSubscriptionAmount`): replacing the item's inline price with
-  `price_data` (existing product, currency and interval) and
-  `proration_behavior=none` is accepted, the next invoice carries the new
-  amount, and nothing is prorated.
-- [ ] **Disputes** (`disputes.go`): the evidence field names, and that
-  `submit=true` may be sent as a second update.
-- [ ] **Settlements** (`settlements.go`): the payout list filter `arrival_date`,
-  the `balance_transactions` payout filter, `fee_details` entries of type `tax`,
-  `payout.trace_id.value` as the bank reference, and that expanding `data.source`
-  gives the PaymentIntent of a charge.
+- [x] **Subscription checkout** (`subscriptions.go`): `trial_end` more than 48
+  hours ahead is accepted; a nearer start is ignored; `cancel_at` is not a
+  Checkout parameter.
+- [ ] **Subscriptions through a paid Checkout.** The subscription lifecycle was
+  verified on a subscription made through the API; a subscription-mode Checkout
+  Session was created but not paid.
+- [x] **Changing a subscription's amount** (`UpdateSubscriptionAmount`).
+- [x] **Disputes** (`disputes.go`): evidence fields and the second `submit=true`
+  update.
+- [ ] **Payouts** (`settlements.go`): the test account has no payout bank account
+  (the API cannot add one in test mode), so no payout existed. The `arrival_date`
+  filter and the balance-transaction `payout` filter are accepted; the
+  `trace_id` UTR and `fee_details` of type `tax` were not seen.
+- [ ] **Webhook delivery.** Events were fetched from `/v1/events` and signed
+  locally; no endpoint received a live delivery. The payload follows the
+  endpoint's API version: create the endpoint with 2024-06-20, because newer
+  versions leave the payment intent off `invoice.paid`, so a renewal cannot be
+  reported as a payment from that event.
+- [ ] **3-D Secure and async methods** (`checkout.session.async_payment_*`): not
+  exercised.
 
 ## PayU
 
