@@ -16,6 +16,9 @@ import (
 	"github.com/paymux/paymux/pkg/connector/money"
 )
 
+// errDuplicateToken is the error_code of a refund token reused with the same amount.
+const errDuplicateToken = "227"
+
 type client struct {
 	http *http.Client
 	key  string
@@ -141,12 +144,37 @@ func (d txnDetail) snapshot(txnid string) (connector.PaymentSnapshot, error) {
 			return connector.PaymentSnapshot{}, fmt.Errorf("payu: amount %q: %w", amt, err)
 		}
 	}
-	return connector.PaymentSnapshot{
+	snap := connector.PaymentSnapshot{
 		ProviderRef: txnid, ProviderPaymentID: string(d.MihPayID),
 		Status: mapStatus(string(d.Status)), RawStatus: string(d.Status),
-		Amount: minor, Currency: "INR", Method: string(d.Mode),
-		ErrorCode: string(d.ErrorCode), ErrorMessage: string(d.ErrorMessage), CreatedAt: parseAddedOn(string(d.AddedOn)),
-	}, nil
+		Amount: minor, Currency: "INR", Method: methodOf(string(d.Mode)), CreatedAt: parseAddedOn(string(d.AddedOn)),
+	}
+	if snap.ProviderPaymentID == "Not Found" {
+		snap.ProviderPaymentID = "" // PayU's placeholder for a txnid it has no payment for
+	}
+	// PayU sends error_code E000 and "NO ERROR" on success: only a failure has an error.
+	if snap.Status == connector.PaymentFailed || snap.Status == connector.PaymentCanceled {
+		snap.ErrorCode, snap.ErrorMessage = string(d.ErrorCode), string(d.ErrorMessage)
+	}
+	return snap, nil
+}
+
+// methodOf maps PayU's mode (CC, DC, NB, UPI, WALLET, EMI, CASH...) to the method
+// names Paymux uses. An unknown mode is passed on in lower case.
+func methodOf(mode string) string {
+	switch strings.ToUpper(mode) {
+	case "CC", "DC":
+		return "card"
+	case "NB":
+		return "netbanking"
+	case "UPI":
+		return "upi"
+	case "WALLET", "CASH":
+		return "wallet"
+	case "EMI":
+		return "emi"
+	}
+	return strings.ToLower(mode)
 }
 
 func firstNonEmpty(ss ...string) string {
@@ -210,6 +238,18 @@ func (p *payu) Refund(ctx context.Context, req connector.RefundRequest) (connect
 		if cerr := checkCredentials(out.Msg); cerr != nil {
 			return connector.RefundSnapshot{}, cerr
 		}
+		if string(out.ErrorCode) == errDuplicateToken {
+			// error_code 227 ("same amount and same token not allowed") is PayU's own
+			// deduplication: a retried job. Adopt the refund it already made.
+			got, ferr := p.FetchRefund(ctx, connector.RefundRef{ProviderRef: req.ProviderRef, ProviderPaymentID: req.ProviderPaymentID})
+			if ferr != nil {
+				return connector.RefundSnapshot{}, fmt.Errorf("payu: refund token %s exists but cannot be read: %w", req.ProviderRef, ferr)
+			}
+			if got.Amount != req.Amount {
+				return connector.RefundSnapshot{}, fmt.Errorf("payu: refund token %s already used for %d, not %d", req.ProviderRef, got.Amount, req.Amount)
+			}
+			return got, nil
+		}
 		return connector.RefundSnapshot{}, connector.ErrNotRefundable{Reason: out.Msg}
 	}
 	return connector.RefundSnapshot{
@@ -228,32 +268,56 @@ func mapRefundStatus(raw string) connector.RefundStatus {
 	return connector.RefundPending
 }
 
-// FetchRefund polls check_action_status for a refund request id (or token).
-// TODO(spec): the nested shape of transaction_details is read tolerantly; pin
-// it against the sandbox once credentials exist.
+// actionEntry is one action (capture, refund) of a payment in check_action_status.
+type actionEntry struct {
+	MihPayID  flexStr `json:"mihpayid"`
+	RequestID flexStr `json:"request_id"`
+	Action    flexStr `json:"action"`
+	Token     flexStr `json:"token"`
+	Status    flexStr `json:"status"`
+	Amt       flexStr `json:"amt"`
+}
+
+// FetchRefund reads a refund from check_action_status, which has two forms
+// (both verified against the test environment):
+//
+//   - by request id (var1 = the request_id Refund returned): the answer is nested
+//     as transaction_details.<request_id>.<request_id>;
+//   - by payment (var1 = the PayU id, var2 = "payuid"): every action of the
+//     payment, the capture included, keyed by request id. A refund is picked by
+//     its token, the Paymux refund reference.
+//
+// An entry is accepted only when its request id (or token) is the one asked for,
+// and only when it is a refund; nothing is guessed at. A lookup by token alone
+// is impossible: PayU does not accept a token as an id.
 func (p *payu) FetchRefund(ctx context.Context, ref connector.RefundRef) (connector.RefundSnapshot, error) {
-	id := firstNonEmpty(ref.ProviderRefundID, ref.ProviderRef)
-	if id == "" {
-		return connector.RefundSnapshot{}, errors.New("payu: RefundRef needs a request id or token")
+	var (
+		var1   string
+		extra  map[string]string
+		accept func(actionEntry) bool
+	)
+	switch {
+	case ref.ProviderRefundID != "":
+		id := ref.ProviderRefundID
+		var1, accept = id, func(e actionEntry) bool { return string(e.RequestID) == id }
+	case ref.ProviderRef != "" && ref.ProviderPaymentID != "":
+		token := ref.ProviderRef
+		var1, extra, accept = ref.ProviderPaymentID, map[string]string{"var2": "payuid"}, func(e actionEntry) bool { return string(e.Token) == token }
+	default:
+		return connector.RefundSnapshot{}, errors.New("payu: RefundRef needs a request id, or a token with the payment id")
 	}
 	var out struct {
 		Status  flexStr                    `json:"status"`
 		Msg     string                     `json:"msg"`
 		Details map[string]json.RawMessage `json:"transaction_details"`
 	}
-	if err := p.api.call(ctx, "check_action_status", id, nil, &out); err != nil {
+	if err := p.api.call(ctx, "check_action_status", var1, extra, &out); err != nil {
 		return connector.RefundSnapshot{}, err
 	}
-	type entry struct {
-		MihPayID  flexStr `json:"mihpayid"`
-		RequestID flexStr `json:"request_id"`
-		Status    flexStr `json:"status"`
-		Amt       flexStr `json:"amt"`
-	}
-	var entries []entry
+	var entries []actionEntry
 	var walk func(raw json.RawMessage)
 	walk = func(raw json.RawMessage) {
-		var e entry
+		var e actionEntry
 		if json.Unmarshal(raw, &e) == nil && e.Status != "" {
 			entries = append(entries, e)
 			return
@@ -268,18 +332,13 @@ func (p *payu) FetchRefund(ctx context.Context, ref connector.RefundRef) (connec
 	for _, raw := range out.Details {
 		walk(raw)
 	}
-	// A payment with several refunds lists them all: take the one whose request
-	// id is the one asked for. A lone entry answers a lookup by token; among
-	// several, an entry that is not named is never guessed at.
-	var found *entry
+	var found *actionEntry
 	for i := range entries {
-		if string(entries[i].RequestID) == id {
-			found = &entries[i]
+		e := &entries[i]
+		if (e.Action == "" || strings.EqualFold(string(e.Action), "refund")) && accept(*e) {
+			found = e
 			break
 		}
-	}
-	if found == nil && len(entries) == 1 {
-		found = &entries[0]
 	}
 	if found == nil {
 		if len(entries) == 0 {
@@ -297,7 +356,7 @@ func (p *payu) FetchRefund(ctx context.Context, ref connector.RefundRef) (connec
 		}
 	}
 	return connector.RefundSnapshot{
-		ProviderRef: ref.ProviderRef, ProviderRefundID: firstNonEmpty(string(found.RequestID), id),
+		ProviderRef: firstNonEmpty(string(found.Token), ref.ProviderRef), ProviderRefundID: string(found.RequestID),
 		ProviderPaymentID: firstNonEmpty(string(found.MihPayID), ref.ProviderPaymentID),
 		Status:            mapRefundStatus(string(found.Status)), RawStatus: string(found.Status), Amount: minor, Currency: "INR",
 	}, nil

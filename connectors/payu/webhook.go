@@ -73,8 +73,10 @@ func (p *payu) ParseWebhook(_ context.Context, req connector.WebhookRequest) ([]
 	snap := connector.PaymentSnapshot{
 		ProviderRef: f.Get("txnid"), ProviderPaymentID: f.Get("mihpayid"),
 		Status: mapStatus(f.Get("status")), RawStatus: f.Get("status"),
-		Amount: amount, Currency: "INR", Method: f.Get("mode"),
-		ErrorCode: f.Get("error"), ErrorMessage: f.Get("error_Message"), CreatedAt: parseAddedOn(f.Get("addedon")),
+		Amount: amount, Currency: "INR", Method: methodOf(f.Get("mode")), CreatedAt: parseAddedOn(f.Get("addedon")),
+	}
+	if snap.Status == connector.PaymentFailed || snap.Status == connector.PaymentCanceled {
+		snap.ErrorCode, snap.ErrorMessage = f.Get("error"), f.Get("error_Message")
 	}
 	return []connector.Notification{{
 		Kind:       connector.NotifyPayment,
