@@ -13,7 +13,7 @@ import (
 	"github.com/paymux/paymux/migrations"
 )
 
-const usage = "usage: paymux <serve|migrate|app|version>"
+const usage = "usage: paymux <serve|migrate|app|provider|domain|endpoint|version>"
 
 // Run executes the CLI and returns the process exit code.
 func Run(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer) int {
@@ -32,7 +32,7 @@ func Run(ctx context.Context, args []string, lookupEnv func(string) (string, boo
 			return 1
 		}
 		return runEndpoint(ctx, args[1:], env, stdout, stderr)
-	case "serve", "migrate", "app":
+	case "serve", "migrate", "app", "provider", "domain":
 		env, err := envWithDotEnv(lookupEnv)
 		if err != nil {
 			fmt.Fprintf(stderr, "paymux %s: %v\n", args[0], err)
@@ -43,6 +43,10 @@ func Run(ctx context.Context, args []string, lookupEnv func(string) (string, boo
 			return runMigrate(ctx, env, stdout, stderr)
 		case "app":
 			return runApp(ctx, args[1:], env, stdout, stderr)
+		case "provider":
+			return runProvider(ctx, args[1:], env, stdout, stderr)
+		case "domain":
+			return runDomain(ctx, args[1:], env, stdout, stderr)
 		}
 		return runServe(ctx, env, stderr)
 	default:
