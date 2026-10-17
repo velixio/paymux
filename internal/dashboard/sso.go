@@ -104,13 +104,13 @@ func (d *Dashboard) ssoCallback(w http.ResponseWriter, r *http.Request) {
 	state, nonce, verifier, ok := d.readSSOCookie(r)
 	q := r.URL.Query()
 	if !ok || state == "" || subtle.ConstantTimeCompare([]byte(q.Get("state")), []byte(state)) != 1 {
-		d.o.Logger.Warn("dashboard: sso callback with a missing or wrong state", "ip", clientIP(r))
+		d.o.Logger.Warn("dashboard: sso callback with a missing or wrong state", "ip", d.clientIP(r))
 		d.ssoFailed(w, r, http.StatusBadRequest)
 		return
 	}
 	d.clearCookie(w, cookieOIDC) // a sign-in attempt is single use
 	if e := q.Get("error"); e != "" || q.Get("code") == "" {
-		d.o.Logger.Warn("dashboard: sso refused by the identity provider", "error", q.Get("error"), "ip", clientIP(r))
+		d.o.Logger.Warn("dashboard: sso refused by the identity provider", "error", q.Get("error"), "ip", d.clientIP(r))
 		d.ssoFailed(w, r, http.StatusUnauthorized)
 		return
 	}
@@ -120,13 +120,13 @@ func (d *Dashboard) ssoCallback(w http.ResponseWriter, r *http.Request) {
 		claims, err = d.o.OIDC.Verify(r.Context(), raw, nonce)
 	}
 	if err != nil {
-		d.o.Logger.Warn("dashboard: sso sign-in rejected", "err", err, "ip", clientIP(r))
+		d.o.Logger.Warn("dashboard: sso sign-in rejected", "err", err, "ip", d.clientIP(r))
 		d.ssoFailed(w, r, http.StatusUnauthorized)
 		return
 	}
 	u, err := d.ssoUser(r.Context(), r, claims)
 	if err != nil {
-		d.o.Logger.Warn("dashboard: sso sign-in refused", "email", claims.Email, "reason", err, "ip", clientIP(r))
+		d.o.Logger.Warn("dashboard: sso sign-in refused", "email", claims.Email, "reason", err, "ip", d.clientIP(r))
 		d.ssoFailed(w, r, http.StatusForbidden)
 		return
 	}
@@ -192,6 +192,6 @@ func (d *Dashboard) recordSSO(ctx context.Context, r *http.Request, userID, acti
 	}
 	return d.o.DB.Write(ctx, func(tx store.Tx) error {
 		return audit.Record(ctx, tx, audit.Entry{OrgID: org, Actor: audit.Actor{Type: audit.ActorUser, ID: userID}, Action: action, Target: userID,
-			After: after, IP: clientIP(r)})
+			After: after, IP: d.clientIP(r)})
 	})
 }

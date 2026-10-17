@@ -88,7 +88,18 @@ func (a *API) getPayment(w http.ResponseWriter, r *http.Request, pr core.Princip
 		a.failCore(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, core.ViewPayment(p))
+	attempts, err := a.core.PaymentAttempts(r.Context(), scope(pr), p.ID)
+	if err != nil {
+		a.failCore(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, paymentDetail{PaymentView: core.ViewPayment(p), Attempts: attempts})
+}
+
+// paymentDetail is GET /v1/payments/{id}: the payment and its attempts.
+type paymentDetail struct {
+	core.PaymentView
+	Attempts []core.AttemptView `json:"attempts"`
 }
 
 type listResp struct {

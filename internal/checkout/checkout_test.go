@@ -87,7 +87,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 	}
 	base, _ := url.Parse("https://pay.example.com")
 	e.conns = connectors.New(connectors.Options{DB: db, Box: box, BaseURL: base, Now: clk.Now})
-	rt := checkout.NewRouting(e.breaker)
+	rt := checkout.NewRouting(e.breaker).WithSettings(e.set)
 	e.core = core.NewService(core.Options{DB: db, Settings: e.set, Jobs: e.q, Router: rt, Now: clk.Now,
 		Emitter: events.EmitterFunc(func(_ context.Context, _ store.Tx, ev events.Event) error {
 			e.mu.Lock()

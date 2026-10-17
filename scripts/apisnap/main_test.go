@@ -103,6 +103,34 @@ func TestSnapshotIgnoresInternalsAndDocsButNotTheAPI(t *testing.T) {
 	}
 }
 
+func TestSnapshotCoversTheRootPackage(t *testing.T) {
+	root := `package m
+
+type App struct{ n int }
+
+func (a *App) OnThing(f func(string)) {}
+func (a *App) internal()            {}
+func New() *App                     { return nil }
+`
+	files := map[string]string{"pkg/a/a.go": base, "m.go": root, "m_test.go": "package m\nfunc TestRootOnly() {}\n",
+		"internal/x/x.go": "package x\nfunc Inner() {}\n"}
+	ref := snap(t, tree(t, files))
+	for _, want := range []string{`package m // import "example.com/m"`, "func New() *App", "func (a *App) OnThing(f func(string))", `package a // import "example.com/m/pkg/a"`} {
+		if !strings.Contains(ref, want) {
+			t.Errorf("missing %q in\n%s", want, ref)
+		}
+	}
+	for _, not := range []string{"internal()", "TestRootOnly", "Inner"} {
+		if strings.Contains(ref, not) {
+			t.Errorf("unexpected %q in\n%s", not, ref)
+		}
+	}
+	files["m.go"] = root + "\nfunc (a *App) OnOther() {}\n"
+	if got := snap(t, tree(t, files)); got == ref {
+		t.Error("a new method on the root package did not change the snapshot")
+	}
+}
+
 func TestCheck(t *testing.T) {
 	root := tree(t, map[string]string{"pkg/a/a.go": base})
 	s := snap(t, root)

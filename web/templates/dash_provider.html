@@ -1,0 +1,56 @@
+{{define "title"}}{{.Title}} - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css"><script src="/assets/js/dash.js" defer></script>{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<p><a href="/dashboard/providers">&larr; Provider accounts</a></p>
+{{with .Prov}}
+<h2>{{if .New}}Add a {{.Display}} account{{else}}{{.Name}} <small class="muted">{{.Display}} &middot; {{.ID}}</small>{{end}}</h2>
+{{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+{{if .Test}}<p class="{{if .TestOK}}notice{{else}}error{{end}}" role="status">{{.Test}}</p>{{end}}
+{{if .New}}
+<form method="post" action="/dashboard/providers" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="connector" value="{{.Connector}}">
+<label>Name<input class="field" name="name" value="{{.Name}}" required maxlength="200"></label>
+<label>Mode<select class="field" name="mode"><option value="test"{{if eq .Mode "test"}} selected{{end}}>test</option><option value="live"{{if eq .Mode "live"}} selected{{end}}>live</option></select></label>
+{{template "dash_provider_fields" $}}
+<label>Statement descriptor<input class="field" name="statement_descriptor" value="{{.StatementDescriptor}}"></label>
+<label>Provider GSTIN (for the fee input-tax-credit register)<input class="field" name="provider_gstin" value="{{.ProviderGSTIN}}"></label>
+<label>Let this app use the account<select class="field" name="app_id"><option value="">(none yet)</option>{{range .Linkable}}<option value="{{.ID}}"{{if eq .ID $.Prov.AppID}} selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+<button class="btn" type="submit">Create account</button>
+</form>
+{{else}}
+<dl class="facts">
+<dt>Mode</dt><dd>{{.Mode}}</dd><dt>Status</dt><dd>{{.Status}}</dd>
+<dt>Webhook URL</dt><dd><code class="wrap">{{.Webhook}}</code> <button type="button" class="linkbtn" data-copy="{{.Webhook}}">Copy</button><br><small class="muted">Register this URL (and the signing secret) in the provider's dashboard.</small></dd>
+{{if .StatementDescriptor}}<dt>Statement descriptor</dt><dd>{{.StatementDescriptor}}</dd>{{end}}
+{{if .ProviderGSTIN}}<dt>Provider GSTIN</dt><dd>{{.ProviderGSTIN}}</dd>{{end}}
+<dt>Currencies</dt><dd>{{range .Currencies}}{{if .Checked}}{{.Value}} {{end}}{{end}}</dd>
+<dt>Purposes</dt><dd>{{range .Purposes}}{{if .Checked}}{{.Value}} {{end}}{{end}}</dd>
+<dt>Apps</dt><dd>{{range .Linked}}<a href="/dashboard/apps/{{.ID}}">{{.Name}}</a> {{else}}<span class="muted">none</span>{{end}}</dd>
+</dl>
+{{if .Unavailable}}<p class="error">This connector is not built into this binary, so the account cannot be changed or tested.</p>{{end}}
+{{if and .CanManage (not .Unavailable)}}
+<h3>Settings</h3>
+<form method="post" action="/dashboard/providers/{{.ID}}" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Name<input class="field" name="name" value="{{.Name}}" required maxlength="200"></label>
+<label>Status<select class="field" name="status"><option value="active"{{if eq .Status "active"}} selected{{end}}>active</option><option value="disabled"{{if eq .Status "disabled"}} selected{{end}}>disabled</option></select></label>
+{{template "dash_provider_fields" $}}
+<button class="btn" type="submit">Save</button>
+</form>
+<form method="post" action="/dashboard/providers/{{.ID}}/test" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn" type="submit">Test connection</button>
+<p class="muted">Asks the provider for a payment that cannot exist: "not found" proves the credentials work.</p>
+</form>
+{{end}}
+{{if .CanManage}}
+<h3>Let an app use this account</h3>
+<form method="post" action="/dashboard/providers/{{.ID}}/apps" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<select class="field" name="app_id" aria-label="App">{{range .Linkable}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+<button class="btn" type="submit">Link app</button>
+</form>
+{{end}}
+{{end}}
+{{end}}
+{{template "dash_close" .}}{{end}}

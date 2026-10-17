@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -22,9 +23,15 @@ import (
 
 	"github.com/paymux/paymux/internal/auth"
 	"github.com/paymux/paymux/internal/authz"
+	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/disputes"
+	"github.com/paymux/paymux/internal/invoice"
+	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/look"
 	"github.com/paymux/paymux/internal/oidc"
 	"github.com/paymux/paymux/internal/outbound"
+	"github.com/paymux/paymux/internal/reconcile"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
@@ -55,18 +62,32 @@ const (
 
 // Options configures a Dashboard.
 type Options struct {
-	DB         *store.DB
-	Box        *secrets.Box // encrypts TOTP secrets
-	Renderer   *web.Renderer
+	DB       *store.DB
+	Box      *secrets.Box // encrypts TOTP secrets
+	Renderer *web.Renderer
+	// Themes lists the installed themes for the Appearance page (nil: none).
+	Themes     *web.Themes
 	MasterKey  []byte // derives the CSRF and login-ticket keys
 	BaseURL    *url.URL
 	DevSkip2FA bool
 	Logger     *slog.Logger
 	Now        func() time.Time
 
-	Core     *core.Service
-	Settings *settings.Service
-	Outbound *outbound.Service
+	// TrustedProxies are the reverse proxies whose X-Forwarded-For is
+	// believed when working out the client address.
+	TrustedProxies []netip.Prefix
+
+	Core       *core.Service
+	Settings   *settings.Service
+	Outbound   *outbound.Service
+	Invoice    *invoice.Service
+	Connectors *connectors.Service
+	Disputes   *disputes.Service
+	Recon      *reconcile.Service
+	// Jobs takes the "run reconciliation now" job (*jobs.Queue).
+	Jobs interface {
+		Enqueue(ctx context.Context, tx store.Tx, j jobs.Job) error
+	}
 	// Subscriptions serves the subscription pages; nil answers 404 there.
 	Subscriptions *subscriptions.Service
 	// OIDC enables single sign-on (nil: password and TOTP only). People whose
@@ -99,13 +120,18 @@ type Dashboard struct {
 
 	dummyOnce sync.Once
 	dummyHash string
+
+	// first-run setup: the token that opens /setup (see setup.go)
+	setupMu  sync.Mutex
+	setupTok string
+	setupKey []byte
 }
 
 // New builds a Dashboard.
 func New(o Options) (*Dashboard, error) {
 	if o.DB == nil || o.Box == nil || o.Renderer == nil || o.BaseURL == nil || len(o.MasterKey) == 0 ||
-		o.Core == nil || o.Settings == nil || o.Outbound == nil {
-		return nil, errors.New("dashboard: DB, Box, Renderer, BaseURL, MasterKey, Core, Settings and Outbound are required")
+		o.Core == nil || o.Settings == nil || o.Outbound == nil || o.Invoice == nil || o.Connectors == nil || o.Disputes == nil || o.Recon == nil || o.Jobs == nil {
+		return nil, errors.New("dashboard: DB, Box, Renderer, BaseURL, MasterKey, Core, Settings, Outbound, Invoice, Connectors, Disputes, Recon and Jobs are required")
 	}
 	if o.Location == nil {
 		o.Location = time.UTC
@@ -125,10 +151,12 @@ func New(o Options) (*Dashboard, error) {
 		ticketKey: derive(o.MasterKey, "dashboard-login-ticket"),
 		modeKey:   derive(o.MasterKey, "dashboard-mode"),
 		oidcKey:   derive(o.MasterKey, "dashboard-oidc"),
+		setupKey:  derive(o.MasterKey, "dashboard-csrf-setup"),
 		// Cookies are Secure everywhere except plain-http local development.
 		secure: o.BaseURL.Scheme == "https"}
 	d.roles = authz.NewCache(d.loadRoles, rolesTTL, o.Now)
 	d.routes()
+	d.SetupToken() // on a hub without users this logs the token that opens /setup
 	return d, nil
 }
 
@@ -141,19 +169,19 @@ func derive(master []byte, label string) []byte {
 // sections are the placeholder pages of the nav shell.
 var sections = []navItem{
 	{"subscriptions", "Subscriptions", prefix + "/subscriptions"},
-	{"disputes", "Disputes", prefix + "/disputes"}, {"invoices", "Invoices", prefix + "/invoices"},
-	{"reports", "Reports", prefix + "/reports"}, {"providers", "Providers", prefix + "/providers"},
 }
 
-// navItems is the full menu; the first entries are built pages, the rest of
-// the placeholders come from sections.
-var navItems = func() []navItem {
-	items := []navItem{{"overview", "Overview", prefix + "/overview"}, {"payments", "Payments", prefix + "/payments"}}
-	items = append(items, sections...)
-	return append(items, navItem{"apps", "Apps", prefix + "/apps"}, navItem{"settings", "Settings", prefix + "/settings"},
-		navItem{"audit", "Audit", prefix + "/audit"}, navItem{"users", "Users", prefix + "/users"},
-		navItem{"roles", "Roles", prefix + "/roles"})
-}()
+// navItems is the full menu; built pages and placeholders interleaved.
+var navItems = []navItem{
+	{"overview", "Overview", prefix + "/overview"}, {"payments", "Payments", prefix + "/payments"},
+	{"subscriptions", "Subscriptions", prefix + "/subscriptions"}, {"disputes", "Disputes", prefix + "/disputes"},
+	{"reconciliation", "Reconciliation", prefix + "/reconciliation"},
+	{"invoices", "Invoices", prefix + "/invoices"}, {"reports", "Reports", prefix + "/reports"},
+	{"apps", "Apps", prefix + "/apps"}, {"providers", "Providers", prefix + "/providers"},
+	{"tax-entities", "Tax entities", prefix + "/tax-entities"}, {"fx", "FX rates", prefix + "/fx"},
+	{"settings", "Settings", prefix + "/settings"}, {"appearance", "Appearance", prefix + "/appearance"}, {"audit", "Audit", prefix + "/audit"}, {"users", "Users", prefix + "/users"},
+	{"roles", "Roles", prefix + "/roles"},
+}
 
 type navItem struct{ Key, Label, Href string }
 
@@ -186,16 +214,23 @@ func (d *Dashboard) routes() {
 	m.HandleFunc("GET "+prefix+"/{section}", d.authed(authz.PaymentRead, d.section))
 }
 
-// ServeHTTP implements http.Handler.
-func (d *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h := w.Header()
+// setSecurityHeaders sets the headers of every dashboard page (and of /setup).
+func setSecurityHeaders(h http.Header) {
 	h.Set("Cache-Control", "no-store")
 	h.Set("X-Frame-Options", "DENY")
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Referrer-Policy", "same-origin")
 	h.Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
+}
+
+// ServeHTTP implements http.Handler.
+func (d *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	setSecurityHeaders(w.Header())
 	limit := int64(maxFormBytes)
-	if strings.HasSuffix(r.URL.Path, "/branding") {
+	switch {
+	case strings.HasPrefix(r.URL.Path, prefix+"/disputes/") && strings.HasSuffix(r.URL.Path, "/evidence"):
+		limit = 3*disputes.MaxEvidenceBytes + 1<<20 // up to three files of 10 MiB
+	case isUploadPath(r.URL.Path):
 		limit = maxUploadBytes + 64<<10
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
@@ -219,8 +254,13 @@ type view struct {
 	Notice    string
 
 	// login
-	Email string
-	SSO   bool // show the single sign-on button
+	Email      string
+	SSO        bool // show the single sign-on button
+	NeedsSetup bool
+	// first-run setup
+	SetupOrg, SetupApp, SetupSlug string
+	SetupKeys                     []setupKey
+	SetupSignedIn                 bool
 	// totp
 	Enrol               bool
 	TOTPSecret, TOTPURI string
@@ -248,10 +288,26 @@ type userRow struct {
 	IsSelf          bool
 }
 
+// dashboardTheme is the org's theme, which the dashboard wears.
+func (d *Dashboard) dashboardTheme(ctx context.Context) string {
+	return look.Dashboard(ctx, d.o.Settings)
+}
+
+// themedRenderer is the renderer drawing in the org's theme.
+func (d *Dashboard) themedRenderer() *web.Renderer {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return d.o.Renderer.With(d.dashboardTheme(ctx), "")
+}
+
 func (d *Dashboard) render(w http.ResponseWriter, status int, page string, v view) {
+	d.renderWith(w, status, d.themedRenderer(), page, v)
+}
+
+func (d *Dashboard) renderWith(w http.ResponseWriter, status int, rend *web.Renderer, page string, v view) {
 	v.DevBanner = d.o.DevSkip2FA
 	var buf bytes.Buffer
-	if err := d.o.Renderer.Render(&buf, page, v); err != nil {
+	if err := rend.Render(&buf, page, v); err != nil {
 		d.o.Logger.Error("dashboard: render", "page", page, "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -275,13 +331,48 @@ func (d *Dashboard) setCookie(w http.ResponseWriter, name, value string, maxAge 
 
 func (d *Dashboard) clearCookie(w http.ResponseWriter, name string) { d.setCookie(w, name, "", -1) }
 
-func clientIP(r *http.Request) string {
-	// TODO(spec §12): honour a trusted proxy header once deployment config has one.
-	h, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
+// trusted reports whether addr is one of the configured reverse proxies.
+func (d *Dashboard) trusted(addr netip.Addr) bool {
+	for _, p := range d.o.TrustedProxies {
+		if p.Contains(addr) {
+			return true
+		}
 	}
-	return h
+	return false
+}
+
+// clientIP is the address of the browser. X-Forwarded-For counts only when
+// the connection comes from a trusted proxy; the list is then read from the
+// right, skipping trusted proxies, so entries the client made up on the left
+// are never believed.
+func (d *Dashboard) clientIP(r *http.Request) string {
+	host := r.RemoteAddr
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	peer, err := netip.ParseAddr(strings.Trim(host, "[]"))
+	if err != nil {
+		return host
+	}
+	peer = peer.Unmap()
+	if !d.trusted(peer) {
+		return peer.String()
+	}
+	hops := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
+	for i := len(hops) - 1; i >= 0; i-- {
+		hop := strings.TrimSpace(hops[i])
+		if hop == "" && len(hops) == 1 {
+			break
+		}
+		a, err := netip.ParseAddr(hop)
+		if err != nil {
+			break // not an address: do not guess
+		}
+		if a = a.Unmap(); !d.trusted(a) {
+			return a.String()
+		}
+	}
+	return peer.String()
 }
 
 // ---- anonymous CSRF (login forms) ----
@@ -308,6 +399,11 @@ func (d *Dashboard) validPre(r *http.Request) bool {
 		return false
 	}
 	return auth.ValidCSRF(d.preKey, c.Value, formCSRF(r))
+}
+
+// isUploadPath reports whether the route takes a logo upload.
+func isUploadPath(p string) bool {
+	return strings.HasSuffix(p, "/branding") || strings.HasSuffix(p, "/tax-entities") || strings.Contains(p, "/tax-entities/")
 }
 
 // maxUploadBytes bounds the multipart branding form (a logo of up to 512 KB
@@ -393,7 +489,7 @@ func (d *Dashboard) createSession(ctx context.Context, w http.ResponseWriter, r 
 		ua = ua[:300]
 	}
 	row := store.SessionRow{ID: sessionID(), UserID: u.ID, TokenHash: hash, CSRFKey: key, CreatedAt: now, LastSeenAt: now,
-		ExpiresAt: now.Add(MaxSessionAge), IP: clientIP(r), UserAgent: ua}
+		ExpiresAt: now.Add(MaxSessionAge), IP: d.clientIP(r), UserAgent: ua}
 	if err := d.o.DB.InsertSession(ctx, row); err != nil {
 		return err
 	}

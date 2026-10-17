@@ -11,4 +11,5 @@
 </form>
 {{if .SSO}}<p class="muted">or</p>
 <a class="btn" href="/dashboard/login/oidc">Sign in with single sign-on</a>{{end}}
+{{if .NeedsSetup}}<p class="muted">This hub has no users yet. <a href="/setup">Run the first-run setup</a>.</p>{{end}}
 {{template "dash_close" .}}{{end}}

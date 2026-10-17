@@ -430,7 +430,7 @@ func TestAppSettingsTab(t *testing.T) {
 		has(t, body, "payment_ttl", "routing", "issue_invoices", "sac_code", "gst_rate_bp", "duplicate_payment_action")
 		lacks(t, body, "mandate_afa_limit", "recon_time", "webhook_retry_schedule")
 		row := regexpFind(t, `(?s)(<tr[^>]*id="setting-payment_ttl".*?</tr>)`, body)
-		has(t, row, ">60<", "org") // inherited from the org
+		has(t, row, `value="60"`, "org") // inherited from the org
 		sacRow := regexpFind(t, `(?s)(<tr[^>]*id="setting-sac_code".*?</tr>)`, body)
 		has(t, sacRow, "998315", "org") // seeded into the org values like every default
 
@@ -443,7 +443,7 @@ func TestAppSettingsTab(t *testing.T) {
 			t.Fatalf("resolved %s %s", v.Raw, v.Source)
 		}
 		row = regexpFind(t, `(?s)(<tr[^>]*id="setting-payment_ttl".*?</tr>)`, e.pageOK(admin, page+"?tab=settings"))
-		has(t, row, ">30<", "app", "Reset to org")
+		has(t, row, `value="30"`, "app", "Reset to org")
 
 		// validation always goes through settings
 		for name, c := range map[string]struct{ key, val string }{

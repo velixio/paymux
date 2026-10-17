@@ -1,4 +1,5 @@
 {{define "dash_open"}}{{if .DevBanner}}<div class="dev-banner" role="alert">2FA disabled (development)</div>{{end}}
+{{range .Warnings}}<div class="banner-warning" role="alert">{{.}}</div>{{end}}
 {{if .User}}<header class="dash-head">
 <strong>Paymux</strong>
 <span class="muted">{{.User.Email}} ({{.User.Role}})</span>

@@ -32,7 +32,7 @@ const (
 	appTabKeys   = "keys"
 )
 
-var appTabs = []string{"keys", "webhooks", "branding", "providers", "settings"}
+var appTabs = []string{"keys", "webhooks", "branding", "providers", "domains", "tax", "settings"}
 
 type appRow struct{ ID, Name, Slug, ReturnURL, Created string }
 
@@ -59,8 +59,14 @@ type accountRow struct {
 }
 
 type settingRow struct {
-	Key, Value, Source string
+	Key, Value, Source string // Value is the effective JSON, indented
 	Overridden         bool
+
+	// the control
+	Help, Kind, Unit, Text, Display, Default string
+	Pattern, Min, Max, Step, Aux             string
+	Options                                  []enumOpt
+	Checked                                  bool
 }
 
 // settingsTable is what the shared settings partial renders: the rows, the
@@ -82,6 +88,9 @@ type appView struct {
 	EndpointDeliveries []deliveryRow
 	Brand              brandView
 	Accounts           []accountRow
+	Tax                *taxProfileView
+	Domains            []domainRow
+	Checklist          []checklistItem
 
 	CanKeys, CanEndpoints, CanBrand, CanProviders, CanSettings, CanReplay bool
 }
@@ -162,7 +171,7 @@ func (d *Dashboard) appCreate(w http.ResponseWriter, r *http.Request, s *session
 func (d *Dashboard) loadApp(w http.ResponseWriter, r *http.Request) (store.App, bool) {
 	var app store.App
 	err := d.o.DB.Read(r.Context(), func(q store.Querier) (err error) { app, err = store.GetApp(r.Context(), q, r.PathValue("id")); return })
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(r.Context(), app.OrgID) {
 		http.NotFound(w, r)
 		return app, false
 	}
@@ -262,6 +271,12 @@ func (d *Dashboard) renderApp(w http.ResponseWriter, r *http.Request, s *session
 			av.Accounts = append(av.Accounts, accountRow{ID: a.ID, Name: a.Name, Connector: a.Connector, Mode: a.Mode, Status: a.Status,
 				Currencies: strings.Join(a.Currencies, ", "), Allowed: slices.Contains(allowed, a.ID)})
 		}
+	case "domains":
+		var ds []store.Domain
+		err = d.o.DB.Read(ctx, func(q store.Querier) (err error) { ds, err = store.ListDomains(ctx, q, app.ID); return })
+		av.Domains, av.Checklist = d.domainRows(ds)
+	case "tax":
+		av.Tax, err = d.taxProfileFor(ctx, app.ID)
 	case "settings":
 		var rows []settingRow
 		rows, err = d.settingRows(ctx, app.ID, app.OrgID, settings.LevelApp)
@@ -344,7 +359,7 @@ func (d *Dashboard) keyRevoke(w http.ResponseWriter, r *http.Request, s *session
 			return err
 		}
 		return audit.Record(r.Context(), tx, audit.Entry{OrgID: org, Actor: s.auditActor(), Action: "api_key.revoke", Target: kid,
-			After: map[string]string{"app_id": app.ID}, IP: clientIP(r)})
+			After: map[string]string{"app_id": app.ID}, IP: d.clientIP(r)})
 	})
 	if err != nil {
 		d.fail(w, err)
@@ -504,7 +519,7 @@ func (d *Dashboard) brandingSave(w http.ResponseWriter, r *http.Request, s *sess
 		}
 		return audit.Record(ctx, tx, audit.Entry{OrgID: app.OrgID, Actor: s.auditActor(), Action: "app.update", Target: app.ID,
 			Before: map[string]any{"branding": before, "default_return_url": app.DefaultReturnURL},
-			After:  map[string]any{"branding": after, "default_return_url": ret}, IP: clientIP(r)})
+			After:  map[string]any{"branding": after, "default_return_url": ret}, IP: d.clientIP(r)})
 	})
 	if err != nil {
 		d.fail(w, err)
@@ -581,7 +596,7 @@ func (d *Dashboard) providersSave(w http.ResponseWriter, r *http.Request, s *ses
 			return err
 		}
 		return audit.Record(ctx, tx, audit.Entry{OrgID: app.OrgID, Actor: s.auditActor(), Action: "app.providers.update", Target: app.ID,
-			Before: map[string]any{"provider_accounts": before}, After: map[string]any{"provider_accounts": want}, IP: clientIP(r)})
+			Before: map[string]any{"provider_accounts": before}, After: map[string]any{"provider_accounts": want}, IP: d.clientIP(r)})
 	})
 	if err != nil {
 		d.fail(w, err)
@@ -608,13 +623,7 @@ func (d *Dashboard) settingRows(ctx context.Context, appID, orgID string, level 
 		if err != nil {
 			return nil, err
 		}
-		var pretty bytes.Buffer
-		if err := json.Indent(&pretty, val.Raw, "", "  "); err != nil {
-			pretty.Reset()
-			pretty.Write(val.Raw)
-		}
-		rows = append(rows, settingRow{Key: def.Key, Value: pretty.String(), Source: string(val.Source),
-			Overridden: val.Source == settings.SourceApp})
+		rows = append(rows, describe(def, val))
 	}
 	return rows, nil
 }
@@ -633,7 +642,7 @@ func (d *Dashboard) appSettingSet(w http.ResponseWriter, r *http.Request, s *ses
 	if !ok {
 		return
 	}
-	err := d.o.Settings.SetApp(r.Context(), s.auditActor(), app.OrgID, app.ID, r.PathValue("key"), json.RawMessage(strings.TrimSpace(r.PostForm.Get("value"))))
+	err := d.o.Settings.SetApp(r.Context(), s.auditActor(), app.OrgID, app.ID, r.PathValue("key"), settingJSON(r.PathValue("key"), r.PostForm["value"]))
 	if msg, bad := settingErr(err); bad {
 		d.renderApp(w, r, s, app, http.StatusBadRequest, "settings", msg, nil)
 		return

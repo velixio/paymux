@@ -1,0 +1,18 @@
+{
+  "name": "minimal-dark",
+  "version": "1.0.0",
+  "description": "Always dark, square corners, a monospace-leaning type stack and little decoration.",
+  "tokens": {
+    "--color-bg": "#0b0f17",
+    "--color-fg": "#e5e7eb",
+    "--color-muted": "#9ca3af",
+    "--color-accent": "#3b82f6",
+    "--color-danger": "#f87171",
+    "--color-line": "#1f2937",
+    "--color-nav": "#0f172a",
+    "--color-ok": "#86efac",
+    "--color-banner": "#991b1b",
+    "--radius": "3px"
+  },
+  "font_stack": "ui-monospace, \"SF Mono\", Menlo, Consolas, system-ui, sans-serif"
+}

@@ -92,6 +92,12 @@ var defs = []Def{
 	// predebit_email: also email the customer a pre-debit notice (merchant,
 	// amount, date, mandate reference, reason), on top of the provider's own.
 	{"predebit_email", `true`, orgApp, isBool},
+	// theme: the look of the pages. At the org level it is the dashboard's
+	// theme (and the default for customer pages); an app's own value is the
+	// theme of its customer pages (pay, subscription, invoice).
+	{"theme", `"default"`, orgApp, matches(`^[a-z0-9][a-z0-9-]{0,39}$`)},
+	// customer_language: the language of customer pages and the pre-debit email.
+	{"customer_language", `"en"`, orgApp, matches(`^[a-z]{2,3}$`)},
 	{"mandate_headroom", `1.5`, orgApp, floatRange(1.0, 5.0)},
 	{"mandate_afa_limit", `1500000`, LevelOrg, intRange(1, 10000000)}, // INR paise (Rs 15,000)
 	{"mandate_validity", `5`, orgApp, intRange(1, 30)},                // years

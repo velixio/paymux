@@ -1,7 +1,7 @@
-{{define "title"}}Pay {{.AppName}}{{end}}
+{{define "title"}}{{t "sdk.title" .AppName}}{{end}}
 {{define "content"}}
-<p class="muted">Opening secure checkout…</p>
-<button class="btn" id="paybtn" type="button">Pay now</button>
+<p class="muted">{{t "sdk.opening"}}</p>
+<button class="btn" id="paybtn" type="button">{{t "sdk.pay_now"}}</button>
 <script src="{{.ScriptURL}}"></script>
 <script>
 (function () {

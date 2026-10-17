@@ -1,0 +1,40 @@
+{{define "title"}}{{.Title}} - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h3>Welcome to Paymux</h3>
+<p class="muted">This hub has no users yet. Create the administrator account, name your organisation and, if you like, the first app. This page closes for good as soon as the account exists.</p>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<form method="post" action="/setup" class="stack" autocomplete="off">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<fieldset class="rule-card">
+<legend>Setup code</legend>
+<label>Code from the hub's log
+<input class="field" name="token" required autocomplete="off" spellcheck="false" placeholder="abcdef-ghijkl-mnopqr-stuvwx"></label>
+<p class="muted">The hub printed it when it started: look for "first-run setup is open" in its log (<code>journalctl -u paymux</code> or <code>docker logs</code>).</p>
+</fieldset>
+<fieldset class="rule-card">
+<legend>Administrator</legend>
+<label>Email
+<input class="field" name="email" type="email" value="{{.Email}}" autocomplete="username" required></label>
+<label>Password (at least 12 characters)
+<input class="field" name="password" type="password" autocomplete="new-password" minlength="12" required></label>
+<label>Password again
+<input class="field" name="password2" type="password" autocomplete="new-password" minlength="12" required></label>
+<p class="muted">The next page sets up two-factor sign-in with an authenticator app.</p>
+</fieldset>
+<fieldset class="rule-card">
+<legend>Organisation</legend>
+<label>Name
+<input class="field" name="org_name" value="{{.SetupOrg}}" maxlength="100" placeholder="Paymux"></label>
+</fieldset>
+<fieldset class="rule-card">
+<legend>First app (optional)</legend>
+<label>App name
+<input class="field" name="app_name" value="{{.SetupApp}}" maxlength="200" placeholder="My Shop"></label>
+<label>Slug (leave empty to derive it from the name)
+<input class="field" name="app_slug" value="{{.SetupSlug}}" maxlength="40" pattern="[a-z0-9][a-z0-9-]*" placeholder="my-shop"></label>
+<p class="muted">Creating an app also creates a test and a live API key. They are shown once, on the next page.</p>
+</fieldset>
+<button class="btn" type="submit">Create the administrator</button>
+</form>
+{{template "dash_close" .}}{{end}}

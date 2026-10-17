@@ -1,0 +1,34 @@
+{{define "title"}}Disputes - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h2>Disputes <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h2>
+<p class="muted">Soonest deadline first. A deadline within 72 hours is shown in red.</p>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<form class="filters" method="get" action="/dashboard/disputes">
+<select name="status" aria-label="Status"><option value="">Any status</option>{{range .DisputeStatuses}}<option value="{{.}}"{{if eq . $.DispFilter.Status}} selected{{end}}>{{.}}</option>{{end}}</select>
+<select name="app" aria-label="App"><option value="">All apps</option>{{range .AppOpts}}<option value="{{.ID}}"{{if eq .ID $.DispFilter.App}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+<select name="provider" aria-label="Provider"><option value="">Any provider</option>{{range .ProviderOpts}}<option value="{{.}}"{{if eq . $.DispFilter.Provider}} selected{{end}}>{{.}}</option>{{end}}</select>
+<button class="btn small" type="submit">Filter</button>
+</form>
+<table class="grid">
+<thead><tr><th>Dispute</th><th>App</th><th>Provider</th><th>Status</th><th>Amount</th><th>Reason</th><th>Respond by</th></tr></thead>
+<tbody>{{range .DispRows}}<tr{{if .DueSoon}} class="due-soon"{{end}}>
+<td><a href="/dashboard/disputes/{{.ID}}">{{.ID}}</a>{{if eq .Source "manual"}} <span class="flag">manual</span>{{end}}</td><td>{{.App}}</td><td>{{.Provider}}</td><td>{{.Status}}</td><td>{{.Amount}}</td><td>{{.Reason}}{{if .Stage}} <small class="muted">({{.Stage}})</small>{{end}}</td>
+<td>{{if .Due}}{{.Due}}{{else}}<span class="muted">none</span>{{end}}{{if .DueSoon}} <strong>due soon</strong>{{end}}</td></tr>
+{{else}}<tr><td colspan="7" class="muted">No disputes match.</td></tr>{{end}}</tbody>
+</table>
+{{if .CanManage}}
+<h3>Record a dispute by hand</h3>
+<p class="muted">For providers that do not report disputes (Zoho Payments) or any the provider never sent. Enter the payment, the amount and the deadline shown in the provider's portal.</p>
+<form method="post" action="/dashboard/disputes" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<input class="field" name="payment_id" placeholder="Payment id (pay_...)" required>
+<input class="field" name="amount" inputmode="decimal" placeholder="Disputed amount, e.g. 250.50" required>
+<input class="field" name="reason" placeholder="Reason" maxlength="200">
+<input class="field" name="stage" placeholder="Stage (inquiry, chargeback...)" maxlength="60">
+<label>Respond by<input class="field" name="due_by" type="date"></label>
+<button class="btn" type="submit">Record dispute</button>
+</form>
+{{end}}
+{{template "dash_close" .}}{{end}}

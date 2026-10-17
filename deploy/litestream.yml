@@ -1,0 +1,34 @@
+# Litestream: continuous replication of the SQLite database to S3-compatible
+# object storage (AWS S3, Cloudflare R2, Backblaze B2, MinIO, Wasabi ...).
+# Not needed with Postgres: use pg_dump and WAL archiving instead (docs/runbook.md).
+#
+# Install litestream, copy this to /etc/litestream.yml and put the keys in
+# /etc/litestream.env (mode 0600):
+#     LITESTREAM_ACCESS_KEY_ID=...
+#     LITESTREAM_SECRET_ACCESS_KEY=...
+# Run it as its own service next to paymux (the package's litestream.service
+# reads /etc/litestream.yml and can take EnvironmentFile=/etc/litestream.env).
+#
+# Restore on a new machine (hub stopped):
+#     litestream restore -config /etc/litestream.yml -o /var/lib/paymux/paymux.db /var/lib/paymux/paymux.db
+#     chown paymux:paymux /var/lib/paymux/paymux.db
+
+# Replicate every second; keep 7 days of history and a snapshot a day.
+dbs:
+  - path: /var/lib/paymux/paymux.db
+    # Paymux opens the file in WAL mode with its own checkpointing; Litestream
+    # takes over checkpointing, so let it.
+    monitor-interval: 1s
+    replicas:
+      - type: s3
+        bucket: paymux-backups
+        path: paymux/prod
+        # Leave endpoint out for AWS S3. For other providers, e.g. R2:
+        endpoint: https://ACCOUNT_ID.r2.cloudflarestorage.com
+        region: auto
+        force-path-style: true
+        sync-interval: 1s
+        snapshot-interval: 24h
+        retention: 168h
+        # access-key-id / secret-access-key come from the environment
+        # (LITESTREAM_ACCESS_KEY_ID / LITESTREAM_SECRET_ACCESS_KEY).

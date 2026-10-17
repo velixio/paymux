@@ -100,7 +100,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 	if err := e.set.SetOrg(ctx, audit.System, store.DefaultOrgID, "routing", json.RawMessage(doc)); err != nil {
 		t.Fatal(err)
 	}
-	rend, err := web.NewRenderer(web.Embedded())
+	rend, err := web.NewThemedRenderer(web.ThemedOptions{Base: web.Embedded(), Themes: web.NewThemes(web.Bundled(), ""), Recheck: -1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,6 +202,28 @@ func TestPayRedirects(t *testing.T) {
 		}
 		if e.count("SELECT COUNT(*) FROM payment_attempts WHERE payment_id = ?", c.id) != 1 {
 			t.Error("attempt not created")
+		}
+	})
+}
+
+func TestPayReloadReusesTheAttemptAndFreshStartsANewOne(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		c := e.create(core.CreatePaymentInput{})
+		first := e.do("GET", c.path(), "", nil)
+		again := e.do("GET", c.path(), "", nil)
+		if first.status != 303 || again.status != 303 || first.header.Get("Location") != again.header.Get("Location") {
+			t.Fatalf("a reload changed the checkout: %q then %q", first.header.Get("Location"), again.header.Get("Location"))
+		}
+		if n := e.count("SELECT COUNT(*) FROM payment_attempts WHERE payment_id = ?", c.id); n != 1 {
+			t.Errorf("%d attempts after a reload, want 1", n)
+		}
+		// "Pay another way" or "try again" asks for a new attempt explicitly.
+		fresh := e.do("GET", c.path()+"&fresh=1", "", nil)
+		if fresh.status != 303 || fresh.header.Get("Location") == first.header.Get("Location") {
+			t.Errorf("fresh=1 did not start a new checkout: %d %q", fresh.status, fresh.header.Get("Location"))
+		}
+		if n := e.count("SELECT COUNT(*) FROM payment_attempts WHERE payment_id = ?", c.id); n != 2 {
+			t.Errorf("%d attempts after fresh=1, want 2", n)
 		}
 	})
 }

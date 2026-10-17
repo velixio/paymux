@@ -6,14 +6,10 @@ package web
 import (
 	"errors"
 	"fmt"
-	"html/template"
-	"io"
 	"io/fs"
 	"net/http"
 	"os"
-	"path"
 	"sort"
-	"strings"
 
 	webassets "github.com/paymux/paymux/web"
 )
@@ -21,9 +17,11 @@ import (
 // Embedded returns the built-in assets.
 func Embedded() fs.FS { return webassets.FS }
 
-// Overlay is an fs.FS where files in Custom shadow files in Base.
+// Overlay is an fs.FS where files in Custom shadow files in Theme, which
+// shadow files in Base: embedded -> active theme -> custom/.
 type Overlay struct {
 	Base   fs.FS
+	Theme  fs.FS // nil when no theme is active
 	Custom fs.FS // nil when no custom dir exists
 }
 
@@ -50,8 +48,11 @@ func (o *Overlay) Open(name string) (fs.File, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
 	}
-	if o.Custom != nil {
-		if f, err := o.Custom.Open(name); err == nil {
+	for _, layer := range []fs.FS{o.Custom, o.Theme} {
+		if layer == nil {
+			continue
+		}
+		if f, err := layer.Open(name); err == nil {
 			if st, err := f.Stat(); err == nil && !st.IsDir() {
 				return f, nil
 			}
@@ -65,7 +66,7 @@ func (o *Overlay) Open(name string) (fs.File, error) {
 func (o *Overlay) ReadDir(name string) ([]fs.DirEntry, error) {
 	seen := map[string]fs.DirEntry{}
 	var firstErr error
-	for _, f := range []fs.FS{o.Base, o.Custom} {
+	for _, f := range []fs.FS{o.Base, o.Theme, o.Custom} {
 		if f == nil {
 			continue
 		}
@@ -89,68 +90,6 @@ func (o *Overlay) ReadDir(name string) ([]fs.DirEntry, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name() < out[j].Name() })
 	return out, nil
-}
-
-// Renderer holds one template set per page, each combined with the layout.
-type Renderer struct{ pages map[string]*template.Template }
-
-// NewRenderer parses templates/layout.html plus every other templates/*.html page.
-func NewRenderer(fsys fs.FS) (*Renderer, error) {
-	layout, err := fs.ReadFile(fsys, "templates/layout.html")
-	if err != nil {
-		return nil, fmt.Errorf("web: layout: %w", err)
-	}
-	entries, err := fs.ReadDir(fsys, "templates")
-	if err != nil {
-		return nil, err
-	}
-	r := &Renderer{pages: map[string]*template.Template{}}
-	// Files starting with "_" are partials: their templates are available to
-	// every page but they are not pages themselves.
-	var partials []string
-	for _, e := range entries {
-		if n := e.Name(); !e.IsDir() && strings.HasSuffix(n, ".html") && strings.HasPrefix(n, "_") {
-			b, err := fs.ReadFile(fsys, path.Join("templates", n))
-			if err != nil {
-				return nil, err
-			}
-			partials = append(partials, string(b))
-		}
-	}
-	for _, e := range entries {
-		n := e.Name()
-		if e.IsDir() || !strings.HasSuffix(n, ".html") || n == "layout.html" || strings.HasPrefix(n, "_") {
-			continue
-		}
-		body, err := fs.ReadFile(fsys, path.Join("templates", n))
-		if err != nil {
-			return nil, err
-		}
-		t, err := template.New("layout").Parse(string(layout))
-		for _, p := range partials {
-			if err != nil {
-				break
-			}
-			_, err = t.Parse(p)
-		}
-		if err == nil {
-			_, err = t.Parse(string(body))
-		}
-		if err != nil {
-			return nil, fmt.Errorf("web: parse %s: %w", n, err)
-		}
-		r.pages[strings.TrimSuffix(n, ".html")] = t
-	}
-	return r, nil
-}
-
-// Render executes page within the layout.
-func (r *Renderer) Render(w io.Writer, page string, data any) error {
-	t, ok := r.pages[page]
-	if !ok {
-		return fmt.Errorf("web: unknown page %q", page)
-	}
-	return t.ExecuteTemplate(w, "layout", data)
 }
 
 // Field is a hidden form field for form_post checkouts.

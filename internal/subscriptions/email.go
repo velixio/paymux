@@ -35,7 +35,7 @@ type predebitData struct {
 	SupportEmail string
 }
 
-func (s *Service) loadTemplate() (*template.Template, error) {
+func (s *Service) loadTemplate(lang string) (*template.Template, error) {
 	var raw []byte
 	var err error
 	if s.templates != nil {
@@ -46,13 +46,20 @@ func (s *Service) loadTemplate() (*template.Template, error) {
 			return nil, err
 		}
 	}
-	return template.New("predebit").Option("missingkey=error").Parse(string(raw))
+	// {{t "key" args...}} reads the message catalogs (customer_language); an
+	// override that does not use it keeps working.
+	pages, err := s.pages()
+	if err != nil {
+		return nil, err
+	}
+	tr := func(key string, args ...any) string { return pages.T(lang, key, args...) }
+	return template.New("predebit").Option("missingkey=error").Funcs(template.FuncMap{"t": tr}).Parse(string(raw))
 }
 
 // renderPredebit renders the template into a subject (its first line, after
 // "Subject:") and a body.
-func (s *Service) renderPredebit(d predebitData) (subject, body string, err error) {
-	t, err := s.loadTemplate()
+func (s *Service) renderPredebit(d predebitData, lang string) (subject, body string, err error) {
+	t, err := s.loadTemplate(lang)
 	if err != nil {
 		return "", "", err
 	}
@@ -85,6 +92,7 @@ func (s *Service) sendPredebitEmail(ctx context.Context, subID string, amount in
 		name = ""
 		supp string
 		on   = true
+		lang = "en"
 	)
 	err := s.db.Read(ctx, func(q store.Querier) error {
 		var err error
@@ -100,6 +108,9 @@ func (s *Service) sendPredebitEmail(ctx context.Context, subID string, amount in
 		}
 		if !on {
 			return nil
+		}
+		if lv, err := settings.ResolveWith(ctx, q, sub.AppID, "customer_language"); err == nil {
+			_ = lv.Decode(&lang)
 		}
 		if cust, err = store.GetCustomer(ctx, q, sub.CustomerID); err != nil {
 			return err
@@ -130,15 +141,23 @@ func (s *Service) sendPredebitEmail(ctx context.Context, subID string, amount in
 		s.warn("pre-debit email: amount", err)
 		return
 	}
-	reason := "Renewal of your subscription"
+	pages, err := s.pages()
+	if err != nil {
+		s.warn("pre-debit email: pages", err)
+		return
+	}
+	if !pages.HasLang(lang) {
+		lang = "en"
+	}
+	reason := pages.T(lang, "predebit.reason_renewal")
 	if sub.Description != "" {
 		reason += ": " + sub.Description
 	}
 	subject, body, err := s.renderPredebit(predebitData{
-		Merchant: firstNonEmpty(name, "your merchant"), CustomerName: firstNonEmpty(cust.Name, "customer"), Amount: sub.Currency + " " + amt,
+		Merchant: firstNonEmpty(name, pages.T(lang, "predebit.fallback_merchant")), CustomerName: firstNonEmpty(cust.Name, pages.T(lang, "predebit.fallback_customer")), Amount: sub.Currency + " " + amt,
 		DebitDate: debitAt.In(tax.IST).Format("02 Jan 2006"), MandateRef: firstNonEmpty(m.ProviderMandateID, m.ProviderRef),
 		Reason: reason, SupportEmail: supp,
-	})
+	}, lang)
 	if err != nil {
 		s.warn("pre-debit email: template", err)
 		return

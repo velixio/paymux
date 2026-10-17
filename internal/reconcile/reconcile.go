@@ -35,6 +35,20 @@ type Alerter interface {
 // is due.
 const JobTick = "recon.tick"
 
+// JobAccount is the job that reconciles one provider account right away (the
+// dashboard's "Run now").
+const JobAccount = "recon.account"
+
+type accountPayload struct {
+	AccountID string `json:"account_id"`
+}
+
+// AccountJob builds the job that reconciles one provider account now. Asking
+// twice while one is pending queues it once.
+func AccountJob(accountID string) jobs.Job {
+	return jobs.Job{Kind: JobAccount, Payload: accountPayload{AccountID: accountID}, DedupeKey: JobAccount + ":" + accountID, MaxAttempts: 1}
+}
+
 // Options configures a Service.
 type Options struct {
 	DB       *store.DB
@@ -174,6 +188,17 @@ func (s *Service) orgID(ctx context.Context) (string, error) {
 // Register installs the tick job and its schedule (every 5 minutes).
 func (s *Service) Register(q *jobs.Queue) error {
 	q.Register(JobTick, func(ctx context.Context, _ json.RawMessage) error { return s.Tick(ctx) })
+	q.Register(JobAccount, func(ctx context.Context, raw json.RawMessage) error {
+		var p accountPayload
+		if err := json.Unmarshal(raw, &p); err != nil || p.AccountID == "" {
+			return jobs.Permanent(fmt.Errorf("%s: bad payload %s", JobAccount, raw))
+		}
+		run, err := s.RunAccount(ctx, p.AccountID)
+		if err != nil && run.Status == "failed" {
+			return nil // recorded on the run and alerted; running it again now would not help
+		}
+		return err
+	})
 	return q.AddSchedule(jobs.Schedule{Name: JobTick, Kind: JobTick, Every: 5 * time.Minute})
 }
 

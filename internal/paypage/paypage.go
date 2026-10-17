@@ -71,11 +71,11 @@ func New(o Options) *Handler {
 
 // Register mounts the customer routes on m.
 func (h *Handler) Register(m Mux) {
-	m.HandleFunc("GET /pay/{id}", h.pay)
-	m.HandleFunc("POST /pay/{id}", h.billingPost)
+	m.HandleFunc("GET /pay/{id}", withLook(h.pay))
+	m.HandleFunc("POST /pay/{id}", withLook(h.billingPost))
 	m.HandleFunc("GET /.well-known/paymux/{token}", h.wellKnown)
-	m.HandleFunc("GET /return/{pa}/{ref}", h.ret)
-	m.HandleFunc("POST /return/{pa}/{ref}", h.ret)
+	m.HandleFunc("GET /return/{pa}/{ref}", withLook(h.ret))
+	m.HandleFunc("POST /return/{pa}/{ref}", withLook(h.ret))
 	if h.o.Assets != nil {
 		m.HandleFunc("GET /assets/", h.o.Assets.ServeHTTP)
 	}
@@ -91,7 +91,7 @@ func (h *Handler) page(w http.ResponseWriter, status int, name string, data web.
 	hdr.Set("X-Content-Type-Options", "nosniff")
 	hdr.Set("X-Frame-Options", "DENY")
 	var buf bytes.Buffer
-	if err := h.o.Renderer.Render(&buf, name, data); err != nil {
+	if err := h.renderer(w).Render(&buf, name, data); err != nil {
 		h.o.Logger.Error("paypage: render", "page", name, "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -100,12 +100,13 @@ func (h *Handler) page(w http.ResponseWriter, status int, name string, data web.
 	_, _ = w.Write(buf.Bytes())
 }
 
-func (h *Handler) result(w http.ResponseWriter, status int, appName, title, message, returnURL string) {
-	h.page(w, status, "pay_result", web.PayPage{AppName: appName, Title: title, Message: message, ReturnURL: returnURL})
+// result shows a titled message; titleKey and messageKey are catalog keys.
+func (h *Handler) result(w http.ResponseWriter, status int, appName, titleKey, messageKey, returnURL string) {
+	h.page(w, status, "pay_result", web.PayPage{AppName: appName, Title: h.tr(w, titleKey), Message: h.tr(w, messageKey), ReturnURL: returnURL})
 }
 
 func (h *Handler) notFound(w http.ResponseWriter) {
-	h.result(w, http.StatusNotFound, "", "Link not valid", "This payment link is not valid. Please go back to the shop and start again.", "")
+	h.result(w, http.StatusNotFound, "", "result.link_invalid.title", "result.link_invalid.msg", "")
 }
 
 // load authenticates a pay-page request: payment id plus client secret (and,
@@ -117,6 +118,7 @@ func (h *Handler) load(w http.ResponseWriter, r *http.Request) (store.Payment, s
 		h.notFound(w)
 		return store.Payment{}, "", false
 	}
+	setApp(w, p.AppID)
 	return p, secret, true
 }
 
@@ -146,16 +148,16 @@ func (h *Handler) statusPage(w http.ResponseWriter, p store.Payment, appName str
 	back := appReturnURL(p)
 	switch state.PaymentStatus(p.Status) {
 	case state.PaymentSucceeded:
-		h.result(w, http.StatusOK, appName, "Payment received", "Thank you. Your payment was received.", back)
+		h.result(w, http.StatusOK, appName, "result.received.title", "result.received.msg", back)
 	case state.PaymentCanceled:
-		h.result(w, http.StatusOK, appName, "Payment canceled", "This payment was canceled.", back)
+		h.result(w, http.StatusOK, appName, "result.canceled.title", "result.canceled.msg", back)
 	case state.PaymentNeedsReview:
-		h.result(w, http.StatusOK, appName, "Payment under review", "We are reviewing this payment and will confirm it shortly.", back)
+		h.result(w, http.StatusOK, appName, "result.review.title", "result.review.msg", back)
 	case state.PaymentExpired:
-		h.result(w, http.StatusOK, appName, "Payment link expired", "This payment link has expired. Please go back and start a new payment.", back)
+		h.result(w, http.StatusOK, appName, "result.expired.title", "result.expired.msg", back)
 	default:
 		if h.o.Now().After(p.ExpiresAt) {
-			h.result(w, http.StatusOK, appName, "Payment link expired", "This payment link has expired. Please go back and start a new payment.", back)
+			h.result(w, http.StatusOK, appName, "result.expired.title", "result.expired.msg", back)
 			return true
 		}
 		return false
@@ -198,19 +200,25 @@ func (h *Handler) pay(w http.ResponseWriter, r *http.Request) {
 		h.billingForm(w, http.StatusOK, p, secret, appName, cust, need, "")
 		return
 	}
-	st, err := h.o.Flow.StartCheckout(ctx, p.ID)
+	// A reload shows the open attempt's checkout again; ?fresh=1 ("try again",
+	// "pay another way") starts a new attempt.
+	start := h.o.Flow.StartCheckout
+	if r.URL.Query().Get("fresh") == "1" {
+		start = h.o.Flow.StartFreshCheckout
+	}
+	st, err := start(ctx, p.ID)
 	switch {
 	case err == nil:
 		h.render(w, r, appName, st)
 	case errors.Is(err, checkout.ErrCheckoutFailed):
-		h.result(w, http.StatusBadGateway, appName, "Payment unavailable",
-			"We could not reach the payment provider. Please try again in a moment.", "")
+		h.result(w, http.StatusBadGateway, appName, "result.unavailable.title",
+			"result.unavailable.provider", "")
 	case errors.Is(err, core.ErrNoRoute), errors.Is(err, core.ErrCurrencyNotAccepted):
-		h.result(w, http.StatusUnprocessableEntity, appName, "Payment unavailable", "No payment method is available for this payment.", "")
+		h.result(w, http.StatusUnprocessableEntity, appName, "result.unavailable.title", "result.unavailable.no_method", "")
 	case errors.Is(err, core.ErrInvalidState):
 		fresh, gerr := h.o.Core.GetPaymentByID(ctx, p.ID)
 		if gerr != nil || !h.statusPage(w, fresh, appName) {
-			h.result(w, http.StatusConflict, appName, "Payment unavailable", "This payment can no longer be paid.", "")
+			h.result(w, http.StatusConflict, appName, "result.unavailable.title", "result.unavailable.cannot_pay", "")
 		}
 	default:
 		h.serverError(w, appName, err)
@@ -219,7 +227,7 @@ func (h *Handler) pay(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) serverError(w http.ResponseWriter, appName string, err error) {
 	h.o.Logger.Error("paypage: request failed", "err", err)
-	h.result(w, http.StatusInternalServerError, appName, "Something went wrong", "Please try again in a moment.", "")
+	h.result(w, http.StatusInternalServerError, appName, "result.error.title", "result.error.msg", "")
 }
 
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, appName string, st checkout.Started) {
@@ -294,8 +302,8 @@ func (h *Handler) csrf(paymentID, secret string) string {
 }
 
 func (h *Handler) billingForm(w http.ResponseWriter, status int, p store.Payment, secret, appName string, c store.Customer, n billingNeed, msg string) {
-	data := web.PayPage{AppName: appName, FormURL: "/pay/" + p.ID + "?t=" + url.QueryEscape(secret), CSRF: h.csrf(p.ID, secret),
-		Error: msg, StateRequired: n.stateRequired, AddressRequired: n.addressRequired,
+	data := web.PayPage{AppName: appName, FormURL: "/pay/" + p.ID + "?t=" + url.QueryEscape(secret) + h.langQuery(w), CSRF: h.csrf(p.ID, secret),
+		Error: h.tr(w, msg), StateRequired: n.stateRequired, AddressRequired: n.addressRequired,
 		Billing: web.Billing{Name: c.Name, Email: c.Email, StateCode: c.Billing.StateCode, Line1: c.Billing.Line1,
 			PostalCode: c.Billing.PostalCode, GSTIN: c.Billing.GSTIN, LegalName: c.Billing.LegalName}}
 	if p.Currency == "INR" {
@@ -323,11 +331,11 @@ func (h *Handler) billingPost(w http.ResponseWriter, r *http.Request) {
 	appName := h.appName(ctx, p.AppID)
 	r.Body = http.MaxBytesReader(w, r.Body, maxForm)
 	if err := r.ParseForm(); err != nil {
-		h.result(w, http.StatusBadRequest, appName, "Invalid request", "The form could not be read.", "")
+		h.result(w, http.StatusBadRequest, appName, "result.invalid.title", "result.invalid.form", "")
 		return
 	}
 	if !hmac.Equal([]byte(r.PostForm.Get("csrf")), []byte(h.csrf(p.ID, secret))) {
-		h.result(w, http.StatusForbidden, appName, "Session expired", "Please reload the payment page and try again.", "")
+		h.result(w, http.StatusForbidden, appName, "result.session.title", "result.session.msg", "")
 		return
 	}
 	if h.statusPage(w, p, appName) {
@@ -358,7 +366,7 @@ func (h *Handler) billingPost(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, appName, err)
 		return
 	}
-	http.Redirect(w, r, "/pay/"+p.ID+"?t="+url.QueryEscape(secret), http.StatusSeeOther)
+	http.Redirect(w, r, "/pay/"+p.ID+"?t="+url.QueryEscape(secret)+h.langQuery(w), http.StatusSeeOther)
 }
 
 func (h *Handler) parseBilling(r *http.Request, p store.Payment, need billingNeed) (core.BillingInput, string) {
@@ -369,14 +377,14 @@ func (h *Handler) parseBilling(r *http.Request, p store.Payment, need billingNee
 	b.StateCode, b.Line1, b.PostalCode = get("state_code"), get("line1"), get("postal_code")
 	b.GSTIN, b.LegalName = strings.ToUpper(get("gstin")), get("legal_name")
 	if len(in.Name) > 200 || len(b.Line1) > 200 || len(b.LegalName) > 200 {
-		return in, "A field is too long."
+		return in, "billing.err.too_long"
 	}
 	if in.Name == "" {
-		return in, "Please enter your name."
+		return in, "billing.err.name"
 	}
 	if in.Email != "" {
 		if a, err := mail.ParseAddress(in.Email); err != nil || a.Address != in.Email {
-			return in, "Please enter a valid email address."
+			return in, "billing.err.email"
 		}
 	}
 	india := p.Currency == "INR"
@@ -384,37 +392,37 @@ func (h *Handler) parseBilling(r *http.Request, p store.Payment, need billingNee
 		b.Country = "IN"
 		if b.StateCode != "" {
 			if _, ok := tax.StateName(b.StateCode); !ok {
-				return in, "Please choose a valid state."
+				return in, "billing.err.state_invalid"
 			}
 		}
 		if need.stateRequired && b.StateCode == "" && b.GSTIN == "" {
-			return in, "Please choose your state."
+			return in, "billing.err.state_required"
 		}
 	}
 	if b.GSTIN != "" {
 		if err := tax.ValidGSTIN(b.GSTIN); err != nil {
-			return in, "That GSTIN is not valid. Please check it."
+			return in, "billing.err.gstin"
 		}
 		if b.LegalName == "" {
-			return in, "Please enter your registered business name for the GST invoice."
+			return in, "billing.err.legal_name"
 		}
 		gst := tax.StateFromGSTIN(b.GSTIN)
 		switch {
 		case b.StateCode == "":
 			b.StateCode = gst
 		case b.StateCode != gst:
-			return in, "The GSTIN belongs to a different state than the one you chose."
+			return in, "billing.err.gst_state"
 		}
 	}
 	if need.stateRequired && b.StateCode == "" {
-		return in, "Please choose your state."
+		return in, "billing.err.state_required"
 	}
 	if need.addressRequired {
 		if b.Line1 == "" {
-			return in, "Please enter your address."
+			return in, "billing.err.address"
 		}
 		if !pinRE.MatchString(b.PostalCode) {
-			return in, "Please enter a valid 6-digit PIN code."
+			return in, "billing.err.pin"
 		}
 	}
 	return in, ""
@@ -426,7 +434,7 @@ func (h *Handler) ret(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	r.Body = http.MaxBytesReader(w, r.Body, maxForm)
 	if err := r.ParseForm(); err != nil {
-		h.result(w, http.StatusBadRequest, "", "Invalid request", "The request could not be read.", "")
+		h.result(w, http.StatusBadRequest, "", "result.invalid.title", "result.invalid.request", "")
 		return
 	}
 	// Returns from subscription and mandate checkouts are not payment attempts.
@@ -439,7 +447,7 @@ func (h *Handler) ret(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			http.Redirect(w, r, back, http.StatusSeeOther)
 		default:
-			h.result(w, http.StatusOK, "", "Thank you", "Your subscription is being set up. You can close this page.", "")
+			h.result(w, http.StatusOK, "", "result.thanks.title", "result.thanks.subscription", "")
 		}
 		return
 	} else if err != nil {
@@ -462,12 +470,13 @@ func (h *Handler) ret(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, back, http.StatusSeeOther)
 		return
 	}
+	setApp(w, p.AppID)
 	appName := h.appName(ctx, p.AppID)
 	if h.statusPage(w, p, appName) {
 		return
 	}
-	h.result(w, http.StatusOK, appName, "Confirming your payment",
-		"We are confirming your payment with the provider. You can close this page; we will update the shop as soon as it is confirmed.", "")
+	h.result(w, http.StatusOK, appName, "result.confirming.title",
+		"result.confirming.msg", "")
 }
 
 type stdMux struct{ m *http.ServeMux }

@@ -13,6 +13,7 @@ test -z "$(git ls-files -z "*.go" | xargs -0 gofmt -l)" || { git ls-files -z "*.
 
 step "go vet"
 go vet ./...
+go vet -tags loadtest ./...
 
 step "API snapshot (pkg/... exported API == api/pkg.txt)"
 go run ./scripts/apisnap -check
@@ -34,5 +35,12 @@ mkdir -p dist
 for arch in amd64 arm64; do
   CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -o "dist/paymux-linux-$arch" ./cmd/paymux
 done
+
+step "docker build (skipped when docker is not usable)"
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  docker build --build-arg VERSION=ci -t paymux:ci .
+else
+  echo "docker is not installed or its daemon is not reachable: skipping the image build"
+fi
 
 step "CI OK"

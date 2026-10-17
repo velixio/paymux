@@ -1,0 +1,10 @@
+.git
+.claude
+.playwright-mcp
+data
+dist
+.env
+*.db
+*.db-wal
+*.db-shm
+docs

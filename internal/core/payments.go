@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"net/url"
 	"slices"
 	"strings"
@@ -16,7 +17,6 @@ import (
 	"github.com/paymux/paymux/internal/core/state"
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector/money"
 )
@@ -165,7 +165,7 @@ func (s *Service) CreatePayment(ctx context.Context, in CreatePaymentInput) (Cre
 				return err
 			}
 		}
-		ttl, err := settings.ResolveWith(ctx, tx, app.ID, "payment_ttl")
+		ttl, err := s.policy(ctx, tx, app.ID, "payment_ttl")
 		if err != nil {
 			return err
 		}
@@ -226,6 +226,36 @@ func (s *Service) GetPayment(ctx context.Context, sc Scope, id string) (store.Pa
 		return store.Payment{}, newErr(ErrNotFound, "payment not found")
 	}
 	return p, nil
+}
+
+// PaymentAttempts lists the attempts of a payment of the scope's app and mode,
+// oldest first, as the API shows them.
+func (s *Service) PaymentAttempts(ctx context.Context, sc Scope, paymentID string) ([]AttemptView, error) {
+	p, err := s.GetPayment(ctx, sc, paymentID)
+	if err != nil {
+		return nil, err
+	}
+	out := []AttemptView{}
+	err = s.db.Read(ctx, func(q store.Querier) error {
+		attempts, err := store.ListAttempts(ctx, q, p.ID)
+		if err != nil {
+			return err
+		}
+		connectors := map[string]string{}
+		for _, a := range attempts {
+			name, ok := connectors[a.ProviderAccountID]
+			if !ok {
+				if pa, err := store.GetProviderAccount(ctx, q, a.ProviderAccountID); err == nil {
+					name = pa.Connector
+				}
+				connectors[a.ProviderAccountID] = name
+			}
+			out = append(out, AttemptView{ID: a.ID, Status: a.Status, Provider: name, ProviderPaymentID: a.ProviderPaymentID, Method: a.Method,
+				FailureCode: a.FailureCode, FailureMessage: a.FailureMessage, CreatedAt: a.CreatedAt})
+		}
+		return nil
+	})
+	return out, err
 }
 
 // GetAttempt returns an attempt by id.
@@ -389,6 +419,29 @@ func (s *Service) GetPaymentByID(ctx context.Context, id string) (store.Payment,
 		return
 	})
 	return p, mapStoreErr(err, "payment")
+}
+
+// RecordCheckoutAction stores everything a later reload of the pay page needs
+// from CreateCheckout: the provider order id, the next action (JSON) and when
+// that checkout expires.
+func (s *Service) RecordCheckoutAction(ctx context.Context, attemptID, providerOrderID string, nextAction json.RawMessage, expiresAt time.Time) error {
+	return s.db.Write(ctx, func(tx store.Tx) error {
+		if _, err := store.GetAttempt(ctx, tx, attemptID); err != nil {
+			return mapStoreErr(err, "attempt")
+		}
+		return store.SetAttemptCheckout(ctx, tx, attemptID, providerOrderID, string(nextAction), expiresAt, s.nowUTC())
+	})
+}
+
+// LatestOpenAttempt returns the newest attempt of the payment that is still
+// waiting for the customer and has a stored checkout, or ErrNotFound.
+func (s *Service) LatestOpenAttempt(ctx context.Context, paymentID string) (store.Attempt, error) {
+	var a store.Attempt
+	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+		a, err = store.LatestOpenAttempt(ctx, q, paymentID)
+		return
+	})
+	return a, mapStoreErr(err, "attempt")
 }
 
 // RecordCheckout stores the provider order id returned by CreateCheckout.

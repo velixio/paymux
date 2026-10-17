@@ -89,6 +89,45 @@
 </form>
 {{end}}
 
+{{if eq .Tab "domains"}}
+<p class="muted">Custom domains serve this app's customer-facing pages (pay page, return page, invoices). Point the domain's DNS at this server; it becomes active once <code>/.well-known/paymux/&lt;token&gt;</code> answers.</p>
+<table class="grid">
+<thead><tr><th>Domain</th><th>Status</th><th>Activation URL</th><th>Last check</th></tr></thead>
+<tbody>{{range .Domains}}<tr><td>{{.Host}}{{if .Primary}} <span class="flag">primary</span>{{end}}</td><td>{{.Status}}</td>
+<td><code class="wrap">{{.WellKnown}}</code><br><small class="muted">token {{.Token}}</small></td><td>{{.LastCheck}} {{.LastError}}</td></tr>
+{{else}}<tr><td colspan="4" class="muted">No custom domains.</td></tr>{{end}}</tbody>
+</table>
+{{if .CanSettings}}<form method="post" action="/dashboard/apps/{{.ID}}/domains" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<input class="field" name="host" placeholder="pay.example.com" required>
+<button class="btn" type="submit">Add domain</button>
+</form>{{end}}
+{{if .Checklist}}<h3>Register the domain with each provider</h3>
+<p class="muted">Providers only accept payments from websites they know. Tick each off when done.</p>
+<ul class="checklist">{{range .Checklist}}<li><label><input type="checkbox"> <strong>{{.Provider}}</strong>: {{.Hint}} <small class="muted">({{.Hosts}})</small></label></li>{{end}}</ul>{{end}}
+{{end}}
+
+{{if eq .Tab "tax"}}
+{{with .Tax}}
+<p class="muted">Which legal entity invoices this app's payments, and the GST treatment. {{if not .Exists}}No tax profile yet: nothing is invoiced until one is saved.{{end}}</p>
+{{if $.App.CanSettings}}<form method="post" action="/dashboard/apps/{{$.App.ID}}/tax" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Tax entity<select class="field" name="tax_entity_id" required><option value="">Choose a tax entity</option>{{range .Entities}}<option value="{{.ID}}"{{if eq .ID $.App.Tax.TaxEntityID}} selected{{end}}>{{.Name}} ({{.GSTIN}})</option>{{end}}</select></label>
+<label><input type="checkbox" name="issue_invoices" value="1"{{if .Issue}} checked{{end}}> Issue GST invoices for this app</label>
+<label>SAC code<input class="field" name="sac_code" value="{{.SAC}}" pattern="[0-9]{6}"></label>
+<label>GST rate (%)<input class="field" name="gst_rate" value="{{.RatePct}}" inputmode="decimal"></label>
+<label><input type="checkbox" name="prices_include_tax" value="1"{{if .Inclusive}} checked{{end}}> Prices include GST</label>
+<label>Invoice prefix (blank: use the entity's)<input class="field" name="invoice_prefix" value="{{.InvoicePrefix}}" maxlength="5"></label>
+<label>Credit note prefix (blank: use the entity's)<input class="field" name="credit_note_prefix" value="{{.CreditNotePrefix}}" maxlength="5"></label>
+<button class="btn" type="submit">Save tax profile</button>
+</form>
+{{else}}
+<dl class="facts"><dt>Invoices</dt><dd>{{if .Issue}}issued{{else}}not issued{{end}}</dd><dt>SAC code</dt><dd>{{.SAC}}</dd><dt>GST rate</dt><dd>{{.RatePct}}%</dd>
+<dt>Prices</dt><dd>{{if .Inclusive}}include GST{{else}}exclude GST{{end}}</dd></dl>
+{{end}}
+{{end}}
+{{end}}
+
 {{if eq .Tab "settings"}}
 <p class="muted">Effective values for this app. An override replaces the org value for this app only.</p>
 {{template "dash_settings_table" $}}

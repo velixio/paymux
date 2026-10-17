@@ -48,3 +48,48 @@ textarea.json { width: 100%; min-height: 90px; font-family: monospace; font-size
 .reveal { border: 2px solid var(--color-accent); border-radius: var(--radius); padding: 8px 14px; margin: 12px 0; }
 .logo-preview { max-height: 48px; max-width: 200px; }
 table.settings pre { margin: 0; white-space: pre-wrap; max-width: 380px; }
+.banner-warning { background: #b45309; color: #fff; padding: 8px 14px; text-align: center; }
+fieldset { border: 1px solid var(--color-line); border-radius: 8px; margin: 8px 0; }
+label { display: block; margin: 6px 0; }
+label.inline { display: inline-block; margin-right: 10px; }
+ul.checklist { list-style: none; padding-left: 0; }
+ul.checklist li { margin: 8px 0; }
+tr.due-soon td { background: rgba(220, 38, 38, .12); }
+tr.due-soon td strong { color: var(--color-danger); }
+.portal-note { border-left: 4px solid var(--color-muted); padding: 4px 12px; margin: 12px 0; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* settings table: typed controls */
+table.settings td { vertical-align: top; }
+table.settings p.help { margin: 4px 0 0; max-width: 34ch; font-size: 13px; color: var(--color-muted); }
+table.settings p.default { margin: 4px 0 0; font-size: 12px; }
+table.settings input.num { width: 9em; display: inline-block; }
+table.settings .unit { color: var(--color-muted); font-size: 13px; }
+table.settings select.field, table.settings input.field[type=text], table.settings input.field[type=time] { max-width: 22em; }
+textarea.json.wide { width: 100%; min-width: 22em; min-height: 7em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.setting-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+@media (max-width: 700px) {
+  table.settings thead { display: none; }
+  table.settings, table.settings tbody, table.settings tr, table.settings td { display: block; width: 100%; }
+  table.settings tr { border-bottom: 1px solid var(--color-line); padding: 8px 0; }
+  table.settings td { border: 0; padding: 4px 0; }
+  table.settings td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; text-transform: uppercase; color: var(--color-muted); }
+  textarea.json.wide { min-width: 0; }
+}
+
+/* routing editor: one card per rule, usable from phone width up */
+.routing-editor { max-width: 760px; }
+.rule-card { border: 1px solid var(--color-line); border-radius: 10px; padding: 8px 14px 12px; margin: 12px 0; min-width: 0; }
+.rule-card legend { padding: 0 6px; font-weight: 600; }
+.rule-card.catch-all { border-style: dashed; }
+.rc-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+.rc-row > label { flex: 1 1 11em; min-width: 0; margin: 0; font-size: 13px; color: var(--color-muted); }
+.rc-row > label.rc-grow { flex: 3 1 14em; }
+.rc-row > label.rc-wide { flex: 1 1 100%; }
+.rc-row > label.rc-order { flex: 0 0 6em; }
+.rule-card .field { width: 100%; margin: 4px 0 0; color: var(--color-fg); }
+.table-scroll { overflow-x: auto; max-width: 100%; }
+html, body { max-width: 100%; overflow-x: hidden; }
+
+/* Appearance preview: a customer-page card inside the dashboard. */
+.card.sample { text-align: left; margin: 16px 0; border: 1px solid var(--color-line); border-radius: var(--radius); }

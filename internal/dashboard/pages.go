@@ -36,6 +36,50 @@ type Page struct {
 	Route    *routeResult
 	TestForm testForm
 
+	// invoices and credit notes
+	DocRows        []docRow
+	DocFilter      docFilter
+	DocFlags       []string
+	Entities       []entityOpt
+	FlaggedRefunds []flaggedRefund
+	Doc            *docView
+
+	// disputes
+	DispRows        []dispRow
+	DispFilter      dispFilter
+	DisputeStatuses []string
+	ProviderOpts    []string
+	Disp            *dispView
+	CreditCodes     []codeOpt
+
+	// reconciliation
+	ReconAccounts []reconAcct
+
+	// appearance
+	ThemeRows      []themeRow
+	CurrentTheme   string
+	Languages      []string
+	AppearanceRows []appearanceRow
+	PreviewTheme   themeRow
+	ReconRuns      []reconRunRow
+	ReconItems     []reconItemRow
+	ReconFilter    reconFilter
+	ReconKinds     []string
+
+	// provider accounts
+	Providers []provRow
+	ConnOpts  []connOpt
+	Prov      *provForm
+
+	// reports, tax entities, fx
+	Reports   *reportsView
+	TaxEnts   []taxEntRow
+	TaxForm   *taxEntForm
+	Warnings  []string
+	FXRates   []fxRow
+	FXPending []fxPendingRow
+	FXDate    string
+
 	// audit log and overview
 	AuditRows   []auditRow
 	AuditFilter auditFilter
@@ -54,6 +98,13 @@ func (d *Dashboard) routesPages() {
 	d.routesApps()
 	d.routesSettings()
 	d.routesAuditOverview()
+	d.routesInvoices()
+	d.routesTax()
+	d.routesProviders()
+	d.routesDomains()
+	d.routesDisputes()
+	d.routesRecon()
+	d.routesAppearance()
 }
 
 // orgID returns the single org's id (cached once found).
@@ -71,6 +122,13 @@ func (d *Dashboard) orgID(ctx context.Context) (string, error) {
 	return id, nil
 }
 
+// inOrg reports whether an object belongs to the dashboard's org. Handlers
+// answer 404 for anything else, so ids of another org reveal nothing.
+func (d *Dashboard) inOrg(ctx context.Context, objectOrg string) bool {
+	org, err := d.orgID(ctx)
+	return err == nil && org != "" && org == objectOrg
+}
+
 func (s *session) auditActor() audit.Actor {
 	return audit.Actor{Type: audit.ActorUser, ID: s.User.ID}
 }
@@ -83,7 +141,7 @@ func (d *Dashboard) record(ctx context.Context, r *http.Request, s *session, act
 	}
 	return d.o.DB.Write(ctx, func(tx store.Tx) error {
 		return audit.Record(ctx, tx, audit.Entry{OrgID: org, Actor: s.auditActor(), Action: action, Target: target,
-			Before: before, After: after, IP: clientIP(r)})
+			Before: before, After: after, IP: d.clientIP(r)})
 	})
 }
 

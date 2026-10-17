@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/invoice/render"
 	"github.com/paymux/paymux/internal/jobs"
@@ -158,6 +159,12 @@ func (s *Service) deliver(ctx context.Context, kind, id string, parts docParts, 
 			return nil
 		}
 	}
+	return s.send(ctx, kind, id, parts, c, pdf)
+}
+
+// send emails the PDF to the customer and records the attempt. A failed send
+// is recorded and returned.
+func (s *Service) send(ctx context.Context, kind, id string, parts docParts, c store.Customer, pdf []byte) error {
 	title, verb := "Tax invoice", "invoice"
 	if kind == kindCreditNote {
 		title, verb = "Credit note", "credit note"
@@ -179,6 +186,62 @@ func (s *Service) deliver(ctx context.Context, kind, id string, parts docParts, 
 		return err
 	}
 	return sendErr // a failed send retries the job; the PDF is already stored
+}
+
+// ResendDocument emails an invoice or credit note to its customer again, at an
+// operator's request: whatever the invoice_delivery mode, and however often it
+// was sent before. It returns the address it was sent to and audits the action.
+func (s *Service) ResendDocument(ctx context.Context, actor audit.Actor, kind, id string) (string, error) {
+	if kind != kindInvoice && kind != kindCreditNote {
+		return "", invalid("kind %q must be invoice or credit_note", kind)
+	}
+	var parts docParts
+	var customer store.Customer
+	err := s.db.Read(ctx, func(q store.Querier) error {
+		var err error
+		if parts, err = s.loadParts(ctx, q, kind, id); err != nil {
+			return err
+		}
+		p, err := store.GetPayment(ctx, q, parts.paymentID)
+		if err != nil {
+			return err
+		}
+		if p.CustomerID != "" {
+			if customer, err = store.GetCustomer(ctx, q, p.CustomerID); err != nil && !errors.Is(err, store.ErrNotFound) {
+				return err
+			}
+		}
+		return nil
+	})
+	if errors.Is(err, store.ErrNotFound) {
+		return "", invalid("no %s %q", kind, id)
+	}
+	if err != nil {
+		return "", err
+	}
+	if parts.pending {
+		return "", invalid("the INR value of %s is pending: enter the FX rate for its day first", parts.number)
+	}
+	if strings.TrimSpace(customer.Email) == "" {
+		return "", invalid("the customer of %s has no email address", parts.number)
+	}
+	pdf, err := s.pdfFor(ctx, kind, id, &parts)
+	if err != nil {
+		return "", err
+	}
+	sendErr := s.send(ctx, kind, id, parts, customer, pdf)
+	status := "sent"
+	if sendErr != nil {
+		status = "failed"
+	}
+	auditErr := s.db.Write(ctx, func(tx store.Tx) error {
+		return audit.Record(ctx, tx, audit.Entry{OrgID: store.DefaultOrgID, Actor: actor, Action: kind + ".resend", Target: id,
+			After: map[string]string{"to": customer.Email, "status": status}})
+	})
+	if sendErr != nil {
+		return customer.Email, sendErr
+	}
+	return customer.Email, auditErr
 }
 
 // loadParts reads a document and builds the render.Document for it.
