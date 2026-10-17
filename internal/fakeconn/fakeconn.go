@@ -37,12 +37,25 @@ type State struct {
 	RefundFn func(connector.RefundRequest) (connector.RefundSnapshot, error)
 	// Refunds is the provider's view, keyed by provider_ref (FetchRefund).
 	Refunds map[string]connector.RefundSnapshot
+	// Disputes is the provider's view, keyed by provider dispute id.
+	Disputes map[string]connector.DisputeSnapshot
+	// DisputeErr fails FetchDispute and ListDisputes; AcceptErr and
+	// EvidenceErr fail the responder calls.
+	DisputeErr, AcceptErr, EvidenceErr error
+	// AcceptFn and EvidenceFn run after the call is recorded, so a test can
+	// move the provider's dispute (for example to under_review).
+	AcceptFn   func(connector.DisputeRef)
+	EvidenceFn func(connector.DisputeRef)
 
 	Checkouts   []connector.CheckoutRequest
 	Returns     []connector.ReturnRequest
 	Fetches     []connector.PaymentRef
 	RefundCalls []connector.RefundRequest
 	RefundFetch []connector.RefundRef
+	DisputeList int
+	DisputeGets []connector.DisputeRef
+	Accepts     []connector.DisputeRef
+	Evidence    []connector.Evidence
 	Configs     []json.RawMessage
 	Deps        []connector.Deps
 	Built       int
@@ -54,11 +67,11 @@ var seq atomic.Int64
 // prefix and returns its state. It is safe to call from parallel tests.
 func Register(prefix string) *State {
 	st := &State{Name: fmt.Sprintf("%s%d", prefix, seq.Add(1)), Payments: map[string]connector.PaymentSnapshot{},
-		Refunds: map[string]connector.RefundSnapshot{}}
+		Refunds: map[string]connector.RefundSnapshot{}, Disputes: map[string]connector.DisputeSnapshot{}}
 	info := connector.Info{
 		Version: "test", DisplayName: "Fake", ConfigSchema: json.RawMessage(schema),
 		Currencies:   []string{"INR", "USD", "BDT"},
-		Capabilities: []connector.Capability{connector.CapRefund},
+		Capabilities: []connector.Capability{connector.CapRefund, connector.CapDisputeRead, connector.CapDisputeRespond},
 		RateLimit:    connector.RateLimit{RequestsPerSecond: 100, Burst: 100},
 	}
 	connector.Register(st.Name, func(cfg json.RawMessage, deps connector.Deps) (connector.Connector, error) {
@@ -198,7 +211,63 @@ func (c *Conn) FetchRefund(_ context.Context, ref connector.RefundRef) (connecto
 	return connector.RefundSnapshot{}, connector.ErrNotFound
 }
 
+// ListDisputes implements connector.DisputeReader (one page, every dispute).
+func (c *Conn) ListDisputes(_ context.Context, _ connector.TimeRange, _ connector.Cursor) (connector.Page[connector.DisputeSnapshot], error) {
+	c.st.mu.Lock()
+	defer c.st.mu.Unlock()
+	c.st.DisputeList++
+	if c.st.DisputeErr != nil {
+		return connector.Page[connector.DisputeSnapshot]{}, c.st.DisputeErr
+	}
+	var items []connector.DisputeSnapshot
+	for _, d := range c.st.Disputes {
+		items = append(items, d)
+	}
+	return connector.Page[connector.DisputeSnapshot]{Items: items}, nil
+}
+
+// FetchDispute implements connector.DisputeReader.
+func (c *Conn) FetchDispute(_ context.Context, ref connector.DisputeRef) (connector.DisputeSnapshot, error) {
+	c.st.mu.Lock()
+	defer c.st.mu.Unlock()
+	c.st.DisputeGets = append(c.st.DisputeGets, ref)
+	if c.st.DisputeErr != nil {
+		return connector.DisputeSnapshot{}, c.st.DisputeErr
+	}
+	d, ok := c.st.Disputes[ref.ProviderDisputeID]
+	if !ok {
+		return connector.DisputeSnapshot{}, connector.ErrNotFound
+	}
+	return d, nil
+}
+
+// AcceptDispute implements connector.DisputeResponder.
+func (c *Conn) AcceptDispute(_ context.Context, ref connector.DisputeRef) error {
+	c.st.mu.Lock()
+	c.st.Accepts = append(c.st.Accepts, ref)
+	err, fn := c.st.AcceptErr, c.st.AcceptFn
+	c.st.mu.Unlock()
+	if err == nil && fn != nil {
+		fn(ref)
+	}
+	return err
+}
+
+// SubmitEvidence implements connector.DisputeResponder.
+func (c *Conn) SubmitEvidence(_ context.Context, ref connector.DisputeRef, ev connector.Evidence) error {
+	c.st.mu.Lock()
+	c.st.Evidence = append(c.st.Evidence, ev)
+	err, fn := c.st.EvidenceErr, c.st.EvidenceFn
+	c.st.mu.Unlock()
+	if err == nil && fn != nil {
+		fn(ref)
+	}
+	return err
+}
+
 var (
-	_ connector.Connector = (*Conn)(nil)
-	_ connector.Refunder  = (*Conn)(nil)
+	_ connector.Connector        = (*Conn)(nil)
+	_ connector.Refunder         = (*Conn)(nil)
+	_ connector.DisputeReader    = (*Conn)(nil)
+	_ connector.DisputeResponder = (*Conn)(nil)
 )
