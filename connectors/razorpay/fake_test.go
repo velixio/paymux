@@ -37,6 +37,10 @@ type fake struct {
 	plans         int  // plans created
 	subStatus     string
 	settlements   []map[string]any // GET /v1/settlements
+	documents     int              // documents uploaded
+	docFail       int              // when set, POST /v1/documents answers this status
+	acceptErr     int              // when set, dispute accept answers this status
+	contestErr    int              // when set, dispute contest answers this status
 	recon         map[string][]any // GET /v1/settlements/recon/combined, keyed "Y-M-D"
 }
 
@@ -181,6 +185,28 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			skip = len(items)
 		}
 		writeJSON(w, 200, fakeCollection(items[skip:min(skip+count, len(items))]...))
+	case r.Method == "POST" && p == "/v1/documents":
+		if f.docFail != 0 {
+			writeAPIError(w, f.docFail, "The file type is not supported")
+			return
+		}
+		f.mu.Lock()
+		f.documents++
+		id := "doc_Nx" + strconv.Itoa(f.documents)
+		f.mu.Unlock()
+		writeJSON(w, 200, map[string]any{"id": id, "entity": "document", "purpose": "dispute_evidence"})
+	case r.Method == "POST" && p == "/v1/disputes/disp_Nx3/accept":
+		if f.acceptErr != 0 {
+			writeAPIError(w, f.acceptErr, "The dispute cannot be accepted in its current state")
+			return
+		}
+		writeJSON(w, 200, disputeJSON("lost"))
+	case r.Method == "PATCH" && p == "/v1/disputes/disp_Nx3/contest":
+		if f.contestErr != 0 {
+			writeAPIError(w, f.contestErr, "The response period has ended")
+			return
+		}
+		writeJSON(w, 200, disputeJSON("under_review"))
 	case r.Method == "GET" && p == "/v1/disputes":
 		writeJSON(w, 200, fakeCollection(disputeJSON("open")))
 	case r.Method == "GET" && p == "/v1/disputes/disp_Nx3":
