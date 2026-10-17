@@ -24,7 +24,12 @@ func (e errBadRequest) Error() string { return "bad request: " + e.err.Error() }
 // not verify under secret get 401; now may be nil for the wall clock. The
 // handler can be mounted under any path prefix: only the last path segment
 // names the method.
-func NewHandler(c connector.Connector, secret string, now func() time.Time) (http.Handler, error) {
+//
+// Each request's message id is accepted once: a replay of a signed request
+// within the tolerance window gets 401. The ids are remembered in memory (see
+// DefaultReplayCacheSize and WithReplayCacheSize); several instances of one
+// service need a shared store to reject a replay sent to another instance.
+func NewHandler(c connector.Connector, secret string, now func() time.Time, opts ...HandlerOption) (http.Handler, error) {
 	s, err := NewSigner(secret)
 	if err != nil {
 		return nil, err
@@ -32,61 +37,79 @@ func NewHandler(c connector.Connector, secret string, now func() time.Time) (htt
 	if now == nil {
 		now = time.Now
 	}
-	return &handler{c: c, signer: s, now: now}, nil
+	h := &handler{c: c, signer: s, now: now}
+	size := DefaultReplayCacheSize
+	for _, o := range opts {
+		o(&size)
+	}
+	h.seen = newReplayCache(size, 2*Tolerance)
+	return h, nil
 }
+
+// HandlerOption configures NewHandler.
+type HandlerOption func(replayCacheSize *int)
+
+// WithReplayCacheSize sets how many message ids the handler remembers.
+func WithReplayCacheSize(n int) HandlerOption { return func(size *int) { *size = n } }
 
 type handler struct {
 	c      connector.Connector
 	signer *Signer
 	now    func() time.Time
+	seen   *replayCache
 }
 
-func (h *handler) reply(w http.ResponseWriter, status int, v any) {
+func (h *handler) reply(w http.ResponseWriter, r *http.Request, status int, v any) {
 	body, err := json.Marshal(v)
 	if err != nil {
 		status, body = http.StatusInternalServerError, []byte(`{"error":{"code":"internal","message":"unencodable result"}}`)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	h.signer.Sign(w.Header(), body, h.now())
+	h.signer.SignResponse(w.Header(), r.Header.Get(HeaderID), body, h.now())
 	w.WriteHeader(status)
 	_, _ = w.Write(body)
 }
 
-func (h *handler) fail(w http.ResponseWriter, err error) {
+func (h *handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	var bad errBadRequest
 	if errors.As(err, &bad) {
-		h.reply(w, http.StatusBadRequest, Envelope{Error{Code: CodeBadRequest, Message: err.Error()}})
+		h.reply(w, r, http.StatusBadRequest, Envelope{Error{Code: CodeBadRequest, Message: err.Error()}})
 		return
 	}
 	status, e := FromError(err)
-	h.reply(w, status, Envelope{e})
+	h.reply(w, r, status, Envelope{e})
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
 	if err != nil {
-		h.fail(w, errBadRequest{err})
-		return
-	}
-	if err := h.signer.Verify(r.Header, body, h.now()); err != nil {
-		h.reply(w, http.StatusUnauthorized, Envelope{Error{Code: CodeInvalidCredentials, Message: "request signature missing, wrong or stale"}})
+		h.fail(w, r, errBadRequest{err})
 		return
 	}
 	method := path.Base(r.URL.Path)
+	if err := h.signer.VerifyRequest(r.Header, r.Method, method, body, h.now()); err != nil {
+		h.reply(w, r, http.StatusUnauthorized, Envelope{Error{Code: CodeInvalidCredentials, Message: "request signature missing, wrong, stale or for another method"}})
+		return
+	}
+	// Only a correctly signed id is remembered, so unsigned junk cannot fill the cache.
+	if !h.seen.firstSeen(r.Header.Get(HeaderID), h.now()) {
+		h.reply(w, r, http.StatusUnauthorized, Envelope{Error{Code: CodeInvalidCredentials, Message: "message id already used (replayed request)"}})
+		return
+	}
 	if r.Method == http.MethodGet && method == MethodInfo {
-		h.reply(w, http.StatusOK, h.c.Info())
+		h.reply(w, r, http.StatusOK, h.c.Info())
 		return
 	}
 	if r.Method != http.MethodPost {
-		h.reply(w, http.StatusMethodNotAllowed, Envelope{Error{Code: CodeBadRequest, Message: "use POST"}})
+		h.reply(w, r, http.StatusMethodNotAllowed, Envelope{Error{Code: CodeBadRequest, Message: "use POST"}})
 		return
 	}
 	out, err := h.dispatch(r.Context(), method, body)
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
-	h.reply(w, http.StatusOK, out)
+	h.reply(w, r, http.StatusOK, out)
 }
 
 // call decodes the body as In, runs f and returns its result.

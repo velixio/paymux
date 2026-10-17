@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -45,7 +46,21 @@ type Config struct {
 
 	OpsEmails     []string // PAYMUX_OPS_EMAILS, bare addresses
 	OpsWebhookURL string   // PAYMUX_OPS_WEBHOOK_URL, Slack-compatible
+
+	// OIDC single sign-on for the dashboard. Enabled when OIDCIssuer is set.
+	OIDCIssuer         string   // PAYMUX_OIDC_ISSUER
+	OIDCClientID       string   // PAYMUX_OIDC_CLIENT_ID
+	OIDCClientSecret   Secret   // PAYMUX_OIDC_CLIENT_SECRET
+	OIDCAllowedDomains []string // PAYMUX_OIDC_ALLOWED_DOMAINS: e-mail domains that may be created at first sign-in
+	OIDCDefaultRole    string   // PAYMUX_OIDC_DEFAULT_ROLE for those users (default viewer; never admin)
+
+	// JavaScript hooks (plugins/jsvm). They run only when JSHooksDir exists.
+	JSHooksDir          string   // PAYMUX_JS_HOOKS_DIR, default <data dir>/hooks
+	JSHooksAllowedHosts []string // PAYMUX_JS_HOOKS_ALLOWED_HOSTS: hosts fetch() may call; "*.example.com" matches subdomains
 }
+
+// OIDCEnabled reports whether single sign-on is configured.
+func (c Config) OIDCEnabled() bool { return c.OIDCIssuer != "" }
 
 // Load reads and validates configuration, reporting every problem at once.
 func Load(lookupEnv func(string) (string, bool)) (Config, error) {
@@ -124,6 +139,19 @@ func Load(lookupEnv func(string) (string, bool)) (Config, error) {
 		bad("PAYMUX_ALLOW_PRIVATE_WEBHOOKS must be true or false")
 	}
 
+	c.JSHooksDir = get("PAYMUX_JS_HOOKS_DIR", filepath.ToSlash(filepath.Join(c.DataDir, "hooks")))
+	for _, h := range strings.Split(get("PAYMUX_JS_HOOKS_ALLOWED_HOSTS", ""), ",") {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if h == "" {
+			continue
+		}
+		if !validHookHost(h) {
+			bad("PAYMUX_JS_HOOKS_ALLOWED_HOSTS: %q is not a host name (use hooks.slack.com or *.example.com, no scheme, port or path)", h)
+			continue
+		}
+		c.JSHooksAllowedHosts = append(c.JSHooksAllowedHosts, h)
+	}
+
 	c.SMTPHost = get("PAYMUX_SMTP_HOST", "")
 	c.SMTPUsername = get("PAYMUX_SMTP_USERNAME", "")
 	c.SMTPPassword = Secret(get("PAYMUX_SMTP_PASSWORD", ""))
@@ -173,10 +201,51 @@ func Load(lookupEnv func(string) (string, bool)) (Config, error) {
 		}
 	}
 
+	loadOIDC(&c, get, bad)
+
 	if len(errs) > 0 {
 		return Config{}, errors.Join(errs...)
 	}
 	return c, nil
+}
+
+var domainRE = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$`)
+
+// loadOIDC reads the PAYMUX_OIDC_* settings: all of issuer, client id and
+// client secret or none.
+func loadOIDC(c *Config, get func(k, def string) string, bad func(string, ...any)) {
+	c.OIDCIssuer = strings.TrimRight(get("PAYMUX_OIDC_ISSUER", ""), "/")
+	c.OIDCClientID = get("PAYMUX_OIDC_CLIENT_ID", "")
+	c.OIDCClientSecret = Secret(get("PAYMUX_OIDC_CLIENT_SECRET", ""))
+	domains, role := get("PAYMUX_OIDC_ALLOWED_DOMAINS", ""), get("PAYMUX_OIDC_DEFAULT_ROLE", "")
+	if c.OIDCIssuer == "" && c.OIDCClientID == "" && c.OIDCClientSecret == "" && domains == "" && role == "" {
+		return
+	}
+	if c.OIDCIssuer == "" || c.OIDCClientID == "" || c.OIDCClientSecret == "" {
+		bad("PAYMUX_OIDC_ISSUER, PAYMUX_OIDC_CLIENT_ID and PAYMUX_OIDC_CLIENT_SECRET must all be set to enable single sign-on")
+		return
+	}
+	if u, err := url.Parse(c.OIDCIssuer); err != nil || u.Host == "" || u.RawQuery != "" || u.Fragment != "" ||
+		(u.Scheme != "https" && !(u.Scheme == "http" && isLocalHost(u.Hostname()))) {
+		bad("PAYMUX_OIDC_ISSUER must be an https URL (http only for localhost)")
+	}
+	for _, d := range strings.Split(domains, ",") {
+		if d = strings.ToLower(strings.TrimSpace(d)); d == "" {
+			continue
+		}
+		if !domainRE.MatchString(d) {
+			bad("PAYMUX_OIDC_ALLOWED_DOMAINS contains %q, which is not a domain such as example.com", d)
+			continue
+		}
+		c.OIDCAllowedDomains = append(c.OIDCAllowedDomains, d)
+	}
+	c.OIDCDefaultRole = role
+	switch {
+	case role == "":
+		c.OIDCDefaultRole = "viewer"
+	case role == "admin":
+		bad("PAYMUX_OIDC_DEFAULT_ROLE must not be admin: people provisioned by sign-in never get full access automatically")
+	}
 }
 
 // parseProxy reads a CIDR block or a single address. A /0 block would trust
@@ -277,4 +346,18 @@ func (c Config) RedactedDatabaseURL() string {
 		}
 	}
 	return u.String()
+}
+
+// validHookHost accepts a bare host name or "*.suffix".
+func validHookHost(h string) bool {
+	name := strings.TrimPrefix(h, "*.")
+	if name == "" || strings.ContainsAny(name, "/:@ *?#\\") {
+		return false
+	}
+	for _, label := range strings.Split(name, ".") {
+		if label == "" {
+			return false
+		}
+	}
+	return true
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/paymux/paymux/internal/invoice"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/look"
+	"github.com/paymux/paymux/internal/oidc"
 	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/paylinks"
 	"github.com/paymux/paymux/internal/reconcile"
@@ -51,6 +52,7 @@ const (
 	// MaxSessionAge ends a session regardless of activity.
 	MaxSessionAge = 7 * 24 * time.Hour
 
+	rolesTTL      = 5 * time.Second // how long a role change may take to reach other processes
 	ticketTTL     = 5 * time.Minute
 	touchEvery    = time.Minute
 	loginFailures = 5
@@ -91,6 +93,12 @@ type Options struct {
 	Subscriptions *subscriptions.Service
 	// PaymentLinks serves the payment links page.
 	PaymentLinks *paylinks.Service
+	// OIDC enables single sign-on (nil: password and TOTP only). People whose
+	// verified e-mail is in OIDCAllowedDomains are created at first sign-in with
+	// OIDCDefaultRole (default viewer).
+	OIDC               *oidc.Client
+	OIDCAllowedDomains []string
+	OIDCDefaultRole    string
 	// Location is the time zone of "today" and of date filters (default UTC).
 	Location *time.Location
 	// PageSize is the number of rows per list page (default 25).
@@ -104,11 +112,14 @@ type Dashboard struct {
 	users Users
 	lim   *limiter
 
-	preKey, ticketKey, modeKey []byte
-	secure                     bool
+	preKey, ticketKey, modeKey, oidcKey []byte
+	secure                              bool
 
 	orgMu sync.Mutex
 	org   string
+
+	// roles resolves custom roles from the roles table (short TTL cache).
+	roles *authz.Cache
 
 	dummyOnce sync.Once
 	dummyHash string
@@ -142,9 +153,11 @@ func New(o Options) (*Dashboard, error) {
 		preKey:    derive(o.MasterKey, "dashboard-csrf-pre"),
 		ticketKey: derive(o.MasterKey, "dashboard-login-ticket"),
 		modeKey:   derive(o.MasterKey, "dashboard-mode"),
+		oidcKey:   derive(o.MasterKey, "dashboard-oidc"),
 		setupKey:  derive(o.MasterKey, "dashboard-csrf-setup"),
 		// Cookies are Secure everywhere except plain-http local development.
 		secure: o.BaseURL.Scheme == "https"}
+	d.roles = authz.NewCache(d.loadRoles, rolesTTL, o.Now)
 	d.routes()
 	d.SetupToken() // on a hub without users this logs the token that opens /setup
 	return d, nil
@@ -170,6 +183,7 @@ var navItems = []navItem{
 	{"apps", "Apps", prefix + "/apps"}, {"providers", "Providers", prefix + "/providers"},
 	{"tax-entities", "Tax entities", prefix + "/tax-entities"}, {"fx", "FX rates", prefix + "/fx"},
 	{"settings", "Settings", prefix + "/settings"}, {"appearance", "Appearance", prefix + "/appearance"}, {"audit", "Audit", prefix + "/audit"}, {"users", "Users", prefix + "/users"},
+	{"roles", "Roles", prefix + "/roles"},
 }
 
 type navItem struct{ Key, Label, Href string }
@@ -179,6 +193,8 @@ func (d *Dashboard) routes() {
 	m.HandleFunc("GET "+prefix+"/{$}", d.authed(authz.PaymentRead, d.root))
 	m.HandleFunc("GET "+prefix+"/login", d.loginPage)
 	m.HandleFunc("POST "+prefix+"/login", d.loginSubmit)
+	m.HandleFunc("GET "+prefix+"/login/oidc", d.ssoStart)
+	m.HandleFunc("GET "+prefix+"/login/oidc/callback", d.ssoCallback)
 	m.HandleFunc("GET "+prefix+"/login/totp", d.totpPage)
 	m.HandleFunc("POST "+prefix+"/login/totp", d.totpSubmit)
 	m.HandleFunc("POST "+prefix+"/logout", d.authed(authz.PaymentRead, d.logout))
@@ -189,6 +205,12 @@ func (d *Dashboard) routes() {
 	m.HandleFunc("POST "+prefix+"/users", d.authed(authz.UserManage, d.userCreate))
 	m.HandleFunc("POST "+prefix+"/users/{id}/role", d.authed(authz.UserManage, d.userRole))
 	m.HandleFunc("POST "+prefix+"/users/{id}/disable", d.authed(authz.UserManage, d.userDisable))
+
+	// Roles: admin only (role.manage is never grantable to a custom role).
+	m.HandleFunc("GET "+prefix+"/roles", d.authed(authz.RoleManage, d.rolesPage))
+	m.HandleFunc("POST "+prefix+"/roles", d.authed(authz.RoleManage, d.roleCreate))
+	m.HandleFunc("POST "+prefix+"/roles/{name}", d.authed(authz.RoleManage, d.roleUpdate))
+	m.HandleFunc("POST "+prefix+"/roles/{name}/delete", d.authed(authz.RoleManage, d.roleDelete))
 
 	d.routesPages()
 	d.routesSubscriptions()
@@ -236,6 +258,7 @@ type view struct {
 
 	// login
 	Email      string
+	SSO        bool // show the single sign-on button
 	NeedsSetup bool
 	// first-run setup
 	SetupOrg, SetupApp, SetupSlug string
@@ -247,6 +270,8 @@ type view struct {
 	// users
 	Users     []userRow
 	Roles     []string
+	RoleRows  []roleRow
+	NewBoxes  []actionBox
 	CanManage bool
 	Self      string
 	// section placeholder
@@ -450,6 +475,7 @@ type session struct {
 	ID      string
 	User    store.UserRow
 	CSRFKey []byte
+	roles   authz.Resolver
 }
 
 func (s *session) csrf() string { return auth.CSRFToken(s.CSRFKey, s.ID) }
@@ -508,7 +534,7 @@ func (d *Dashboard) currentSession(r *http.Request) (*session, bool) {
 			d.o.Logger.Warn("dashboard: touch session", "err", err)
 		}
 	}
-	return &session{ID: s.ID, User: u, CSRFKey: s.CSRFKey}, true
+	return &session{ID: s.ID, User: u, CSRFKey: s.CSRFKey, roles: d.roles}, true
 }
 
 type authedHandler func(w http.ResponseWriter, r *http.Request, s *session)
@@ -520,7 +546,7 @@ func (s *session) actor() authz.Actor {
 
 // can reports whether the session's user may perform action.
 func (s *session) can(action authz.Action) bool {
-	return authz.Can(s.actor(), action, authz.Resource{})
+	return authz.CanWith(s.roles, s.actor(), action, authz.Resource{})
 }
 
 // authed wraps h: it needs a live session, checks CSRF on POST, then asks

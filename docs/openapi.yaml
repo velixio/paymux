@@ -11,6 +11,13 @@ info:
     The key decides the app and the mode: a `test` key only sees test data and
     a `live` key only live data.
 
+    **Scopes.** An API key may be limited to some scopes: `payments:read`,
+    `payments:write`, `refunds:read`, `refunds:write`, `subscriptions:read`,
+    `subscriptions:write` and `invoices:read`. `x:write` also allows the reads
+    of `x`. Each operation names the scope it needs in `x-required-scope`; a key
+    without it gets 403 `insufficient_scope`. Keys created before scopes
+    existed, and keys created without any, have every scope.
+
     **Idempotency.** `POST` requests may carry an `Idempotency-Key` header
     (up to 255 characters). The same key with the same method, path and body
     within 24 hours returns the stored response (marked
@@ -35,6 +42,7 @@ paths:
   /v1/payments:
     post:
       operationId: createPayment
+      x-required-scope: payments:write
       summary: Create a payment
       description: |
         Creates a payment in status `created` and returns a `checkout_url` of
@@ -59,6 +67,8 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
         "409":
           $ref: "#/components/responses/IdempotencyConflict"
         "422":
@@ -72,6 +82,7 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
     get:
       operationId: listPayments
+      x-required-scope: payments:read
       summary: List payments
       description: Newest first, cursor-paginated.
       parameters:
@@ -96,9 +107,12 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
   /v1/payments/{id}:
     get:
       operationId: getPayment
+      x-required-scope: payments:read
       summary: Retrieve a payment
       parameters:
         - $ref: "#/components/parameters/PaymentId"
@@ -111,11 +125,14 @@ paths:
                 $ref: "#/components/schemas/PaymentDetail"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
         "404":
           $ref: "#/components/responses/NotFound"
   /v1/payments/{id}/cancel:
     post:
       operationId: cancelPayment
+      x-required-scope: payments:write
       summary: Cancel a payment
       description: |
         Only payments in `created` or `requires_action` can be canceled.
@@ -134,6 +151,8 @@ paths:
                 $ref: "#/components/schemas/Payment"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -141,6 +160,7 @@ paths:
   /v1/payments/{id}/refunds:
     post:
       operationId: createRefund
+      x-required-scope: refunds:write
       summary: Refund a payment
       description: |
         Refunds the succeeded attempt (or `attempt_id`). `amount` defaults to
@@ -165,6 +185,8 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -172,6 +194,7 @@ paths:
   /v1/refunds/{id}:
     get:
       operationId: getRefund
+      x-required-scope: refunds:read
       summary: Retrieve a refund
       parameters:
         - name: id
@@ -187,11 +210,14 @@ paths:
                 $ref: "#/components/schemas/Refund"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
         "404":
           $ref: "#/components/responses/NotFound"
   /v1/invoices:
     get:
       operationId: listInvoices
+      x-required-scope: invoices:read
       summary: List the invoices of a payment
       description: Empty when the payment has no invoice (the app issues none, or the provider is merchant of record).
       parameters:
@@ -210,9 +236,12 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
   /v1/invoices/{id}:
     get:
       operationId: getInvoice
+      x-required-scope: invoices:read
       summary: Retrieve an invoice
       parameters:
         - name: id
@@ -228,11 +257,14 @@ paths:
                 $ref: "#/components/schemas/Invoice"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
         "404":
           $ref: "#/components/responses/NotFound"
   /v1/invoices/{id}/pdf:
     get:
       operationId: getInvoicePdf
+      x-required-scope: invoices:read
       summary: Download an invoice as PDF
       description: 404 with `Retry-After` while the PDF is still being rendered (`pdf_ready` is false).
       parameters:
@@ -248,11 +280,14 @@ paths:
               schema: { type: string, format: binary }
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
         "404":
           $ref: "#/components/responses/NotFound"
   /v1/credit_notes:
     get:
       operationId: listCreditNotes
+      x-required-scope: invoices:read
       summary: List the credit notes of a payment
       parameters:
         - name: payment_id
@@ -270,9 +305,12 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
   /v1/credit_notes/{id}:
     get:
       operationId: getCreditNote
+      x-required-scope: invoices:read
       summary: Retrieve a credit note
       parameters:
         - name: id
@@ -288,11 +326,14 @@ paths:
                 $ref: "#/components/schemas/CreditNote"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
         "404":
           $ref: "#/components/responses/NotFound"
   /v1/credit_notes/{id}/pdf:
     get:
       operationId: getCreditNotePdf
+      x-required-scope: invoices:read
       summary: Download a credit note as PDF
       parameters:
         - name: id
@@ -307,11 +348,14 @@ paths:
               schema: { type: string, format: binary }
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
         "404":
           $ref: "#/components/responses/NotFound"
   /v1/payment_links:
     post:
       operationId: createPaymentLink
+      x-required-scope: payments:write
       summary: Create a payment link
       description: |
         A payment link is a shareable page at `<PAYMUX_BASE_URL>/l/<slug>` (also served on the app's custom domains).
@@ -345,6 +389,7 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
     get:
       operationId: listPaymentLinks
+      x-required-scope: payments:read
       summary: List payment links
       parameters:
         - { name: active, in: query, required: false, schema: { type: boolean }, description: Only active (true) or switched-off (false) links. }
@@ -364,6 +409,7 @@ paths:
   /v1/payment_links/{id}:
     get:
       operationId: getPaymentLink
+      x-required-scope: payments:read
       summary: Retrieve a payment link
       parameters:
         - $ref: "#/components/parameters/PaymentLinkId"
@@ -381,6 +427,7 @@ paths:
   /v1/payment_links/{id}/deactivate:
     post:
       operationId: deactivatePaymentLink
+      x-required-scope: payments:write
       summary: Deactivate a payment link
       description: |
         Switches the link off for good: its page shows that the link is no longer active and creates no more payments.
@@ -402,6 +449,7 @@ paths:
   /v1/subscriptions:
     post:
       operationId: createSubscription
+      x-required-scope: subscriptions:write
       summary: Create a subscription
       description: |
         Routes the subscription (provider-managed, or merchant-triggered with a mandate) and returns it
@@ -427,10 +475,13 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
         "422":
           $ref: "#/components/responses/SubscriptionUnprocessable"
     get:
       operationId: listSubscriptions
+      x-required-scope: subscriptions:read
       summary: List subscriptions
       parameters:
         - { name: customer, in: query, required: false, schema: { type: string } }
@@ -448,9 +499,12 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
   /v1/subscriptions/{id}:
     get:
       operationId: getSubscription
+      x-required-scope: subscriptions:read
       summary: Retrieve a subscription
       parameters:
         - $ref: "#/components/parameters/SubscriptionId"
@@ -463,11 +517,14 @@ paths:
                 $ref: "#/components/schemas/Subscription"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
         "404":
           $ref: "#/components/responses/NotFound"
   /v1/subscriptions/{id}/cancel:
     post:
       operationId: cancelSubscription
+      x-required-scope: subscriptions:write
       summary: Cancel a subscription
       description: |
         Now (revokes the mandate or cancels at the provider) or, with `at_period_end`, at the end of the
@@ -493,6 +550,8 @@ paths:
                 $ref: "#/components/schemas/Subscription"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -500,6 +559,7 @@ paths:
   /v1/subscriptions/{id}/update:
     post:
       operationId: updateSubscription
+      x-required-scope: subscriptions:write
       summary: Change the amount from the next period
       description: |
         No proration. If the new amount is above the mandate's maximum the response has
@@ -529,6 +589,8 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -538,6 +600,7 @@ paths:
   /v1/subscriptions/{id}/payment_method:
     post:
       operationId: updateSubscriptionPaymentMethod
+      x-required-scope: subscriptions:write
       summary: Start a new mandate checkout
       description: |
         Returns a `checkout_url` for a new mandate. The old mandate is revoked once the new one is active.
@@ -563,6 +626,8 @@ paths:
                 $ref: "#/components/schemas/CreatedSubscription"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -574,7 +639,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: "`pmx_test_sk_...` or `pmx_live_sk_...`"
+      description: "`pmx_test_sk_...` or `pmx_live_sk_...`. Optionally limited to scopes, see the API description (`x-required-scope` per operation)."
   parameters:
     IdempotencyKey:
       name: Idempotency-Key
@@ -604,6 +669,11 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     Unauthenticated:
       description: Missing, malformed, unknown or revoked API key (`authentication_error`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    InsufficientScope:
+      description: The API key is limited to scopes that do not include the one this operation needs (`insufficient_scope`); see `x-required-scope`.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -653,6 +723,7 @@ components:
                 - invalid_request
                 - authentication_error
                 - permission_error
+                - insufficient_scope
                 - not_found
                 - invalid_state
                 - not_refundable

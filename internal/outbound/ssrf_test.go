@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestIsBlockedIP(t *testing.T) {
@@ -87,5 +88,20 @@ func TestClientDoesNotFollowRedirects(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusFound {
 		t.Fatalf("status %d, redirect was followed", resp.StatusCode)
+	}
+}
+
+func TestGuardedClientIsTheSameGuardWithYourTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	defer srv.Close()
+	c := GuardedClient(false, 3*time.Second)
+	if c.Timeout != 3*time.Second {
+		t.Errorf("timeout %v", c.Timeout)
+	}
+	if _, err := c.Get(srv.URL); err == nil || !strings.Contains(err.Error(), ErrPrivateAddress.Error()) {
+		t.Errorf("loopback must be refused: %v", err)
+	}
+	if res, err := GuardedClient(true, time.Second).Get(srv.URL); err != nil || res.StatusCode != 200 {
+		t.Errorf("allow-private client: %v", err)
 	}
 }

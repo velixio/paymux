@@ -159,3 +159,57 @@ func TestMembershipAndRenewalWebhooks(t *testing.T) {
 		t.Errorf("one-time = %+v", n)
 	}
 }
+
+// Whop refuses a renewal plan without inline product details (seen in the
+// sandbox, 2026-10-17): "you must pass in product details" and "Please input
+// an external identifier". The product id is stable per price point so
+// repeat subscriptions share one product.
+func TestRenewalPlanCarriesProductDetails(t *testing.T) {
+	f := newFake("")
+	if _, err := subMgr(t, f).CreateSubscriptionCheckout(context.Background(), connector.SubscriptionRequest{SubscriptionID: "sub_x", ProviderRef: "SUBREF01",
+		Amount: 49900, Currency: "BDT", Interval: "month", IntervalCount: 2, Description: "Voicestudio Pro"}); err != nil {
+		t.Fatal(err)
+	}
+	var generic map[string]map[string]any
+	_ = json.Unmarshal(f.bodies["POST /api/v1/checkout_configurations"], &generic)
+	prod, _ := generic["plan"]["product"].(map[string]any)
+	if prod["title"] != "Voicestudio Pro" || prod["external_identifier"] != "paymux-renewal-bdt-49900-month-2" {
+		t.Fatalf("product = %v", prod)
+	}
+	f2 := newFake("")
+	if _, err := subMgr(t, f2).CreateSubscriptionCheckout(context.Background(), connector.SubscriptionRequest{ProviderRef: "R", Amount: 100,
+		Currency: "USD", Interval: "week", IntervalCount: 1}); err != nil {
+		t.Fatal(err)
+	}
+	_ = json.Unmarshal(f2.bodies["POST /api/v1/checkout_configurations"], &generic)
+	if prod, _ = generic["plan"]["product"].(map[string]any); prod["title"] != "Subscription" {
+		t.Fatalf("default title: %v", prod)
+	}
+}
+
+// One-time checkouts also send inline product details, otherwise Whop shows
+// the payment under an unrelated existing product (seen in the sandbox).
+func TestOneTimePlanCarriesProductDetails(t *testing.T) {
+	f := newFake("")
+	c := newConn(t, f)
+	if _, err := c.CreateCheckout(context.Background(), connector.CheckoutRequest{PaymentID: "p", AttemptID: "a", AppID: "app_1", ProviderRef: "R1",
+		Amount: 1000, Currency: "USD", Description: "Supermetry Pro"}); err != nil {
+		t.Fatal(err)
+	}
+	var generic map[string]map[string]any
+	_ = json.Unmarshal(f.bodies["POST /api/v1/checkout_configurations"], &generic)
+	prod, _ := generic["plan"]["product"].(map[string]any)
+	if prod["title"] != "Supermetry Pro" || prod["external_identifier"] == "" || prod["external_identifier"] == nil {
+		t.Fatalf("product = %v", prod)
+	}
+	id1 := prod["external_identifier"]
+	f2 := newFake("")
+	if _, err := newConn(t, f2).CreateCheckout(context.Background(), connector.CheckoutRequest{PaymentID: "p2", AttemptID: "a2", AppID: "app_1", ProviderRef: "R2",
+		Amount: 2500, Currency: "USD", Description: "Supermetry Pro"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = json.Unmarshal(f2.bodies["POST /api/v1/checkout_configurations"], &generic)
+	if prod, _ = generic["plan"]["product"].(map[string]any); prod["external_identifier"] != id1 {
+		t.Fatalf("same app+description should reuse one product: %v vs %v", prod["external_identifier"], id1)
+	}
+}

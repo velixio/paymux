@@ -47,19 +47,19 @@ type Dispute struct {
 }
 
 type DisputeEvent struct {
-	Event   EventInfo
-	Dispute Dispute
-	Raw     json.RawMessage
+	Event   EventInfo       `json:"event"`
+	Dispute Dispute         `json:"dispute"`
+	Raw     json.RawMessage `json:"raw"`
 }
 
 type EventInfo struct {
-	Type          string
-	OrgID         string
-	AppID         string
-	Mode          string
-	ObjectType    string
-	ObjectID      string
-	ObjectVersion int64
+	Type          string `json:"type"`
+	OrgID         string `json:"org_id"`
+	AppID         string `json:"app_id"`
+	Mode          string `json:"mode"`
+	ObjectType    string `json:"object_type"`
+	ObjectID      string `json:"object_id"`
+	ObjectVersion int64  `json:"object_version"`
 }
 
 type Invoice struct {
@@ -79,9 +79,9 @@ type Invoice struct {
 }
 
 type InvoiceEvent struct {
-	Event   EventInfo
-	Invoice Invoice
-	Raw     json.RawMessage
+	Event   EventInfo       `json:"event"`
+	Invoice Invoice         `json:"invoice"`
+	Raw     json.RawMessage `json:"raw"`
 }
 
 type Option func(*App)
@@ -113,11 +113,11 @@ type Payment struct {
 }
 
 type PaymentEvent struct {
-	Event     EventInfo
-	Payment   Payment
-	Reason    string
-	AttemptID string
-	Raw       json.RawMessage
+	Event     EventInfo       `json:"event"`
+	Payment   Payment         `json:"payment"`
+	Reason    string          `json:"reason"`
+	AttemptID string          `json:"attempt_id"`
+	Raw       json.RawMessage `json:"raw"`
 }
 
 type Refund struct {
@@ -133,27 +133,27 @@ type Refund struct {
 }
 
 type RefundEvent struct {
-	Event         EventInfo
-	Refund        Refund
-	FailureReason string
-	Raw           json.RawMessage
+	Event         EventInfo       `json:"event"`
+	Refund        Refund          `json:"refund"`
+	FailureReason string          `json:"failure_reason"`
+	Raw           json.RawMessage `json:"raw"`
 }
 
 type RouteAccount struct {
-	ID        string
-	Connector string
-	Name      string
+	ID        string `json:"id"`
+	Connector string `json:"connector"`
+	Name      string `json:"name"`
 }
 
 type RouteRequest struct {
-	AppID    string
-	Mode     string
-	Currency string
-	Country  string
-	Amount   int64
-	Purpose  string
-	Metadata map[string]string
-	Accounts []RouteAccount
+	AppID    string            `json:"app_id"`
+	Mode     string            `json:"mode"`
+	Currency string            `json:"currency"`
+	Country  string            `json:"country"`
+	Amount   int64             `json:"amount"`
+	Purpose  string            `json:"purpose"`
+	Metadata map[string]string `json:"metadata"`
+	Accounts []RouteAccount    `json:"accounts"`
 }
 
 type Subscription struct {
@@ -174,10 +174,10 @@ type Subscription struct {
 }
 
 type SubscriptionEvent struct {
-	Event        EventInfo
-	Subscription Subscription
-	Reason       string
-	Raw          json.RawMessage
+	Event        EventInfo       `json:"event"`
+	Subscription Subscription    `json:"subscription"`
+	Reason       string          `json:"reason"`
+	Raw          json.RawMessage `json:"raw"`
 }
 
 
@@ -202,6 +202,10 @@ var (
 	ErrInvalidReturn      = errors.New("connector: return signature invalid")
 	ErrMandateLimit       = errors.New("connector: amount exceeds mandate limit")
 )
+
+var ErrPrivateAddress = errors.New("connector: target is a private or special-use address")
+
+func IsPrivateIP(ip net.IP) bool
 
 func Lookup(name string) (Factory, Info, bool)
 
@@ -343,16 +347,18 @@ type Evidence struct {
 type Factory func(cfg json.RawMessage, deps Deps) (Connector, error)
 
 type HTTPOptions struct {
-	Timeout    time.Duration
-	MaxRetries int
-	Backoff    time.Duration
-	Logger     *slog.Logger
-	Secrets    []string
-	RateLimit  RateLimit
-	Observer   Observer
-	Base       http.RoundTripper
-	Now        func() time.Time
-	Sleep      func(ctx context.Context, d time.Duration) error
+	Timeout     time.Duration
+	MaxRetries  int
+	Backoff     time.Duration
+	Logger      *slog.Logger
+	Secrets     []string
+	RateLimit   RateLimit
+	Observer    Observer
+	DenyPrivate bool
+	LookupIP    func(ctx context.Context, host string) ([]net.IP, error)
+	Base        http.RoundTripper
+	Now         func() time.Time
+	Sleep       func(ctx context.Context, d time.Duration) error
 }
 
 type Info struct {
@@ -366,6 +372,7 @@ type Info struct {
 	MerchantOfRecord         bool            `json:"merchant_of_record"`
 	SubscriptionModes        []BillingMode   `json:"subscription_modes"`
 	PreDebitPerAttempt       bool            `json:"pre_debit_per_attempt"`
+	DenyPrivateNetwork       bool            `json:"deny_private_network,omitempty"`
 	MandateLimits            []MandateLimit  `json:"mandate_limits"`
 	MandateSetupAmount       int64           `json:"mandate_setup_amount,omitempty"`
 	RefundsVerificationDebit bool            `json:"refunds_verification_debit,omitempty"`
@@ -806,9 +813,11 @@ const (
 	CodeBadRequest         = "bad_request"
 )
 
+const DefaultReplayCacheSize = 10000
+
 var ErrBadSignature = errors.New("wire: missing, wrong or stale signature")
 
-func NewHandler(c connector.Connector, secret string, now func() time.Time) (http.Handler, error)
+func NewHandler(c connector.Connector, secret string, now func() time.Time, opts ...HandlerOption) (http.Handler, error)
 
 type CancelSubscriptionRequest struct {
 	Subscription connector.SubscriptionRef `json:"subscription"`
@@ -837,6 +846,10 @@ type EvidenceRequest struct {
 	Evidence connector.Evidence   `json:"evidence"`
 }
 
+type HandlerOption func(replayCacheSize *int)
+
+func WithReplayCacheSize(n int) HandlerOption
+
 type ListRequest struct {
 	Range  connector.TimeRange `json:"range"`
 	Cursor connector.Cursor    `json:"cursor,omitempty"`
@@ -861,9 +874,13 @@ type Signer struct {
 
 func NewSigner(secret string) (*Signer, error)
 
-func (s *Signer) Sign(h http.Header, body []byte, now time.Time)
+func (s *Signer) SignRequest(h http.Header, verb, method string, body []byte, now time.Time) string
 
-func (s *Signer) Verify(h http.Header, body []byte, now time.Time) error
+func (s *Signer) SignResponse(h http.Header, requestID string, body []byte, now time.Time)
+
+func (s *Signer) VerifyRequest(h http.Header, verb, method string, body []byte, now time.Time) error
+
+func (s *Signer) VerifyResponse(h http.Header, requestID string, body []byte, now time.Time) error
 
 type UpdateAmountRequest struct {
 	Subscription connector.SubscriptionRef `json:"subscription"`

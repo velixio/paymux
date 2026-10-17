@@ -52,6 +52,36 @@ type Options struct {
 	Now           func() time.Time
 }
 
+// RouteScopes is the API key scope each route requires: "x:write" for routes
+// that change state and "x:read" for reads (a key with "x:write" can also read
+// "x"). docs/openapi.yaml documents the same value per operation as
+// x-required-scope, and a test keeps the two in step.
+var RouteScopes = map[string]string{
+	"POST /v1/payments":                          authz.ScopePaymentsWrite,
+	"GET /v1/payments/{id}":                      authz.ScopePaymentsRead,
+	"GET /v1/payments":                           authz.ScopePaymentsRead,
+	"POST /v1/payments/{id}/cancel":              authz.ScopePaymentsWrite,
+	"POST /v1/payments/{id}/refunds":             authz.ScopeRefundsWrite,
+	"GET /v1/refunds/{id}":                       authz.ScopeRefundsRead,
+	"POST /v1/subscriptions":                     authz.ScopeSubscriptionsWrite,
+	"GET /v1/subscriptions/{id}":                 authz.ScopeSubscriptionsRead,
+	"GET /v1/subscriptions":                      authz.ScopeSubscriptionsRead,
+	"POST /v1/subscriptions/{id}/cancel":         authz.ScopeSubscriptionsWrite,
+	"POST /v1/subscriptions/{id}/update":         authz.ScopeSubscriptionsWrite,
+	"POST /v1/subscriptions/{id}/payment_method": authz.ScopeSubscriptionsWrite,
+	// Payment links create payments, so they share the payments scopes.
+	"POST /v1/payment_links":                 authz.ScopePaymentsWrite,
+	"GET /v1/payment_links/{id}":             authz.ScopePaymentsRead,
+	"GET /v1/payment_links":                  authz.ScopePaymentsRead,
+	"POST /v1/payment_links/{id}/deactivate": authz.ScopePaymentsWrite,
+	"GET /v1/invoices/{id}":                  authz.ScopeInvoicesRead,
+	"GET /v1/invoices/{id}/pdf":              authz.ScopeInvoicesRead,
+	"GET /v1/invoices":                       authz.ScopeInvoicesRead,
+	"GET /v1/credit_notes/{id}":              authz.ScopeInvoicesRead,
+	"GET /v1/credit_notes/{id}/pdf":          authz.ScopeInvoicesRead,
+	"GET /v1/credit_notes":                   authz.ScopeInvoicesRead,
+}
+
 // Mux is the part of server.Server the API needs.
 type Mux interface {
 	HandleFunc(pattern string, fn http.HandlerFunc)
@@ -92,38 +122,54 @@ type handler func(w http.ResponseWriter, r *http.Request, pr core.Principal, bod
 
 // Register mounts the /v1 routes on m.
 func (a *API) Register(m Mux) {
-	m.HandleFunc("POST /v1/payments", a.wrap(a.createPayment, true))
-	m.HandleFunc("GET /v1/payments/{id}", a.wrap(a.getPayment, false))
-	m.HandleFunc("GET /v1/payments", a.wrap(a.listPayments, false))
-	m.HandleFunc("POST /v1/payments/{id}/cancel", a.wrap(a.cancelPayment, true))
-	m.HandleFunc("POST /v1/payments/{id}/refunds", a.wrap(a.createRefund, true))
-	m.HandleFunc("GET /v1/refunds/{id}", a.wrap(a.getRefund, false))
-	m.HandleFunc("POST /v1/subscriptions", a.wrap(a.createSubscription, true))
-	m.HandleFunc("GET /v1/subscriptions/{id}", a.wrap(a.getSubscription, false))
-	m.HandleFunc("GET /v1/subscriptions", a.wrap(a.listSubscriptions, false))
-	m.HandleFunc("POST /v1/subscriptions/{id}/cancel", a.wrap(a.cancelSubscription, true))
-	m.HandleFunc("POST /v1/subscriptions/{id}/update", a.wrap(a.updateSubscription, true))
-	m.HandleFunc("POST /v1/subscriptions/{id}/payment_method", a.wrap(a.subscriptionPaymentMethod, true))
-	m.HandleFunc("POST /v1/payment_links", a.wrap(a.createPaymentLink, true))
-	m.HandleFunc("GET /v1/payment_links/{id}", a.wrap(a.getPaymentLink, false))
-	m.HandleFunc("GET /v1/payment_links", a.wrap(a.listPaymentLinks, false))
-	m.HandleFunc("POST /v1/payment_links/{id}/deactivate", a.wrap(a.deactivatePaymentLink, true))
-	m.HandleFunc("GET /v1/invoices/{id}", a.wrap(a.getInvoice, false))
-	m.HandleFunc("GET /v1/invoices/{id}/pdf", a.wrap(a.getInvoicePDF, false))
-	m.HandleFunc("GET /v1/invoices", a.wrap(a.listInvoices, false))
-	m.HandleFunc("GET /v1/credit_notes/{id}", a.wrap(a.getCreditNote, false))
-	m.HandleFunc("GET /v1/credit_notes/{id}/pdf", a.wrap(a.getCreditNotePDF, false))
-	m.HandleFunc("GET /v1/credit_notes", a.wrap(a.listCreditNotes, false))
+	route := func(pattern string, h handler, idempotent bool) {
+		scope, ok := RouteScopes[pattern]
+		if !ok {
+			panic("httpapi: no scope declared for " + pattern)
+		}
+		m.HandleFunc(pattern, a.wrap(h, idempotent, scope))
+	}
+	route("POST /v1/payments", a.createPayment, true)
+	route("GET /v1/payments/{id}", a.getPayment, false)
+	route("GET /v1/payments", a.listPayments, false)
+	route("POST /v1/payments/{id}/cancel", a.cancelPayment, true)
+	route("POST /v1/payments/{id}/refunds", a.createRefund, true)
+	route("GET /v1/refunds/{id}", a.getRefund, false)
+	route("POST /v1/subscriptions", a.createSubscription, true)
+	route("GET /v1/subscriptions/{id}", a.getSubscription, false)
+	route("GET /v1/subscriptions", a.listSubscriptions, false)
+	route("POST /v1/subscriptions/{id}/cancel", a.cancelSubscription, true)
+	route("POST /v1/subscriptions/{id}/update", a.updateSubscription, true)
+	route("POST /v1/subscriptions/{id}/payment_method", a.subscriptionPaymentMethod, true)
+	route("POST /v1/payment_links", a.createPaymentLink, true)
+	route("GET /v1/payment_links/{id}", a.getPaymentLink, false)
+	route("GET /v1/payment_links", a.listPaymentLinks, false)
+	route("POST /v1/payment_links/{id}/deactivate", a.deactivatePaymentLink, true)
+	route("GET /v1/invoices/{id}", a.getInvoice, false)
+	route("GET /v1/invoices/{id}/pdf", a.getInvoicePDF, false)
+	route("GET /v1/invoices", a.listInvoices, false)
+	route("GET /v1/credit_notes/{id}", a.getCreditNote, false)
+	route("GET /v1/credit_notes/{id}/pdf", a.getCreditNotePDF, false)
+	route("GET /v1/credit_notes", a.listCreditNotes, false)
 	m.HandleFunc("/v1/", a.wrap(func(w http.ResponseWriter, r *http.Request, _ core.Principal, _ []byte) {
 		a.fail(w, r, http.StatusNotFound, "not_found", "no such endpoint")
-	}, false))
+	}, false, ""))
 }
 
 // wrap authenticates, reads the body of POSTs and applies idempotency.
-func (a *API) wrap(h handler, idempotent bool) http.HandlerFunc {
+//
+// scope is the API key scope the route needs ("" for none). A key limited to
+// other scopes gets 403 insufficient_scope; keys made before scopes existed
+// have all of them.
+func (a *API) wrap(h handler, idempotent bool, scope string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pr, ok := a.authenticate(w, r)
 		if !ok {
+			return
+		}
+		if !authz.ScopeAllows(pr.Scopes, scope) {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="paymux", error="insufficient_scope", scope="`+scope+`"`)
+			a.fail(w, r, http.StatusForbidden, "insufficient_scope", "this API key lacks the "+scope+" scope")
 			return
 		}
 		if a.limit != nil {

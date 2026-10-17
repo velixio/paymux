@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -31,6 +32,15 @@ type HTTPOptions struct {
 	// Observer, when set, receives one RequestObservation per attempt (latency
 	// and outcome only: no URL, headers or body).
 	Observer Observer
+	// DenyPrivate refuses to connect to loopback, private, link-local, multicast
+	// and unspecified addresses (checked for every address a name resolves to,
+	// and again at connect time), ignores environment proxies and never follows
+	// redirects. It replaces Base. For connectors whose target is configured by
+	// an operator, such as the remote connector.
+	DenyPrivate bool
+	// LookupIP resolves host names when DenyPrivate is set (default: the system
+	// resolver); tests use it to simulate DNS answers.
+	LookupIP func(ctx context.Context, host string) ([]net.IP, error)
 	// Base is the underlying transport (default http.DefaultTransport).
 	Base http.RoundTripper
 	// Now and Sleep are test seams for the limiter and the backoff.
@@ -47,6 +57,9 @@ func NewHTTPClient(o HTTPOptions) *http.Client {
 	}
 	if o.Backoff <= 0 {
 		o.Backoff = 200 * time.Millisecond
+	}
+	if o.DenyPrivate {
+		o.Base = guardedTransport(o.LookupIP)
 	}
 	if o.Base == nil {
 		o.Base = http.DefaultTransport
@@ -65,7 +78,11 @@ func NewHTTPClient(o HTTPOptions) *http.Client {
 		}
 		t.bucket = &bucket{rate: o.RateLimit.RequestsPerSecond, burst: float64(burst), tokens: float64(burst), last: o.Now()}
 	}
-	return &http.Client{Transport: t}
+	c := &http.Client{Transport: t}
+	if o.DenyPrivate {
+		c.CheckRedirect = noRedirects
+	}
+	return c
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {

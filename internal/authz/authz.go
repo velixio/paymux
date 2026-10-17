@@ -2,7 +2,10 @@
 // Every guarded operation goes through Can; the set of actions is closed.
 package authz
 
-import "slices"
+import (
+	"slices"
+	"strings"
+)
 
 // Role is a dashboard user's role.
 type Role string
@@ -32,12 +35,47 @@ const (
 	ProviderAccountManage Action = "provider_account.manage"
 	UserManage            Action = "user.manage"
 	AuditRead             Action = "audit.read"
+	RoleManage            Action = "role.manage"
 )
 
 // AllActions lists every action.
 var AllActions = []Action{PaymentCreate, PaymentRead, PaymentCancel, RefundCreate, RefundRead, DisputeManage,
 	WebhookReplay, InvoiceReissue, SettingsRead, SettingsWrite, AppCreate, APIKeyCreate, ProviderAccountManage,
-	UserManage, AuditRead}
+	UserManage, AuditRead, RoleManage}
+
+// adminOnly actions can never be granted to a custom role: whoever holds them
+// can create users and roles, so they could give themselves everything.
+var adminOnly = []Action{UserManage, RoleManage}
+
+// Grantable lists the actions a custom role may be given.
+func Grantable() []Action {
+	var out []Action
+	for _, a := range AllActions {
+		if !slices.Contains(adminOnly, a) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// ValidAction reports whether a is in the closed enum.
+func ValidAction(a Action) bool { return slices.Contains(AllActions, a) }
+
+// BuiltinRoles are the roles defined in code: they cannot be changed or
+// deleted, and always resolve from here, whatever the roles table says.
+func BuiltinRoles() map[Role][]Action {
+	return map[Role][]Action{
+		RoleAdmin:    slices.Clone(AllActions),
+		RoleOperator: slices.Clone(operatorActions),
+		RoleViewer:   slices.Clone(viewerActions),
+	}
+}
+
+// Resolver answers which actions a custom role grants. Built-in roles never
+// ask it.
+type Resolver interface {
+	Actions(role Role) ([]Action, bool)
+}
 
 // Kind is the type of actor.
 type Kind string
@@ -74,9 +112,12 @@ var (
 	apiKeyActions = []Action{PaymentCreate, PaymentRead, PaymentCancel, RefundCreate, RefundRead}
 )
 
-// Can reports whether actor may perform action on res. Unknown actions,
-// roles and actor kinds are denied.
-func Can(actor Actor, action Action, res Resource) bool {
+// Can reports whether actor may perform action on res, with the built-in
+// roles only. Unknown actions, roles and actor kinds are denied.
+func Can(actor Actor, action Action, res Resource) bool { return CanWith(nil, actor, action, res) }
+
+// CanWith is Can with custom roles resolved by r (nil: built-in roles only).
+func CanWith(r Resolver, actor Actor, action Action, res Resource) bool {
 	if !slices.Contains(AllActions, action) {
 		return false
 	}
@@ -99,6 +140,44 @@ func Can(actor Actor, action Action, res Resource) bool {
 		case RoleViewer:
 			return slices.Contains(viewerActions, action)
 		}
+		if r != nil && !slices.Contains(adminOnly, action) {
+			if granted, ok := r.Actions(actor.Role); ok {
+				return slices.Contains(granted, action)
+			}
+		}
+	}
+	return false
+}
+
+// Scopes limit an API key. A key without scopes (nil) has all of them.
+const (
+	ScopePaymentsRead       = "payments:read"
+	ScopePaymentsWrite      = "payments:write"
+	ScopeRefundsRead        = "refunds:read"
+	ScopeRefundsWrite       = "refunds:write"
+	ScopeSubscriptionsRead  = "subscriptions:read"
+	ScopeSubscriptionsWrite = "subscriptions:write"
+	ScopeInvoicesRead       = "invoices:read"
+)
+
+// AllScopes lists every scope.
+var AllScopes = []string{ScopePaymentsRead, ScopePaymentsWrite, ScopeRefundsRead, ScopeRefundsWrite,
+	ScopeSubscriptionsRead, ScopeSubscriptionsWrite, ScopeInvoicesRead}
+
+// ValidScope reports whether s is a known scope.
+func ValidScope(s string) bool { return slices.Contains(AllScopes, s) }
+
+// ScopeAllows reports whether the granted scopes cover need. nil granted means
+// every scope; "x:write" also covers "x:read".
+func ScopeAllows(granted []string, need string) bool {
+	if need == "" || granted == nil {
+		return true
+	}
+	if slices.Contains(granted, need) {
+		return true
+	}
+	if res, ok := strings.CutSuffix(need, ":read"); ok {
+		return slices.Contains(granted, res+":write")
 	}
 	return false
 }

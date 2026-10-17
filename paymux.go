@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,6 +34,7 @@ import (
 	"github.com/paymux/paymux/internal/logging"
 	"github.com/paymux/paymux/internal/metrics"
 	"github.com/paymux/paymux/internal/notify"
+	"github.com/paymux/paymux/internal/oidc"
 	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/paylinks"
 	"github.com/paymux/paymux/internal/paypage"
@@ -321,7 +323,8 @@ func (a *App) Start(ctx context.Context) error {
 	dash, err := dashboard.New(dashboard.Options{DB: db, Box: box, Renderer: renderer, Themes: themes, MasterKey: a.cfg.MasterKey,
 		BaseURL: a.cfg.BaseURL, DevSkip2FA: a.cfg.DevSkip2FA, Logger: a.log,
 		TrustedProxies: a.cfg.TrustedProxies, Core: svc, Settings: set, Outbound: out, Invoice: inv, Connectors: conns, Disputes: disp, Recon: rec, Jobs: q,
-		Subscriptions: subs, PaymentLinks: links, Location: a.cfg.Location})
+		Subscriptions: subs, PaymentLinks: links, Location: a.cfg.Location,
+		OIDC: a.oidcClient(), OIDCAllowedDomains: a.cfg.OIDCAllowedDomains, OIDCDefaultRole: a.cfg.OIDCDefaultRole})
 	if err != nil {
 		return err
 	}
@@ -376,6 +379,7 @@ func (a *App) Start(ctx context.Context) error {
 		}
 		errc <- nil
 	}
+	a.startJSHooks(ctx)
 	go serve(main, ln)
 	go serve(internal, iln)
 	go func() { errc <- q.Start(ctx) }()
@@ -479,4 +483,13 @@ func schedulerHealthy(now, started, last time.Time, haveLast bool) bool {
 		return true
 	}
 	return haveLast && now.Sub(last) <= heartbeatGrace
+}
+
+// oidcClient is the single sign-on client, or nil when it is not configured.
+func (a *App) oidcClient() *oidc.Client {
+	if !a.cfg.OIDCEnabled() {
+		return nil
+	}
+	return oidc.New(oidc.Config{Issuer: a.cfg.OIDCIssuer, ClientID: a.cfg.OIDCClientID, ClientSecret: a.cfg.OIDCClientSecret.Reveal(),
+		RedirectURL: strings.TrimRight(a.cfg.BaseURL.String(), "/") + "/dashboard/login/oidc/callback"})
 }
