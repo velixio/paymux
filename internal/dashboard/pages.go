@@ -31,7 +31,10 @@ type Page struct {
 	Reveal *secretReveal // a secret shown once
 
 	// settings (app tab and org page)
-	Table *settingsTable
+	Table    *settingsTable
+	Routing  *routingView
+	Route    *routeResult
+	TestForm testForm
 }
 
 type appOpt struct{ ID, Name string }
@@ -44,6 +47,7 @@ func (d *Dashboard) routesPages() {
 	m.HandleFunc("POST "+prefix+"/payments/{id}/refund", d.authed(authz.RefundCreate, d.refundSubmit))
 	m.HandleFunc("POST "+prefix+"/deliveries/{id}/replay", d.authed(authz.WebhookReplay, d.replaySubmit))
 	d.routesApps()
+	d.routesSettings()
 }
 
 // orgID returns the single org's id (cached once found).

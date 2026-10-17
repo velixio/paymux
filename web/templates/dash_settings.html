@@ -1,0 +1,57 @@
+{{define "title"}}Settings - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h2>Org settings</h2>
+<p class="muted">Defaults for every app. An app can override most of these on its own Settings tab.</p>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+
+<h3>Routing</h3>
+{{with .Routing}}
+<p class="muted">Rules are tried in order for the payment's currency; the catch-all applies when no rule yields an eligible account. Connectors are tried in the order listed.</p>
+{{if .CanWrite}}
+<form method="post" action="/dashboard/settings/routing" class="routing-editor">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<table class="grid">
+<thead><tr><th>Currency</th><th>Connectors (comma separated, in order)</th></tr></thead>
+<tbody>
+{{range .Rules}}<tr><td><input class="field" name="currency" value="{{.Currency}}" maxlength="3" aria-label="Currency"></td><td><input class="field" name="connectors" value="{{.Connectors}}" aria-label="Connectors"></td></tr>{{end}}
+{{range .BlankRows}}<tr><td><input class="field" name="currency" maxlength="3" placeholder="USD" aria-label="Currency of a new rule"></td><td><input class="field" name="connectors" placeholder="razorpay, whop" aria-label="Connectors of a new rule"></td></tr>{{end}}
+<tr><th>Catch-all</th><td><input class="field" name="catch_all" value="{{.CatchAll}}" aria-label="Catch-all connectors">
+<label><input type="checkbox" name="catch_all_reject" value="1"{{if .Reject}} checked{{end}}> reject payments that match no rule</label></td></tr>
+</tbody>
+</table>
+<button class="btn" type="submit">Save routing</button>
+</form>
+{{else}}
+<table class="grid">
+<thead><tr><th>Currency</th><th>Connectors</th></tr></thead>
+<tbody>
+{{range .Rules}}<tr><td>{{.Currency}}</td><td>{{.Connectors}}</td></tr>{{end}}
+<tr><th>Catch-all</th><td>{{if .Reject}}reject{{else}}{{.CatchAll}}{{end}}</td></tr>
+</tbody>
+</table>
+{{end}}
+{{end}}
+
+<h3>Test routing</h3>
+<form method="get" action="/dashboard/settings" class="filters">
+<input type="hidden" name="test" value="1">
+<select name="app" aria-label="App"><option value="">Org rules, all accounts</option>{{range .AppOpts}}<option value="{{.ID}}"{{if eq .ID $.TestForm.App}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+<select name="mode" aria-label="Mode"><option value="live"{{if eq .TestForm.Mode "live"}} selected{{end}}>live</option><option value="test"{{if eq .TestForm.Mode "test"}} selected{{end}}>test</option></select>
+<input name="currency" value="{{.TestForm.Currency}}" maxlength="3" size="4" aria-label="Currency" placeholder="INR">
+<input name="country" value="{{.TestForm.Country}}" maxlength="2" size="3" aria-label="Country" placeholder="IN">
+<input name="amount" value="{{.TestForm.Amount}}" size="10" aria-label="Amount in minor units" placeholder="amount (paise)">
+<select name="purpose" aria-label="Purpose"><option value="one_time"{{if eq .TestForm.Purpose "one_time"}} selected{{end}}>one_time</option><option value="subscription"{{if eq .TestForm.Purpose "subscription"}} selected{{end}}>subscription</option></select>
+<button class="btn small" type="submit">Test routing</button>
+</form>
+{{with .Route}}<div class="route-result">
+{{if .Matched}}<p><strong>Matched rule:</strong> <code>{{.Rule}}</code></p>
+<p>Accounts, in order:</p><ol>{{range .Accounts}}<li>{{.}}</li>{{end}}</ol>
+{{else if .Rejected}}<p class="error"><strong>Rejected</strong> by rule <code>{{.Rule}}</code>: {{.Message}}</p>
+{{else}}<p class="error"><strong>No route</strong>: {{.Message}}</p>{{end}}
+</div>{{end}}
+
+<h3>Settings</h3>
+{{template "dash_settings_table" .}}
+{{template "dash_close" .}}{{end}}

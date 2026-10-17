@@ -79,7 +79,10 @@ func TestOrgSettingsPage(t *testing.T) {
 			t.Fatalf("an invalid write changed the value: %s", v.Raw)
 		}
 		var aud []store.AuditRow
-		_ = db.Read(ctx, func(q store.Querier) (err error) { aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "setting.update", 10); return })
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "setting.update", 10)
+			return
+		})
 		if len(aud) != 1 || aud[0].ActorID != "usr_admin" || !strings.HasSuffix(aud[0].Target, "/payment_ttl") {
 			t.Errorf("audit %+v", aud)
 		}
