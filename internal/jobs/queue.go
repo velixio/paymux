@@ -139,7 +139,7 @@ func (q *Queue) process(ctx context.Context, r store.JobRow) {
 }
 
 func (q *Queue) finish(ctx context.Context, r store.JobRow, h Handler) {
-	err := h(ctx, r.Payload)
+	err := safeCall(ctx, h, r.Payload)
 	if err != nil {
 		var perm permanentError
 		q.fail(ctx, r, err, errors.As(err, &perm) || r.Attempts >= r.MaxAttempts)
@@ -148,6 +148,16 @@ func (q *Queue) finish(ctx context.Context, r store.JobRow, h Handler) {
 	if err := q.db.CompleteJob(ctx, r.ID, q.opts.Clock()); err != nil {
 		q.opts.Logger.Error("complete job", "job_id", r.ID, "err", err)
 	}
+}
+
+// safeCall runs h, converting a panic into an error so the job is retried.
+func safeCall(ctx context.Context, h Handler, payload json.RawMessage) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("handler panic: %v", r)
+		}
+	}()
+	return h(ctx, payload)
 }
 
 func (q *Queue) fail(ctx context.Context, r store.JobRow, cause error, dead bool) {
