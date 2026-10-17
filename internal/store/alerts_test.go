@@ -79,7 +79,9 @@ func TestAcknowledgedAlertsStayAndANewRaiseStartsANewOne(t *testing.T) {
 		if got.Open() || got.AcknowledgedBy != "usr_op" || !got.AcknowledgedAt.Equal(t0.Add(time.Hour)) {
 			t.Fatalf("acknowledged %+v", got)
 		}
-		fresh := rec(t, db, alert("provider.silent", "1"), t0.Add(3*time.Hour))
+		again := alert("provider.silent", "1")
+		again.ID = "alt_second_generation"
+		fresh := rec(t, db, again, t0.Add(3*time.Hour))
 		if fresh.ID == a.ID || fresh.Occurrences != 1 || !fresh.Open() {
 			t.Fatalf("the condition came back after acknowledgement: %+v", fresh)
 		}
