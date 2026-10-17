@@ -119,6 +119,7 @@ func newEnv(t *testing.T, db *store.DB, opts ...envOpt) *env {
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/dashboard/", d)
+	mux.Handle("/setup", d.SetupHandler())
 	e := &env{t: t, db: db, box: box, core: svc, set: set, out: out, inv: inv, disp: disp, rec: reco, conn: conns, mail: rec, q: q, d: d, srv: httptest.NewServer(mux), clk: clk}
 	t.Cleanup(e.srv.Close)
 	e.c = e.client()
