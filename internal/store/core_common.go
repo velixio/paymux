@@ -5,11 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
-	"time"
 )
-
-// ErrNotFound means a lookup matched no row.
-var ErrNotFound = errors.New("store: not found")
 
 // ErrConflict means a unique constraint or an optimistic version check failed.
 var ErrConflict = errors.New("store: conflict")
@@ -30,10 +26,6 @@ func IsUniqueViolation(err error) bool {
 	m := err.Error()
 	return strings.Contains(m, "UNIQUE constraint failed") || strings.Contains(m, "SQLSTATE 23505")
 }
-
-func ms(t time.Time) int64 { return t.UnixMilli() }
-
-func fromMS(v int64) time.Time { return time.UnixMilli(v).UTC() }
 
 func nullIfEmpty(s string) any {
 	if s == "" {

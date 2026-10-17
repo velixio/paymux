@@ -1,0 +1,18 @@
+{{define "title"}}Pay {{.AppName}}{{end}}
+{{define "content"}}
+<p class="muted">Opening secure checkout…</p>
+<button class="btn" id="paybtn" type="button">Pay now</button>
+<script src="{{.ScriptURL}}"></script>
+<script>
+(function () {
+  var options = {{.Options}};
+  var launcher = {{.Launcher}};
+  function open() {
+    if (launcher === "razorpay" && window.Razorpay) { new window.Razorpay(options).open(); return; }
+    // TODO(spec): Zoho widget launcher.
+  }
+  document.getElementById("paybtn").addEventListener("click", open);
+  open();
+})();
+</script>
+{{end}}

@@ -5,9 +5,11 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/mail"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -29,6 +31,15 @@ type Config struct {
 	MasterKey                       []byte // 32 bytes
 	Location                        *time.Location
 	DevSkip2FA                      bool
+	AllowPrivateWebhooks            bool // PAYMUX_ALLOW_PRIVATE_WEBHOOKS: outbound webhooks may target private IPs
+
+	// SMTP for customer and ops email. An empty SMTPHost disables email.
+	SMTPHost, SMTPUsername, SMTPFrom string
+	SMTPPort                         int // default 587 (STARTTLS)
+	SMTPPassword                     Secret
+
+	OpsEmails     []string // PAYMUX_OPS_EMAILS, bare addresses
+	OpsWebhookURL string   // PAYMUX_OPS_WEBHOOK_URL, Slack-compatible
 }
 
 // Load reads and validates configuration, reporting every problem at once.
@@ -97,6 +108,52 @@ func Load(lookupEnv func(string) (string, bool)) (Config, error) {
 			bad("PAYMUX_DEV_SKIP_2FA is only allowed in development on a local host")
 		} else {
 			c.DevSkip2FA = true
+		}
+	}
+
+	switch strings.ToLower(get("PAYMUX_ALLOW_PRIVATE_WEBHOOKS", "false")) {
+	case "true":
+		c.AllowPrivateWebhooks = true
+	case "false":
+	default:
+		bad("PAYMUX_ALLOW_PRIVATE_WEBHOOKS must be true or false")
+	}
+
+	c.SMTPHost = get("PAYMUX_SMTP_HOST", "")
+	c.SMTPUsername = get("PAYMUX_SMTP_USERNAME", "")
+	c.SMTPPassword = Secret(get("PAYMUX_SMTP_PASSWORD", ""))
+	c.SMTPFrom = get("PAYMUX_SMTP_FROM", "")
+	c.SMTPPort = 587
+	if raw := get("PAYMUX_SMTP_PORT", ""); raw != "" {
+		if n, err := strconv.Atoi(raw); err != nil || n < 1 || n > 65535 {
+			bad("PAYMUX_SMTP_PORT must be a port number (1-65535)")
+		} else {
+			c.SMTPPort = n
+		}
+	}
+	if c.SMTPHost != "" && c.SMTPFrom == "" {
+		bad("PAYMUX_SMTP_FROM is required when PAYMUX_SMTP_HOST is set")
+	} else if c.SMTPFrom != "" {
+		if _, err := mail.ParseAddress(c.SMTPFrom); err != nil {
+			bad("PAYMUX_SMTP_FROM is not a valid email address")
+		}
+	}
+	for _, raw := range strings.Split(get("PAYMUX_OPS_EMAILS", ""), ",") {
+		if raw = strings.TrimSpace(raw); raw == "" {
+			continue
+		}
+		a, err := mail.ParseAddress(raw)
+		if err != nil {
+			bad("PAYMUX_OPS_EMAILS contains an invalid address %q", raw)
+			continue
+		}
+		c.OpsEmails = append(c.OpsEmails, a.Address)
+	}
+	if raw := get("PAYMUX_OPS_WEBHOOK_URL", ""); raw != "" {
+		if u, err := url.Parse(raw); err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+			bad("PAYMUX_OPS_WEBHOOK_URL must be an absolute http(s) URL")
+		} else {
+			c.OpsWebhookURL = raw
 		}
 	}
 

@@ -1,0 +1,177 @@
+package razorpay
+
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+)
+
+const (
+	testKeyID         = "rzp_test_key"
+	testKeySecret     = "test_key_secret_123"
+	testWebhookSecret = "whsec_test_known"
+)
+
+// call is one request the fake received.
+type call struct {
+	Method, Path, Query string
+	Header              http.Header
+	Body                []byte
+}
+
+// fake is an in-memory Razorpay API.
+type fake struct {
+	mu    sync.Mutex
+	calls []call
+
+	payStatus     string // status of payment pay_Nx1
+	refundStatus  string
+	captureFails  bool // capture answers "already captured" 400
+	refundErrCode int  // when set, refund answers this status with an error body
+	listPages     int  // number of full pages to serve for lists
+}
+
+func newFake(status string) *fake { return &fake{payStatus: status, refundStatus: "processed"} }
+
+func (f *fake) record(r *http.Request) []byte {
+	b, _ := io.ReadAll(r.Body)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, call{r.Method, r.URL.Path, r.URL.RawQuery, r.Header.Clone(), b})
+	return b
+}
+
+func (f *fake) callsTo(method, path string) []call {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []call
+	for _, c := range f.calls {
+		if c.Method == method && c.Path == path {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func payJSON(status string) map[string]any {
+	return map[string]any{
+		"id": "pay_Nx1", "entity": "payment", "amount": 49900, "currency": "INR", "status": status,
+		"order_id": "order_Nx0", "method": "upi", "amount_refunded": 0, "fee": 1178, "tax": 180,
+		"error_code": nil, "error_description": nil, "created_at": 1760000000,
+	}
+}
+
+func refundJSON(status string) map[string]any {
+	return map[string]any{
+		"id": "rfnd_Nx2", "entity": "refund", "amount": 10000, "currency": "INR", "payment_id": "pay_Nx1",
+		"receipt": "rf_01", "status": status, "created_at": 1760000200,
+	}
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeAPIError(w http.ResponseWriter, code int, desc string) {
+	writeJSON(w, code, map[string]any{"error": map[string]any{"code": "BAD_REQUEST_ERROR", "description": desc}})
+}
+
+func fakeCollection(items ...any) map[string]any {
+	return map[string]any{"entity": "collection", "count": len(items), "items": items}
+}
+
+func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	body := f.record(r)
+	if u, p, ok := r.BasicAuth(); !ok || u != testKeyID || p != testKeySecret {
+		writeJSON(w, 401, map[string]any{"error": map[string]any{"code": "BAD_REQUEST_ERROR", "description": "Authentication failed"}})
+		return
+	}
+	p := r.URL.Path
+	switch {
+	case r.Method == "POST" && p == "/v1/orders":
+		var in map[string]any
+		_ = json.Unmarshal(body, &in)
+		in["id"], in["status"], in["entity"] = "order_Nx0", "created", "order"
+		writeJSON(w, 200, in)
+	case r.Method == "GET" && p == "/v1/orders":
+		writeJSON(w, 200, fakeCollection(map[string]any{"id": "order_Nx0", "receipt": r.URL.Query().Get("receipt"), "amount": 49900, "currency": "INR", "status": "attempted"}))
+	case r.Method == "GET" && p == "/v1/orders/order_Nx0":
+		st := "attempted"
+		if f.payStatus == "" {
+			st = "created"
+		}
+		writeJSON(w, 200, map[string]any{"id": "order_Nx0", "amount": 49900, "currency": "INR", "status": st, "receipt": "pay_ref_01"})
+	case r.Method == "GET" && p == "/v1/orders/order_Nx0/payments":
+		if f.payStatus == "" {
+			writeJSON(w, 200, fakeCollection())
+			return
+		}
+		writeJSON(w, 200, fakeCollection(payJSON(f.payStatus)))
+	case r.Method == "GET" && p == "/v1/payments/pay_Nx1":
+		writeJSON(w, 200, payJSON(f.payStatus))
+	case r.Method == "POST" && p == "/v1/payments/pay_Nx1/capture":
+		if f.captureFails {
+			writeAPIError(w, 400, "This payment has already been captured")
+			return
+		}
+		f.mu.Lock()
+		f.payStatus = "captured"
+		f.mu.Unlock()
+		writeJSON(w, 200, payJSON("captured"))
+	case r.Method == "POST" && p == "/v1/payments/pay_Nx1/refund":
+		if f.refundErrCode != 0 {
+			writeAPIError(w, f.refundErrCode, "The refund amount provided is greater than amount captured")
+			return
+		}
+		writeJSON(w, 200, refundJSON(f.refundStatus))
+	case r.Method == "GET" && p == "/v1/payments/pay_Nx1/refunds":
+		writeJSON(w, 200, fakeCollection(refundJSON(f.refundStatus)))
+	case r.Method == "GET" && p == "/v1/refunds/rfnd_Nx2":
+		writeJSON(w, 200, refundJSON(f.refundStatus))
+	case r.Method == "GET" && (p == "/v1/payments" || p == "/v1/refunds"):
+		skip, _ := strconv.Atoi(r.URL.Query().Get("skip"))
+		count, _ := strconv.Atoi(r.URL.Query().Get("count"))
+		n := count
+		if skip/count >= f.listPages {
+			n = 1 // last, short page
+		}
+		items := make([]any, 0, n)
+		for i := 0; i < n; i++ {
+			if p == "/v1/payments" {
+				items = append(items, payJSON("captured"))
+			} else {
+				items = append(items, refundJSON("processed"))
+			}
+		}
+		writeJSON(w, 200, fakeCollection(items...))
+	case r.Method == "GET" && p == "/v1/disputes":
+		writeJSON(w, 200, fakeCollection(disputeJSON("open")))
+	case r.Method == "GET" && p == "/v1/disputes/disp_Nx3":
+		writeJSON(w, 200, disputeJSON("under_review"))
+	case strings.HasPrefix(p, "/v1/missing"):
+		writeAPIError(w, 404, "not found")
+	default:
+		writeAPIError(w, 404, "The requested URL was not found on the server")
+	}
+}
+
+func disputeJSON(status string) map[string]any {
+	return map[string]any{
+		"id": "disp_Nx3", "entity": "dispute", "payment_id": "pay_Nx1", "amount": 49900, "currency": "INR",
+		"reason_code": "fraudulent", "respond_by": 1761000000, "status": status, "phase": "chargeback", "created_at": 1760000300,
+	}
+}
+
+func startFake(t *testing.T, f *fake) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	return srv
+}

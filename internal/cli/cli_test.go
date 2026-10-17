@@ -3,11 +3,13 @@ package cli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/paymux/paymux/migrations"
 )
 
 func run(args ...string) (int, string, string) {
@@ -80,7 +82,7 @@ func TestMigrateAppliesThenIsIdempotent(t *testing.T) {
 	if code := Run(context.Background(), []string{"migrate"}, lookup, &out, &errb); code != 0 {
 		t.Fatalf("code=%d stderr=%q", code, errb.String())
 	}
-	if !regexp.MustCompile(`applied [1-9][0-9]* migrations \(sqlite\)`).MatchString(out.String()) {
+	if entries, _ := migrations.FS.ReadDir("sqlite"); !strings.Contains(out.String(), fmt.Sprintf("applied %d migrations (sqlite)", len(entries))) {
 		t.Fatalf("stdout=%q", out.String())
 	}
 	out.Reset()

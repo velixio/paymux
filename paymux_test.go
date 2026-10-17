@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/internal/config"
+	"github.com/paymux/paymux/internal/inbound"
 	"github.com/paymux/paymux/internal/logging"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
@@ -167,6 +168,63 @@ func checkMetrics(t *testing.T, r *running, dialect string) {
 	if code, _ := fetch(t, r.app.InternalAddr(), "/debug/pprof/"); code != 200 {
 		t.Errorf("pprof %d", code)
 	}
+}
+
+func post(t *testing.T, addr, path, body string) int {
+	t.Helper()
+	resp, err := http.Post("http://"+addr+path, "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+func TestHooksRouteMounted(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "sqlite://"+dir+"/paymux.db", dir)
+	r := startApp(t, cfg)
+	waitReady(t, r)
+	// No connector lane yet: every account is unknown.
+	if code := post(t, r.app.Addr(), "/hooks/pa_x", `{}`); code != 404 {
+		t.Fatalf("POST /hooks/pa_x = %d, want 404", code)
+	}
+	if code, _ := fetch(t, r.app.Addr(), "/hooks/pa_x"); code == 200 {
+		t.Fatal("GET must not be accepted on /hooks")
+	}
+	shutdown(t, r)
+}
+
+type okVerifier struct{}
+
+func (okVerifier) Verify(http.Header, []byte) (string, error) { return "ev_1", nil }
+
+func TestHooksUseInjectedVerifiers(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "sqlite://"+dir+"/paymux.db", dir)
+	logs := &syncBuf{}
+	app, err := New(cfg, WithLogger(logging.New(logs, -4)),
+		WithVerifiers(func(_ context.Context, id string) (inbound.Verifier, error) {
+			if id == "pa_ok" {
+				return okVerifier{}, nil
+			}
+			return nil, inbound.ErrUnknownAccount
+		}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &running{app: app, logs: logs, done: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	r.stop = cancel
+	go func() { r.err = app.Start(ctx); close(r.done) }()
+	waitReady(t, r)
+	if code := post(t, app.Addr(), "/hooks/pa_ok", `{"a":1}`); code != 200 {
+		t.Fatalf("known account = %d", code)
+	}
+	if code := post(t, app.Addr(), "/hooks/pa_other", `{}`); code != 404 {
+		t.Fatalf("unknown account = %d", code)
+	}
+	shutdown(t, r)
 }
 
 func TestStartupLogRedactsPassword(t *testing.T) {

@@ -1,0 +1,20 @@
+{{define "title"}}Billing details{{end}}
+{{define "content"}}
+<form method="post" action="{{.FormURL}}">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+{{with .Error}}<p class="error">{{.}}</p>{{end}}
+<input class="field" name="name" placeholder="Full name" value="{{.Billing.Name}}" required>
+<input class="field" name="email" type="email" placeholder="Email" value="{{.Billing.Email}}">
+{{if .IndiaStates}}<select class="field" name="state_code" {{if .StateRequired}}required{{end}}>
+<option value="">State</option>
+{{range .IndiaStates}}<option value="{{.Code}}" {{if eq .Code $.Billing.StateCode}}selected{{end}}>{{.Name}}</option>{{end}}
+</select>{{end}}
+{{if .AddressRequired}}<input class="field" name="line1" placeholder="Address" value="{{.Billing.Line1}}" required>
+<input class="field" name="postal_code" placeholder="PIN code" value="{{.Billing.PostalCode}}" required>{{end}}
+<details><summary class="muted">I need a GST invoice</summary>
+<input class="field" name="gstin" placeholder="GSTIN" value="{{.Billing.GSTIN}}">
+<input class="field" name="legal_name" placeholder="Registered business name" value="{{.Billing.LegalName}}">
+</details>
+<button class="btn" type="submit">Continue</button>
+</form>
+{{end}}

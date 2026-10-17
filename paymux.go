@@ -17,9 +17,11 @@ import (
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/httpapi"
+	"github.com/paymux/paymux/internal/inbound"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/logging"
 	"github.com/paymux/paymux/internal/metrics"
+	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/server"
 	"github.com/paymux/paymux/internal/settings"
@@ -42,11 +44,22 @@ const (
 type App struct {
 	cfg     config.Config
 	log     *slog.Logger
-	emitter events.Emitter // nil means core.NoopEmitter
+	emitter events.Emitter // nil means the outbound service
+
+	verifiers inbound.VerifierFunc
 
 	mu          sync.Mutex
 	addr, iaddr string
 }
+
+// WithVerifiers sets how inbound webhooks find the Verifier of a provider
+// account. The default knows no accounts (every /hooks/{id} is a 404); the
+// connector lane supplies the real lookup.
+func WithVerifiers(f inbound.VerifierFunc) Option { return func(a *App) { a.verifiers = f } }
+
+// errNotWired fails provider-event jobs until the connector lane supplies
+// their processing, so they retry instead of being silently dropped.
+var errNotWired = errors.New("provider event processing is not wired yet")
 
 // Option customises an App.
 type Option func(*App)
@@ -54,8 +67,8 @@ type Option func(*App)
 // WithLogger sets the logger. The default writes redacted JSON to stderr.
 func WithLogger(l *slog.Logger) Option { return func(a *App) { a.log = l } }
 
-// WithEmitter sets the domain-event emitter. The default drops events until
-// the outbound-webhooks lane provides one.
+// WithEmitter replaces the domain-event emitter. The default is the outbound
+// webhooks service.
 func WithEmitter(e events.Emitter) Option { return func(a *App) { a.emitter = e } }
 
 // New builds an App. Nothing is opened until Start.
@@ -69,6 +82,9 @@ func New(cfg config.Config, opts ...Option) (*App, error) {
 	}
 	if a.log == nil {
 		a.log = logging.New(os.Stderr, slog.LevelInfo)
+	}
+	if a.verifiers == nil {
+		a.verifiers = func(context.Context, string) (inbound.Verifier, error) { return nil, inbound.ErrUnknownAccount }
 	}
 	return a, nil
 }
@@ -111,16 +127,33 @@ func (a *App) Start(ctx context.Context) error {
 
 	started := time.Now()
 	q := jobs.New(db, jobs.Options{Logger: a.log})
-	core.RegisterJobs(q)
-	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: a.emitter})
-	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log})
-	if err != nil {
-		return err
-	}
 	q.Register(heartbeatKind, func(context.Context, json.RawMessage) error { return nil })
 	if err := q.AddSchedule(jobs.Schedule{Name: heartbeatKind, Kind: heartbeatKind, Every: heartbeatEvery}); err != nil {
 		return err
 	}
+
+	// The outbound service is the events.Emitter the domain services emit
+	// through, unless WithEmitter swapped it.
+	out := outbound.New(outbound.Options{DB: db, Queue: q, Box: box,
+		AllowPrivate: a.cfg.AllowPrivateWebhooks, Logger: a.log})
+	out.Register()
+	var emitter events.Emitter = out
+	if a.emitter != nil {
+		emitter = a.emitter
+	}
+	core.RegisterJobs(q)
+	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter})
+	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log})
+	if err != nil {
+		return err
+	}
+
+	// TODO(spec): the connector lane replaces these with real processing
+	// (ParseWebhook, Fetch*, apply transition) for the §6.4 jobs.
+	for _, kind := range []string{inbound.JobProcess, inbound.JobFetchOnly} {
+		q.Register(kind, func(context.Context, json.RawMessage) error { return errNotWired })
+	}
+	hooks := inbound.New(inbound.Options{DB: db, Queue: q, Verifiers: a.verifiers, Logger: a.log})
 
 	reg := metrics.NewRegistry()
 	a.registerMetrics(reg, db, dialect)
@@ -160,6 +193,7 @@ func (a *App) Start(ctx context.Context) error {
 	})
 
 	api.Register(srv)
+	srv.HandleFunc("POST /hooks/{provider_account_id}", hooks.ServeHTTP)
 
 	ln, err := net.Listen("tcp", a.cfg.Listen)
 	if err != nil {
