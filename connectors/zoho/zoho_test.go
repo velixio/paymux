@@ -113,18 +113,6 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (f *fake) count(call string) int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	n := 0
-	for _, c := range f.calls {
-		if c == call {
-			n++
-		}
-	}
-	return n
-}
-
 func newConn(t *testing.T, f *fake, cfg json.RawMessage) connector.Connector {
 	t.Helper()
 	srv := httptest.NewServer(f)
