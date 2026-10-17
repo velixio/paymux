@@ -2,7 +2,7 @@
 
 How to install, run, back up and recover a Paymux hub. Commands assume Linux with systemd; a Docker variant is given where it differs. Everything is one static binary, `paymux`, plus a database (SQLite by default, Postgres optional) and a reverse proxy for TLS.
 
-Contents: [Layout](#layout) · [Install](#install) · [First admin and 2FA](#first-admin-and-2fa) · [Apps and provider accounts](#apps-and-provider-accounts) · [Themes and languages](#themes-and-languages) · [Webhook URLs](#webhook-urls-to-register-at-each-provider) · [Configuration reference](#configuration-reference) · [Backups and restore](#backups-and-restore) · [Upgrades](#upgrades) · [Monitoring](#monitoring) · [If the hub is down](#if-the-hub-is-down)
+Contents: [Layout](#layout) · [Install](#install) · [First admin and 2FA](#first-admin-and-2fa) · [Apps and provider accounts](#apps-and-provider-accounts) · [Payment links](#payment-links) · [Themes and languages](#themes-and-languages) · [Webhook URLs](#webhook-urls-to-register-at-each-provider) · [Configuration reference](#configuration-reference) · [Backups and restore](#backups-and-restore) · [Upgrades](#upgrades) · [Monitoring](#monitoring) · [If the hub is down](#if-the-hub-is-down)
 
 ## Layout
 
@@ -133,6 +133,18 @@ Everything below is in the dashboard (admin role); the same can be scripted with
 6. **Settings** (*Settings*): payment expiry, invoice delivery, dunning, retry schedule, reconciliation time and the rest, each with its default and units.
 
 Before going live, run a payment end to end in **test** mode (the header toggle switches the dashboard between test and live data), then check *Reconciliation* after the first day.
+
+## Payment links
+
+A payment link is a page you can send to a customer (`https://pay.example.com/l/<slug>`, or on the app's custom domain) without writing any code: they enter their name, email and optionally phone, and Paymux creates a normal payment and takes them to the usual payment page, where the billing details the GST rules ask for are collected as always. Create links in the dashboard under *Payment links* (operators and admins), or with `POST /v1/payment_links`.
+
+- **Price.** A fixed amount, or "the customer chooses" between a minimum and an optional maximum.
+- **Reusable or single-use.** A reusable link takes any number of payments. A single-use link is *held* by the first visitor while their payment is open (60 minutes by default, the `payment_ttl` setting): a second visitor is asked to try again later, and the first visitor can come back with the same browser. The first **successful** payment switches the link off (`payment_link.deactivated`, reason `used`). A payment that is abandoned frees the link when its time is up.
+- **Expiry and switching off.** An expired or deactivated link shows a notice and creates nothing. Deactivating is permanent and does not affect payments already started.
+- **Your records.** Every payment from a link carries `metadata.payment_link_id` (plus the link's own metadata) and `order_ref` set to the link id, so webhooks, the dashboard and exports can tell where it came from. Events: `payment_link.created`, `payment_link.deactivated`.
+- **Limits.** Anyone can open a link, so each link allows at most 60 new payments a minute (a "please wait" page after that) and the form is protected against cross-site posting. The page uses the app's theme and `customer_language`.
+
+The API reference for these and all other endpoints is served by the hub itself at `https://pay.example.com/docs` (the spec: `/docs/openapi.yaml`).
 
 ## Themes and languages
 

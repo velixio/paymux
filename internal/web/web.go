@@ -121,6 +121,21 @@ type PayPage struct {
 	StateRequired, AddressRequired bool
 	// result
 	Title, Message, ReturnURL string
+	// payment link page
+	Link *LinkForm
+}
+
+// LinkForm is what the payment link page shows and keeps between attempts.
+type LinkForm struct {
+	Description string
+	// FixedAmount is the price ("INR 499.00") of a fixed-price link.
+	FixedAmount string
+	// Choose is set when the customer enters the amount; Currency, Hint and
+	// Amount (as typed) belong to that input.
+	Choose             bool
+	Currency, Hint     string
+	Amount             string
+	Name, Email, Phone string
 }
 
 // AssetHandler serves static/ from fsys under /assets/.

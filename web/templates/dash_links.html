@@ -1,0 +1,59 @@
+{{define "title"}}Payment links - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h2>Payment links <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h2>
+<p class="muted">A payment link is a page you can share. The customer enters their name and email (and the amount, if you let them choose) and is taken to the normal payment page. Links of {{.Mode}} mode are shown; switch the mode in the header to see the others.</p>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+
+{{if .CanManage}}<h3>Create a link</h3>
+<form method="post" action="/dashboard/payment-links" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<fieldset class="rule-card">
+<legend>What it charges</legend>
+<label>App
+<select class="field" name="app" required>{{range .AppOpts}}<option value="{{.ID}}"{{if eq .ID $.LinkForm.App}} selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+<label>Currency
+<input class="field" name="currency" value="{{.LinkForm.Currency}}" maxlength="3" size="4" required></label>
+<label>Fixed amount
+<input class="field" name="amount" inputmode="decimal" value="{{.LinkForm.Amount}}" placeholder="499.00"></label>
+<p class="muted">Or leave the amount empty and let the customer choose between a minimum and a maximum:</p>
+<label>Minimum
+<input class="field" name="min_amount" inputmode="decimal" value="{{.LinkForm.MinAmount}}" placeholder="100"></label>
+<label>Maximum (optional)
+<input class="field" name="max_amount" inputmode="decimal" value="{{.LinkForm.MaxAmount}}" placeholder="5000"></label>
+</fieldset>
+<fieldset class="rule-card">
+<legend>The page</legend>
+<label>Description (shown to the customer and copied to each payment)
+<input class="field" name="description" value="{{.LinkForm.Description}}" maxlength="1000" placeholder="Annual plan"></label>
+<label>After paying, return to (optional; default is the app's)
+<input class="field" name="return_url" type="url" value="{{.LinkForm.ReturnURL}}" placeholder="https://shop.example.com/thanks"></label>
+</fieldset>
+<fieldset class="rule-card">
+<legend>Rules</legend>
+<label><input type="checkbox" name="single_use"{{if .LinkForm.SingleUse}} checked{{end}}> Single use: switch off after the first successful payment</label>
+<label>Expires (optional)
+<input class="field" name="expires_at" type="datetime-local" value="{{.LinkForm.ExpiresAt}}"></label>
+<label>Metadata (optional, one <code>key=value</code> per line, copied to each payment)
+<textarea class="field" name="metadata" rows="3">{{.LinkForm.Metadata}}</textarea></label>
+</fieldset>
+<button class="btn" type="submit">Create the link</button>
+</form>{{end}}
+
+<h3>Links</h3>
+<form class="filters" method="get" action="/dashboard/payment-links">
+<select name="app" aria-label="App"><option value="">All apps</option>{{range .AppOpts}}<option value="{{.ID}}"{{if eq .ID $.LinkFilter.App}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+<select name="state" aria-label="State"><option value="">Any state</option><option value="active"{{if eq .LinkFilter.State "active"}} selected{{end}}>Active</option><option value="inactive"{{if eq .LinkFilter.State "inactive"}} selected{{end}}>Inactive, used or expired</option></select>
+<button class="btn small" type="submit">Filter</button>
+</form>
+<div class="table-scroll"><table class="grid">
+<thead><tr><th>Link</th><th>App</th><th>Amount</th><th>Kind</th><th>State</th><th>Expires</th><th>Created</th><th></th></tr></thead>
+<tbody>{{range .LinkRows}}<tr id="link-{{.ID}}">
+<td>{{with .Description}}{{.}}<br>{{end}}<input id="link-url-{{.ID}}" class="field" readonly value="{{.URL}}" size="38" aria-label="Link address"> <button class="linkbtn" type="button" data-copy="link-url-{{.ID}}">Copy</button></td>
+<td>{{.App}}</td><td>{{.Amount}}</td><td>{{.Kind}}</td><td><span class="status status-{{.Status}}">{{.Status}}</span></td><td>{{.Expires}}</td><td>{{.Created}}</td>
+<td>{{if .CanDeactivate}}<form method="post" action="/dashboard/payment-links/{{.ID}}/deactivate" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="linkbtn" type="submit">Deactivate</button></form>{{end}}</td>
+</tr>{{else}}<tr><td colspan="8" class="muted">No payment links.</td></tr>{{end}}</tbody>
+</table></div>
+<script src="/assets/js/copy.js" defer></script>
+{{template "dash_close" .}}{{end}}
