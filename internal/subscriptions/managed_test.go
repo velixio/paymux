@@ -296,3 +296,24 @@ func TestHostedCheckoutProviderManagedSDK(t *testing.T) {
 		}
 	})
 }
+
+// The hosted subscription page carries a form that moves money to the
+// provider; it must not be frameable by another site (clickjacking).
+func TestHostedCheckoutRefusesToBeFramed(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, t0)
+		srv := hostedServer(e)
+		c := e.mustCreate(nil)
+		u, _ := url.Parse(c.CheckoutURL)
+		_, _, hdr := fetch(t, srv.URL+u.RequestURI())
+		if hdr.Get("X-Frame-Options") != "DENY" || !strings.Contains(hdr.Get("Content-Security-Policy"), "frame-ancestors 'none'") ||
+			hdr.Get("X-Content-Type-Options") != "nosniff" {
+			t.Errorf("headers = %v", hdr)
+		}
+		// A page that 404s carries them too.
+		_, _, hdr = fetch(t, srv.URL+"/s/sub_nosuch?t=x")
+		if hdr.Get("X-Frame-Options") != "DENY" {
+			t.Errorf("404 headers = %v", hdr)
+		}
+	})
+}
