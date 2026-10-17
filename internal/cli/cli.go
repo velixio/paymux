@@ -15,6 +15,32 @@ import (
 
 const usage = "usage: paymux <serve|migrate|backup|db|build|update|app|provider|domain|tax-entity|report|fx|endpoint|version>"
 
+const help = `usage: paymux [command] [arguments]
+
+With no command, paymux serves (the same as "paymux serve").
+
+Commands:
+  serve        run the hub: API, dashboard, webhooks, workers
+  migrate      apply database migrations and exit
+  backup       write a consistent copy of the database
+  db           database tools
+  build        build a custom binary with Go hooks and plugins
+  update       replace this binary with a newer release
+  app          create and manage apps and their API keys
+  provider     add and manage provider accounts
+  domain       manage app custom domains
+  user         manage dashboard users
+  endpoint     manage outbound webhook endpoints
+  tax-entity   manage the GST tax entity
+  report       export ledger and tax reports
+  fx           record exchange rates
+  version      print the version
+
+Configuration comes from the environment and .env (PAYMUX_ENV_FILE).
+Flags:
+  -h, --help   show this help
+`
+
 // Run executes the CLI and returns the process exit code.
 func Run(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer) int {
 	return RunWith(ctx, args, lookupEnv, stdout, stderr, nil)
@@ -25,10 +51,12 @@ func Run(ctx context.Context, args []string, lookupEnv func(string) (string, boo
 // hooks are registered.
 func RunWith(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer, setup []func(*paymux.App)) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, usage)
-		return 2
+		args = []string{"serve"}
 	}
 	switch args[0] {
+	case "-h", "--help", "help":
+		fmt.Fprint(stdout, help)
+		return 0
 	case "version":
 		fmt.Fprintf(stdout, "paymux %s\n", paymux.Version)
 		return 0

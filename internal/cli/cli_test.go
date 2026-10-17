@@ -63,7 +63,7 @@ func TestRunHelp(t *testing.T) {
 		if code != 0 || errs != "" {
 			t.Fatalf("%s: code=%d stderr=%q", arg, code, errs)
 		}
-		for _, want := range []string{"usage: paymux [command]", "serve", "migrate", "version", "with no command, paymux serves"} {
+		for _, want := range []string{"usage: paymux [command]", "serve", "migrate", "version", "With no command, paymux serves"} {
 			if !strings.Contains(out, want) {
 				t.Errorf("%s: help %q missing %q", arg, out, want)
 			}
