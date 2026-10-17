@@ -73,6 +73,8 @@ Settings are read from environment variables, or from a `.env` file. A real envi
 | `PAYMUX_TZ` | `Asia/Kolkata` | Time zone used for reconciliation and report windows |
 | `PAYMUX_SMTP_HOST`, `_PORT`, `_USERNAME`, `_PASSWORD`, `_FROM` | unset | Invoice email and ops alerts |
 | `PAYMUX_OPS_EMAILS`, `PAYMUX_OPS_WEBHOOK_URL` | unset | Ops alert targets |
+| `PAYMUX_JS_HOOKS_DIR` | `<data dir>/hooks` | Folder of JavaScript hook files; hooks are off if it does not exist (see docs/extending.md) |
+| `PAYMUX_JS_HOOKS_ALLOWED_HOSTS` | unset | Hosts `fetch()` in JavaScript hooks may call, comma separated (`hooks.slack.com,*.example.com`) |
 | `PAYMUX_ALLOW_PRIVATE_WEBHOOKS` | `false` | Allow webhook URLs that resolve to private IPs |
 | `PAYMUX_DEV_SKIP_2FA` | `false` | Honoured only in development on a local host |
 
