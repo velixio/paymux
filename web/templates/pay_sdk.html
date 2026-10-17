@@ -26,7 +26,11 @@
   }
   function open() {
     if (launcher === "razorpay" && window.Razorpay) { new window.Razorpay(options).open(); return; }
-    if (launcher === "zoho") { openZoho(); }
+    if (launcher === "zoho") { openZoho(); return; }
+    if (launcher === "cashfree" && window.Cashfree) {
+      // Cashfree redirects this tab to the order's return URL when done.
+      window.Cashfree({mode: options.mode}).checkout({paymentSessionId: options.payment_session_id, redirectTarget: "_self"});
+    }
   }
   document.getElementById("paybtn").addEventListener("click", open);
   open();
