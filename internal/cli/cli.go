@@ -13,7 +13,7 @@ import (
 	"github.com/paymux/paymux/migrations"
 )
 
-const usage = "usage: paymux <serve|migrate|backup|db|app|provider|domain|tax-entity|report|fx|endpoint|version>"
+const usage = "usage: paymux <serve|migrate|backup|db|build|app|provider|domain|tax-entity|report|fx|endpoint|version>"
 
 // Run executes the CLI and returns the process exit code.
 func Run(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer) int {
@@ -34,6 +34,8 @@ func RunWith(ctx context.Context, args []string, lookupEnv func(string) (string,
 		return 0
 	case "db":
 		return runDB(ctx, args[1:], stdout, stderr)
+	case "build":
+		return runBuild(ctx, args[1:], stdout, stderr)
 	case "user":
 		env, err := envWithDotEnv(lookupEnv)
 		if err != nil {

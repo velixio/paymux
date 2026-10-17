@@ -90,10 +90,13 @@ import (
 	"github.com/paymux/paymux/framework"
 )
 
-// Marker is a string the test looks for in the built binary.
-const Marker = "hookmod-linked-6d1f0c2a"
+// Marker is a string the test looks for in the built binary; it is used at
+// run time so the linker keeps it.
+var Marker = "hookmod-linked-6d1f0c2a"
 
-func init() { framework.OnSetup(func(app *paymux.App) { _ = Marker }) }
+func init() {
+	framework.OnSetup(func(app *paymux.App) { app.OnRoute(func(r paymux.RouteRequest) []string { println(Marker); return nil }) })
+}
 `)
 	out := filepath.Join(t.TempDir(), "bin", "paymux-custom")
 	var stdout, stderr bytes.Buffer
