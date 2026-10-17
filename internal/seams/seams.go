@@ -9,12 +9,17 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
 
 // Violation is one broken rule.
 type Violation struct{ File, Rule, Detail string }
+
+// settingsStoreCall matches direct use of the settings store functions. Policy
+// values are read and written only through internal/settings.
+var settingsStoreCall = regexp.MustCompile(`store\.(Get|Set|Seed|Delete)(Org|App)Setting\b`)
 
 const maxMainLines = 25
 
@@ -57,6 +62,15 @@ func Check(root, modulePath string) ([]Violation, error) {
 			}
 			if inConnector && !isStdlib(imp) && !strings.HasPrefix(imp, modulePath+"/pkg/") {
 				out = append(out, Violation{rel, "connector-imports", "imports " + imp})
+			}
+		}
+		if !inStore && !strings.HasPrefix(rel, "internal/settings/") {
+			src, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if m := settingsStoreCall.Find(src); m != nil {
+				out = append(out, Violation{rel, "settings-via-resolver", "calls " + string(m)})
 			}
 		}
 		if rel == "cmd/paymux/main.go" {
