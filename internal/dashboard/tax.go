@@ -29,6 +29,7 @@ type reportsView struct {
 	Entity, Month string
 	Files         []reportFileRow
 	ZipHref       string
+	EInvoice      *eInvoiceReport
 }
 
 type reportFileRow struct{ Name, Href string }
@@ -169,6 +170,10 @@ func (d *Dashboard) reportsPage(w http.ResponseWriter, r *http.Request, s *sessi
 			Href: prefix + "/reports/file?" + url.Values{"entity": {ent.ID}, "month": {month}, "name": {f.Name}}.Encode()})
 	}
 	rv.ZipHref = prefix + "/reports/zip?" + url.Values{"entity": {ent.ID}, "month": {month}}.Encode()
+	if rv.EInvoice, err = d.reportEInvoice(r, ent.ID, month); err != nil {
+		d.fail(w, err)
+		return
+	}
 	d.render(w, http.StatusOK, "dash_reports", v)
 }
 

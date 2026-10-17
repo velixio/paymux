@@ -18,5 +18,15 @@
 </table>
 <p><a class="btn small" href="{{.ZipHref}}">Download all as a zip</a></p>
 {{end}}
+{{with .EInvoice}}
+<h3>e-Invoices</h3>
+<p class="muted">B2B and export invoices of the month in the GST e-invoice format, for upload at the Invoice Registration Portal. {{.Ready}} ready, {{.Done}} registered, {{.Problems}} with problems{{if .SkippedB2C}}; {{.SkippedB2C}} consumer invoices need none{{end}}. After uploading, record the IRN on each invoice's page.</p>
+{{if .Rows}}<div class="table-scroll"><table class="grid">
+<thead><tr><th>Invoice</th><th>Buyer</th><th>Total</th><th>Status</th></tr></thead>
+<tbody>{{range .Rows}}<tr><td><a href="{{.Href}}">{{.Number}}</a></td><td>{{.Buyer}}</td><td>{{.Total}}</td>
+<td><span class="status status-{{.Status}}">{{.Status}}</span>{{if eq .Status "done"}} <small class="muted">registered</small>{{end}}{{range .Problems}}<br><small class="error">{{.}}</small>{{end}}</td></tr>{{end}}</tbody>
+</table></div>{{end}}
+<p><a class="btn small" href="{{.ReadyHref}}">Export month as e-invoice JSON</a> {{if .Done}}<a class="linkbtn" href="{{.AllHref}}">including the registered ones</a>{{end}}</p>
+{{end}}
 {{end}}
 {{template "dash_close" .}}{{end}}

@@ -109,6 +109,7 @@ func (d *Dashboard) routesPages() {
 	d.routesDomains()
 	d.routesDisputes()
 	d.routesRecon()
+	d.routesEInvoice()
 	d.routesPaymentLinks()
 	d.routesAppearance()
 }

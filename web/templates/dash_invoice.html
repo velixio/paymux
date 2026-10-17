@@ -35,6 +35,25 @@
 <table class="grid"><thead><tr><th>Number</th><th>Date</th><th>Total</th><th>Reason</th></tr></thead>
 <tbody>{{range .CreditNotes}}<tr><td><a href="{{.Href}}">{{.Number}}</a></td><td>{{.Date}}</td><td>{{.Total}}</td><td>{{.Note}}</td></tr>{{end}}</tbody></table>{{end}}
 
+{{with .EInvoice}}<h3>e-Invoice</h3>
+<p class="muted">B2B and export invoices can be registered with the GST Invoice Registration Portal (IRP). Download the JSON, upload it at the portal, then record the IRN, acknowledgement number and date and the signed QR code it returns. They are then printed on the PDF and the customer's page.</p>
+<p><a class="btn small" href="{{.JSONHref}}">Download e-invoice JSON</a></p>
+{{if .Recorded}}<dl class="facts">
+<dt>IRN</dt><dd><code class="wrap">{{.IRN}}</code></dd>
+<dt>Ack No</dt><dd>{{.AckNo}}</dd>
+<dt>Ack Date</dt><dd>{{.AckDate}} <small class="muted">recorded {{.At}}</small></dd>
+</dl>{{end}}
+{{if .CanRecord}}<form method="post" action="/dashboard/invoices/{{$.Doc.ID}}/einvoice" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<h4>{{if .Recorded}}Correct the recorded values{{else}}Record what the portal returned{{end}}</h4>
+<input class="field" name="irn" placeholder="IRN (64 characters)" value="{{.Form.IRN}}" required autocomplete="off" spellcheck="false">
+<input class="field" name="ack_no" placeholder="Ack No (digits)" value="{{.Form.AckNo}}" required inputmode="numeric" autocomplete="off">
+<input class="field" name="ack_date" placeholder="Ack Date, e.g. 2026-10-18 10:15:30" value="{{.Form.AckDate}}" required autocomplete="off">
+<textarea class="field mono" name="signed_qr" rows="4" placeholder="Signed QR code (the long text of three parts separated by dots)" required spellcheck="false">{{.Form.SignedQR}}</textarea>
+<button class="btn" type="submit">{{if .Recorded}}Save the correction{{else}}Record e-invoice{{end}}</button>
+</form>{{end}}
+{{end}}
+
 <h3>Emails</h3>
 <table class="grid"><thead><tr><th>To</th><th>Status</th><th>When</th><th></th></tr></thead>
 <tbody>{{range .Sends}}<tr><td>{{.To}}</td><td>{{.Status}}</td><td>{{.At}}</td><td>{{.Error}}</td></tr>{{else}}<tr><td colspan="4" class="muted">Not emailed by Paymux.</td></tr>{{end}}</tbody></table>
