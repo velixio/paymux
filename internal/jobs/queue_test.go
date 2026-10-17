@@ -404,3 +404,21 @@ func TestConcurrentClaimersRunEachJobOnce(t *testing.T) {
 		}
 	}
 }
+
+func TestExpiredLeaseBeyondMaxAttemptsIsDead(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		q, c := fixture(t, db)
+		var ran atomic.Int32
+		q.Register("over", func(context.Context, json.RawMessage) error { ran.Add(1); return nil })
+		enqueue(t, db, q, jobs.Job{Kind: "over", Payload: 1, MaxAttempts: 1})
+		if got, err := db.ClaimJobs(ctx, c.Now(), 5*time.Minute, 10); err != nil || len(got) != 1 {
+			t.Fatalf("claim: %d %v", len(got), err)
+		}
+		c.Add(5 * time.Minute)
+		runOnce(t, q)
+		r := one(t, db, "over")
+		if ran.Load() != 0 || r.State != "dead" || r.LastError == "" {
+			t.Fatalf("ran=%d %+v", ran.Load(), r)
+		}
+	})
+}
