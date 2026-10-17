@@ -88,7 +88,7 @@ func TestAppListAndCreate(t *testing.T) {
 		if r.StatusCode != 303 || !strings.HasPrefix(r.Header.Get("Location"), "/dashboard/apps/app_") {
 			t.Fatalf("create: %d %s", r.StatusCode, r.Header.Get("Location"))
 		}
-		app, err := e.core.AppBySlug(ctx, "voicestudio")
+		app, err := e.core.AppBySlug(ctx, core.OrgScope{OrgID: "org_default"}, "voicestudio")
 		if err != nil || app.DefaultReturnURL != "https://vs.example.com/done" {
 			t.Fatalf("%+v %v", app, err)
 		}

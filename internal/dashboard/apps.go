@@ -134,7 +134,12 @@ func validHTTPURL(raw string) bool {
 }
 
 func (d *Dashboard) appCreate(w http.ResponseWriter, r *http.Request, s *session) {
-	app, err := d.o.Core.CreateApp(r.Context(), s.auditActor(), core.CreateAppInput{
+	orgID, err := d.orgID(r.Context())
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	app, err := d.o.Core.CreateApp(r.Context(), s.auditActor(), core.OrgScope{OrgID: orgID}, core.CreateAppInput{
 		Name: r.PostForm.Get("name"), Slug: strings.TrimSpace(r.PostForm.Get("slug")), DefaultReturnURL: strings.TrimSpace(r.PostForm.Get("return_url"))})
 	switch {
 	case err == nil:
@@ -267,7 +272,7 @@ func (d *Dashboard) keyCreate(w http.ResponseWriter, r *http.Request, s *session
 	if !ok {
 		return
 	}
-	token, _, err := d.o.Core.CreateAPIKey(r.Context(), s.auditActor(), app.ID, r.PostForm.Get("mode"))
+	token, _, err := d.o.Core.CreateAPIKey(r.Context(), s.auditActor(), core.OrgScope{OrgID: app.OrgID}, app.ID, r.PostForm.Get("mode"))
 	switch {
 	case err == nil:
 		d.renderApp(w, r, s, app, http.StatusOK, "keys", "", &secretReveal{Kind: "key", Label: "API key (" + r.PostForm.Get("mode") + ")", Value: token})
@@ -585,7 +590,7 @@ func (d *Dashboard) appSettingSet(w http.ResponseWriter, r *http.Request, s *ses
 	if !ok {
 		return
 	}
-	err := d.o.Settings.SetApp(r.Context(), s.auditActor(), app.ID, r.PathValue("key"), json.RawMessage(strings.TrimSpace(r.PostForm.Get("value"))))
+	err := d.o.Settings.SetApp(r.Context(), s.auditActor(), app.OrgID, app.ID, r.PathValue("key"), json.RawMessage(strings.TrimSpace(r.PostForm.Get("value"))))
 	if msg, bad := settingErr(err); bad {
 		d.renderApp(w, r, s, app, http.StatusBadRequest, "settings", msg, nil)
 		return
@@ -602,7 +607,7 @@ func (d *Dashboard) appSettingReset(w http.ResponseWriter, r *http.Request, s *s
 	if !ok {
 		return
 	}
-	err := d.o.Settings.ResetApp(r.Context(), s.auditActor(), app.ID, r.PathValue("key"))
+	err := d.o.Settings.ResetApp(r.Context(), s.auditActor(), app.OrgID, app.ID, r.PathValue("key"))
 	if msg, bad := settingErr(err); bad {
 		d.renderApp(w, r, s, app, http.StatusBadRequest, "settings", msg, nil)
 		return

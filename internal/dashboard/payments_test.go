@@ -34,7 +34,7 @@ func (e *env) roleClient(role string) *http.Client {
 
 func (e *env) seedApp(slug string) store.App {
 	e.t.Helper()
-	app, err := e.core.CreateApp(ctx, audit.System, core.CreateAppInput{Name: strings.ToUpper(slug[:1]) + slug[1:], Slug: slug})
+	app, err := e.core.CreateApp(ctx, audit.System, core.OrgScope{OrgID: "org_default"}, core.CreateAppInput{Name: strings.ToUpper(slug[:1]) + slug[1:], Slug: slug})
 	if err != nil {
 		e.t.Fatal(err)
 	}
