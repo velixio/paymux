@@ -2,14 +2,14 @@
 
 How to install, run, back up and recover a Paymux hub. Commands assume Linux with systemd; a Docker variant is given where it differs. Everything is one static binary, `paymux`, plus a database (SQLite by default, Postgres optional) and a reverse proxy for TLS.
 
-Contents: [Layout](#layout) · [Install](#install) · [First admin and 2FA](#first-admin-and-2fa) · [Apps and provider accounts](#apps-and-provider-accounts) · [Webhook URLs](#webhook-urls-to-register-at-each-provider) · [Configuration reference](#configuration-reference) · [Backups and restore](#backups-and-restore) · [Upgrades](#upgrades) · [Monitoring](#monitoring) · [If the hub is down](#if-the-hub-is-down)
+Contents: [Layout](#layout) · [Install](#install) · [First admin and 2FA](#first-admin-and-2fa) · [Apps and provider accounts](#apps-and-provider-accounts) · [Themes and languages](#themes-and-languages) · [Webhook URLs](#webhook-urls-to-register-at-each-provider) · [Configuration reference](#configuration-reference) · [Backups and restore](#backups-and-restore) · [Upgrades](#upgrades) · [Monitoring](#monitoring) · [If the hub is down](#if-the-hub-is-down)
 
 ## Layout
 
 | Piece | Where | Notes |
 |---|---|---|
 | Hub | `paymux serve` | Listens on `PAYMUX_LISTEN` (default `:8080`) for everything public, and on `PAYMUX_INTERNAL_LISTEN` (default `127.0.0.1:9100`) for `/metrics`, `/debug/pprof` and Caddy's `/internal/tls-allow`. Never expose the internal listener to the internet. |
-| Data directory | `PAYMUX_DATA_DIR` (default `./data`; `/var/lib/paymux` in the unit) | Holds `paymux.db` (SQLite), its lock file and the optional `custom/` theme folder. |
+| Data directory | `PAYMUX_DATA_DIR` (default `./data`; `/var/lib/paymux` in the unit) | Holds `paymux.db` (SQLite), its lock file, the optional `themes/<name>/` themes and the optional `custom/` overrides. |
 | Reverse proxy | Caddy (`deploy/Caddyfile`) | TLS for the hub's host and, on demand, for app custom domains. |
 | Config | `/etc/paymux/paymux.env` | `KEY=value` lines, read by systemd. A `.env` file in the working directory is also read for CLI use. |
 | Master key | `PAYMUX_MASTER_KEY` or `PAYMUX_MASTER_KEY_FILE` | 32 random bytes, base64. Encrypts provider credentials, webhook secrets and TOTP secrets. **Back it up separately from the database; without it the encrypted data cannot be read.** |
@@ -52,12 +52,11 @@ PAYMUX_SMTP_FROM=Paymux <billing@example.com>
 EOF
 chown root:paymux /etc/paymux/paymux.env && chmod 0640 /etc/paymux/paymux.env
 
-# 4. Create the schema, then the first admin (see the next section), then start the service.
-sudo -u paymux env $(grep -v '^#' /etc/paymux/paymux.env | xargs) paymux migrate
-
+# 4. Start the service. The schema is created on first start; the first admin is
+#    created in the browser (see "First admin and 2FA").
 cp deploy/paymux.service /etc/systemd/system/ && systemctl daemon-reload
 systemctl enable --now paymux
-journalctl -u paymux -f            # structured JSON logs
+journalctl -u paymux -f            # structured JSON logs; look for "first-run setup is open"
 curl -fsS http://127.0.0.1:8080/readyz
 ```
 
@@ -78,7 +77,7 @@ docker run -d --name paymux --restart unless-stopped \
   paymux:latest
 ```
 
-The image is distroless, runs as user 65532 and contains only the binary. There is no shell: run CLI commands with `docker run --rm -v paymux-data:/data --env-file ... paymux:latest user create ...` (stop the container first when using SQLite, see below). The internal listener stays on the container's loopback, so Caddy must run in the same network namespace (`--network container:paymux`, or on the host with `--network host`), or set `PAYMUX_INTERNAL_LISTEN=0.0.0.0:9100` on a private Docker network that only Caddy joins.
+The image is distroless, runs as user 65532 and contains only the binary. There is no shell: run CLI commands with `docker run --rm -v paymux-data:/data --env-file ... paymux:latest user reset-2fa ...` (stop the container first when using SQLite, see below). The first admin is created in the browser, so the CLI is not needed to get started; the setup code is in `docker logs paymux`. The internal listener stays on the container's loopback, so Caddy must run in the same network namespace (`--network container:paymux`, or on the host with `--network host`), or set `PAYMUX_INTERNAL_LISTEN=0.0.0.0:9100` on a private Docker network that only Caddy joins.
 
 ### Postgres instead of SQLite
 
@@ -86,18 +85,32 @@ Set `PAYMUX_DATABASE_URL=postgres://user:password@host:5432/paymux?sslmode=requi
 
 ## First admin and 2FA
 
-There is no default account. Create the first admin from the command line:
+There is no default account. A hub that has no users shows a one-time setup page, so nothing has to be run on the server and the SQLite file never has to be unlocked:
+
+1. Start the hub and read its log. It prints the address and a one-time **setup code** (24 letters in four groups):
+
+   ```
+   journalctl -u paymux | grep "first-run setup"      # or: docker logs paymux | grep "first-run setup"
+   ```
+
+2. Open `https://pay.example.com/setup` (the login page links to it while the hub has no users), enter the code, and fill in the administrator's email and password (at least 12 characters), the organisation name and, optionally, a first app.
+3. The next page shows, **once**, a test and a live API key for the app (copy them now), and the key for two-factor sign-in: add it to an authenticator app (Google Authenticator, Authy, 1Password and similar) by hand or through the `otpauth://` link, then enter the 6-digit code. That signs you in.
+
+How it is protected:
+
+- The code exists only in the hub's log and memory, and is new at every start while the hub has no users. Five wrong codes from one address lock the page for 15 minutes.
+- The moment the administrator exists, `/setup` answers 404 for good, and the code is gone. Anyone who can reach the hub before you cannot use the page without the code, but they could race you if the log is public: do the setup straight after the first start, and keep the log private.
+- The setup is audited (`setup.complete`); the password, code, API keys and 2FA key are never logged or audited.
+- If the page is closed before the 2FA code is confirmed, sign in at `/dashboard/login` with the password: the same key is shown again until the first code is accepted. Lost the API keys: create new ones on the app's page.
+
+The command line still works for scripted installs and for recovery. **With SQLite the CLI cannot run while `paymux serve` is running**: the database file is locked by one process, so stop the service for the moment it takes. (With Postgres there is no such limit.)
 
 ```sh
-# Prompts twice for the password (no echo), at least 12 characters:
-paymux user create --email you@example.com --role admin
-# or from a secret store / script:
+paymux user create --email you@example.com --role admin                      # prompts for the password twice
 printf '%s\n' "$PASSWORD" | paymux user create --email you@example.com --role admin --password-stdin
 ```
 
-**With SQLite the CLI cannot run while `paymux serve` is running**: the database file is locked by one process. Create the admin after `paymux migrate` and before the first start, or `systemctl stop paymux` for the moment it takes. (With Postgres there is no such limit.)
-
-At the first sign-in at `https://pay.example.com/dashboard/login` the admin is shown a TOTP secret and `otpauth://` link: add it to an authenticator app and enter the 6-digit code. The secret is shown until the first code is accepted, never again. Codes cannot be reused, and five wrong attempts per email and address lock sign-in for 15 minutes.
+Codes cannot be reused, and five wrong sign-in attempts per email and address lock sign-in for 15 minutes.
 
 - Lost authenticator: `paymux user reset-2fa --email you@example.com` (signs the user out everywhere; they enrol again at next sign-in).
 - More users: *Users* in the dashboard (admins create users with an initial password; roles are viewer, operator, admin).
@@ -120,6 +133,31 @@ Everything below is in the dashboard (admin role); the same can be scripted with
 6. **Settings** (*Settings*): payment expiry, invoice delivery, dunning, retry schedule, reconciliation time and the rest, each with its default and units.
 
 Before going live, run a payment end to end in **test** mode (the header toggle switches the dashboard between test and live data), then check *Reconciliation* after the first day.
+
+## Themes and languages
+
+**Themes** change how the dashboard and the customer pages (pay page, subscription checkout, invoices) look. Two ship with the hub: `default` and `minimal-dark`. Choose them in the dashboard under *Appearance* (admins): one theme for the dashboard (also the default for customer pages) and, per app, an optional theme and language for that app's customer pages. *Preview* shows a sample page in any theme before you switch.
+
+A theme is a directory `<data dir>/themes/<name>/`:
+
+```
+themes/acme/
+  theme.json        {"name":"acme","version":"1.0.0","description":"...",
+                     "tokens":{"--color-accent":"#0a7d5a","--radius":"4px"},
+                     "font_stack":"Inter, system-ui, sans-serif"}
+  css/*.css         optional extra stylesheets, applied in name order after the tokens
+  templates/*.html  optional template overrides (same file names as web/templates)
+  assets/...        images and fonts, served at /theme/acme/assets/<file>
+```
+
+- `name` must equal the directory name (lower-case letters, digits, hyphens). Tokens are CSS custom properties (`--color-bg`, `--color-fg`, `--color-muted`, `--color-accent`, `--color-danger`, `--color-line`, `--color-nav`, `--radius`, ...); a value may not contain `;`, braces, angle brackets, `url(` or comments. Look at `web/themes/` in the source for the two bundled examples.
+- Overlay order is **embedded files, then the active theme, then `custom/`**: a file in `custom/templates/` beats the same file in the theme.
+- A new or edited theme is live within a second: no restart. A theme that is invalid (bad `theme.json`, a template that does not parse, missing directory) is skipped, its pages use the standard look, and ops get a `theme.unusable` alert (logged, e-mailed and posted like other alerts, once per problem). *Appearance* lists such themes with the reason.
+- A theme in the data directory with the same name as a bundled one replaces it.
+
+**Languages.** Customer pages and the pre-debit e-mail are available in English (`en`) and Hindi (`hi`). Set the language per app under *Appearance* (the `customer_language` setting; the org value is the default). A link may also carry `?lang=hi` to choose an installed language for that visit; anything else is ignored. A message that is missing in a language shows in English.
+
+To change wording or add a language, put `i18n/<code>.json` in the `custom/` directory (flat `"key": "text"` pairs; copy `web/i18n/en.json` for the keys, and keep `%s` placeholders). Entries are merged over the shipped catalog of the same language, so a file with one key rewords just that message. The code is two or three lower-case letters. Catalogs are read at start: restart after editing them. The pre-debit e-mail text itself is `templates/email_predebit.txt` (override it in `custom/templates/`).
 
 ## Webhook URLs to register at each provider
 
@@ -200,9 +238,20 @@ Also keep an occasional offline copy: `sqlite3 /var/lib/paymux/paymux.db ".backu
 
 1. Read the release notes for migrations or setting changes.
 2. Take a backup (an extra `litestream` snapshot, `sqlite3 .backup`, or `pg_dump`).
-3. Replace the binary (or `docker pull`/rebuild) and restart: `systemctl restart paymux`. The hub applies new migrations when it starts and reports `/readyz` as not ready while any are pending. You can run `paymux migrate` first to apply them without serving.
-4. Check `/readyz`, `journalctl -u paymux -n 50` and a test-mode payment.
-5. **Rollback** means restoring the backup of step 2 together with the old binary; migrations only move forward.
+3. Get the new binary and check it. A release has one archive per platform (`paymux_<version>_<os>_<arch>.tar.gz`, linux and darwin, amd64 and arm64), a `SHA256SUMS` file and, when it was signed, `SHA256SUMS.sig` and `SHA256SUMS.pem`:
+
+   ```sh
+   sha256sum -c --ignore-missing SHA256SUMS
+   cosign verify-blob --certificate SHA256SUMS.pem --signature SHA256SUMS.sig \
+     --certificate-identity-regexp '^https://github.com/OWNER/REPO/' \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
+   tar -xzf paymux_v1.2.3_linux_amd64.tar.gz paymux && ./paymux version
+   ```
+
+   (Building from source: `scripts/release.sh v1.2.3` makes the same archives locally.)
+4. Replace the binary (or `docker pull`/rebuild) and restart: `systemctl restart paymux`. The hub applies new migrations when it starts and reports `/readyz` as not ready while any are pending. You can run `paymux migrate` first to apply them without serving.
+5. Check `/readyz`, `journalctl -u paymux -n 50` and a test-mode payment.
+6. **Rollback** means restoring the backup of step 2 together with the old binary; migrations only move forward.
 
 In-flight jobs finish on shutdown (up to 30 seconds); queued jobs survive a restart.
 
