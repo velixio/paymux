@@ -192,6 +192,8 @@ const (
 	OutcomeNetworkError = "network_error"
 )
 
+const CallBodyLimit = 64 << 10
+
 var (
 	ErrNotFound           = errors.New("connector: not found")
 	ErrInvalidCredentials = errors.New("connector: invalid credentials")
@@ -213,6 +215,8 @@ func NewHTTPClient(o HTTPOptions) *http.Client
 
 func Register(name string, f Factory, info Info)
 
+func ReportDecodeError(resp *http.Response, err error)
+
 func ResetRegistryForTest()
 
 func WithAttemptHook(ctx context.Context, fn func(*http.Request)) context.Context
@@ -232,6 +236,34 @@ const (
 	ProviderManaged   BillingMode = "provider_managed"
 	MerchantTriggered BillingMode = "merchant_triggered"
 )
+
+type CallFailure string
+
+const (
+	FailTransport CallFailure = "transport"
+	FailTimeout   CallFailure = "timeout"
+	FailStatus    CallFailure = "status"
+	FailDecode    CallFailure = "decode"
+)
+
+type CallRecord struct {
+	Method            string
+	URL               url.URL
+	Status            int
+	Duration          time.Duration
+	Failure           CallFailure
+	Err               error
+	Attempt           int
+	WillRetry         bool
+	RequestHeader     http.Header
+	ResponseHeader    http.Header
+	RequestBody       []byte
+	ResponseBody      []byte
+	RequestTruncated  bool
+	ResponseTruncated bool
+}
+
+type CallRecorder func(ctx context.Context, c CallRecord)
 
 type Canceler interface {
 	CancelCheckout(ctx context.Context, ref PaymentRef) error
@@ -371,6 +403,7 @@ type HTTPOptions struct {
 	Secrets     []string
 	RateLimit   RateLimit
 	Observer    Observer
+	Recorder    CallRecorder
 	DenyPrivate bool
 	LookupIP    func(ctx context.Context, host string) ([]net.IP, error)
 	Base        http.RoundTripper
