@@ -252,6 +252,9 @@ type view struct {
 
 	Title     string
 	DevBanner bool
+	// OAuthContinue is the provider authorization URL the OAuth continue page
+	// links to (form-action 'self' forbids redirecting a form post off-site).
+	OAuthContinue string
 	Nav       []navItem
 	Active    string
 	User      *store.UserRow

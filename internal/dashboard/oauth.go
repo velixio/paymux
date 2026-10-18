@@ -263,8 +263,12 @@ func (d *Dashboard) oauthConnect(w http.ResponseWriter, r *http.Request, s *sess
 		d.fail(w, err)
 		return
 	}
+	// Not a redirect: the dashboard's CSP has form-action 'self', and browsers
+	// apply it to the redirects of a form submission, so a 303 to the
+	// provider is blocked. A page that links (and meta-refreshes) there is a
+	// fresh navigation, which form-action does not govern.
 	w.Header().Set("Cache-Control", "no-store")
-	http.Redirect(w, r, target, http.StatusSeeOther)
+	d.render(w, http.StatusOK, "dash_oauth_continue", view{Title: "Continue to " + pa.Connector, OAuthContinue: target})
 }
 
 // oauthCallback is where the provider sends the operator back.

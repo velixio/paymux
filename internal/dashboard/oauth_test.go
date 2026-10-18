@@ -122,7 +122,8 @@ func (e *oauthEnv) connect(c *http.Client, extra url.Values) *http.Response {
 	for k, v := range extra {
 		f[k] = v
 	}
-	r, _ := e.post(c, e.page()+"/oauth/connect", f)
+	r, body := e.post(c, e.page()+"/oauth/connect", f)
+	r.Body = io.NopCloser(strings.NewReader(body))
 	return r
 }
 
@@ -131,6 +132,12 @@ func (e *oauthEnv) connect(c *http.Client, extra url.Values) *http.Response {
 // (form-action 'self') makes browsers block a form submission that redirects
 // to another origin, so the page links (and meta-refreshes) to it instead.
 func authStateOf(t *testing.T, r *http.Response) string {
+	t.Helper()
+	return authURLOf(t, r).Query().Get("state")
+}
+
+// authURLOf is the authorization URL the continue page links to.
+func authURLOf(t *testing.T, r *http.Response) *url.URL {
 	t.Helper()
 	b, _ := io.ReadAll(r.Body)
 	r.Body.Close()
@@ -149,7 +156,10 @@ func authStateOf(t *testing.T, r *http.Response) string {
 	if r.Header.Get("Cache-Control") != "no-store" {
 		t.Error("the continue page must not be cached")
 	}
-	return u.Query().Get("state")
+	if !strings.Contains(body, `content="0;url=`+m[1]+`"`) {
+		t.Errorf("the refresh does not lead to the authorization URL:\n%s", body)
+	}
+	return u
 }
 
 func eachOAuth(t *testing.T, fn func(t *testing.T, e *oauthEnv, admin *http.Client)) {
@@ -188,11 +198,11 @@ func TestConnectPanelShowsTheRedirectURIAndTheSteps(t *testing.T) {
 func TestConnectSavesTheClientAndSendsTheOperatorToZoho(t *testing.T) {
 	eachOAuth(t, func(t *testing.T, e *oauthEnv, admin *http.Client) {
 		r := e.connect(admin, url.Values{"oauth_scopes": {"ZohoPay.payments.READ\nZohoPay.refunds.CREATE"}})
-		state := authStateOf(t, r)
-		u, _ := url.Parse(r.Header.Get("Location"))
+		u := authURLOf(t, r)
+		state := u.Query().Get("state")
 		q := u.Query()
 		if u.Host != "accounts.zoho.in" || u.Path != "/oauth/v2/auth" {
-			t.Errorf("location %s", r.Header.Get("Location"))
+			t.Errorf("authorization URL %s", u)
 		}
 		for k, v := range map[string]string{"response_type": "code", "access_type": "offline", "prompt": "consent", "client_id": "new-client-id",
 			"redirect_uri": callbackURI, "scope": "ZohoPay.payments.READ,ZohoPay.refunds.CREATE"} {
@@ -200,8 +210,8 @@ func TestConnectSavesTheClientAndSendsTheOperatorToZoho(t *testing.T) {
 				t.Errorf("%s = %q, want %q", k, q.Get(k), v)
 			}
 		}
-		if strings.Contains(r.Header.Get("Location"), secretClient) {
-			t.Error("the client secret is in the redirect")
+		if strings.Contains(u.String(), secretClient) {
+			t.Error("the client secret is in the authorization URL")
 		}
 		// The client id was saved, the blank secret kept.
 		cfg := e.openConfig(e.acct)
