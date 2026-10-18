@@ -53,7 +53,7 @@ var info = connector.Info{
 	PreDebitPerAttempt:       true,
 	RefundsVerificationDebit: true, // TODO(spec): PayU reverses the Rs 1 verification debit itself; confirm at sandbox time
 	MandateSetupAmount:       100,  // the Rs 1 verification debit of a registration without a charge due (trials)
-	MandateLimits: []connector.MandateLimit{{Method: "upi", Currency: "INR"}, {Method: "card", Currency: "INR"},
+	MandateLimits: []connector.MandateLimit{{Method: "upi", Currency: "INR", MaxAmount: 1_500_000}, {Method: "card", Currency: "INR"},
 		{Method: "emandate", Currency: "INR", MaxAmount: 1_000_000_000}},
 	// Disputes come from the Chargeback API (chargebacks.go), which needs its own
 	// token; without it the dispute calls say so.
