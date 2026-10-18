@@ -89,7 +89,8 @@ New here? [`docs/quickstart.md`](docs/quickstart.md) takes you from nothing to a
 Building from source also requires Bun 1.4.3 or newer to compile the React dashboard. Distributed binaries do not need a JavaScript runtime. You need a Go toolchain of version 1.21 or later. `go.mod` pins `toolchain go1.27.2`, and Go downloads it automatically.
 
 ```bash
-make build                       # → bin/paymux
+make build                       # → bin/paymux, bin/paymux-home and the example binaries
+make dev                         # build everything, run the hub and the website together (Ctrl-C stops both)
 cp .env.example .env             # set PAYMUX_MASTER_KEY: head -c32 /dev/urandom | base64
 ./bin/paymux                     # the log prints a one-time setup code
 ```

@@ -15,7 +15,7 @@ cd "$(dirname "$0")/.."
 command -v python3 >/dev/null || { echo "smoke: python3 is required" >&2; exit 1; }
 
 echo "==> building bin/paymux"
-make build >/dev/null
+make build-paymux >/dev/null
 
 free_port() {
 	python3 - <<'PY'

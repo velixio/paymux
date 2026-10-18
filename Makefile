@@ -1,14 +1,39 @@
 BUN ?= bun
 VERSION ?= $(shell git describe --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: build build-home run-home test test-pg test-all fmt ci run-dev kill
+.PHONY: build build-paymux build-home build-examples dev run-home test test-pg test-all fmt ci run-dev kill
 
-build: frontend
-	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/paymux/paymux.Version=$(VERSION)" -o bin/paymux ./cmd/paymux
+GOBUILD = CGO_ENABLED=0 go build -trimpath
+
+# Every binary into bin/: the hub, the public website and the examples.
+build: build-paymux build-home build-examples
+	@ls -1 bin/
+
+# The payment hub (with the dashboard frontend embedded).
+build-paymux: frontend
+	$(GOBUILD) -ldflags "-s -w -X github.com/paymux/paymux.Version=$(VERSION)" -o bin/paymux ./cmd/paymux
 
 # Public website: independent binary, no payment-hub configuration or database.
 build-home: frontend-home
-	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/paymux-home ./web-home
+	$(GOBUILD) -ldflags "-s -w" -o bin/paymux-home ./web-home
+
+# Example programs: an API client, a framework-mode hub and a remote connector.
+build-examples:
+	$(GOBUILD) -o bin/example-api-client ./examples/api-client
+	$(GOBUILD) -o bin/example-framework ./examples/framework
+	$(GOBUILD) -o bin/example-remote-connector ./examples/remote-connector
+
+# Build everything, then run the hub (PAYMUX_LISTEN, default from .env) and the
+# public website (HOME_LISTEN) together. Ctrl-C stops both.
+HOME_LISTEN ?= 127.0.0.1:8090
+dev: SHELL := /bin/bash
+dev: build
+	@./bin/paymux-home -listen $(HOME_LISTEN) & home=$$!; \
+	./bin/paymux & hub=$$!; \
+	echo "website: http://$(HOME_LISTEN)"; \
+	trap 'kill $$home $$hub 2>/dev/null' INT TERM; \
+	wait -n $$home $$hub; status=$$?; \
+	kill $$home $$hub 2>/dev/null; wait; exit $$status
 
 run-home:
 	$(BUN) run dev:home

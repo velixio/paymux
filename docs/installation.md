@@ -17,7 +17,7 @@ make build
 ./bin/paymux version
 ```
 
-`make build` installs frontend packages from `bun.lock`, checks TypeScript, builds the React dashboard, and embeds the assets in the Go binary. A direct `go build` does not build frontend assets: prefer Make for a complete distribution.
+`make build` installs frontend packages from `bun.lock`, checks TypeScript, builds the React dashboard and the website, and writes every binary to `bin/`: `paymux` (the hub, with the dashboard embedded), `paymux-home` (the public website) and the example programs. `make build-paymux` builds only the hub. `make dev` builds everything and runs the hub and the website together (`HOME_LISTEN`, default `127.0.0.1:8090`); Ctrl-C, or either one exiting, stops both. A direct `go build` does not build frontend assets: prefer Make for a complete distribution.
 
 To build the separate public site:
 

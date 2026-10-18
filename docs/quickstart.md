@@ -14,7 +14,8 @@ Either build it:
 
 ```bash
 git clone https://github.com/velixio/paymux && cd paymux
-make build                  # writes bin/paymux
+make build                  # writes bin/paymux, bin/paymux-home and the examples
+# or: make dev               # builds, then runs the hub and the website together
 ```
 
 or download `paymux_<version>_<os>_<arch>.tar.gz` from the releases page,
