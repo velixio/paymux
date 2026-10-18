@@ -26,6 +26,8 @@ type dbLogs struct {
 	db  *store.DB // the logs database; main is the application database
 	// shared is true when the logs table is in the main database (PostgreSQL).
 	shared bool
+	// otlp ships the same rows to a collector, when one is configured.
+	otlp *dblog.OTLP
 }
 
 // openDBLogs prepares the database log and tees a.log into it. A log that
@@ -45,9 +47,20 @@ func (a *App) openDBLogs(ctx context.Context, main *store.DB) *dbLogs {
 	if a.cfg.DBLogLevel != slog.LevelWarn && (a.cfg.DBLogLevel > slog.LevelWarn || a.cfg.DBLogLevelExplicit) {
 		level = a.cfg.DBLogLevel
 	}
-	rec := dblog.New(dblog.Options{DB: ldb, Redactor: red, Level: level, Stdout: a.log})
+	opts := dblog.Options{DB: ldb, Redactor: red, Level: level, Stdout: a.log}
+	var otlp *dblog.OTLP
+	if a.cfg.OTLPLogsEndpoint != "" {
+		headers := map[string]string{}
+		for k, v := range a.cfg.OTLPLogsHeaders {
+			headers[k] = v.Reveal()
+		}
+		otlp = dblog.NewOTLP(dblog.OTLPOptions{Endpoint: a.cfg.OTLPLogsEndpoint, Headers: headers, Service: "paymux", Version: Version, Stdout: a.log})
+		otlp.Start()
+		opts.Tee = otlp.Ship
+	}
+	rec := dblog.New(opts)
 	rec.Start(ctx)
-	l := &dbLogs{rec: rec, red: red, db: ldb, shared: ldb == main}
+	l := &dbLogs{rec: rec, red: red, db: ldb, shared: ldb == main, otlp: otlp}
 	a.mu.Lock()
 	a.logDB, a.logRec = ldb, rec
 	a.mu.Unlock()
@@ -60,7 +73,10 @@ func (l *dbLogs) close() {
 	if l == nil {
 		return
 	}
-	l.rec.Close()
+	l.rec.Close() // writes the queue, which also hands it to the OTLP shipper
+	if l.otlp != nil {
+		l.otlp.Close()
+	}
 	if !l.shared {
 		_ = l.db.Close()
 	}
