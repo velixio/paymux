@@ -59,3 +59,97 @@ body {
     width: 44px;
   }
 }
+/* Shared site chrome follows the explicit or system theme across routes. */
+.site-theme-toggle {
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--ink);
+}
+.site-head {
+  gap: 30px;
+  background: var(--surface);
+}
+html.dark {
+  --ink: #e6eeea;
+  --muted: #acbeb7;
+  --blue: #99b7ff;
+  --line: #33464b;
+  --canvas: #19292d;
+  --surface: #101c20;
+  color-scheme: dark;
+}
+html.dark body {
+  background: var(--surface);
+  color: var(--ink);
+}
+html.dark .skip,
+html.dark .doc-nav,
+html.dark .product-preview,
+html.dark .provider-card,
+html.dark .table-wrap,
+html.dark .hosting-grid article,
+html.dark .callout {
+  background: var(--surface);
+  color: var(--ink);
+}
+html.dark .site-head .github:hover,
+html.dark .site-theme-toggle:hover {
+  background: var(--canvas);
+  color: var(--ink);
+}
+html.dark [data-slot="sheet-content"] {
+  background: var(--surface);
+  color: var(--ink);
+}
+html.dark .mobile-site-links a {
+  color: var(--ink);
+}
+html.dark table,
+html.dark th,
+html.dark td {
+  border-color: var(--line);
+}
+html.dark th {
+  background: var(--canvas);
+  color: var(--ink);
+}
+html.dark .callout {
+  border-color: var(--line);
+}
+@media (max-width: 760px) {
+  .site-head {
+    gap: 10px;
+    padding-inline: 20px;
+  }
+  .site-head .github {
+    margin-left: auto;
+    font-size: 0;
+    gap: 0;
+    min-width: 36px;
+  }
+  .site-head .github svg {
+    width: 18px;
+    height: 18px;
+  }
+  .site-theme-toggle {
+    flex-shrink: 0;
+  }
+}
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+html.dark p code {
+  background: var(--canvas);
+  color: var(--ink);
+}
+html.dark .site-head .logo > span {
+  background: #2458d8;
+  color: white;
+}
+.site-head .site-theme-toggle:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 3px;
+}
