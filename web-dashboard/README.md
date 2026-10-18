@@ -32,3 +32,9 @@ make build
 `make build` compiles the dashboard frontend before embedding its assets into `bin/paymux`. Node or Bun is not required at runtime. Direct `go build` without the frontend build retains the server-rendered fallback but does not include the React UI.
 
 Shared UI components are installed from the official shadcn registry. Add components with `bunx shadcn@latest add COMPONENT`. Vite builds client assets only; TanStack Start and server-side rendering are not used.
+
+## Compact application shell
+
+Operational routes fill the viewport with a 52px desktop header, a 208px sidebar, an independently scrolling content region, and a small footer. The sidebar toggle collapses navigation to a 64px icon rail; links retain accessible names and hover titles, and the browser remembers the preference. Changing routes resets content scroll, while changing sidebar size preserves the current form.
+
+Desktop rows use 9px vertical cell padding and form controls use 32–34px heights. Phone and coarse-pointer layouts keep 44px minimum control heights. Mobile settings navigation and category tabs scroll horizontally, and filter fields use two columns where possible. Authentication screens retain their separate layout. The shell maps legacy form/style variables to the active React palette so light/dark colors remain consistent.

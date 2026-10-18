@@ -59,7 +59,9 @@ Use **Alerts** to triage retained operational alerts. Acknowledgement records th
 
 ## Themes and responsive behavior
 
-The React dashboard has a personal light/dark control and responsive navigation. Organization appearance and per-app customer-page themes are separate settings. The marketing site's saved theme does not configure your hub. On narrow screens, tables can scroll inside their containers and navigation opens in a sheet.
+The React dashboard uses a compact application shell with a fixed header and independently scrolling content. Collapse the desktop sidebar to an icon rail using **Collapse sidebar**; **Expand sidebar** restores labels. The browser remembers the choice. Changing routes starts the content at the top, and changing sidebar size keeps current form edits.
+
+The dashboard has a personal light/dark control and responsive navigation. Organization appearance and per-app customer-page themes are separate settings. The marketing site's saved theme does not configure your hub. On narrow screens, tables can scroll inside their containers and navigation opens in a sheet.
 
 ## Browser errors and uncertain writes
 
