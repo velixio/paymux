@@ -19,12 +19,18 @@ func TestOAuthStateIsSingleUseAndExpires(t *testing.T) {
 			t.Fatal(err)
 		}
 		var got store.OAuthState
-		err := db.Write(ctx, func(tx store.Tx) (err error) { got, err = store.ConsumeOAuthState(ctx, tx, "h1", now.Add(time.Minute)); return })
+		err := db.Write(ctx, func(tx store.Tx) (err error) {
+			got, err = store.ConsumeOAuthState(ctx, tx, "h1", now.Add(time.Minute))
+			return
+		})
 		if err != nil || got.UserID != "usr_1" || got.AccountID != "pa_1" || got.OrgID != "org_a" {
 			t.Fatalf("consume: %+v %v", got, err)
 		}
 		// Used once.
-		err = db.Write(ctx, func(tx store.Tx) error { _, err := store.ConsumeOAuthState(ctx, tx, "h1", now.Add(time.Minute)); return err })
+		err = db.Write(ctx, func(tx store.Tx) error {
+			_, err := store.ConsumeOAuthState(ctx, tx, "h1", now.Add(time.Minute))
+			return err
+		})
 		if !errors.Is(err, store.ErrNotFound) {
 			t.Errorf("replay: %v", err)
 		}
@@ -49,7 +55,9 @@ func TestOAuthStateIsSingleUseAndExpires(t *testing.T) {
 		st.Hash = "h4"
 		_ = db.Write(ctx, func(tx store.Tx) error { return store.InsertOAuthState(ctx, tx, st, now.Add(time.Hour)) })
 		var n int
-		_ = db.Read(ctx, func(q store.Querier) error { return q.QueryRowContext(ctx, "SELECT COUNT(*) FROM oauth_states").Scan(&n) })
+		_ = db.Read(ctx, func(q store.Querier) error {
+			return q.QueryRowContext(ctx, "SELECT COUNT(*) FROM oauth_states").Scan(&n)
+		})
 		if n != 1 {
 			t.Errorf("%d states kept; the expired one should have been purged", n)
 		}
