@@ -41,6 +41,7 @@ type fake struct {
 	docFail       int              // when set, POST /v1/documents answers this status
 	acceptErr     int              // when set, dispute accept answers this status
 	contestErr    int              // when set, dispute contest answers this status
+	patchSubErr   string           // when set, PATCH of the subscription answers 400 with this description
 	recon         map[string][]any // GET /v1/settlements/recon/combined, keyed "Y-M-D"
 	listReceipt   string           // when set, GET /v1/orders ignores the receipt filter and returns this receipt
 }
@@ -238,6 +239,8 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"current_start": 1760000000, "current_end": 1762592000, "total_count": 12, "paid_count": 1})
 	case r.Method == "POST" && p == "/v1/subscriptions/sub_Nx5/cancel":
 		writeJSON(w, 200, map[string]any{"id": "sub_Nx5", "entity": "subscription", "status": "cancelled"})
+	case r.Method == "PATCH" && p == "/v1/subscriptions/sub_Nx5" && f.patchSubErr != "":
+		writeAPIError(w, 400, f.patchSubErr)
 	case r.Method == "PATCH" && p == "/v1/subscriptions/sub_Nx5":
 		var in map[string]any
 		_ = json.Unmarshal(body, &in)

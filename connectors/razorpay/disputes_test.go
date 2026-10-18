@@ -130,7 +130,7 @@ func TestSubmitEvidenceUploadsDocumentsThenContests(t *testing.T) {
 	if len(ship) != 2 || len(bill) != 1 || len(others) != 1 {
 		t.Fatalf("evidence payload %v", first)
 	}
-	if id := ship[0].(map[string]any)["id"].(string); !strings.HasPrefix(id, "doc_Nx") {
+	if id, _ := ship[0].(string); !strings.HasPrefix(id, "doc_Nx") { // plain document ids, as Razorpay documents
 		t.Errorf("document ref %v", ship[0])
 	}
 	o := others[0].(map[string]any)
@@ -149,11 +149,13 @@ func TestSubmitEvidenceTextOnlyAndFailures(t *testing.T) {
 	f := newFake("captured")
 	r := responder(t, f)
 	ref := connector.DisputeRef{ProviderDisputeID: "disp_Nx3"}
-	if err := r.SubmitEvidence(context.Background(), ref, connector.Evidence{Text: "We delivered it"}); err != nil {
-		t.Fatal(err)
+	// Razorpay needs at least one document to submit: a summary alone is refused
+	// before anything is sent.
+	if err := r.SubmitEvidence(context.Background(), ref, connector.Evidence{Text: "We delivered it"}); err == nil {
+		t.Error("text-only evidence accepted")
 	}
-	if len(f.callsTo("POST", "/v1/documents")) != 0 || len(f.callsTo("PATCH", "/v1/disputes/disp_Nx3/contest")) != 2 {
-		t.Error("text-only evidence needs no uploads")
+	if len(f.callsTo("PATCH", "/v1/disputes/disp_Nx3/contest")) != 0 {
+		t.Error("text-only evidence was sent")
 	}
 	if err := r.SubmitEvidence(context.Background(), ref, connector.Evidence{}); err == nil {
 		t.Error("empty evidence accepted")
@@ -169,7 +171,7 @@ func TestSubmitEvidenceTextOnlyAndFailures(t *testing.T) {
 	// A refused contest (period over) is an error, and the draft is not followed by a submit.
 	h := newFake("captured")
 	h.contestErr = 400
-	err = responder(t, h).SubmitEvidence(context.Background(), ref, connector.Evidence{Text: "x"})
+	err = responder(t, h).SubmitEvidence(context.Background(), ref, connector.Evidence{Text: "x", Files: map[string][]byte{"billing_proof": pdfBytes}})
 	if err == nil || len(h.callsTo("PATCH", "/v1/disputes/disp_Nx3/contest")) != 1 {
 		t.Errorf("refused contest: %v calls=%d", err, len(h.callsTo("PATCH", "/v1/disputes/disp_Nx3/contest")))
 	}

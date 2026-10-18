@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/paymux/paymux/pkg/connector"
 )
@@ -14,8 +15,10 @@ import (
 // schedule, pre-debit notices and retries; Paymux creates the subscription,
 // mirrors its state from webhooks and cancels or re-prices it on request.
 //
-// TODO(spec): re-verify the total_count limits per period and the
-// schedule_change_at semantics of PATCH /v1/subscriptions at sandbox time.
+// From Razorpay's documentation: total_count times the interval may not exceed
+// 100 years (see maxPeriods); PATCH /v1/subscriptions takes schedule_change_at
+// "now" or "cycle_end"; a subscription paid by UPI cannot be updated at all.
+// Not run against the test API (no secret was available).
 
 type planInfo struct {
 	Amount   int64  `json:"amount"`
@@ -28,6 +31,10 @@ var periods = map[string]string{"day": "daily", "week": "weekly", "month": "mont
 
 // defaultTotalCount is used when the caller gives no total_count (Razorpay
 // requires one); it is roughly "until cancelled" for each period.
+// maxPeriods is the most billing periods (times the interval) Razorpay allows:
+// a subscription may run 100 years at most.
+var maxPeriods = map[string]int{"daily": 36500, "weekly": 5200, "monthly": 1200, "yearly": 100}
+
 var defaultTotalCount = map[string]int{"daily": 3650, "weekly": 520, "monthly": 120, "yearly": 30}
 
 func planKey(cur string, amount int64, period string, interval int) string {
@@ -181,6 +188,9 @@ func (r *razorpay) CreateSubscriptionCheckout(ctx context.Context, req connector
 	if total <= 0 {
 		total = defaultTotalCount[period]
 	}
+	if total*req.IntervalCount > maxPeriods[period] {
+		return connector.CheckoutResult{}, fmt.Errorf("razorpay: total_count %d x every %d %s runs past Razorpay's 100-year limit", total, req.IntervalCount, req.Interval)
+	}
 	in := map[string]any{
 		"plan_id": planID, "total_count": total, "quantity": 1,
 		"customer_notify": 1, // Razorpay sends the pre-debit and charge notices
@@ -259,7 +269,11 @@ func (r *razorpay) UpdateSubscriptionAmount(ctx context.Context, ref connector.S
 		return nil
 	}
 	body := map[string]any{"plan_id": planID, "schedule_change_at": "cycle_end"}
-	return r.api.do(ctx, "PATCH", "/v1/subscriptions/"+url.PathEscape(ref.ProviderSubscriptionID), nil, body, nil, nil)
+	err = r.api.do(ctx, "PATCH", "/v1/subscriptions/"+url.PathEscape(ref.ProviderSubscriptionID), nil, body, nil, nil)
+	if err != nil && strings.Contains(err.Error(), "payment mode is UPI") {
+		return fmt.Errorf("razorpay: a UPI subscription cannot be re-priced: %w", connector.ErrUnsupported)
+	}
+	return err
 }
 
 var _ connector.SubscriptionManager = (*razorpay)(nil)
