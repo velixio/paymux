@@ -17,11 +17,18 @@ import (
 // AutoPay and net-banking e-mandates. Paymux runs the schedule and triggers
 // every debit itself (merchant_triggered).
 //
-// TODO(spec): none of this could be checked against a PayU sandbox. The
-// places to verify first, all isolated in this file: the SI hash layout
-// (si_details between the udf block and the salt), the `pg` codes per method,
-// the command names pre_debit_SI / si_transaction / check_mandate_status /
-// mandate_revoke, and the shape of their JSON var1 and responses.
+// Verified against the PayU test environment: the commands pre_debit_SI,
+// check_mandate_status and mandate_revoke exist and take the authPayuId in var1;
+// the last two also need a requestId, and these commands answer in "message",
+// not "msg". An unknown mandate is "Mandate entry not found" / "Consent is Not
+// Mandated".
+//
+// TODO(spec): a real mandate was never registered (the test merchant's return
+// page fails, see docs/provider-verification.md), so these remain unverified:
+// the SI hash layout (si_details between the udf block and the salt), the `pg`
+// codes per method, the var1 of si_transaction (the layout here is refused with
+// "Mandatory column missing"; the right field names are unknown), and the JSON of
+// the successful responses.
 
 // setupAmount (Rs 1) is the verification amount a registration debits when
 // the request names none (Info.MandateSetupAmount). A registration for a

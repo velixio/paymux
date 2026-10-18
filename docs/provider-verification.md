@@ -91,24 +91,74 @@ invoices of newer API versions keep the subscription under
 
 ## PayU
 
-- [ ] **Refund status** (`api.go`, `FetchRefund`): the shape of
-  `transaction_details` in `check_action_status`. A payment with several refunds
-  lists them all; Paymux picks the entry whose `request_id` is asked for and
-  refuses to guess. Confirm the nesting and that `request_id` is always present.
-- [ ] **Mandates** (`mandate.go`): the SI hash layout (`si_details` between the
-  `udf` block and the salt), the `pg` code per method, the command names
-  (`pre_debit_SI`, `si_transaction`, `check_mandate_status`, `mandate_revoke`)
-  and the JSON of their `var1` and responses.
-- [ ] **Verification debit** (`payu.go`, `internal/subscriptions/verification.go`):
-  does PayU reverse the Rs 1 debit of a mandate registration itself
-  (`RefundsVerificationDebit: true` assumes it does)?
+Verified against the PayU test environment (test.payu.in, UAT) on 2026-10-18
+(`connectors/payu/sandbox_test.go`, `sandbox_browser_test.go`): the hosted
+checkout form post (PayU accepted the request hash and showed the payment
+page with the right amount), a card payment (3-D Secure simulator, OTP 123456)
+and a net-banking payment (the Test Bank simulator), `verify_payment` for a
+captured, a pending and an unknown txnid, bad key and bad salt, refunds
+(`cancel_refund_transaction`: queued, a reused token, an over-refund, two refunds
+of one amount within five minutes), `check_action_status`, the
+`get_Transaction_Details` listing, and that the standing-instruction commands
+exist. Fixed on the way:
+
+- `check_action_status` nests its answer as `<request_id>.<request_id>`, takes a
+  request id (not a token), and with `var2=payuid` lists every action of a
+  payment, the capture included; `FetchRefund` follows that, by request id or by
+  token among a payment's actions, and never takes the capture or a lone
+  unrelated entry.
+- A refund token sent twice fails with error 227; that is now the refund already
+  made, returned, not a refusal.
+- The transaction listing names the PayU id `id`, reports the unmapped status
+  (`captured`, `auth`), has `mer_service_fee`/`mer_service_tax`, and repeats the
+  payment as an extra row for each refund (told apart by `request_id`).
+- PayU's modes (CC, NB, UPI...) are reported as card, netbanking, upi...; a
+  successful payment no longer carries PayU's `E000`/`NO ERROR` as an error.
+- `check_mandate_status` and `mandate_revoke` need a `requestId` and answer in
+  `message`, not `msg`.
+
+An unknown txnid is answered with HTTP 200, `status: 0` and the txnid echoed back
+with `status: "Not Found"`. PayU cannot tell it from a checkout the customer has
+not submitted, and Paymux only asks about txnids it issued, so the connector
+reports it as a payment still waiting for the customer (`requires_action`), not
+`ErrNotFound`.
+
+- [x] **Hosted checkout form post, request hash, test URL** (`payu.go`).
+- [x] **Command hash and `verify_payment`**, bad key and salt (`Invalid Hash.`,
+  200) as `ErrInvalidCredentials`.
+- [x] **Refund status** (`api.go`, `FetchRefund`).
+- [ ] **Return and webhook reverse hash.** The test merchant's response page
+  (`test.payu.in/.../CommonPgResponseHandler`, `testtxncdn.payubiz.in/newResponse`)
+  answered 504 Gateway Time-out after every payment (card and net banking, three
+  attempts, a local and a public `surl`), so the browser was never sent back with
+  a PayU-signed response, and nothing could reach a webhook. The payments
+  themselves were captured (`verify_payment`). Re-check the reverse hash
+  (`additionalCharges` first when present) with a real return once PayU's test
+  environment completes the redirect; `TestSandboxVerifyCapturedReturn` verifies a
+  captured body.
+- [ ] **Webhooks.** What PayU sends for a refund made in the dashboard, and its
+  field names. Set up in the PayU Dashboard (Webhooks, under Settings): the URL
+  is the account's Paymux URL, `<public base>/hooks/<provider account id>`
+  (shown on the account page), for the events payment success, payment failure,
+  and refund (initiated and completed); dispute events are not used. Paymux
+  verifies payment events by the reverse hash and treats refund events as an
+  unsigned hint that it confirms with `check_action_status`. Not exercised: the
+  dashboard screens and a live delivery.
+- [ ] **Mandates** (`mandate.go`): the SI hash layout, the `pg` code per method,
+  the var1 of `si_transaction` (the current layout is refused with "Mandatory
+  column missing"; the field names are unknown) and the JSON of the successful
+  responses. The commands `pre_debit_SI`, `check_mandate_status` and
+  `mandate_revoke` exist, with the `requestId` fix above.
+- [ ] **Verification debit** (`payu.go`): does PayU reverse the Rs 1 debit of a
+  mandate registration itself (`RefundsVerificationDebit: true` assumes it does)?
 - [ ] **Chargebacks.** The Chargeback API (a separate token, a 20-day window) is
-  not built, so PayU disputes are entered by hand. Build `DisputeReader` once
-  there is access.
-- [ ] **Refund listing.** PayU has no listing API Paymux uses (`ListRefunds` is
-  unsupported); a refund made in PayU's dashboard reaches Paymux through its
-  (unsigned) webhook only, which Paymux treats as a hint and fetches. Check what
-  PayU sends for such a refund.
+  not built, so PayU disputes are entered by hand. The OAuth client credentials
+  PayU issued (scope `create_payment_links` only) do not cover it.
+- [ ] **Settlements.** `get_settlement_details` timed out on the test environment;
+  PayU is not a `Settler`.
+- [x] **Refund listing.** PayU has no listing API Paymux uses (`ListRefunds` is
+  unsupported); a refund made in the dashboard is found among the payment's
+  actions (`check_action_status`, `var2=payuid`) when its webhook arrives.
 
 ## Zoho Payments
 

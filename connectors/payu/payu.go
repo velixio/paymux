@@ -1,6 +1,10 @@
 // Package payu is the PayU India connector (hosted form_post checkout,
 // reverse-hash verification, postservice API). It imports only the stdlib and
 // pkg/....
+//
+// Verified against the PayU test environment except for the redirect back (the
+// test merchant's response page timed out, so the reverse hash was not checked
+// against a real PayU response) and for mandates; see docs/provider-verification.md.
 package payu
 
 import (

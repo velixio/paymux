@@ -413,7 +413,8 @@ func (p *payu) ListPayments(ctx context.Context, tr connector.TimeRange, cur con
 }
 
 // ListRefunds is not supported: PayU exposes no refund listing API that Paymux
-// uses. TODO(spec): reconcile refunds by polling FetchRefund instead.
+// uses. (A refund made in the dashboard is found by listing a payment's actions
+// with check_action_status, var2=payuid; see FetchRefund.)
 func (p *payu) ListRefunds(context.Context, connector.TimeRange, connector.Cursor) (connector.Page[connector.RefundSnapshot], error) {
 	return connector.Page[connector.RefundSnapshot]{}, connector.ErrUnsupported
 }
