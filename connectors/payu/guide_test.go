@@ -61,6 +61,13 @@ func TestUPIMandateCapIsFifteenThousand(t *testing.T) {
 	t.Error("no upi limit declared")
 }
 
+// The pre-debit notice must come at least 48 hours ahead of a card or UPI debit.
+func TestPreDebitNoticeLead(t *testing.T) {
+	if h := newConn(t, &fake{}).Info().PreDebitMinHours; h != 48 {
+		t.Errorf("PreDebitMinHours = %d, want 48", h)
+	}
+}
+
 // pg codes: the guide names ENACH for net-banking e-mandates (not NB), and
 // bankcode UPI for UPI.
 func TestRegistrationPaymentCodes(t *testing.T) {

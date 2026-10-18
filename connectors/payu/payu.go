@@ -51,6 +51,7 @@ var info = connector.Info{
 	// for every debit attempt, retries included. The e-NACH ceiling is Rs 1 crore.
 	SubscriptionModes:        []connector.BillingMode{connector.MerchantTriggered},
 	PreDebitPerAttempt:       true,
+	PreDebitMinHours:         48,   // the guide: "at least 48 hours before the debit" (24 for daily and ad-hoc UPI)
 	RefundsVerificationDebit: true, // TODO(spec): PayU reverses the Rs 1 verification debit itself; confirm at sandbox time
 	MandateSetupAmount:       100,  // the Rs 1 verification debit of a registration without a charge due (trials)
 	MandateLimits: []connector.MandateLimit{{Method: "upi", Currency: "INR", MaxAmount: 1_500_000}, {Method: "card", Currency: "INR"},

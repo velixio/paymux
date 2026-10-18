@@ -48,6 +48,7 @@ type rec struct {
 	fetchCalls  []string         // ids FetchMandate was asked for
 	noReverse   bool             // the provider does not reverse the verification debit itself
 	minCharge   map[string]int64 // Info.MinChargeMinor of the test connectors
+	noticeHours int              // Info.PreDebitMinHours of the test connectors
 }
 
 func (r *rec) chargeCount() int { r.mu.Lock(); defer r.mu.Unlock(); return len(r.charges) }
@@ -62,7 +63,7 @@ type base struct {
 func (b base) Info() connector.Info {
 	return connector.Info{Name: b.name, Version: "1", DisplayName: b.name, Currencies: []string{"INR"}, SubscriptionModes: b.modes,
 		MandateLimits: b.limits, PreDebitPerAttempt: b.r.perAttempt, MandateSetupAmount: 100,
-		RefundsVerificationDebit: !b.r.noReverse, MinChargeMinor: b.r.minCharge}
+		RefundsVerificationDebit: !b.r.noReverse, MinChargeMinor: b.r.minCharge, PreDebitMinHours: b.r.noticeHours}
 }
 func (b base) CreateCheckout(context.Context, connector.CheckoutRequest) (connector.CheckoutResult, error) {
 	return connector.CheckoutResult{}, connector.ErrUnsupported
@@ -383,10 +384,14 @@ func (e *env) cycles(subID string) []store.Cycle {
 func (e *env) assertNoticeBeforeEveryCharge() {
 	e.r.mu.Lock()
 	defer e.r.mu.Unlock()
+	gap := 24 * time.Hour
+	if h := time.Duration(e.r.noticeHours) * time.Hour; h > gap {
+		gap = h // the provider asked for a longer notice
+	}
 	for i, ch := range e.r.charges {
 		ok := false
 		for j, n := range e.r.notices {
-			if n.Mandate.ProviderMandateID != ch.Mandate.ProviderMandateID || e.r.noticeTimes[j].After(e.r.chargeTimes[i].Add(-24*time.Hour)) {
+			if n.Mandate.ProviderMandateID != ch.Mandate.ProviderMandateID || e.r.noticeTimes[j].After(e.r.chargeTimes[i].Add(-gap)) {
 				continue
 			}
 			if e.r.perAttempt && n.ProviderRef != ch.ProviderRef {
@@ -395,7 +400,7 @@ func (e *env) assertNoticeBeforeEveryCharge() {
 			ok = true
 		}
 		if !ok {
-			e.t.Errorf("debit %d (%s, %v) ran without a notice at least 24h earlier; notices at %v", i, ch.ProviderRef, e.r.chargeTimes[i], e.r.noticeTimes)
+			e.t.Errorf("debit %d (%s, %v) ran without a notice at least %v earlier; notices at %v", i, ch.ProviderRef, e.r.chargeTimes[i], gap, e.r.noticeTimes)
 		}
 	}
 }

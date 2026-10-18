@@ -59,6 +59,10 @@ type Info struct {
 	MerchantOfRecord   bool            `json:"merchant_of_record"`
 	SubscriptionModes  []BillingMode   `json:"subscription_modes"`
 	PreDebitPerAttempt bool            `json:"pre_debit_per_attempt"`
+	// PreDebitMinHours is the least time the provider wants between a pre-debit
+	// notice and the debit it announces, when that is longer than the RBI's 24
+	// hours (PayU asks for 48 for cards and most UPI AutoPay mandates). 0 means 24.
+	PreDebitMinHours int `json:"pre_debit_min_hours,omitempty"`
 	// DenyPrivateNetwork asks the host to build this connector's HTTP client
 	// with HTTPOptions.DenyPrivate (no loopback, private or link-local targets,
 	// no redirects), unless the account config sets "allow_insecure": true.
