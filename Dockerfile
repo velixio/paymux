@@ -28,7 +28,7 @@ COPY --from=frontend /src/web-home/dist ./web-home/dist
 ARG VERSION=dev
 # Static, CGO-free, no debug info or build paths in the binary.
 RUN CGO_ENABLED=0 go build -trimpath \
-      -ldflags "-s -w -X github.com/paymux/paymux.Version=${VERSION}" \
+      -ldflags "-s -w -X github.com/paymux/paymux/hub.Version=${VERSION}" \
       -o /out/paymux ./cmd/paymux \
  && mkdir -p /out/data
 

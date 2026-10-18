@@ -4,8 +4,8 @@
 // in. See docs/extending.md.
 //
 //	func main() {
-//	    framework.Main(func(app *paymux.App) {
-//	        app.OnPaymentSucceeded(func(ctx context.Context, e paymux.PaymentEvent) error {
+//	    framework.Main(func(app *hub.App) {
+//	        app.OnPaymentSucceeded(func(ctx context.Context, e hub.PaymentEvent) error {
 //	            return nil
 //	        })
 //	    })
@@ -34,20 +34,20 @@ import (
 
 	"io"
 
-	"github.com/paymux/paymux"
+	"github.com/paymux/paymux/hub"
 	"github.com/paymux/paymux/internal/cli"
 )
 
 var (
 	mu     sync.Mutex
-	setups []func(*paymux.App)
+	setups []func(*hub.App)
 )
 
 // OnSetup registers f to run on the App, before it starts, in every run of
 // "serve" in this binary. Modules linked in by "paymux build --with" call it
 // from init() to register their hooks. Functions run in registration order,
 // ahead of those passed to Run or Main.
-func OnSetup(f func(*paymux.App)) {
+func OnSetup(f func(*hub.App)) {
 	if f == nil {
 		return
 	}
@@ -59,16 +59,16 @@ func OnSetup(f func(*paymux.App)) {
 // Run executes the command line (args without the program name) and returns
 // the exit code. serve calls the OnSetup functions and then setup on the App
 // before starting it.
-func Run(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer, setup ...func(*paymux.App)) int {
+func Run(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer, setup ...func(*hub.App)) int {
 	mu.Lock()
-	all := append(append([]func(*paymux.App){}, setups...), setup...)
+	all := append(append([]func(*hub.App){}, setups...), setup...)
 	mu.Unlock()
 	return cli.RunWith(ctx, args, lookupEnv, stdout, stderr, all)
 }
 
 // Main is the whole of a custom binary's main function: it runs the command
 // line from os.Args until SIGINT or SIGTERM and exits the process.
-func Main(setup ...func(*paymux.App)) {
+func Main(setup ...func(*hub.App)) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	code := Run(ctx, os.Args[1:], os.LookupEnv, os.Stdout, os.Stderr, setup...)
 	stop()

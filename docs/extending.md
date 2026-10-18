@@ -14,7 +14,7 @@ exactly like `paymux` (same commands, same config, same database).
 
 A custom binary is a `main` package that calls `framework.Main`. The
 `framework` package links the built-in connectors and runs the same command
-line as `paymux`; the function you pass receives the `*paymux.App` before
+line as `paymux`; the function you pass receives the `*hub.App` before
 `serve` starts it.
 
 ```go
@@ -23,15 +23,15 @@ package main
 import (
 	"context"
 
-	"github.com/paymux/paymux"
 	"github.com/paymux/paymux/framework"
+	"github.com/paymux/paymux/hub"
 
 	_ "example.com/acmepay" // an extra connector: importing it registers it
 )
 
 func main() {
-	framework.Main(func(app *paymux.App) {
-		app.OnPaymentSucceeded(func(ctx context.Context, e paymux.PaymentEvent) error {
+	framework.Main(func(app *hub.App) {
+		app.OnPaymentSucceeded(func(ctx context.Context, e hub.PaymentEvent) error {
 			return notifyCRM(ctx, e.Payment.OrderRef, e.Payment.Amount)
 		})
 	})
@@ -56,7 +56,7 @@ function in `init()` instead:
 
 ```go
 func init() {
-	framework.OnSetup(func(app *paymux.App) {
+	framework.OnSetup(func(app *hub.App) {
 		app.OnInvoiceIssued(archiveInvoice)
 	})
 }
@@ -64,7 +64,7 @@ func init() {
 
 ## Hooks
 
-Hooks are methods on `*paymux.App`, registered before `serve` starts. Each can
+Hooks are methods on `*hub.App`, registered before `serve` starts. Each can
 be registered more than once; hooks for an event run in registration order.
 
 | Method | Event | Argument |
@@ -117,7 +117,7 @@ try them. It returns provider account ids, or connector names meaning every
 account of that connector, best first.
 
 ```go
-app.OnRoute(func(r paymux.RouteRequest) []string {
+app.OnRoute(func(r hub.RouteRequest) []string {
 	if r.Currency == "INR" && r.Amount >= 5_000_000 {
 		return []string{"razorpay"}
 	}
@@ -247,7 +247,7 @@ secret. Pin versions and read the code.
 
 ## Public API
 
-The root package (`github.com/paymux/paymux`) and `pkg/...` are the public
+The `hub` package (`github.com/paymux/paymux/hub`) and `pkg/...` are the public
 API. `api/pkg.txt` is a snapshot of their exported declarations, and CI fails
 when it is out of date (`go run ./scripts/apisnap -w` regenerates it after an
 intended change). Everything under `internal/` can change at any time.

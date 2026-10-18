@@ -1,5 +1,6 @@
-// Package paymux is the root of the Paymux payments hub.
-package paymux
+// Package hub is the Paymux payments hub: the application cmd/paymux runs and
+// that framework mode embeds (New, Run, hooks, the JS runtime).
+package hub
 
 import (
 	"context"

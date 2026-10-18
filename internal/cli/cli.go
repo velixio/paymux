@@ -7,7 +7,7 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/paymux/paymux"
+	"github.com/paymux/paymux/hub"
 	"github.com/paymux/paymux/internal/config"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/migrations"
@@ -49,7 +49,7 @@ func Run(ctx context.Context, args []string, lookupEnv func(string) (string, boo
 // RunWith is Run for a custom binary (framework mode): "serve" calls each
 // setup function on the App, in order, before starting it, which is where
 // hooks are registered.
-func RunWith(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer, setup []func(*paymux.App)) int {
+func RunWith(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer, setup []func(*hub.App)) int {
 	if len(args) == 0 {
 		args = []string{"serve"}
 	}
@@ -58,7 +58,7 @@ func RunWith(ctx context.Context, args []string, lookupEnv func(string) (string,
 		fmt.Fprint(stdout, help)
 		return 0
 	case "version":
-		fmt.Fprintf(stdout, "paymux %s\n", paymux.Version)
+		fmt.Fprintf(stdout, "paymux %s\n", hub.Version)
 		return 0
 	case "db":
 		return runDB(ctx, args[1:], stdout, stderr)
@@ -132,13 +132,13 @@ func envWithDotEnv(lookupEnv func(string) (string, bool)) (func(string) (string,
 	return config.WithDotEnv(lookupEnv, file), nil
 }
 
-func runServe(ctx context.Context, env func(string) (string, bool), stderr io.Writer, setup []func(*paymux.App)) int {
+func runServe(ctx context.Context, env func(string) (string, bool), stderr io.Writer, setup []func(*hub.App)) int {
 	cfg, err := config.Load(env)
 	if err != nil {
 		fmt.Fprintf(stderr, "paymux serve: invalid configuration:\n%v\n", err)
 		return 1
 	}
-	app, err := paymux.New(cfg)
+	app, err := hub.New(cfg)
 	if err == nil {
 		for _, f := range setup {
 			f(app)

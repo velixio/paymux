@@ -1,4 +1,4 @@
-package paymux
+package scripts
 
 import (
 	"archive/tar"
@@ -162,5 +162,12 @@ func TestReleaseScriptRejectsUnknownTargetsAndMissingVersion(t *testing.T) {
 	}
 	if text, err := runRelease(t, []string{"TARGETS=linux/amd64", "OUT=" + out}, "not a version!"); err == nil {
 		t.Errorf("a version that is not a plain tag should fail:\n%s", text)
+	}
+}
+
+// The release script and its outputs are named from the repository root.
+func init() {
+	if err := os.Chdir(".."); err != nil {
+		panic(err)
 	}
 }

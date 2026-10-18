@@ -135,6 +135,32 @@ pg_dump --no-owner --no-privileges --no-comments --column-inserts upgrade_fixtur
 For a new baseline, change `fixtureVersion` and the file names, and extend the
 data files to cover tables added since.
 
+## Changes to the Go API (framework mode)
+
+The database guarantee above does not cover Go source. These changes break code
+that imports Paymux as a library:
+
+- **The root package moved to `hub`.** `github.com/paymux/paymux` (package
+  `paymux`) is now `github.com/paymux/paymux/hub` (package `hub`), so the
+  repository root holds no Go code. In a framework-mode `main` or a plugin
+  module, change the import and the qualifier:
+
+  ```go
+  // before
+  import "github.com/paymux/paymux"
+  func(app *paymux.App) { ... paymux.PaymentEvent ... }
+
+  // after
+  import "github.com/paymux/paymux/hub"
+  func(app *hub.App) { ... hub.PaymentEvent ... }
+  ```
+
+  The module path (`github.com/paymux/paymux`, used in `go.mod` and in
+  `paymux build --with`) did not change. The build-version flag is now
+  `-X github.com/paymux/paymux/hub.Version=...`. Nothing else in the package
+  changed, so a find-and-replace is the whole migration. This was done before
+  there were framework-mode users.
+
 ## Writing migrations that keep the promise
 
 - Forward only, in lockstep for `migrations/sqlite` and `migrations/postgres`;

@@ -1,4 +1,4 @@
-package paymux
+package docs
 
 import (
 	"os"
@@ -98,5 +98,13 @@ func TestREADMEListsTheDocsAndTheBuiltConnectors(t *testing.T) {
 		if !strings.Contains(string(caps), "["+name+"]") {
 			t.Errorf("docs/capabilities.md lacks %s", name)
 		}
+	}
+}
+
+// The checks below name files from the repository root (README.md, docs/...),
+// so the tests run from there.
+func init() {
+	if err := os.Chdir(".."); err != nil {
+		panic(err)
 	}
 }

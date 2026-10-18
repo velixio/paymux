@@ -13,13 +13,13 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/paymux/paymux"
+	"github.com/paymux/paymux/hub"
 )
 
 const buildUsage = "usage: paymux build --with module[@version][=local/dir] [--with ...] [--replace module=local/dir ...] [--paymux-version v] [--out ./paymux-custom]"
 
 const (
-	basePath         = "github.com/paymux/paymux"
+	basePath         = "github.com/paymux/paymux/hub"
 	placeholderStamp = "v0.0.0-00010101000000-000000000000" // the version go uses for a replaced module with none
 )
 
@@ -133,8 +133,8 @@ func runBuild(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	ver := *baseVersion
 	if ver == "" {
 		ver = "latest"
-		if strings.HasPrefix(paymux.Version, "v") {
-			ver = paymux.Version
+		if strings.HasPrefix(hub.Version, "v") {
+			ver = hub.Version
 		}
 	}
 	if !versionRE.MatchString(ver) {

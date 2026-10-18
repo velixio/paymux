@@ -1,6 +1,6 @@
 //go:build loadtest
 
-package paymux
+package hub
 
 // Performance check against the spec section 12 targets. It drives the
 // in-process app (SQLite and Postgres) over HTTP and fails when a target is

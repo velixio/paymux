@@ -17,15 +17,15 @@ runs it (CI only vets it: `go vet -tags loadtest ./...`).
 
 ```sh
 # SQLite only
-go test -tags loadtest -run 'TestLoad/sqlite' -v -timeout 30m .
+go test -tags loadtest -run 'TestLoad/sqlite' -v -timeout 30m ./hub
 
 # both, with a PostgreSQL to hand
 PAYMUX_TEST_POSTGRES_URL='postgres://user:pass@127.0.0.1:5432/paymux?sslmode=disable' \
-  go test -tags loadtest -run TestLoad -v -timeout 30m .
+  go test -tags loadtest -run TestLoad -v -timeout 30m ./hub
 
 # profile
-go test -tags loadtest -run 'TestLoad/postgres' -cpuprofile cpu.pprof -memprofile mem.pprof .
-go tool pprof -top -cum paymux.test cpu.pprof
+go test -tags loadtest -run 'TestLoad/postgres' -cpuprofile cpu.pprof -memprofile mem.pprof ./hub
+go tool pprof -top -cum hub.test cpu.pprof
 ```
 
 Knobs: `LOADTEST_SECONDS` (length of the sustained phase, default 20),

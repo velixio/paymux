@@ -1,4 +1,4 @@
-package paymux
+package hub
 
 import (
 	"os"

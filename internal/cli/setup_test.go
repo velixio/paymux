@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux"
+	"github.com/paymux/paymux/hub"
 )
 
 func TestServeRunsSetupFunctionsOnTheAppBeforeStarting(t *testing.T) {
@@ -23,15 +23,15 @@ func TestServeRunsSetupFunctionsOnTheAppBeforeStarting(t *testing.T) {
 	defer cancel()
 	var order []string
 	var out, errb bytes.Buffer
-	code := RunWith(ctx, []string{"serve"}, lookup, &out, &errb, []func(*paymux.App){
-		func(a *paymux.App) {
+	code := RunWith(ctx, []string{"serve"}, lookup, &out, &errb, []func(*hub.App){
+		func(a *hub.App) {
 			if a == nil {
 				t.Error("nil app")
 			}
 			order = append(order, "first")
 			a.OnPaymentSucceeded(nil) // the hooks API is reachable from setup
 		},
-		func(a *paymux.App) {
+		func(a *hub.App) {
 			order = append(order, "second")
 			go func() { // stop once the app is listening
 				for a.Addr() == "" {

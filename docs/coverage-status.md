@@ -29,7 +29,7 @@ The documentation catalog and homepage demo have 100% unit statement/branch/func
 | `connectors/simulator` | 81.57% | 181 |
 | `internal/core` | 87.26% | 112 |
 | `connectors/zoho` | 84.68% | 106 |
-| `github.com/paymux/paymux` | 81.57% | 87 |
+| `hub` | 81.57% | 87 |
 | `connectors/payu` | 83.62% | 87 |
 | `connectors/razorpay` | 85.96% | 75 |
 | `connectors/whop` | 83.66% | 75 |

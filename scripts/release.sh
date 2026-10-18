@@ -62,7 +62,7 @@ for t in $TARGETS; do
   echo "==> build $name"
   mkdir -p "$stage/$name"
   CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
-    -ldflags "-s -w -X ${MODULE}.Version=${VERSION}" \
+    -ldflags "-s -w -X ${MODULE}/hub.Version=${VERSION}" \
     -o "$stage/$name/paymux" ./cmd/paymux
   cp LICENSE NOTICE "$stage/$name/" 2>/dev/null || true
   # Entries are at the top level of the archive: paymux, LICENSE, NOTICE.

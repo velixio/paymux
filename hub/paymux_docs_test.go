@@ -1,4 +1,4 @@
-package paymux
+package hub
 
 import (
 	"net/http"
@@ -28,7 +28,7 @@ func TestAPIReferenceIsServedOnTheBaseHost(t *testing.T) {
 		t.Error("/docs must not need JavaScript")
 	}
 
-	spec, err := os.ReadFile("docs/openapi.yaml")
+	spec, err := os.ReadFile("../docs/openapi.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
