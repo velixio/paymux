@@ -102,7 +102,11 @@ func (h *Handler) page(w http.ResponseWriter, status int, name string, data web.
 
 // result shows a titled message; titleKey and messageKey are catalog keys.
 func (h *Handler) result(w http.ResponseWriter, status int, appName, titleKey, messageKey, returnURL string) {
-	h.page(w, status, "pay_result", web.PayPage{AppName: appName, Title: h.tr(w, titleKey), Message: h.tr(w, messageKey), ReturnURL: returnURL})
+	msg := h.tr(w, messageKey)
+	if id := w.Header().Get("X-Request-Id"); status >= 500 && id != "" {
+		msg += " (request id: " + id + ")" // for support: it finds the log row
+	}
+	h.page(w, status, "pay_result", web.PayPage{AppName: appName, Title: h.tr(w, titleKey), Message: msg, ReturnURL: returnURL})
 }
 
 func (h *Handler) notFound(w http.ResponseWriter) {
