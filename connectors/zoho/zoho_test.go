@@ -187,6 +187,12 @@ func TestConformance(t *testing.T) {
 			PaymentID: "pay_01", AttemptID: "att_01", AppID: "app_01", ProviderRef: "pay_ref_01", Amount: 49900, Currency: "INR",
 		},
 		CheckoutHandler: newFake(""),
+		OAuth: &connectortest.OAuthFixtures{
+			RedirectURI: "https://pay.example.com/dashboard/oauth/callback", Code: "grant-code",
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "at", "refresh_token": "rt", "scope": "ZohoPay.payments.READ", "expires_in": 3600})
+			}),
+		},
 	})
 }
 

@@ -31,14 +31,18 @@ type client struct {
 }
 
 func (c *client) apiBase() string {
+	d, _ := c.cfg.domain()
 	if c.cfg.Sandbox {
-		return "https://paymentssandbox.zoho." + c.cfg.dc()
+		return "https://paymentssandbox." + d
 	}
-	return "https://payments.zoho." + c.cfg.dc()
+	return "https://payments." + d
 }
-func (c *client) tokenURL() string { return "https://accounts.zoho." + c.cfg.dc() + "/oauth/v2/token" }
+func (c *client) tokenURL() string { return "https://" + c.cfg.accountsHost() + "/oauth/v2/token" }
 func (c *client) acct() url.Values { return url.Values{"account_id": {c.cfg.AccountID}} }
 func (c *client) accessToken(ctx context.Context, force bool) (string, error) {
+	if c.cfg.RefreshToken == "" {
+		return "", fmt.Errorf("%w: zoho: the account is not connected yet: connect it with Zoho from the dashboard (provider account page, Connect)", connector.ErrInvalidCredentials)
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !force {

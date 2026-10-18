@@ -69,6 +69,7 @@ var columns = []column{
 	{connector.CapCancel, "Cancel checkout", "`Canceler`: cancel an open checkout at the provider."},
 	{connector.CapSubscriptionManager, "Provider-managed subscriptions", "`SubscriptionManager`: the provider bills and retries recurring payments."},
 	{connector.CapMandateManager, "Mandates (merchant-triggered)", "`MandateManager`: Paymux debits a mandate (UPI AutoPay, card, e-mandate) on each renewal."},
+	{connector.CapOAuth, "Connect (OAuth)", "`OAuthConnector`: the dashboard's Connect button authorises the account with the provider, so no grant code is pasted by hand."},
 }
 
 const remoteName = "remote"
