@@ -2,12 +2,15 @@ package subscriptions
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/core/state"
 	"github.com/paymux/paymux/internal/ids"
+	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector"
 )
@@ -20,8 +23,13 @@ import (
 // (Info.RefundsVerificationDebit), it is refunded through the ordinary refund
 // path (initiated_by=system, reason=mandate_verification).
 //
-// TODO(spec): whether PayU and Zoho reverse the verification debit themselves
-// is assumed (both connectors declare true); confirm at sandbox time.
+// Whether PayU and Zoho reverse the verification debit themselves is not known
+// (both connectors declare that they do). Unless the org setting
+// verification_debit_fallback is "never", Paymux therefore checks 72 hours
+// after the debit: if the provider shows the payment as not refunded and nobody
+// has refunded it, Paymux refunds it explicitly. That refund is idempotent (the
+// job is keyed by the payment; a refund row of any origin, or a provider that
+// reports the money back, stops it; the balance check stops a second one).
 
 // ReasonMandateVerification is the refund reason of a verification debit.
 const ReasonMandateVerification = "mandate_verification"
@@ -112,7 +120,13 @@ func (s *Service) settleVerification(ctx context.Context, mandateID string, setu
 		if err != nil {
 			return err
 		}
-		if conn.Info().RefundsVerificationDebit || len(refunds) > 0 {
+		if len(refunds) > 0 {
+			continue
+		}
+		if conn.Info().RefundsVerificationDebit {
+			if err := s.scheduleVerificationFallback(ctx, sub, p, cy); err != nil {
+				return err
+			}
 			continue
 		}
 		if _, err := s.core.CreateRefund(ctx, core.CreateRefundInput{Scope: core.Scope{AppID: sub.AppID, Mode: sub.Mode}, Actor: audit.System,
@@ -121,4 +135,99 @@ func (s *Service) settleVerification(ctx context.Context, mandateID string, setu
 		}
 	}
 	return nil
+}
+
+// verificationFallbackDelay is how long the provider has to reverse the debit.
+const verificationFallbackDelay = 72 * time.Hour
+
+// scheduleVerificationFallback queues the 72-hour check (once per payment),
+// unless the org setting turns it off.
+func (s *Service) scheduleVerificationFallback(ctx context.Context, sub store.Subscription, p store.Payment, cy store.Cycle) error {
+	return s.db.Write(ctx, func(tx store.Tx) error {
+		mode, err := resolve[string](ctx, tx, sub.AppID, "verification_debit_fallback")
+		if err != nil {
+			return err
+		}
+		if mode == "never" {
+			return nil
+		}
+		return s.jobs.Enqueue(ctx, tx, jobs.Job{Kind: JobVerificationFallback, RunAt: cy.CreatedAt.Add(verificationFallbackDelay),
+			Payload: map[string]string{"payment_id": p.ID, "subscription_id": sub.ID}, DedupeKey: JobVerificationFallback + ":" + p.ID})
+	})
+}
+
+// handleVerificationFallback refunds a verification debit the provider has not
+// reversed. It does nothing when a refund of the payment exists in any state
+// but failed (an operator's, the provider's imported one, or its own earlier
+// run), when the provider shows the money as returned, or when the balance is
+// already refunded.
+func (s *Service) handleVerificationFallback(ctx context.Context, raw json.RawMessage) error {
+	var pl struct {
+		PaymentID      string `json:"payment_id"`
+		SubscriptionID string `json:"subscription_id"`
+	}
+	if err := json.Unmarshal(raw, &pl); err != nil || pl.PaymentID == "" {
+		return jobs.Permanent(errors.New("subscription.verification_fallback: bad payload"))
+	}
+	var (
+		p       store.Payment
+		sub     store.Subscription
+		att     store.Attempt
+		refunds []store.Refund
+	)
+	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+		if p, err = store.GetPayment(ctx, q, pl.PaymentID); err != nil {
+			return err
+		}
+		if sub, err = store.GetSubscription(ctx, q, pl.SubscriptionID); err != nil {
+			return err
+		}
+		attempts, err := store.ListAttempts(ctx, q, p.ID)
+		if err != nil {
+			return err
+		}
+		for _, a := range attempts {
+			if a.Status == string(state.AttemptCaptured) {
+				att = a
+			}
+		}
+		refunds, err = store.ListRefunds(ctx, q, p.ID)
+		return err
+	})
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if p.Kind != "mandate_setup" || p.Status != string(state.PaymentSucceeded) || att.ID == "" {
+		return nil
+	}
+	for _, r := range refunds {
+		if r.Status != string(state.RefundFailed) {
+			return nil // refunded, or being refunded, by someone
+		}
+	}
+	conn, err := s.connectors.Get(ctx, sub.ProviderAccountID)
+	if err != nil {
+		return err
+	}
+	snap, err := conn.FetchPayment(ctx, connector.PaymentRef{ProviderRef: att.ProviderRef, ProviderOrderID: att.ProviderOrderID, ProviderPaymentID: att.ProviderPaymentID})
+	switch {
+	case err == nil:
+		if snap.AmountRefunded >= p.AmountReceived && p.AmountReceived > 0 {
+			return nil // the provider reversed it itself
+		}
+	case errors.Is(err, connector.ErrNotFound):
+		// The provider cannot show it; the refund below is the safe way to find out
+		// (a provider that already returned it will refuse, and the refund will fail visibly).
+	default:
+		return err // could not ask: the queue retries
+	}
+	_, err = s.core.CreateRefund(ctx, core.CreateRefundInput{Scope: core.Scope{AppID: sub.AppID, Mode: sub.Mode}, Actor: audit.System,
+		InitiatedBy: "system", PaymentID: p.ID, Reason: ReasonMandateVerification})
+	if errors.Is(err, core.ErrRefundExceeds) || errors.Is(err, core.ErrNotRefundable) {
+		return nil // already refunded, or not refundable (a dispute): nothing more to do
+	}
+	return err
 }

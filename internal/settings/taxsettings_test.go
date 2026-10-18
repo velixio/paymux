@@ -20,6 +20,16 @@ func TestTaxExceptionSettingsValidate(t *testing.T) {
 		{"credit_note_cutoff", `"02-30"`, false},
 		{"credit_note_cutoff", `"1-5"`, false},
 		{"credit_note_cutoff", `30`, false},
+		{"einvoice_igst_refund_claim", `"auto"`, true},
+		{"einvoice_igst_refund_claim", `"Y"`, true},
+		{"einvoice_igst_refund_claim", `"N"`, true},
+		{"einvoice_igst_refund_claim", `"y"`, false},
+		{"einvoice_igst_refund_claim", `"yes"`, false},
+		{"einvoice_igst_refund_claim", `true`, false},
+		{"verification_debit_fallback", `"refund_after_72h"`, true},
+		{"verification_debit_fallback", `"never"`, true},
+		{"verification_debit_fallback", `"refund"`, false},
+		{"verification_debit_fallback", `72`, false},
 		{"b2cl_threshold", `10000000`, true},
 		{"b2cl_threshold", `1`, true},
 		{"b2cl_threshold", `0`, false},
@@ -39,6 +49,12 @@ func TestTaxExceptionSettingsValidate(t *testing.T) {
 	// The built-in values are today's rules.
 	if d, _ := settings.Lookup("credit_note_cutoff"); d.Default != `"11-30"` || d.Levels != settings.LevelOrg {
 		t.Errorf("credit_note_cutoff default/levels = %s %v", d.Default, d.Levels)
+	}
+	if d, _ := settings.Lookup("einvoice_igst_refund_claim"); d.Default != `"auto"` || d.Levels != settings.LevelOrg {
+		t.Errorf("einvoice_igst_refund_claim default/levels = %s %v", d.Default, d.Levels)
+	}
+	if d, _ := settings.Lookup("verification_debit_fallback"); d.Default != `"refund_after_72h"` || d.Levels != settings.LevelOrg {
+		t.Errorf("verification_debit_fallback default/levels = %s %v", d.Default, d.Levels)
 	}
 	if d, _ := settings.Lookup("b2cl_threshold"); d.Default != `10000000` || d.Levels != settings.LevelOrg {
 		t.Errorf("b2cl_threshold default/levels = %s %v", d.Default, d.Levels)

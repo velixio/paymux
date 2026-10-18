@@ -379,22 +379,23 @@ type HTTPOptions struct {
 }
 
 type Info struct {
-	Name                     string          `json:"name"`
-	Version                  string          `json:"version"`
-	DisplayName              string          `json:"display_name"`
-	Capabilities             []Capability    `json:"capabilities"`
-	ConfigSchema             json.RawMessage `json:"config_schema"`
-	Currencies               []string        `json:"currencies"`
-	Methods                  []string        `json:"methods"`
-	MerchantOfRecord         bool            `json:"merchant_of_record"`
-	SubscriptionModes        []BillingMode   `json:"subscription_modes"`
-	PreDebitPerAttempt       bool            `json:"pre_debit_per_attempt"`
-	DenyPrivateNetwork       bool            `json:"deny_private_network,omitempty"`
-	MandateLimits            []MandateLimit  `json:"mandate_limits"`
-	MandateSetupAmount       int64           `json:"mandate_setup_amount,omitempty"`
-	RefundsVerificationDebit bool            `json:"refunds_verification_debit,omitempty"`
-	RateLimit                RateLimit       `json:"rate_limit"`
-	TestOnly                 bool            `json:"test_only,omitempty"`
+	Name                     string           `json:"name"`
+	Version                  string           `json:"version"`
+	DisplayName              string           `json:"display_name"`
+	Capabilities             []Capability     `json:"capabilities"`
+	ConfigSchema             json.RawMessage  `json:"config_schema"`
+	Currencies               []string         `json:"currencies"`
+	Methods                  []string         `json:"methods"`
+	MerchantOfRecord         bool             `json:"merchant_of_record"`
+	SubscriptionModes        []BillingMode    `json:"subscription_modes"`
+	PreDebitPerAttempt       bool             `json:"pre_debit_per_attempt"`
+	DenyPrivateNetwork       bool             `json:"deny_private_network,omitempty"`
+	MandateLimits            []MandateLimit   `json:"mandate_limits"`
+	MandateSetupAmount       int64            `json:"mandate_setup_amount,omitempty"`
+	MinChargeMinor           map[string]int64 `json:"min_charge_minor,omitempty"`
+	RefundsVerificationDebit bool             `json:"refunds_verification_debit,omitempty"`
+	RateLimit                RateLimit        `json:"rate_limit"`
+	TestOnly                 bool             `json:"test_only,omitempty"`
 }
 
 func List() []Info

@@ -41,6 +41,9 @@ var info = connector.Info{
 	Currencies:        []string{"INR", "USD", "EUR", "GBP", "SGD", "AED", "AUD", "CAD"},
 	Methods:           []string{"card", "upi", "netbanking", "wallet", "emi"},
 	SubscriptionModes: []connector.BillingMode{connector.ProviderManaged},
+	// The smallest INR order is Rs 1. (The minimums of Razorpay's other
+	// currencies are not stated here: they default to one minor unit.)
+	MinChargeMinor: map[string]int64{"INR": 100},
 	// Razorpay does not publish a hard rate limit; stay well under typical
 	// per-key throttling.
 	RateLimit: connector.RateLimit{RequestsPerSecond: 20, Burst: 20},

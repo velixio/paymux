@@ -80,10 +80,14 @@ type CreditRef struct {
 // note: Number and IssuedAt are the credit note's, the lines its own (positive)
 // amounts, and the portal document is a CRN referring to the invoice.
 type Source struct {
-	Credit     *CreditRef
-	Number     string
-	IssuedAt   time.Time
-	SupplyType string // B2B, ExportLUT or ExportIGST
+	// IGSTRefundClaim is the einvoice_igst_refund_claim setting: "auto" (or
+	// empty), "Y" or "N". It decides RefClm of an export that paid IGST;
+	// an export under a LUT paid none and never claims.
+	IGSTRefundClaim string
+	Credit          *CreditRef
+	Number          string
+	IssuedAt        time.Time
+	SupplyType      string // B2B, ExportLUT or ExportIGST
 	// PlaceOfSupply is the buyer's 2-digit state code (ignored for exports).
 	PlaceOfSupply string
 	Seller, Buyer Party
@@ -267,6 +271,11 @@ func Build(src Source) (*Invoice, error) {
 	var problems []string
 	bad := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
 
+	switch src.IGSTRefundClaim {
+	case "", "auto", "Y", "N":
+	default:
+		bad("the IGST refund claim setting %q must be auto, Y or N", src.IGSTRefundClaim)
+	}
 	if !numberRE.MatchString(src.Number) {
 		bad("document number %q cannot be used on an e-invoice: it must be at most 16 characters of A-Z, 0-9, '/' and '-' and not start with 0 (shorten the invoice prefix of the tax entity)", src.Number)
 	}
@@ -411,10 +420,14 @@ func Build(src Source) (*Invoice, error) {
 		if !strings.Contains(fc, ".") {
 			doc.ValDtls.TotInvValFc = json.Number(fc + ".00")
 		}
-		// TODO(spec): RefClm (claiming a refund of the IGST paid) is "N" for LUT
-		// exports; for exports with payment of IGST the operator may claim it, but
-		// Paymux has no setting for that, so "N" is sent.
-		doc.ExpDtls = &ExpDtls{RefClm: "N", ForCur: src.Currency, CntCode: strings.ToUpper(strings.TrimSpace(b.Country))}
+		// RefClm: claiming a refund of the IGST paid. An export under a LUT paid
+		// none, so it is always "N". An export with IGST paid is the usual claim:
+		// "auto" (the default) says "Y"; the org setting can force "Y" or "N".
+		refClm := "N"
+		if src.SupplyType == ExportIGST && src.IGSTRefundClaim != "N" {
+			refClm = "Y"
+		}
+		doc.ExpDtls = &ExpDtls{RefClm: refClm, ForCur: src.Currency, CntCode: strings.ToUpper(strings.TrimSpace(b.Country))}
 	}
 	return doc, nil
 }

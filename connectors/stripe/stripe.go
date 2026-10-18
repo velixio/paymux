@@ -53,6 +53,11 @@ var info = connector.Info{
 	// TODO(spec): the methods depend on the account's Checkout settings.
 	Methods:           []string{"card", "wallet", "bank_transfer"},
 	SubscriptionModes: []connector.BillingMode{connector.ProviderManaged},
+	// Stripe's minimum charge amounts (https://docs.stripe.com/currencies#minimum-and-maximum-charge-amounts),
+	// in the currency's minor units; a currency that is not here has no minimum
+	// stated (one minor unit).
+	MinChargeMinor: map[string]int64{"USD": 50, "EUR": 50, "GBP": 30, "INR": 50, "AUD": 50, "CAD": 50, "SGD": 50, "HKD": 400, "JPY": 50,
+		"CHF": 50, "SEK": 300, "NOK": 300, "DKK": 250, "NZD": 50, "AED": 200, "BRL": 50, "MXN": 1000, "PLN": 200, "CZK": 1500, "MYR": 200, "THB": 1000},
 	// Stripe allows 100 read and 100 write requests per second in live mode
 	// and 25 in test mode; stay under the test limit.
 	RateLimit: connector.RateLimit{RequestsPerSecond: 20, Burst: 20},

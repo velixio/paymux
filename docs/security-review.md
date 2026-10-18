@@ -265,10 +265,36 @@ the dashboard, CSRF-protected like every dashboard form, and the page never
 echoes the file or the password; the sealed blob is bound to its tax entity
 (AAD), so it cannot be moved to another entity's row.
 
+## Third batch and live findings
+
+| ID | Finding | Severity | Disposition |
+|----|---------|----------|-------------|
+| F20 | A payment's `allowed_connectors` and `country` were checked when it was created but not kept: the pay page, a retry and a fallback routed again without them, so money could reach a provider the app had excluded | High | Fixed: both stored on the payment (migration 0019) and used for every routing decision |
+| F21 | A card payment completed at the provider whose return and webhook never arrived (a PayU response handler timeout) was never looked at again, and could be expired or failed as unpaid | High | Fixed: polling starts with the checkout (2 minutes, backing off, through the checkout's expiry plus an hour); expiring a payment asks the provider first and a success wins; reconciliation matches a started checkout by our reference |
+| F22 | The e-invoice portal's `SignedQRCode` signature was never verified, so any well-formed token naming the right IRN was accepted | Medium | Fixed with a strict verifier (`internal/invoice/irp`): alg exactly RS256 (no `none`, no HMAC under the public key), the token's `kid` / `x5t` must name a configured key, no embedded or referenced keys (`jwk`, `jku`, `x5u`), key of 2048 bits or more. Active once `einvoice_irp_keys` is set; **no key is shipped** (see below) |
+| F23 | OAuth Connect (Zoho) is a new route that stores a credential from a redirect | Design | The `state` is random, hashed at rest, single use, ten minutes, bound to the session user and the account; the callback needs `provider_account.manage`; the data centre it names is looked up in Zoho's own list, so an `accounts-server` parameter can never make Paymux call another host; tokens and the client secret are sealed and never logged, rendered or audited; the page rendered from a failed callback no longer carries the code in its forms |
+| F24 | A proration credit could take a renewal below the provider's minimum charge, and a small prorated extra charge was attempted on its own | Low | Fixed: `Info.MinChargeMinor`, credit carried forward, small charge folded into the next renewal |
+| F25 | A verification debit that the provider was *believed* to reverse was never checked | Low | Fixed: a 72-hour check refunds it explicitly if the provider still shows it unrefunded (`verification_debit_fallback`), idempotent and never on top of another refund |
+
+Decisions worth knowing:
+
+- **No IRP key is shipped.** The portal publishes its sandbox and production
+  keys, but a key typed from memory cannot be checked from here, and a wrong
+  default would either reject genuine tokens or give a false sense of
+  verification. The setting is empty by default (the claims are still checked,
+  as before) and the runbook says where to get the key.
+- **`RefClm` defaults to claiming** the IGST refund on an export that paid IGST
+  (`auto`), never under a LUT. It is an org setting; the choice belongs to
+  whoever files the returns.
+- **The DEMO setup** (Karnataka entity, prices including 18%) is covered end to
+  end: a succeeded payment issues exactly one invoice whose total equals
+  `amount_received`, for a Karnataka buyer (CGST + SGST), an out-of-state buyer
+  (IGST), B2B in and out of state, an export under a LUT or without one (IGST),
+  a payment in rupees from abroad, exclusive pricing, and a duplicate success.
+
 ## What remains
 
 Every `TODO(spec)` left in the code needs a provider sandbox, a provider
 document, or a portal; each is a checklist item in
-[provider-verification.md](provider-verification.md). Open design decisions that
-are not verification: the e-invoice `RefClm` setting for exporters who claim an
-IGST refund, and a per-provider minimum debit for proration credits.
+[provider-verification.md](provider-verification.md). The one remaining design
+question that is not verification: the IRP key to ship by default (see above).

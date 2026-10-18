@@ -57,7 +57,9 @@ var info = connector.Info{
 		{Method: "emandate", Currency: "INR", MaxAmount: 1_000_000_000}},
 	// Disputes come from the Chargeback API (chargebacks.go), which needs its own
 	// token; without it the dispute calls say so.
-	RateLimit: connector.RateLimit{RequestsPerSecond: 10, Burst: 10},
+	// PayU's smallest transaction is Rs 1.
+	MinChargeMinor: map[string]int64{"INR": 100},
+	RateLimit:      connector.RateLimit{RequestsPerSecond: 10, Burst: 10},
 }
 
 func init() { connector.Register("payu", New, info) }

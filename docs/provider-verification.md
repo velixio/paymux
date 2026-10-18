@@ -330,10 +330,21 @@ Written entirely from documentation (`cashfree.go`).
 
 ## Subscriptions engine
 
-- [ ] **Minimum debit per provider** (`internal/subscriptions/proration.go`): a
-  proration credit never takes a renewal below 1 minor unit; a provider's own
-  minimum debit is not known to Paymux.
+- [ ] **Minimum charge per provider** (`Info.MinChargeMinor`; a proration credit
+  never takes a renewal below it, and an extra proration charge under it waits
+  for the next renewal). Values in the code: Razorpay, PayU, Cashfree and Zoho
+  INR 100 (Rs 1; Zoho's is inferred from its verification debit, not documented),
+  Stripe per currency as in its "minimum and maximum charge amounts" table
+  (USD 50, EUR 50, GBP 30, INR 50, AUD 50, CAD 50, SGD 50, HKD 400, JPY 50,
+  CHF 50, SEK 300, NOK 300, DKK 250, NZD 50, AED 200, BRL 50, MXN 1000,
+  PLN 200, CZK 1500, MYR 200, THB 1000; KRW has none stated). Check each against
+  the provider's current documentation and, for a recurring debit, against a real
+  mandate debit: a mandate may have its own floor. Whop has none stated.
 - [ ] **Verification debit reversal** (`verification.go`): see PayU and Zoho above.
+  Until it is known, the org setting `verification_debit_fallback` (default
+  `refund_after_72h`) refunds the debit explicitly 72 hours later if the provider
+  still shows it unrefunded; confirm which of the two a real registration does,
+  then set `never` if the provider always reverses it.
 
 ## GST e-invoice
 
@@ -341,11 +352,21 @@ Written entirely from documentation (`cashfree.go`).
   schema was transcribed from the portal's published field list; diff it against
   the portal's own schema file, and upload one invoice and one credit note
   (`CRN`, with `RefDtls.PrecDocDtls`) to the sandbox portal.
-- [ ] **Signed QR code** (`internal/invoice/einvoice.go`): Paymux checks that the
-  token names the right IRN, document and seller but does not verify its RS256
-  signature, because it does not ship the IRP's certificate.
-- [ ] **`RefClm`** (`einvoice/einvoice.go`): always `N`. An exporter paying IGST
-  who claims the refund needs `Y`; there is no setting for it.
+- [ ] **Signed QR code** (`internal/invoice/irp`, `einvoice.go`): with the portal's
+  public key(s) in the org setting `einvoice_irp_keys`, Paymux verifies the
+  RS256 signature strictly (alg exactly RS256; the token's `kid` / `x5t` /
+  `x5t#S256` must name a configured key; no embedded keys). **No key is shipped:**
+  the NIC sandbox and production keys are published by the portal, and a key
+  typed from memory would be worse than none. Download the certificate(s) from
+  the portal's documentation, put the PEM in the setting, and record a real
+  `SignedQRCode`: check which header fields it carries (`x5t`? `kid`?) and that
+  the identifiers match the way `ParseKeys` computes them (x5t is the base64url
+  SHA-1 of the certificate; kid is the hex of its subject key id or of the SHA-1
+  of its public key). Without keys only the claims are checked.
+- [ ] **`RefClm`** (`einvoice/einvoice.go`): sent as `N` under a LUT; for an export
+  that paid IGST it follows the org setting `einvoice_igst_refund_claim`
+  (default `auto` = `Y`, the usual claim). Confirm with whoever files your
+  returns; the portal validates it against the export details.
 
 ## Digital signature (PAdES)
 
