@@ -345,7 +345,7 @@ func (d *Dashboard) renderWith(w http.ResponseWriter, status int, rend *web.Rend
 }
 
 func (d *Dashboard) fail(w http.ResponseWriter, err error) {
-	d.o.Logger.Error("dashboard: internal error", "err", err)
+	d.o.Logger.Error("dashboard: internal error", "request_id", w.Header().Get("X-Request-Id"), "err", err)
 	http.Error(w, "internal error", http.StatusInternalServerError)
 }
 

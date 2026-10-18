@@ -230,7 +230,7 @@ func (h *Handler) pay(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) serverError(w http.ResponseWriter, appName string, err error) {
-	h.o.Logger.Error("paypage: request failed", "err", err)
+	h.o.Logger.Error("paypage: request failed", "request_id", w.Header().Get("X-Request-Id"), "err", err)
 	h.result(w, http.StatusInternalServerError, appName, "result.error.title", "result.error.msg", "")
 }
 
