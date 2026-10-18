@@ -357,6 +357,32 @@ func (s *Service) LinkApp(ctx context.Context, actor audit.Actor, sc core.OrgSco
 	})
 }
 
+// LoadKnownSecrets hands the secret config values of every stored account to
+// Options.KnownSecrets, without building any connector. Call it at start-up, so
+// the redactor knows the secrets before the first use of an account. An account
+// whose config cannot be read is skipped (it is reported when it is used).
+func (s *Service) LoadKnownSecrets(ctx context.Context) error {
+	if s.o.KnownSecrets == nil {
+		return nil
+	}
+	var accounts []store.ProviderAccount
+	if err := s.o.DB.Read(ctx, func(q store.Querier) (err error) { accounts, err = store.ListEveryProviderAccount(ctx, q); return }); err != nil {
+		return err
+	}
+	for _, pa := range accounts {
+		_, info, ok := connector.Lookup(pa.Connector)
+		if !ok {
+			continue
+		}
+		cfg, err := s.o.Box.Open(pa.ConfigEnc, configAAD(pa.ID))
+		if err != nil {
+			continue
+		}
+		s.o.KnownSecrets("account:"+pa.ID, secretValues(info.ConfigSchema, cfg))
+	}
+	return nil
+}
+
 // Invalidate drops the cached instance of an account.
 func (s *Service) Invalidate(accountID string) {
 	s.mu.Lock()
