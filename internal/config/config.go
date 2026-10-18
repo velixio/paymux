@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/mail"
 	"net/netip"
 	"net/url"
@@ -53,6 +54,19 @@ type Config struct {
 	OIDCClientSecret   Secret   // PAYMUX_OIDC_CLIENT_SECRET
 	OIDCAllowedDomains []string // PAYMUX_OIDC_ALLOWED_DOMAINS: e-mail domains that may be created at first sign-in
 	OIDCDefaultRole    string   // PAYMUX_OIDC_DEFAULT_ROLE for those users (default viewer; never admin)
+
+	// DBLogLevel is the lowest level of application log records kept in the
+	// database (PAYMUX_DB_LOG_LEVEL; default warn). Info and debug are stored
+	// only when asked for here.
+	DBLogLevel slog.Level
+
+	// OTLPLogsEndpoint, when set (PAYMUX_OTLP_LOGS_ENDPOINT), also ships the
+	// stored, redacted records to an OpenTelemetry collector over OTLP/HTTP
+	// JSON. The endpoint is operator-configured, so a private address is fine.
+	// OTLPLogsHeaders (PAYMUX_OTLP_LOGS_HEADERS, "Name=value,Name=value") are
+	// sent with every request.
+	OTLPLogsEndpoint string
+	OTLPLogsHeaders  map[string]Secret
 
 	// JavaScript hooks (plugins/jsvm). They run only when JSHooksDir exists.
 	JSHooksDir          string   // PAYMUX_JS_HOOKS_DIR, default <data dir>/hooks
@@ -202,11 +216,55 @@ func Load(lookupEnv func(string) (string, bool)) (Config, error) {
 	}
 
 	loadOIDC(&c, get, bad)
+	loadLogs(&c, get, bad)
 
 	if len(errs) > 0 {
 		return Config{}, errors.Join(errs...)
 	}
 	return c, nil
+}
+
+// loadLogs reads the database-log level and the optional OTLP export.
+func loadLogs(c *Config, get func(k, def string) string, bad func(string, ...any)) {
+	c.DBLogLevel = slog.LevelWarn
+	switch lv := strings.ToLower(get("PAYMUX_DB_LOG_LEVEL", "warn")); lv {
+	case "warn":
+	case "error":
+		c.DBLogLevel = slog.LevelError
+	case "info":
+		c.DBLogLevel = slog.LevelInfo
+	case "debug":
+		c.DBLogLevel = slog.LevelDebug
+	default:
+		bad("PAYMUX_DB_LOG_LEVEL must be warn, error, info or debug")
+	}
+	endpoint, headers := get("PAYMUX_OTLP_LOGS_ENDPOINT", ""), get("PAYMUX_OTLP_LOGS_HEADERS", "")
+	if endpoint == "" {
+		if headers != "" {
+			bad("PAYMUX_OTLP_LOGS_HEADERS needs PAYMUX_OTLP_LOGS_ENDPOINT")
+		}
+		return
+	}
+	if u, err := url.Parse(endpoint); err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		bad("PAYMUX_OTLP_LOGS_ENDPOINT must be an absolute http(s) URL")
+	} else {
+		c.OTLPLogsEndpoint = endpoint
+	}
+	for _, pair := range strings.Split(headers, ",") {
+		if pair = strings.TrimSpace(pair); pair == "" {
+			continue
+		}
+		name, val, ok := strings.Cut(pair, "=")
+		name = strings.TrimSpace(name)
+		if !ok || name == "" {
+			bad("PAYMUX_OTLP_LOGS_HEADERS must be Name=value pairs separated by commas")
+			continue
+		}
+		if c.OTLPLogsHeaders == nil {
+			c.OTLPLogsHeaders = map[string]Secret{}
+		}
+		c.OTLPLogsHeaders[name] = Secret(strings.TrimSpace(val))
+	}
 }
 
 var domainRE = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$`)
