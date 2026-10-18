@@ -181,7 +181,11 @@ type lockedWriter struct {
 	w  io.Writer
 }
 
-func (l *lockedWriter) Write(p []byte) (int, error) { l.mu.Lock(); defer l.mu.Unlock(); return l.w.Write(p) }
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
+}
 
 // The recorder hands every batch it writes to Tee, so the OTLP export sees
 // exactly the rows the database does.
