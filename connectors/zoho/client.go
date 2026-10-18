@@ -142,6 +142,24 @@ func (c *client) do(ctx context.Context, method, path string, query url.Values, 
 }
 
 func (c *client) once(ctx context.Context, tok, method, path string, query url.Values, in, out any) error {
+	return c.onceAt(ctx, c.apiBase(), tok, method, path, query, in, out)
+}
+
+// otherBase is the API base of the other server (live for a sandbox account,
+// sandbox for a live one), "" for a data centre that is not on the list.
+func (c *client) otherBase() string {
+	d, ok := c.cfg.domain()
+	if !ok {
+		return ""
+	}
+	if c.cfg.Sandbox {
+		return "https://payments." + d
+	}
+	return "https://paymentssandbox." + d
+}
+
+// onceAt makes one call against the given API base.
+func (c *client) onceAt(ctx context.Context, base, tok, method, path string, query url.Values, in, out any) error {
 	q := c.acct()
 	for k, v := range query {
 		q[k] = v
@@ -154,7 +172,7 @@ func (c *client) once(ctx context.Context, tok, method, path string, query url.V
 		}
 		body = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.apiBase()+path+"?"+q.Encode(), body)
+	req, err := http.NewRequestWithContext(ctx, method, base+path+"?"+q.Encode(), body)
 	if err != nil {
 		return err
 	}

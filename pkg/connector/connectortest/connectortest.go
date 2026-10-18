@@ -74,6 +74,11 @@ type Fixtures struct {
 	CheckNextAction func(t *testing.T, na connector.NextAction)
 	// OAuth is required of a connector that declares CapOAuth.
 	OAuth *OAuthFixtures
+	// ConnectionOK and ConnectionRejected are the fake provider answering the
+	// call of a connector's TestConnection (ConnectionTester) once with working
+	// credentials and once with rejected ones. They are required of a connector
+	// that implements ConnectionTester.
+	ConnectionOK, ConnectionRejected http.Handler
 }
 
 // OAuthFixtures drive the OAuth checks: Handler is the fake provider answering
@@ -286,6 +291,22 @@ func Run(t *testing.T, factory connector.Factory, fx Fixtures) {
 		}
 		if info.Has(connector.CapMandateManager) {
 			t.Log("MandateManager: ChargeMandate must pass ChargeRequest.ProviderRef as idempotency token (verify in connector tests)")
+		}
+	})
+
+	t.Run("connection_test", func(t *testing.T) {
+		if !isA[connector.ConnectionTester](build(t, nil)) {
+			t.Skip("no ConnectionTester")
+		}
+		if fx.ConnectionOK == nil || fx.ConnectionRejected == nil {
+			t.Fatal("the connector implements ConnectionTester: Fixtures.ConnectionOK and ConnectionRejected are required")
+		}
+		if err := build(t, fx.ConnectionOK).(connector.ConnectionTester).TestConnection(ctx); err != nil {
+			t.Errorf("working credentials: %v", err)
+		}
+		err := build(t, fx.ConnectionRejected).(connector.ConnectionTester).TestConnection(ctx)
+		if !errors.Is(err, connector.ErrInvalidCredentials) {
+			t.Errorf("rejected credentials: %v (want ErrInvalidCredentials)", err)
 		}
 	})
 

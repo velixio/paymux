@@ -186,7 +186,9 @@ func TestConformance(t *testing.T) {
 		Checkout: connector.CheckoutRequest{
 			PaymentID: "pay_01", AttemptID: "att_01", AppID: "app_01", ProviderRef: "pay_ref_01", Amount: 49900, Currency: "INR",
 		},
-		CheckoutHandler: newFake(""),
+		CheckoutHandler:    newFake(""),
+		ConnectionOK:       &hostFake{live: 200},
+		ConnectionRejected: &hostFake{live: 401, sandbox: 401},
 		OAuth: &connectortest.OAuthFixtures{
 			RedirectURI: "https://pay.example.com/dashboard/oauth/callback", Code: "grant-code",
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
