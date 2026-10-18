@@ -1,39 +1,57 @@
-// paymux-home is the independently deployed public Paymux website.
+// paymux-home serves the static React website. It has no API, SSR or payment-hub dependency.
 package main
 
 import (
 	"embed"
 	"flag"
-	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
-//go:embed static/*
+// Build the frontend with `bun run build:home` before building this binary.
+// The tracked .keep lets Go source checks run before frontend installation.
+//
+//go:embed all:dist
 var assets embed.FS
 
-var pages = map[string]string{"/": "home", "/integrations": "integrations", "/docs": "docs", "/self-hosting": "hosting"}
-
 func handler() http.Handler {
-	t := template.Must(template.ParseFS(assets, "static/*.html"))
+	site, err := fs.Sub(assets, "dist")
+	if err != nil {
+		panic(err)
+	}
+	return websiteHandler(site)
+}
+func websiteHandler(site fs.FS) http.Handler {
+	files := http.FileServerFS(site)
+	index, indexErr := fs.ReadFile(site, "index.html")
+	pages := map[string]bool{"/": true, "/integrations": true, "/docs": true, "/self-hosting": true}
 	mux := http.NewServeMux()
-	mux.Handle("GET /static/", http.FileServer(http.FS(assets)))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		if indexErr != nil {
+			http.Error(w, "frontend is not built", http.StatusServiceUnavailable)
+			return
+		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write([]byte("ok\n"))
 	})
+	mux.HandleFunc("GET /assets/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		files.ServeHTTP(w, r)
+	})
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		page, ok := pages[r.URL.Path]
-		if !ok {
-			http.NotFound(w, r)
+		if indexErr != nil {
+			http.Error(w, "Build the website with bun run build:home, then rebuild paymux-home.", http.StatusServiceUnavailable)
 			return
 		}
-		titles := map[string]string{"home": "Payment infrastructure on your terms", "integrations": "Provider capabilities", "docs": "Start building", "hosting": "Your infrastructure. Your responsibility."}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := t.ExecuteTemplate(w, "layout", map[string]string{"Page": page, "Title": titles[page]}); err != nil {
-			log.Printf("render: %v", err)
+		w.Header().Set("Cache-Control", "no-cache")
+		if !pages[strings.TrimSuffix(r.URL.Path, "/")] && r.URL.Path != "/" {
+			w.WriteHeader(http.StatusNotFound)
 		}
+		w.Write(index)
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
@@ -43,7 +61,7 @@ func handler() http.Handler {
 	})
 }
 func main() {
-	listen := flag.String("listen", "127.0.0.1:8090", "website listen address")
+	listen := flag.String("listen", "127.0.0.1:8090", "static website listen address")
 	flag.Parse()
 	s := &http.Server{Addr: *listen, Handler: handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Printf("Paymux website listening on %s", *listen)

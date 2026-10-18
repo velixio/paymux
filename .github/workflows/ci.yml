@@ -42,6 +42,9 @@ jobs:
     steps:
       # TODO(review): pin these actions to commit SHAs before the first run.
       - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod

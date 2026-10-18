@@ -223,7 +223,12 @@ func setSecurityHeaders(h http.Header) {
 	h.Set("X-Frame-Options", "DENY")
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Referrer-Policy", "same-origin")
-	h.Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
+	// Radix dialogs insert scrollbar-isolation CSS. Authorize only style tags
+	// carrying this response's nonce, while retaining the existing script policy.
+	nonceBytes := make([]byte, 24)
+	_, _ = rand.Read(nonceBytes)
+	nonce := base64.RawURLEncoding.EncodeToString(nonceBytes)
+	h.Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'nonce-"+nonce+"'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
 }
 
 // ServeHTTP implements http.Handler.
@@ -245,6 +250,8 @@ func (d *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // view is the data for every dash_* template. AppName, LogoURL and Accent are
 // required by the shared layout.
 type view struct {
+	StyleNonce string
+
 	AppName, LogoURL, Accent string
 
 	Title     string
@@ -315,6 +322,8 @@ func (d *Dashboard) render(w http.ResponseWriter, status int, page string, v vie
 
 func (d *Dashboard) renderWith(w http.ResponseWriter, status int, rend *web.Renderer, page string, v view) {
 	v.DevBanner = d.o.DevSkip2FA
+	_, noncePart, _ := strings.Cut(w.Header().Get("Content-Security-Policy"), "'nonce-")
+	v.StyleNonce, _, _ = strings.Cut(noncePart, "'")
 	var buf bytes.Buffer
 	if err := rend.Render(&buf, page, v); err != nil {
 		d.o.Logger.Error("dashboard: render", "page", page, "err", err)

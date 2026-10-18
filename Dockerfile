@@ -1,5 +1,16 @@
 # syntax=docker/dockerfile:1
 
+# Frontends are compiled once; the runtime images remain static Go binaries.
+FROM oven/bun:1.4.3 AS frontend
+WORKDIR /src
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+COPY frontend ./frontend
+COPY web-dashboard ./web-dashboard
+COPY web-home ./web-home
+COPY tsconfig.json tsconfig.test.json ./
+RUN bun run typecheck && bun run build
+
 # ---- build -------------------------------------------------------------------
 ARG GO_VERSION=1.27
 FROM golang:${GO_VERSION} AS build
@@ -10,6 +21,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+COPY --from=frontend /src/web/static/dashboard ./web/static/dashboard
+COPY --from=frontend /src/web-home/dist ./web-home/dist
 ARG VERSION=dev
 # Static, CGO-free, no debug info or build paths in the binary.
 RUN CGO_ENABLED=0 go build -trimpath \

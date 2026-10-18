@@ -1,0 +1,1105 @@
+#paymux-server-page[hidden] {
+  display: none !important;
+}
+main.card:has(#paymux-react-root) {
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+}
+main.dash:has(#paymux-react-root) {
+  margin: 0;
+  padding: 0;
+}
+.paymux-react {
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--foreground);
+  background: var(--background);
+  min-height: 100vh;
+}
+.react-skip {
+  position: fixed;
+  left: 16px;
+  top: -100px;
+  z-index: 100;
+  background: var(--card);
+  border: 2px solid var(--ring);
+  padding: 12px 18px;
+  border-radius: 6px;
+}
+.react-skip:focus {
+  top: 12px;
+}
+.react-sidebar {
+  width: 238px;
+  position: fixed;
+  inset: 0 auto 0 0;
+  background: var(--card);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 25px 13px 18px;
+  overflow-y: auto;
+}
+.react-logo {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  font-size: 25px;
+  letter-spacing: -1px;
+  font-weight: 750;
+  color: var(--foreground);
+  text-decoration: none;
+  padding: 0 12px;
+}
+.react-logo > span {
+  display: grid;
+  place-items: center;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-radius: 7px;
+  width: 32px;
+  height: 32px;
+}
+.workspace-identity {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 13px 10px;
+  margin: 27px 4px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.workspace-identity strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+}
+.workspace-identity small {
+  display: block;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.workspace-initial {
+  width: 29px;
+  height: 29px;
+  background: var(--secondary);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+}
+.navigation-group {
+  padding-top: 16px;
+}
+.navigation-caption {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  padding: 0 13px 8px;
+}
+.navigation-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 39px;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  text-decoration: none;
+  padding: 8px 12px;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+.navigation-item:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.navigation-item.selected {
+  background: var(--ui-accent);
+  color: var(--accent-foreground);
+  font-weight: 600;
+}
+.navigation-item svg {
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+.active-marker {
+  width: 5px;
+  height: 5px;
+  background: var(--primary);
+  border-radius: 50%;
+  margin-left: auto;
+}
+.sidebar-bottom {
+  margin-top: auto;
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  font-size: 10px;
+  padding: 26px 12px 0;
+  color: var(--muted-foreground);
+}
+.ownership-dot {
+  width: 6px;
+  height: 6px;
+  background: #26845b;
+  border-radius: 50%;
+}
+.react-workspace {
+  margin-left: 238px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+.react-header {
+  min-height: 72px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  padding: 14px 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.header-location {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  font-size: 12px;
+}
+.header-location > svg,
+.breadcrumb-root {
+  color: var(--muted-foreground);
+}
+.header-location strong {
+  font-weight: 550;
+}
+.header-controls {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+.header-controls [data-slot="button"] {
+  min-height: 36px;
+}
+.account-trigger {
+  font-size: 10px;
+  width: 32px;
+  border-radius: 50%;
+  padding: 0;
+  background: var(--secondary);
+}
+.account-menu {
+  min-width: 240px;
+  max-width: calc(100vw - 24px);
+  color: var(--foreground);
+  background: var(--popover);
+}
+.account-menu .modeform {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 8px;
+}
+.account-menu form {
+  padding: 3px 8px;
+}
+.account-menu [data-slot="dropdown-menu-label"] {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.test-label {
+  background: #fff3d5;
+  color: #805608;
+  border: 1px solid #f0deb0;
+  border-radius: 5px;
+}
+.live-label {
+  background: #e8f5ee;
+  color: #17613f;
+  border: 1px solid #c9e9d7;
+  border-radius: 5px;
+}
+.workspace-warning {
+  background: #fff5df;
+  color: #775214;
+  font-size: 11px;
+  padding: 8px 30px;
+  border-bottom: 1px solid #efdcb5;
+}
+.react-content {
+  padding: 32px 34px;
+  flex: 1;
+  min-width: 0;
+}
+.react-content > h1 {
+  font-size: 27px;
+  font-weight: 650;
+  letter-spacing: -0.7px;
+  line-height: 1.3;
+  margin: 0 0 10px;
+}
+.react-content > h1 .mode {
+  font-size: 10px;
+  vertical-align: middle;
+  letter-spacing: 0;
+  margin-left: 8px;
+}
+.react-content h1 > small {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+.react-content h2 {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 24px 0 15px;
+}
+.react-content h3 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  margin: 28px 0 14px;
+}
+.react-content h4 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 18px 0 12px;
+}
+.react-content p {
+  margin: 8px 0 15px;
+  max-width: 90ch;
+}
+.paymux-react .muted {
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.paymux-react
+  a:not(.navigation-item):not(.react-logo):not([data-slot="button"]) {
+  color: var(--primary);
+  text-underline-offset: 3px;
+}
+.react-content a:hover {
+  text-decoration: underline;
+}
+.paymux-react .filters {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 15px;
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 24px 0 16px;
+}
+.paymux-react [data-slot="input"],
+.paymux-react [data-slot="textarea"],
+.paymux-react [data-slot="native-select"] {
+  font-size: 13px;
+  min-height: 42px;
+  border: 1px solid var(--input);
+  border-radius: 6px;
+  color: var(--foreground);
+  background: var(--card);
+  padding: 9px 12px;
+  box-shadow: none;
+}
+.paymux-react [data-slot="native-select"] {
+  padding-right: 34px;
+}
+.paymux-react [data-slot="input"][type="checkbox"],
+.paymux-react [data-slot="input"][type="radio"] {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  margin: 0 5px 0 0;
+  vertical-align: middle;
+  accent-color: var(--primary);
+  border-radius: 3px;
+}
+.paymux-react [data-slot="input"][type="hidden"] {
+  display: none;
+}
+.react-content [data-slot="button"] {
+  min-height: 42px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 550;
+  padding: 9px 15px;
+}
+.react-content .linkbtn[data-slot="button"] {
+  padding: 8px 11px;
+}
+.react-content [data-slot="button"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.filters input[type="search"] {
+  flex: 1;
+  min-width: 180px;
+}
+.filters .field {
+  margin: 0;
+}
+.filters > [data-slot="native-select-wrapper"] {
+  flex-shrink: 0;
+}
+.react-content .table-scroll {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  overflow: auto;
+  max-width: 100%;
+  margin: 16px 0 22px;
+}
+.react-content [data-slot="table-container"] {
+  max-width: 100%;
+  overflow: auto;
+}
+.react-content [data-slot="table"] {
+  display: table;
+  max-width: none;
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+.react-content [data-slot="table-head"] {
+  background: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  text-align: left;
+  white-space: nowrap;
+  padding: 13px 16px;
+  height: auto;
+  border-bottom: 1px solid var(--border);
+}
+.react-content [data-slot="table-cell"] {
+  padding: 15px 16px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  white-space: normal;
+}
+.react-content [data-slot="table-row"]:last-child td {
+  border-bottom: 0;
+}
+.react-content [data-slot="table-row"]:hover {
+  background: color-mix(in srgb, var(--primary) 3%, var(--card));
+}
+.react-content .money {
+  text-align: right;
+  white-space: nowrap;
+}
+.react-content .status,
+.react-content .mode {
+  padding: 4px 9px;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  border: 0;
+  border-radius: 5px;
+}
+.react-content .status-succeeded,
+.react-content .status-paid,
+.react-content .status-active {
+  background: #e7f5ed;
+  color: #17613f;
+}
+.react-content .status-failed,
+.react-content .status-expired,
+.react-content .status-canceled {
+  background: #fceeed;
+  color: #a13631;
+}
+.react-content .status-created,
+.react-content .status-pending {
+  background: #fff3d5;
+  color: #805608;
+}
+.react-content .flag {
+  font-size: 10px;
+}
+.react-content dl.facts {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 12px 22px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 23px;
+  max-width: 940px;
+  margin: 22px 0;
+}
+.react-content dt {
+  color: var(--muted-foreground);
+}
+.react-content dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.react-content form.stack {
+  max-width: 760px;
+  padding: 22px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  margin: 22px 0;
+}
+.react-content label {
+  font-size: 12px;
+  display: block;
+  margin: 8px 0;
+}
+.react-content .field {
+  margin: 7px 0;
+}
+.react-content .stack > input,
+.react-content .stack > textarea,
+.react-content .stack > [data-slot="native-select-wrapper"] {
+  margin: 9px 0;
+}
+.react-content .stack [data-slot="native-select-wrapper"] {
+  width: 100%;
+}
+.react-content fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 15px 18px;
+  margin: 15px 0;
+}
+.react-content legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+.react-content .inline {
+  display: inline-block;
+  margin-right: 10px;
+}
+.react-content form.inline {
+  margin: 0 8px 0 0;
+}
+.react-content .tabs {
+  display: flex;
+  gap: 20px;
+  overflow: auto;
+  border-bottom: 1px solid var(--border);
+  margin: 22px 0;
+}
+.react-content .tabs > a {
+  padding: 10px 0;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.react-content .tabs .active {
+  border-bottom: 2px solid var(--primary);
+  font-weight: 600;
+}
+.react-content .policy-browser {
+  min-width: 0;
+  overflow: hidden;
+}
+.react-content .policy-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 44px;
+  height: auto;
+  background: transparent;
+  justify-content: flex-start;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--border);
+  width: 100%;
+  border-radius: 0;
+}
+.react-content .policy-tabs > [data-slot="tabs-trigger"] {
+  flex: 0 1 auto;
+  font-size: 12px;
+  min-height: 38px;
+  border-radius: 6px;
+  padding: 8px 12px;
+  white-space: normal;
+  color: var(--muted-foreground);
+}
+.react-content .policy-tabs > [data-state="active"] {
+  background: var(--ui-accent);
+  color: var(--accent-foreground);
+  box-shadow: none;
+}
+.react-content .policy-table td {
+  white-space: normal;
+}
+.react-content .policy-table .setting-group th {
+  background: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.setting-name {
+  display: block;
+  font-weight: 650;
+}
+.setting-key {
+  display: block;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  margin-top: 4px;
+}
+.react-content .settings p.help {
+  font-size: 12px;
+  max-width: 38ch;
+  min-width: 0;
+  color: var(--muted-foreground);
+  line-height: 1.7;
+  margin: 7px 0;
+}
+.react-content .settings td:first-child {
+  width: 30%;
+}
+.react-content .settings td:nth-child(2) {
+  width: 25%;
+}
+.react-content .settings p.default {
+  font-size: 10px;
+  color: var(--muted-foreground);
+  margin: 6px 0;
+}
+.react-content .settings .source-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: var(--secondary);
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.react-content .setting-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.react-content .setting-form input.num {
+  width: 125px;
+}
+.react-content .setting-form [data-slot="textarea"] {
+  min-height: 100px;
+  width: 100%;
+}
+.unsaved-note {
+  font-size: 10px;
+  color: var(--primary);
+  width: 100%;
+}
+.react-content .setting-form[data-dirty] {
+  border-left: 2px solid var(--primary);
+  padding-left: 10px;
+}
+.react-content .json {
+  font:
+    11px/1.7 ui-monospace,
+    monospace;
+  overflow-wrap: anywhere;
+}
+.react-content .setting-scope {
+  border-left: 3px solid var(--primary);
+  padding: 6px 15px;
+  margin: 21px 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.react-content .setting-nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+}
+.react-content .setting-nav a {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  font-size: 11px;
+  text-decoration: none;
+  min-height: 38px;
+}
+.react-content .routing-disclosure {
+  padding: 20px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 9px;
+  margin: 24px 0;
+}
+.react-content summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 32px;
+}
+.react-content .routing-editor {
+  max-width: none;
+}
+.react-content .rc-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+.react-content .rc-row > label {
+  flex: 1 1 180px;
+  min-width: 0;
+  color: var(--muted-foreground);
+}
+.react-content .rc-row > .rc-wide {
+  flex-basis: 100%;
+}
+.react-content .rc-row > .rc-order {
+  flex-basis: 65px;
+  flex-grow: 0;
+}
+.react-content .rc-row [data-slot="native-select-wrapper"] {
+  width: 100%;
+}
+.react-content .error {
+  color: var(--destructive);
+  padding: 8px 0;
+  font-size: 13px;
+}
+.react-content .notice {
+  background: #e8f5ee;
+  color: #17613f;
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-size: 13px;
+}
+.react-content code {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.react-content pre {
+  font-size: 11px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.react-content .overview-actions {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 22px 0 26px;
+  font-size: 12px;
+}
+.workspace-bottom {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  margin: 0 34px;
+  padding: 15px 0;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.workspace-bottom a {
+  color: var(--muted-foreground) !important;
+}
+.mobile-workspace-trigger {
+  display: none;
+}
+.review-summary {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 12px;
+  font-size: 13px;
+  margin: 8px 0 20px;
+}
+.review-summary dt {
+  color: var(--muted-foreground);
+}
+.review-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.workspace-toast {
+  position: fixed;
+  bottom: 22px;
+  right: 22px;
+  padding: 13px 18px;
+  background: var(--foreground);
+  color: var(--background);
+  border-radius: 8px;
+  z-index: 100;
+  font-size: 13px;
+  box-shadow: 0 6px 20px #0002;
+}
+.mutation-error {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+.workspace-loading,
+.workspace-load-error {
+  max-width: 900px;
+  margin: 60px auto;
+  padding: 25px;
+  display: grid;
+  gap: 20px;
+}
+.refreshing {
+  animation: refresh 1s linear infinite;
+}
+@keyframes refresh {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.auth-container {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 60px 24px;
+}
+.auth-container > .react-logo {
+  justify-content: center;
+  padding-bottom: 30px;
+}
+.auth-card {
+  padding: 28px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.auth-card h3,
+.auth-card h1 {
+  font-size: 24px;
+  font-weight: 650;
+  margin: 0 0 20px;
+}
+.auth-card p {
+  font-size: 13px;
+  margin: 12px 0;
+}
+.auth-card [data-slot="input"] {
+  margin: 8px 0;
+}
+.auth-card label {
+  display: block;
+  font-size: 12px;
+  margin: 15px 0;
+}
+.auth-card [data-slot="button"] {
+  min-height: 44px;
+}
+.auth-card form.stack {
+  max-width: none;
+}
+.auth-footnote {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.auth-card fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 15px;
+  margin: 20px 0;
+}
+.auth-card pre,
+.auth-card code {
+  overflow-wrap: anywhere;
+}
+.auth-card .dev-banner {
+  margin-bottom: 20px;
+  font-size: 11px;
+  padding: 8px;
+}
+.mobile-workspace-sheet {
+  padding: 0;
+  overflow-y: auto;
+}
+.mobile-workspace-sheet .react-navigation {
+  padding: 0 12px 20px;
+}
+.mobile-workspace-sheet [data-slot="sheet-header"] {
+  padding: 25px 24px 5px;
+}
+.dark .paymux-react .react-content [data-slot="input"],
+.dark .paymux-react .react-content [data-slot="textarea"],
+.dark .paymux-react .react-content [data-slot="native-select"] {
+  background: var(--card);
+  color: var(--foreground);
+}
+@media (max-width: 1100px) {
+  .react-sidebar {
+    width: 210px;
+  }
+  .react-workspace {
+    margin-left: 210px;
+  }
+  .react-content {
+    padding: 26px 23px;
+  }
+  .react-header {
+    padding: 14px 23px;
+  }
+  .header-controls {
+    gap: 5px;
+  }
+  .react-content .settings td:first-child {
+    width: 28%;
+  }
+}
+@media (max-width: 760px) {
+  .react-sidebar {
+    display: none;
+  }
+  .react-workspace {
+    margin-left: 0;
+  }
+  .mobile-workspace-trigger {
+    display: inline-flex;
+  }
+  .react-header {
+    padding: 12px 14px;
+    gap: 8px;
+    min-height: 65px;
+  }
+  .breadcrumb-root {
+    display: none;
+  }
+  .header-location {
+    gap: 6px;
+    font-size: 11px;
+  }
+  .header-controls {
+    gap: 3px;
+  }
+  .header-controls > .test-label,
+  .header-controls > .live-label {
+    font-size: 9px;
+    padding: 3px 5px;
+  }
+  .header-controls [data-slot="button"] {
+    width: 32px;
+    min-height: 32px;
+    padding: 7px;
+  }
+  .react-content {
+    padding: 24px 14px;
+  }
+  .react-content > h1 {
+    font-size: 24px;
+  }
+  .workspace-warning {
+    padding: 7px 15px;
+    font-size: 10px;
+  }
+  .paymux-react .filters {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px;
+  }
+  .paymux-react .filters > * {
+    width: 100%;
+    min-width: 0;
+  }
+  .paymux-react .filters > [data-slot="native-select-wrapper"] {
+    width: 100%;
+  }
+  .react-content form.stack {
+    padding: 16px;
+  }
+  .react-content dl.facts {
+    grid-template-columns: 1fr;
+    padding: 16px;
+    gap: 6px;
+  }
+  .react-content dl.facts dd {
+    margin-bottom: 10px;
+  }
+  .react-content [data-slot="table"] {
+    min-width: 650px;
+  }
+  .react-content .policy-table {
+    min-width: 0;
+  }
+  .react-content .policy-table thead {
+    display: none;
+  }
+  .react-content .policy-table,
+  .react-content .policy-table tbody,
+  .react-content .policy-table tr,
+  .react-content .policy-table td {
+    display: block;
+    width: 100%;
+  }
+  .react-content .policy-table td {
+    border: 0;
+    padding: 10px 16px;
+  }
+  .react-content .policy-table tr {
+    border-bottom: 1px solid var(--border);
+    padding: 10px 0;
+  }
+  .react-content .policy-table .setting-group {
+    padding: 0;
+  }
+  .react-content .policy-table .setting-group th {
+    display: block;
+    padding: 12px 16px;
+  }
+  .react-content .policy-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 10px;
+    color: var(--muted-foreground);
+    margin-bottom: 5px;
+  }
+  .react-content .policy-table td:first-child,
+  .react-content .policy-table td:nth-child(2) {
+    width: 100%;
+  }
+  .react-content .settings p.help {
+    max-width: none;
+  }
+  .react-content .policy-tabs {
+    padding: 10px;
+    gap: 4px;
+  }
+  .react-content .policy-tabs > [data-slot="tabs-trigger"] {
+    flex: 1 1 42%;
+    font-size: 11px;
+    text-align: left;
+    justify-content: flex-start;
+  }
+  .react-content .setting-form .num {
+    width: 100%;
+  }
+  .react-content .setting-form > [data-slot="native-select-wrapper"] {
+    width: 100%;
+  }
+  .react-content .routing-disclosure {
+    padding: 16px;
+  }
+  .react-content .setting-nav {
+    gap: 5px;
+  }
+  .react-content .setting-nav a {
+    font-size: 10px;
+    padding: 9px;
+  }
+  .react-content .rc-row > label {
+    flex-basis: 100%;
+  }
+  .react-content .rc-row > .rc-order {
+    flex-basis: 100%;
+    flex-grow: 1;
+  }
+  .workspace-bottom {
+    margin: 0 14px;
+  }
+  .auth-container {
+    padding: 35px 14px;
+  }
+  .auth-card {
+    padding: 22px 18px;
+  }
+  .review-summary {
+    grid-template-columns: 80px minmax(0, 1fr);
+    gap: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .refreshing {
+    animation: none;
+  }
+}
+.paymux-react .filters > input:not([type="search"]):not([type="hidden"]) {
+  width: 160px;
+  flex: 0 1 160px;
+  max-width: 200px;
+}
+.paymux-react .filters > input[type="search"] {
+  width: auto;
+  flex: 1 1 220px;
+}
+.workspace-saving {
+  position: fixed;
+  top: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 16px;
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  box-shadow: 0 3px 12px #0001;
+}
+@media (max-width: 760px) {
+  .paymux-react .filters > input:not([type="hidden"]) {
+    width: 100%;
+    max-width: none;
+    flex: 0 0 auto;
+  }
+  .header-controls [data-slot="button"] {
+    width: 44px;
+    min-height: 44px;
+    padding: 10px;
+  }
+  .header-location .mobile-workspace-trigger {
+    width: 44px;
+    height: 44px;
+  }
+  .navigation-item {
+    min-height: 44px;
+  }
+  .header-controls > .test-label,
+  .header-controls > .live-label {
+    text-transform: capitalize;
+  }
+}
+
+#paymux-server-page table.grid {
+  display: table;
+}
+.paymux-react .filters > label.filter-date-field {
+  flex: 0 1 160px;
+  margin: 0;
+  min-width: 130px;
+}
+.filter-date-field > span {
+  display: block;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  margin-bottom: 5px;
+}
+.filter-date-field [data-slot="input"] {
+  width: 100%;
+}
+@media (max-width: 760px) {
+  .paymux-react .filters > label.filter-date-field {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: none;
+  }
+}
