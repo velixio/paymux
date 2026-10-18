@@ -203,7 +203,7 @@ The React marketing and developer-entry website lives in [`web-home/`](web-home)
 ```bash
 bun install --frozen-lockfile
 make build-home
-./bin/paymux-home -listen 127.0.0.1:8090
+./bin/paymux-home -listen 127.0.0.1:8051
 ```
 
 Routes: `/`, `/integrations`, `/docs`, `/self-hosting`; readiness: `/healthz`. Bind behind your TLS reverse proxy for public hosting. The payment hub continues to serve its own operational dashboard and API reference separately.

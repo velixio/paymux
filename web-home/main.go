@@ -76,7 +76,7 @@ func websiteHandler(site fs.FS) http.Handler {
 	})
 }
 func main() {
-	listen := flag.String("listen", "127.0.0.1:8090", "static website listen address")
+	listen := flag.String("listen", "127.0.0.1:8051", "static website listen address")
 	flag.Parse()
 	s := &http.Server{Addr: *listen, Handler: handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Printf("Paymux website listening on %s", *listen)

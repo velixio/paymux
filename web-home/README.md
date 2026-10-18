@@ -25,10 +25,10 @@ The separate Go binary is retained as an optional static-file server:
 
 ```sh
 make build-home
-./bin/paymux-home -listen 127.0.0.1:8090
+./bin/paymux-home -listen 127.0.0.1:8051
 ```
 
-This binary embeds the Vite build and has only static page serving and `/healthz`. It does not render React on the server or connect to the hub. Use `-listen :8090` behind a TLS reverse proxy to listen on all interfaces. A missing frontend build returns 503 rather than reporting a healthy site.
+This binary embeds the Vite build and has only static page serving and `/healthz`. It does not render React on the server or connect to the hub. Use `-listen :8051` behind a TLS reverse proxy to listen on all interfaces. A missing frontend build returns 503 rather than reporting a healthy site.
 
 Update integration claims from `docs/capabilities.md` and `docs/provider-verification.md`. Homepage payment records remain labeled illustrations. No forms collect payment-provider credentials.
 

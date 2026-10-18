@@ -25,7 +25,7 @@ build-examples:
 
 # Build everything, then run the hub (PAYMUX_LISTEN, default from .env) and the
 # public website (HOME_LISTEN) together. Ctrl-C stops both.
-HOME_LISTEN ?= 127.0.0.1:8090
+HOME_LISTEN ?= 127.0.0.1:8051
 dev: SHELL := /bin/bash
 dev: build
 	@./bin/paymux-home -listen $(HOME_LISTEN) & home=$$!; \
@@ -69,6 +69,7 @@ run-dev:
 # Stop every running paymux server of this user (matches the process name
 # exactly, so it never hits a shell whose command line mentions paymux).
 kill:
+	@pkill -x -u "$$(id -u)" paymux-home && echo "stopped paymux-home" || true
 	@if pkill -x -u "$$(id -u)" paymux; then \
 		for i in $$(seq 1 50); do pgrep -x -u "$$(id -u)" paymux >/dev/null || exit 0; sleep 0.1; done; \
 		echo "paymux still running after 5s; sending SIGKILL" >&2; pkill -9 -x -u "$$(id -u)" paymux; \
