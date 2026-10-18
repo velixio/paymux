@@ -2,11 +2,13 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h2>Org settings</h2>
-<p class="muted">Defaults for every app. An app can override most of these on its own Settings tab.</p>
+<h1>Organization settings</h1>
+<p class="muted">Control how your payment hub routes, bills and delivers.</p><div class="setting-scope"><strong>Organization scope</strong><br>Defaults for every app. App overrides take priority where supported. These policies are shared across payment modes.</div><nav class="setting-nav" aria-label="Settings sections"><a href="#routing">Routing rules</a><a href="#route-test">Test a route</a><a href="#policies">Payment and billing policies</a><a href="/dashboard/users">Users</a><a href="/dashboard/roles">Roles</a><a href="/dashboard/appearance">Appearance</a></nav>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 
-<h3>Routing</h3>
+<h3 id="policies">Payment and billing policies</h3><p class="muted">Choose a category. Each setting shows its effective value, source and built-in default.</p>
+{{template "dash_settings_table" .}}
+<details class="routing-disclosure" id="routing"><summary>Routing rules and route tester</summary>
 {{with .Routing}}
 <p class="muted">Rules are tried in order. The first rule whose conditions match and that has an eligible account decides; otherwise the catch-all applies.
 Targets are connector names (any eligible account) or pinned accounts written <code>account:pa_xxx</code>, tried in the order listed.
@@ -88,7 +90,7 @@ Conditions are comma separated lists; leave a condition empty to match anything.
 {{end}}
 {{end}}
 
-<h3>Test routing</h3>
+<h3 id="route-test">Test a route</h3>
 <form method="get" action="/dashboard/settings" class="filters">
 <input type="hidden" name="test" value="1">
 <select name="app" aria-label="App"><option value="">Org rules, all accounts</option>{{range .AppOpts}}<option value="{{.ID}}"{{if eq .ID $.TestForm.App}} selected{{end}}>{{.Name}}</option>{{end}}</select>
@@ -104,8 +106,5 @@ Conditions are comma separated lists; leave a condition empty to match anything.
 <p>Accounts, in order:</p><ol>{{range .Accounts}}<li>{{.}}</li>{{end}}</ol>
 {{else if .Rejected}}<p class="error"><strong>Rejected</strong> by rule <code>{{.Rule}}</code>: {{.Message}}</p>
 {{else}}<p class="error"><strong>No route</strong>: {{.Message}}</p>{{end}}
-</div>{{end}}
-
-<h3>Settings</h3>
-{{template "dash_settings_table" .}}
+</div>{{end}}</details>
 {{template "dash_close" .}}{{end}}

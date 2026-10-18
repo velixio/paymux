@@ -4,7 +4,7 @@
 {{define "content"}}{{template "dash_open" .}}
 {{with .App}}
 <p><a href="/dashboard/apps">&larr; Apps</a></p>
-<h2>{{.Name}} <small class="muted">{{.Slug}} &middot; {{.ID}}</small></h2>
+<h1>{{.Name}} <small class="muted">{{.Slug}} &middot; {{.ID}}</small></h1>
 <nav class="tabs" aria-label="App sections">{{range .Tabs}}<a href="/dashboard/apps/{{$.App.ID}}?tab={{.}}"{{if eq . $.App.Tab}} class="active"{{end}}>{{.}}</a>{{end}}</nav>
 {{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 {{with $.Reveal}}<div class="reveal" role="alert">
@@ -48,8 +48,8 @@
 </table></div>
 {{if .CanEndpoints}}<form method="post" action="/dashboard/apps/{{.ID}}/endpoints" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
-<input class="field" name="url" type="url" placeholder="https://example.com/webhooks" required>
-<input class="field" name="events" placeholder="Event types, comma separated (blank = all)">
+<input class="field" name="url" type="url" placeholder="https://example.com/webhooks" required aria-label="https://example.com/webhooks">
+<input class="field" name="events" placeholder="Event types, comma separated (blank = all)" aria-label="Event types, comma separated (blank = all)">
 <button class="btn" type="submit">Add endpoint</button>
 </form>{{end}}
 {{if .EndpointID}}
@@ -82,7 +82,7 @@
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <div class="table-scroll"><table class="grid">
 <thead><tr><th>Allowed</th><th>Account</th><th>Connector</th><th>Mode</th><th>Status</th><th>Currencies</th></tr></thead>
-<tbody>{{range .Accounts}}<tr><td><input type="checkbox" name="account" value="{{.ID}}"{{if .Allowed}} checked{{end}}{{if not $.App.CanProviders}} disabled{{end}}></td><td>{{.Name}}</td><td>{{.Connector}}</td><td>{{.Mode}}</td><td>{{.Status}}</td><td>{{.Currencies}}</td></tr>
+<tbody>{{range .Accounts}}<tr><td><input type="checkbox" aria-label="Allow {{.Name}}" name="account" value="{{.ID}}"{{if .Allowed}} checked{{end}}{{if not $.App.CanProviders}} disabled{{end}}></td><td>{{.Name}}</td><td>{{.Connector}}</td><td>{{.Mode}}</td><td>{{.Status}}</td><td>{{.Currencies}}</td></tr>
 {{else}}<tr><td colspan="6" class="muted">No provider accounts yet.</td></tr>{{end}}</tbody>
 </table></div>
 {{if .CanProviders}}<button class="btn" type="submit">Save</button>{{end}}
@@ -99,7 +99,7 @@
 </table></div>
 {{if .CanSettings}}<form method="post" action="/dashboard/apps/{{.ID}}/domains" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
-<input class="field" name="host" placeholder="pay.example.com" required>
+<input class="field" name="host" placeholder="pay.example.com" required aria-label="pay.example.com">
 <button class="btn" type="submit">Add domain</button>
 </form>{{end}}
 {{if .Checklist}}<h3>Register the domain with each provider</h3>

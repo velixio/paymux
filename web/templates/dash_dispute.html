@@ -4,7 +4,7 @@
 {{define "content"}}{{template "dash_open" .}}
 <p><a href="/dashboard/disputes">&larr; Disputes</a></p>
 {{with .Disp}}
-<h2>{{.ID}} <span class="status status-{{.Status}}">{{.Status}}</span></h2>
+<h1>{{.ID}} <span class="status status-{{.Status}}">{{.Status}}</span></h1>
 {{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <dl class="facts">
 <dt>Amount</dt><dd>{{.Amount}}</dd>
@@ -25,9 +25,9 @@
 <form method="post" action="/dashboard/disputes/{{.ID}}/evidence" enctype="multipart/form-data" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}">
 <h4>Submit evidence</h4>
 <textarea class="field" name="notes" rows="4" placeholder="Notes for the bank"></textarea>
-<div class="row"><input class="field" name="type_1" placeholder="Evidence type, e.g. shipping_proof"><input type="file" name="file_1" accept="application/pdf,image/jpeg,image/png"></div>
-<div class="row"><input class="field" name="type_2" placeholder="Evidence type, e.g. shipping_proof"><input type="file" name="file_2" accept="application/pdf,image/jpeg,image/png"></div>
-<div class="row"><input class="field" name="type_3" placeholder="Evidence type, e.g. shipping_proof"><input type="file" name="file_3" accept="application/pdf,image/jpeg,image/png"></div>
+<div class="row"><input class="field" name="type_1" placeholder="Evidence type, e.g. shipping_proof" aria-label="Evidence type, e.g. shipping_proof"><input type="file" name="file_1" accept="application/pdf,image/jpeg,image/png"></div>
+<div class="row"><input class="field" name="type_2" placeholder="Evidence type, e.g. shipping_proof" aria-label="Evidence type, e.g. shipping_proof"><input type="file" name="file_2" accept="application/pdf,image/jpeg,image/png"></div>
+<div class="row"><input class="field" name="type_3" placeholder="Evidence type, e.g. shipping_proof" aria-label="Evidence type, e.g. shipping_proof"><input type="file" name="file_3" accept="application/pdf,image/jpeg,image/png"></div>
 <p class="muted">PDF, JPEG or PNG, up to 10 MiB each.</p>
 <button class="btn" type="submit">Upload and submit</button></form>
 {{end}}

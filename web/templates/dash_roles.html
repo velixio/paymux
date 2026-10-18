@@ -2,7 +2,7 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h2>Roles</h2>
+<h1>Roles</h1>
 {{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <p class="muted">The built-in roles cannot be changed. Custom roles grant a chosen set of actions; the user-management and role-management actions stay with admins. Assign a role to a user on the <a href="/dashboard/users">Users</a> page.</p>
@@ -33,7 +33,7 @@
 <h3>New role</h3>
 <form method="post" action="/dashboard/roles" class="stack">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
-<input class="field" name="name" placeholder="Role name, e.g. auditor" pattern="[a-z][a-z0-9_-]{1,31}" required>
+<input class="field" name="name" placeholder="Role name, e.g. auditor" pattern="[a-z][a-z0-9_-]{1,31}" required aria-label="Role name, e.g. auditor">
 {{range .NewBoxes}}<label><input type="checkbox" name="action" value="{{.Action}}"> {{.Action}}</label>
 {{end}}<button class="btn" type="submit">Create role</button>
 </form>

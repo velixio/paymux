@@ -4,7 +4,7 @@
 {{define "content"}}{{template "dash_open" .}}
 <p><a href="/dashboard/providers">&larr; Provider accounts</a></p>
 {{with .Prov}}
-<h2>{{if .New}}Add a {{.Display}} account{{else}}{{.Name}} <small class="muted">{{.Display}} &middot; {{.ID}}</small>{{end}}</h2>
+<h1>{{if .New}}Add a {{.Display}} account{{else}}{{.Name}} <small class="muted">{{.Display}} &middot; {{.ID}}</small>{{end}}</h1>
 {{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 {{if .Test}}<p class="{{if .TestOK}}notice{{else}}error{{end}}" role="status">{{.Test}}</p>{{end}}
 {{if .New}}

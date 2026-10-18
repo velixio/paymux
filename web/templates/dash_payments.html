@@ -2,7 +2,7 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h2>Payments <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h2>
+<h1>Payments <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h1><p class="muted">Track each payment across your apps, providers and ledger.</p>
 <form class="filters" method="get" action="/dashboard/payments">
 <select name="app" aria-label="App"><option value="">All apps</option>{{range .AppOpts}}<option value="{{.ID}}"{{if eq .ID $.Filter.App}} selected{{end}}>{{.Name}}</option>{{end}}</select>
 <select name="status" aria-label="Status"><option value="">Any status</option>{{range .Statuses}}<option value="{{.}}"{{if eq . $.Filter.Status}} selected{{end}}>{{.}}</option>{{end}}</select>
@@ -12,12 +12,12 @@
 <button class="btn small" type="submit">Filter</button>
 </form>
 <div class="table-scroll"><table class="grid">
-<thead><tr><th>Payment</th><th>App</th><th>Status</th><th>Amount</th><th>Order ref</th><th>Customer</th><th>Created</th></tr></thead>
+<thead><tr><th>Payment</th><th>App</th><th>Status</th><th class="money">Amount</th><th>Order ref</th><th>Customer</th><th>Created</th></tr></thead>
 <tbody>
 {{range .Rows}}<tr>
 <td><a href="/dashboard/payments/{{.ID}}">{{.ID}}</a></td><td>{{.App}}</td><td><span class="status status-{{.Status}}">{{.Status}}</span></td>
-<td>{{.Amount}}</td><td>{{.OrderRef}}</td><td>{{.Customer}}</td><td>{{.Created}}</td>
-</tr>{{else}}<tr><td colspan="7" class="muted">No payments match.</td></tr>{{end}}
+<td class="money">{{.Amount}}</td><td>{{.OrderRef}}</td><td>{{.Customer}}</td><td>{{.Created}}</td>
+</tr>{{else}}<tr><td colspan="7" class="muted">No payments match. Adjust your filters or create a test payment using the API. <a href="/docs">Open API reference</a></td></tr>{{end}}
 </tbody>
 </table></div>
 {{with .NextURL}}<p><a class="next" href="{{.}}">Older payments &rarr;</a></p>{{end}}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -18,7 +19,7 @@ func describe(def settings.Def, val settings.Value) settingRow {
 	if !ok {
 		m = settings.Meta{Kind: settings.KindJSON}
 	}
-	row := settingRow{Key: def.Key, Source: string(val.Source), Overridden: val.Source == settings.SourceApp, Help: m.Help, Kind: string(m.Kind), Unit: m.Unit,
+	row := settingRow{Label: settingLabel(def.Key), Group: settingGroup(def.Key), Key: def.Key, Source: string(val.Source), Overridden: val.Source == settings.SourceApp, Help: m.Help, Kind: string(m.Kind), Unit: m.Unit,
 		Pattern: m.Pattern}
 	var pretty bytes.Buffer
 	if err := json.Indent(&pretty, val.Raw, "", "  "); err != nil {
@@ -183,4 +184,33 @@ func settingJSON(key string, posted []string) json.RawMessage {
 		return json.RawMessage("[" + strings.Join(items, ",") + "]")
 	}
 	return json.RawMessage(v)
+}
+
+// Labels and groups are presentation metadata; validation remains in settings.
+func settingLabel(key string) string {
+	labels := map[string]string{"payment_ttl": "Payment expiry", "duplicate_payment_action": "Duplicate payments", "billing_details": "Customer billing details", "pay_page_retry_buttons": "Checkout retry options", "gst_rate_bp": "GST rate", "sac_code": "SAC code", "issue_invoices": "GST invoicing", "b2cl_threshold": "B2CL reporting threshold", "mandate_afa_limit": "Mandate authentication limit", "upi_execution_windows": "UPI execution exclusions"}
+	if label, ok := labels[key]; ok {
+		return label
+	}
+	return strings.ToUpper(key[:1]) + strings.ReplaceAll(key[1:], "_", " ")
+}
+func settingGroup(key string) string {
+	switch key {
+	case "payment_ttl", "duplicate_payment_action", "billing_details", "pay_page_retry_buttons":
+		return "Payment behavior"
+	case "routing":
+		return "Routing"
+	case "dunning_schedule", "dunning_final_action", "predebit_lead", "predebit_email", "mandate_headroom", "mandate_afa_limit", "mandate_validity", "upi_execution_windows":
+		return "Subscriptions and recovery"
+	case "theme", "customer_language":
+		return "Appearance and language"
+	case "webhook_retry_schedule", "recon_time", "provider_event_retention", "document_retention":
+		return "Delivery and retention"
+	default:
+		return "Invoices and tax"
+	}
+}
+func sortSettingRows(rows []settingRow) {
+	order := map[string]int{"Payment behavior": 0, "Routing": 1, "Subscriptions and recovery": 2, "Invoices and tax": 3, "Delivery and retention": 4, "Appearance and language": 5}
+	sort.SliceStable(rows, func(i, j int) bool { return order[rows[i].Group] < order[rows[j].Group] })
 }

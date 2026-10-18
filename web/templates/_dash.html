@@ -1,14 +1,14 @@
 {{define "dash_open"}}{{if .DevBanner}}<div class="dev-banner" role="alert">2FA disabled (development)</div>{{end}}
 {{range .Warnings}}<div class="banner-warning" role="alert">{{.}}</div>{{end}}
-{{if .User}}<header class="dash-head">
-<strong>Paymux</strong>
+{{if .User}}<a class="skip-link" href="#workspace">Skip to workspace</a><header class="dash-head">
+<a class="dash-brand" href="/dashboard/overview" aria-label="Paymux overview"><span aria-hidden="true" class="brand-symbol">↗</span>paymux</a>
 <span class="muted">{{.User.Email}} ({{.User.Role}})</span>
 <form class="modeform" method="post" action="/dashboard/mode"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="next" value="{{.Path}}"><span class="mode mode-{{.Mode}}">{{.Mode}} mode</span> <button class="linkbtn" type="submit" name="mode" value="{{if eq .Mode "live"}}test{{else}}live{{end}}">Switch to {{if eq .Mode "live"}}test{{else}}live{{end}}</button></form>
 <form method="post" action="/dashboard/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="linkbtn" type="submit">Log out</button></form>
 </header>
-<div class="dash-body">
-<nav class="dash-nav" aria-label="Main">{{range .Nav}}<a href="{{.Href}}"{{if eq .Key $.Active}} class="active" aria-current="page"{{end}}>{{.Label}}{{if and (eq .Key "alerts") $.AlertsOpen}} <span class="badge{{if $.AlertsCritical}} badge-critical{{end}}">{{$.AlertsOpen}}</span>{{end}}</a>{{end}}</nav>
-<section class="dash-main">{{end}}{{end}}
+<button type="button" class="workspace-menu" aria-controls="workspace-nav" aria-expanded="true">Workspace navigation</button><div class="dash-body">
+<nav id="workspace-nav" class="dash-nav" aria-label="Main"><span class="nav-caption">Workspace</span>{{range .Nav}}{{if eq .Key "subscriptions"}}<span class="nav-caption nav-group">Billing</span>{{else if eq .Key "disputes"}}<span class="nav-caption nav-group">Operations</span>{{else if eq .Key "apps"}}<span class="nav-caption nav-group">Connections</span>{{else if eq .Key "settings"}}<span class="nav-caption nav-group">Administration</span>{{end}}<a href="{{.Href}}"{{if eq .Key $.Active}} class="active" aria-current="page"{{end}}>{{.Label}}{{if and (eq .Key "alerts") $.AlertsOpen}} <span class="badge{{if $.AlertsCritical}} badge-critical{{end}}">{{$.AlertsOpen}}</span>{{end}}</a>{{end}}</nav>
+<section class="dash-main" id="workspace" tabindex="-1">{{end}}{{end}}
 
 {{define "dash_close"}}{{if .User}}</section>
-</div>{{end}}{{end}}
+</div><dialog id="change-review" aria-labelledby="change-title"><h2 id="change-title">Review change</h2><p id="change-description"></p><p class="muted">This changes hub behavior. Check the scope and value before continuing.</p><div class="review-actions"><button type="button" id="change-cancel">Cancel</button><button type="button" class="btn" id="change-confirm">Confirm change</button></div></dialog><script src="/assets/js/workspace.js" defer></script>{{end}}{{end}}

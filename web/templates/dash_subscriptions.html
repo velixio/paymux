@@ -2,7 +2,7 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h2>Subscriptions <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h2>
+<h1>Subscriptions <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h1>
 <form class="filters" method="get" action="/dashboard/subscriptions">
 <select name="app" aria-label="App"><option value="">All apps</option>{{range .SubApps}}<option value="{{.ID}}"{{if eq .ID $.SubFilter.App}} selected{{end}}>{{.Name}}</option>{{end}}</select>
 <select name="status" aria-label="Status"><option value="">Any status</option>{{range .SubStatuses}}<option value="{{.}}"{{if eq . $.SubFilter.Status}} selected{{end}}>{{.}}</option>{{end}}</select>

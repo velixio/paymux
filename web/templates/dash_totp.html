@@ -13,7 +13,7 @@ Add this key by hand, or open the link on your phone, then enter the 6-digit cod
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <form method="post" action="/dashboard/login/totp">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
-<input class="field" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="8" placeholder="123456" required autofocus>
+<input class="field" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="8" placeholder="123456" required autofocus aria-label="123456">
 <button class="btn" type="submit">{{if .Enrol}}Confirm and sign in{{else}}Sign in{{end}}</button>
 </form>
 {{template "dash_close" .}}{{end}}

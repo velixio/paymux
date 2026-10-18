@@ -59,6 +59,7 @@ type accountRow struct {
 }
 
 type settingRow struct {
+	Label, Group       string
 	Key, Value, Source string // Value is the effective JSON, indented
 	Overridden         bool
 
@@ -625,6 +626,7 @@ func (d *Dashboard) settingRows(ctx context.Context, appID, orgID string, level 
 		}
 		rows = append(rows, describe(def, val))
 	}
+	sortSettingRows(rows)
 	return rows, nil
 }
 

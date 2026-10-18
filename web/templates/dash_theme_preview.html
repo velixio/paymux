@@ -2,7 +2,7 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h2>Preview: {{.PreviewTheme.Name}}{{if .PreviewTheme.Version}} <small class="muted">{{.PreviewTheme.Version}}</small>{{end}}</h2>
+<h1>Preview: {{.PreviewTheme.Name}}{{if .PreviewTheme.Version}} <small class="muted">{{.PreviewTheme.Version}}</small>{{end}}</h1>
 {{if .PreviewTheme.Usable}}<p class="muted">{{.PreviewTheme.Description}} This page is drawn in the theme, so the navigation and header above are what the dashboard would look like.</p>
 {{else}}<p class="error" role="alert">This theme cannot be used: {{.PreviewTheme.Err}}. This page is drawn in the standard look, which is what pages get while the theme is broken.</p>{{end}}
 

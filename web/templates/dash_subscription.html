@@ -4,7 +4,7 @@
 {{define "content"}}{{template "dash_open" .}}
 {{with .Sub}}
 <p><a href="/dashboard/subscriptions">&larr; Subscriptions</a></p>
-<h2>{{.ID}} <span class="status status-{{.Status}}">{{.Status}}</span> <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h2>
+<h1>{{.ID}} <span class="status status-{{.Status}}">{{.Status}}</span> <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h1>
 {{with $.Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 {{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 {{with $.Link}}<div class="notice" role="status">

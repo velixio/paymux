@@ -2,7 +2,7 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h2>Reconciliation</h2>
+<h1>Reconciliation</h1>
 <p class="muted">Each provider account is compared with the provider's own records every day. Differences that could not be fixed automatically become items to look at.</p>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 
@@ -26,7 +26,7 @@
 <thead><tr><th>Account</th><th>Kind</th><th>Provider id</th><th>Ours</th><th>Theirs</th><th>State</th><th>Found</th><th></th></tr></thead>
 <tbody>{{range .ReconItems}}<tr><td>{{.Account}}</td><td>{{.Kind}}</td><td><code>{{.ProviderID}}</code></td><td><small class="wrap">{{.Ours}}</small></td><td><small class="wrap">{{.Theirs}}</small></td>
 <td>{{.State}}{{if .Note}}<br><small class="muted">{{.Note}}</small>{{end}}</td><td>{{.At}}</td>
-<td>{{if and .Resolvable $.CanManage}}<form method="post" action="/dashboard/reconciliation/items/{{.ID}}/resolve" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input class="field" name="note" placeholder="What you checked or did" required maxlength="500"><button class="linkbtn" type="submit">Resolve</button></form>{{end}}</td></tr>
+<td>{{if and .Resolvable $.CanManage}}<form method="post" action="/dashboard/reconciliation/items/{{.ID}}/resolve" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input class="field" name="note" placeholder="What you checked or did" required maxlength="500" aria-label="What you checked or did"><button class="linkbtn" type="submit">Resolve</button></form>{{end}}</td></tr>
 {{else}}<tr><td colspan="8" class="muted">No items match.</td></tr>{{end}}</tbody>
 </table></div>
 

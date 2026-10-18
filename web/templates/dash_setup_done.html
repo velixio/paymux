@@ -18,7 +18,7 @@
 <p>Setup link<br><code class="wrap" id="totp-uri">{{.TOTPURI}}</code></p>
 <form method="post" action="/dashboard/login/totp">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
-<input class="field" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="8" placeholder="123456" required>
+<input class="field" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="8" placeholder="123456" required aria-label="123456">
 <button class="btn" type="submit">Confirm and sign in</button>
 </form>
 <p class="muted">If this page is closed before you confirm, sign in at <a href="/dashboard/login">/dashboard/login</a> with your password: the same key is shown again until the first code is accepted.</p>

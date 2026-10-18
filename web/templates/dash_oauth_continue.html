@@ -2,7 +2,7 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css"><meta http-equiv="refresh" content="0;url={{.OAuthContinue}}">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}
-<h2>{{.Title}}</h2>
+<h1>{{.Title}}</h1>
 <p class="muted">Opening the provider's consent page to authorise Paymux. If nothing happens, use the button.</p>
 <p><a class="btn" id="oauth-continue" href="{{.OAuthContinue}}" rel="noreferrer">Continue</a></p>
 {{end}}

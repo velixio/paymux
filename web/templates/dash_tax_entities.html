@@ -2,7 +2,7 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h2>Tax entities</h2>
+<h1>Tax entities</h1>
 <p class="muted">One per legal entity and GSTIN. Apps point to one of them for their invoices.</p>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <div class="table-scroll"><table class="grid">

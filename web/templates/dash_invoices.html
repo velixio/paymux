@@ -2,7 +2,7 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h2>Invoices and credit notes <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h2>
+<h1>Invoices and credit notes <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h1>
 <form class="filters" method="get" action="/dashboard/invoices">
 <select name="type" aria-label="Type"><option value="invoice"{{if eq .DocFilter.Type "invoice"}} selected{{end}}>Invoices</option><option value="credit_note"{{if eq .DocFilter.Type "credit_note"}} selected{{end}}>Credit notes</option></select>
 <select name="entity" aria-label="Tax entity"><option value="">All entities</option>{{range .Entities}}<option value="{{.ID}}"{{if eq .ID $.DocFilter.Entity}} selected{{end}}>{{.Name}}</option>{{end}}</select>
