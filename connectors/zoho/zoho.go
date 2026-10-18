@@ -61,6 +61,8 @@ var info = connector.Info{
 	MandateLimits:            []connector.MandateLimit{{Method: "upi", Currency: "INR"}},
 	RefundsVerificationDebit: true, // TODO(spec): unconfirmed that Zoho reverses the Rs 1 verification debit itself
 	MandateSetupAmount:       100,  // the Rs 1 verification debit of a registration without a charge due (trials)
+	// Rs 1, as the verification debit shows Zoho takes; Zoho publishes no other minimum (see docs/provider-verification.md).
+	MinChargeMinor: map[string]int64{"INR": 100},
 	// Refunds are limited to 60/min; the client limiter applies that to every call.
 	RateLimit: connector.RateLimit{RequestsPerSecond: 1, Burst: 10},
 }

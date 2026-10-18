@@ -3,6 +3,7 @@ package subscriptions
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/paymux/paymux/internal/billing"
@@ -29,8 +30,11 @@ import (
 // invoice. Provider-managed subscriptions are billed by the provider, which
 // cannot be told to add a one-off difference, so they refuse proration.
 //
-// TODO(spec): a credit never takes a renewal below 1 minor unit; providers have
-// their own minimum debit that this does not know.
+// A renewal is never charged below the provider's minimum (Info.MinChargeMinor
+// of the account's connector, one minor unit when it states none): a credit
+// that would take it lower is applied only as far as the minimum, and the rest
+// carries on to the renewals after; an immediate extra charge under the minimum
+// is not made on its own but added to the next renewal.
 
 // Proration is how a plan change is billed.
 type Proration string
@@ -160,6 +164,9 @@ func (s *Service) scheduleProrationCharge(ctx context.Context, tx store.Tx, sub 
 	if line.Amount > m.MaxAmount {
 		return at, "amount_exceeds_mandate_max", nil
 	}
+	if line.Amount < s.minCharge(ctx, *sub) {
+		return at, "below_minimum_charge", nil
+	}
 	pol, err := s.loadPolicy(ctx, tx, sub.AppID)
 	if err != nil {
 		return at, "", err
@@ -187,6 +194,16 @@ func (s *Service) scheduleProrationCharge(ctx context.Context, tx store.Tx, sub 
 	return cy.NextRunAt, "", err
 }
 
+// minCharge is the smallest amount the subscription's provider will charge in
+// its currency: the connector's documented minimum, else one minor unit.
+func (s *Service) minCharge(ctx context.Context, sub store.Subscription) int64 {
+	conn, err := s.connectors.Get(ctx, sub.ProviderAccountID)
+	if err != nil {
+		return 1
+	}
+	return max(conn.Info().MinChargeMinor[strings.ToUpper(sub.Currency)], 1)
+}
+
 // applyAdjustments folds the subscription's pending proration into the amount
 // of a renewal that is about to be billed (called when its payment is made).
 // A charge is limited by the mandate's maximum and a credit leaves at least one
@@ -210,7 +227,9 @@ func (s *Service) applyAdjustments(ctx context.Context, tx store.Tx, sub *store.
 			}
 		}
 	} else {
-		used = max(adj, -(base - 1)) // keep at least 1 minor unit to charge
+		// Keep at least the provider's minimum to charge. A renewal that is
+		// already at or under it takes no credit at all.
+		used = max(adj, -max(base-s.minCharge(ctx, *sub), 0))
 	}
 	if used == 0 {
 		return nil
