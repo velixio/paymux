@@ -256,9 +256,23 @@ func TestSMTPAndOpsValidation(t *testing.T) {
 }
 
 func TestTrustedProxies(t *testing.T) {
+	// Unset: a proxy anywhere on the local network is believed (loopback,
+	// private and link-local ranges), so a LAN reverse proxy needs no setup.
 	c, err := Load(base())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var def []string
+	for _, p := range c.TrustedProxies {
+		def = append(def, p.String())
+	}
+	if strings.Join(def, ",") != "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,::1/128,fc00::/7,fe80::/10" {
+		t.Fatalf("default: %v", def)
+	}
+	// "none" trusts no proxy.
+	c, err = Load(base("PAYMUX_TRUSTED_PROXIES", "none"))
 	if err != nil || len(c.TrustedProxies) != 0 {
-		t.Fatalf("default: %v %v", err, c.TrustedProxies)
+		t.Fatalf("none: %v %v", err, c.TrustedProxies)
 	}
 	c, err = Load(base("PAYMUX_TRUSTED_PROXIES", "10.0.0.0/8, 192.168.1.5 ,2001:db8::/32"))
 	if err != nil {
