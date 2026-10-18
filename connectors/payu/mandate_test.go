@@ -18,10 +18,11 @@ const (
 	goldenSIDetails = `{"billingAmount":"748.50","billingCurrency":"INR","billingCycle":"ADHOC","billingInterval":1,"paymentStartDate":"2027-01-31","paymentEndDate":"2032-01-31"}`
 	goldenSIHash    = "075902a9417c8d323af7b0bc555760774a544467acbdb5e391bd2a3300411cb25afd43d89402826bb8b3d010cba17a9ae0283a1ef2d833c88ab949dafe7cda6b"
 	goldenSIHash499 = "75abf9274c220729dae76bdaaefd4c86c44abfff0ff1b335fb2047b7325fd4fb569a5c2cbd58f9b96119d1d135f74dc0be3e89812c40b4f99f3e2e92bea2037a"
-	goldenPreVar1   = `{"authPayuId":"403993715521","requestId":"DEBITREF01","debitDate":"2027-02-28","invoiceAmount":"499.00"}`
-	goldenPreHash   = "5696bdafe66afffe853752a6a33eb2be0f527249cd7306088e841d056af706566f710ec793cd14d09d5524b184899704709415f5f0974791917819cea5ae69fb"
-	goldenChargeVar = `{"authPayuId":"403993715521","invoiceAmount":"499.00","transactionId":"DEBITREF01"}`
-	goldenChargeHsh = "091629e23988e786c3e4742fe332b939f6394d446079733635749ee858fe11aca73c7ae57b6fb6eda8b6db636fcb952e02597962b36ffb781de13cc09e8ac91f"
+	// var1 field names follow PayU's documentation and were accepted by the test environment.
+	goldenPreVar1   = `{"authpayuid":"403993715521","requestId":"DEBITREF01","amount":"499.00","debitDate":"2027-02-28","invoiceDisplayNumber":"DEBITREF01"}`
+	goldenPreHash   = "5583d8f48e909e09e032bdd3c4614624db0992bc8dea5f4801dcf1243b437e887fd4befa17b8a6bf927fd27e323995b818e561d3d2b142a0cb3f26d1a442073b"
+	goldenChargeVar = `{"authpayuid":"403993715521","invoiceDisplayNumber":"DEBITREF01","amount":"499.00","txnid":"DEBITREF01"}`
+	goldenChargeHsh = "8bece0b04dfcdfa13ca7d66fe13016ecb3d0f688cccb1269c69970ff2c57df71438990ecc16d854b541c9425d8a44f58cab9375807a334f3f935ee45101c0773"
 )
 
 var siNow = time.Date(2027, 1, 31, 4, 0, 0, 0, time.UTC)
@@ -98,11 +99,11 @@ func TestMandateCheckoutFormAndGoldenSIHash(t *testing.T) {
 	}
 }
 
-var requestIDRE = regexp.MustCompile(`^\{"authPayuId":"[0-9]+","requestId":"[A-Za-z0-9]+"\}$`)
+var requestIDRE = regexp.MustCompile(`^\{"authpayuid":"[0-9]+","requestId":"[A-Za-z0-9]+"\}$`)
 
 func TestFetchMandateByRegistrationRefThenById(t *testing.T) {
 	f := &fake{verify: verifyBody("success", "captured"), cmds: map[string]string{
-		"check_mandate_status": `{"status":1,"msg":"ok","result":{"mandateStatus":"REVOKED"}}`}}
+		"check_mandate_status": `{"status":"deleted","action":"check_mandate_status","authpayuid":"403993715521","amount":1500,"mandateStartDate":"2026-10-18","mandateEndDate":"2031-10-18","deletedon":""}`}}
 	m := mandateConn(t, f)
 	// Right after the return only the txnid is known: it yields the mihpayid.
 	s, err := m.FetchMandate(context.Background(), connector.MandateRef{ProviderMandateID: "pay_ref_01"})
@@ -124,7 +125,7 @@ func TestFetchMandateByRegistrationRefThenById(t *testing.T) {
 	}
 	// check_mandate_status and mandate_revoke refuse a call without a requestId
 	// ("requestId is mandatory", verified live): a fresh one is sent each time.
-	if got := f.last(); got.Get("command") != "check_mandate_status" || !requestIDRE.MatchString(got.Get("var1")) || !strings.Contains(got.Get("var1"), `"authPayuId":"403993715521"`) {
+	if got := f.last(); got.Get("command") != "check_mandate_status" || !requestIDRE.MatchString(got.Get("var1")) || !strings.Contains(got.Get("var1"), `"authpayuid":"403993715521"`) {
 		t.Errorf("form = %v", got)
 	}
 	first := f.last().Get("var1")
@@ -170,7 +171,7 @@ func TestPreDebitNoticeGolden(t *testing.T) {
 }
 
 func TestChargeMandatePassesProviderRefForIdempotency(t *testing.T) {
-	f := &fake{cmds: map[string]string{"si_transaction": `{"status":1,"msg":"queued"}`}}
+	f := &fake{cmds: map[string]string{"si_transaction": `{"status":1,"message":"Transaction Processed successfully","details":{"DEBITREF01":{"authpayuid":"403993715521","transactionid":"DEBITREF01","amount":"499.00","payuid":"","status":"pending","field9":""}}}`}}
 	m := mandateConn(t, f)
 	req := connector.ChargeRequest{Mandate: connector.MandateRef{ProviderMandateID: "403993715521"}, ProviderRef: "DEBITREF01", Amount: 49900, Currency: "INR"}
 	snap, err := m.ChargeMandate(context.Background(), req)
@@ -183,7 +184,7 @@ func TestChargeMandatePassesProviderRefForIdempotency(t *testing.T) {
 	}
 
 	// Immediate result in the answer.
-	f.cmds["si_transaction"] = `{"status":1,"msg":"ok","transaction_details":{"DEBITREF01":{"mihpayid":"7001","txnid":"DEBITREF01","status":"success","amt":"499.00","mode":"SI"}}}`
+	f.cmds["si_transaction"] = `{"status":1,"message":"Transaction Processed successfully","details":{"DEBITREF01":{"authpayuid":"403993715521","transactionid":"DEBITREF01","amount":"499.00","payuid":"7001","status":"captured","field9":"Transaction Completed Successfully"}}}`
 	snap, err = m.ChargeMandate(context.Background(), req)
 	if err != nil || snap.Status != connector.PaymentSucceeded || snap.Amount != 49900 || snap.ProviderPaymentID != "7001" {
 		t.Fatalf("immediate: %+v %v", snap, err)
@@ -218,7 +219,7 @@ func TestRevokeMandate(t *testing.T) {
 	if err := m.RevokeMandate(context.Background(), connector.MandateRef{ProviderMandateID: "403993715521"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.last(); got.Get("command") != "mandate_revoke" || !requestIDRE.MatchString(got.Get("var1")) || !strings.Contains(got.Get("var1"), `"authPayuId":"403993715521"`) {
+	if got := f.last(); got.Get("command") != "mandate_revoke" || !requestIDRE.MatchString(got.Get("var1")) || !strings.Contains(got.Get("var1"), `"authpayuid":"403993715521"`) {
 		t.Errorf("form = %v", got)
 	}
 	f.cmds["mandate_revoke"] = `{"status":0,"message":"Mandate entry not found","action":"MANDATE_REVOKE"}`

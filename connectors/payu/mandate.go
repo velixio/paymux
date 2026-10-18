@@ -109,7 +109,7 @@ func mandateStatus(raw string) string {
 	switch strings.ToLower(raw) {
 	case "active", "success", "authorized", "captured":
 		return "active"
-	case "revoked", "cancelled", "canceled", "deleted", "stopped":
+	case "revoked", "cancelled", "canceled", "deleted", "discarded", "stopped":
 		return "revoked"
 	case "expired", "completed":
 		return "expired"
@@ -171,33 +171,52 @@ func (p *payu) FetchMandate(ctx context.Context, ref connector.MandateRef) (conn
 		}
 		return snap, nil
 	}
-	v1, _ := json.Marshal(mandateCall{AuthPayuID: id, RequestID: p.requestID()})
-	var out struct {
-		Status  flexStr `json:"status"`
-		Msg     string  `json:"msg"`
-		Message string  `json:"message"`
-		Result  struct {
-			MandateStatus flexStr `json:"mandateStatus"`
-		} `json:"result"`
-	}
-	if err := p.api.call(ctx, "check_mandate_status", string(v1), nil, &out); err != nil {
-		return connector.MandateSnapshot{}, err
-	}
-	if out.Status != "1" {
+	// The mandate's own status. Each payment mode has its own command: cards
+	// check_mandate_status, UPI upi_mandate_status, net banking NB_mandate_status.
+	// Every one answers "not found" for a mandate of another mode, so they are
+	// asked in turn.
+	for _, cmd := range []string{"check_mandate_status", "upi_mandate_status", "NB_mandate_status"} {
+		v1, _ := json.Marshal(mandateCall{AuthPayuID: id, RequestID: p.requestID()})
+		var out struct {
+			Status  flexStr `json:"status"`
+			Msg     string  `json:"msg"`
+			Message string  `json:"message"`
+			Amount  flexStr `json:"amount"`
+			End     string  `json:"mandateEndDate"`
+			Method  string  `json:"-"`
+		}
+		if err := p.api.call(ctx, cmd, string(v1), nil, &out); err != nil {
+			return connector.MandateSnapshot{}, err
+		}
 		if err := checkCredentials(firstNonEmpty(out.Msg, out.Message)); err != nil {
 			return connector.MandateSnapshot{}, err
 		}
-		return connector.MandateSnapshot{}, connector.ErrNotFound
+		// A mandate that exists answers with its status as the "status" string
+		// ("active", "pending", "cancelled", "deleted"...); a refusal has a number.
+		if _, err := strconv.Atoi(string(out.Status)); err == nil || out.Status == "" {
+			continue
+		}
+		snap := connector.MandateSnapshot{ProviderMandateID: id, Status: mandateStatus(string(out.Status)), RawStatus: string(out.Status), Currency: "INR",
+			Method: map[string]string{"check_mandate_status": "card", "upi_mandate_status": "upi", "NB_mandate_status": "emandate"}[cmd]}
+		if amt, err := money.ParseDecimal(string(out.Amount), "INR"); err == nil {
+			snap.MaxAmount = amt
+		}
+		if t, err := time.ParseInLocation("2006-01-02", out.End, ist); err == nil {
+			snap.ValidUntil = t.UnixMilli()
+		}
+		return snap, nil
 	}
-	raw := string(out.Result.MandateStatus)
-	return connector.MandateSnapshot{ProviderMandateID: id, Status: mandateStatus(raw), RawStatus: raw, Currency: "INR"}, nil
+	return connector.MandateSnapshot{}, connector.ErrNotFound
 }
 
+// preDebit is the var1 of pre_debit_SI (PayU's documentation: authpayuid,
+// requestId, amount, debitDate, invoiceDisplayNumber).
 type preDebit struct {
-	AuthPayuID    string `json:"authPayuId"`
-	RequestID     string `json:"requestId"`
-	DebitDate     string `json:"debitDate"`
-	InvoiceAmount string `json:"invoiceAmount"`
+	AuthPayuID           string `json:"authpayuid"`
+	RequestID            string `json:"requestId"`
+	Amount               string `json:"amount"`
+	DebitDate            string `json:"debitDate"`
+	InvoiceDisplayNumber string `json:"invoiceDisplayNumber"`
 }
 
 // NotifyPreDebit sends the pre-debit notification (pre_debit_SI): PayU
@@ -212,7 +231,7 @@ func (p *payu) NotifyPreDebit(ctx context.Context, req connector.PreDebitRequest
 		return err
 	}
 	v1, _ := json.Marshal(preDebit{AuthPayuID: req.Mandate.ProviderMandateID, RequestID: req.ProviderRef,
-		DebitDate: istDate(req.DebitDate), InvoiceAmount: amt})
+		Amount: amt, DebitDate: istDate(req.DebitDate), InvoiceDisplayNumber: req.ProviderRef})
 	var out struct {
 		Status  flexStr `json:"status"`
 		Msg     string  `json:"msg"`
@@ -231,10 +250,15 @@ func (p *payu) NotifyPreDebit(ctx context.Context, req connector.PreDebitRequest
 	return fmt.Errorf("payu: pre-debit notice refused: %s", msg)
 }
 
+// siCharge is the var1 of si_transaction (the field names are from PayU's
+// documentation and were accepted by the test environment; the first guess,
+// authPayuId / invoiceAmount / transactionId, was refused with "Mandatory column
+// missing").
 type siCharge struct {
-	AuthPayuID    string `json:"authPayuId"`
-	InvoiceAmount string `json:"invoiceAmount"`
-	TransactionID string `json:"transactionId"`
+	AuthPayuID           string `json:"authpayuid"`
+	InvoiceDisplayNumber string `json:"invoiceDisplayNumber"`
+	Amount               string `json:"amount"`
+	TxnID                string `json:"txnid"`
 }
 
 // ChargeMandate debits the mandate (si_transaction). ProviderRef is the
@@ -249,20 +273,24 @@ func (p *payu) ChargeMandate(ctx context.Context, req connector.ChargeRequest) (
 	if err != nil || req.Amount <= 0 || req.ProviderRef == "" {
 		return connector.PaymentSnapshot{}, errors.New("payu: charge needs a positive amount and a provider_ref")
 	}
-	v1, _ := json.Marshal(siCharge{AuthPayuID: req.Mandate.ProviderMandateID, InvoiceAmount: amt, TransactionID: req.ProviderRef})
+	v1, _ := json.Marshal(siCharge{AuthPayuID: req.Mandate.ProviderMandateID, InvoiceDisplayNumber: req.ProviderRef, Amount: amt, TxnID: req.ProviderRef})
 	var out struct {
-		Status  flexStr              `json:"status"`
-		Msg     string               `json:"msg"`
-		Details map[string]txnDetail `json:"transaction_details"`
+		Status  flexStr `json:"status"`
+		Msg     string  `json:"msg"`
+		Message string  `json:"message"`
+		// The answer to a debit it processed: status 1 and, per transaction, its
+		// own outcome ("captured" or "failed" with field9 saying why).
+		Details map[string]siDetail `json:"details"`
 	}
 	if err := p.api.call(ctx, "si_transaction", string(v1), nil, &out); err != nil {
 		return connector.PaymentSnapshot{}, err
 	}
+	out.Msg = firstNonEmpty(out.Msg, out.Message)
 	low := strings.ToLower(out.Msg)
 	switch {
 	case out.Status == "1":
 		if d, ok := out.Details[req.ProviderRef]; ok {
-			return d.snapshot(req.ProviderRef)
+			return d.snapshot(req.ProviderRef, req.Amount)
 		}
 		// Accepted for processing; the outcome arrives by webhook or verify_payment.
 		return connector.PaymentSnapshot{ProviderRef: req.ProviderRef, Status: connector.PaymentProcessing, RawStatus: "pending",
@@ -306,7 +334,7 @@ func (p *payu) RevokeMandate(ctx context.Context, ref connector.MandateRef) erro
 // mandateCall is the var1 of check_mandate_status and mandate_revoke. PayU
 // refuses them without a requestId ("requestId is mandatory", verified live).
 type mandateCall struct {
-	AuthPayuID string `json:"authPayuId"`
+	AuthPayuID string `json:"authpayuid"`
 	RequestID  string `json:"requestId"`
 }
 
@@ -317,3 +345,25 @@ func (p *payu) requestID() string {
 }
 
 var _ connector.MandateManager = (*payu)(nil)
+
+// siDetail is one debit in the answer of si_transaction.
+type siDetail struct {
+	PayUID        flexStr `json:"payuid"`
+	TransactionID flexStr `json:"transactionid"`
+	Amount        flexStr `json:"amount"`
+	Status        flexStr `json:"status"`
+	Field9        flexStr `json:"field9"`
+}
+
+func (d siDetail) snapshot(ref string, fallbackAmount int64) (connector.PaymentSnapshot, error) {
+	amt := fallbackAmount
+	if v, err := money.ParseDecimal(string(d.Amount), "INR"); err == nil && v > 0 {
+		amt = v
+	}
+	snap := connector.PaymentSnapshot{ProviderRef: ref, ProviderPaymentID: string(d.PayUID), Status: mapStatus(string(d.Status)), RawStatus: string(d.Status),
+		Amount: amt, Currency: "INR", Method: "card"}
+	if snap.Status == connector.PaymentFailed || snap.Status == connector.PaymentCanceled {
+		snap.ErrorCode, snap.ErrorMessage = "si_rejected", string(d.Field9)
+	}
+	return snap, nil
+}
