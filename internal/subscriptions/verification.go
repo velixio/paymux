@@ -23,8 +23,9 @@ import (
 // (Info.RefundsVerificationDebit), it is refunded through the ordinary refund
 // path (initiated_by=system, reason=mandate_verification).
 //
-// Whether PayU and Zoho reverse the verification debit themselves is not known
-// (both connectors declare that they do). Unless the org setting
+// Zoho does not reverse it (its help pages: the Rs 1 is settled in the next
+// payout), so Paymux refunds it. Whether PayU reverses it on its own is not
+// known (its connector declares that it does). Unless the org setting
 // verification_debit_fallback is "never", Paymux therefore checks 72 hours
 // after the debit: if the provider shows the payment as not refunded and nobody
 // has refunded it, Paymux refunds it explicitly. That refund is idempotent (the
