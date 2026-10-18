@@ -1,5 +1,8 @@
 # syntax=docker/dockerfile:1
 
+# Declared before the first FROM so every FROM line can use it.
+ARG GO_VERSION=1.27
+
 # Frontends are compiled once; the runtime images remain static Go binaries.
 FROM oven/bun:1.4.3 AS frontend
 WORKDIR /src
@@ -12,7 +15,6 @@ COPY tsconfig.json tsconfig.test.json ./
 RUN bun run typecheck && bun run build
 
 # ---- build -------------------------------------------------------------------
-ARG GO_VERSION=1.27
 FROM golang:${GO_VERSION} AS build
 WORKDIR /src
 
