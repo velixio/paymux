@@ -42,7 +42,9 @@ type Config struct {
 	SMTPPassword                     Secret
 
 	// TrustedProxies are the reverse proxies whose X-Forwarded-For header is
-	// believed (PAYMUX_TRUSTED_PROXIES, CIDRs or addresses; default none).
+	// believed (PAYMUX_TRUSTED_PROXIES, CIDRs or addresses; "none" for no
+	// proxy). Unset, any address on the local network is believed
+	// (localNetworks), so a reverse proxy on the LAN needs no setting.
 	TrustedProxies []netip.Prefix
 
 	OpsEmails     []string // PAYMUX_OPS_EMAILS, bare addresses
@@ -187,7 +189,11 @@ func Load(lookupEnv func(string) (string, bool)) (Config, error) {
 			bad("PAYMUX_SMTP_FROM is not a valid email address")
 		}
 	}
-	for _, raw := range strings.Split(get("PAYMUX_TRUSTED_PROXIES", ""), ",") {
+	proxies := get("PAYMUX_TRUSTED_PROXIES", localNetworks)
+	if strings.EqualFold(strings.TrimSpace(proxies), "none") {
+		proxies = ""
+	}
+	for _, raw := range strings.Split(proxies, ",") {
 		if raw = strings.TrimSpace(raw); raw == "" {
 			continue
 		}
@@ -310,6 +316,12 @@ func loadOIDC(c *Config, get func(k, def string) string, bad func(string, ...any
 
 // parseProxy reads a CIDR block or a single address. A /0 block would trust
 // every client, which defeats the setting, so it is refused.
+// localNetworks is the default PAYMUX_TRUSTED_PROXIES: loopback, the private
+// (RFC 1918 / RFC 4193) and the link-local ranges. A host on these networks
+// can set the client address the hub believes (login lockout, audit), which
+// is the trade-off of not configuring the proxy's exact address.
+const localNetworks = "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,::1/128,fc00::/7,fe80::/10"
+
 func parseProxy(raw string) (netip.Prefix, error) {
 	var p netip.Prefix
 	if strings.Contains(raw, "/") {
