@@ -204,7 +204,7 @@ func settingGroup(key string) string {
 		return "Subscriptions and recovery"
 	case "theme", "customer_language":
 		return "Appearance and language"
-	case "webhook_retry_schedule", "recon_time", "provider_event_retention", "document_retention":
+	case "webhook_retry_schedule", "recon_time", "provider_event_retention", "document_retention", "log_retention_error_days", "log_retention_warn_days", "log_max_rows", "audit_retention_days":
 		return "Delivery and retention"
 	default:
 		return "Invoices and tax"
