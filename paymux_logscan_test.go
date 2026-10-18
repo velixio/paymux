@@ -259,7 +259,7 @@ func TestNoSecretOrPersonalDataReachesTheLogTable(t *testing.T) {
 				if strings.Contains(x.Msg, "/v1/orders") && (x.PaymentID != id || !strings.HasPrefix(x.AttemptID, "att_")) {
 					t.Errorf("the checkout call lacks its payment and attempt ids: %+v", x)
 				}
-				if strings.Contains(x.Msg, "/refund") && (x.PaymentID != id || !strings.HasPrefix(x.RefundID, "rfd_") || !strings.HasPrefix(x.AttemptID, "att_")) {
+				if strings.Contains(x.Msg, "/refund") && (x.PaymentID != id || !strings.HasPrefix(x.RefundID, "ref_") || !strings.HasPrefix(x.AttemptID, "att_")) {
 					t.Errorf("the refund call lacks its payment, attempt and refund ids: %+v", x)
 				}
 				if x.Level == "error" && (!strings.Contains(x.Response, "[redacted]") || !strings.Contains(x.Response, "BAD_REQUEST")) {
