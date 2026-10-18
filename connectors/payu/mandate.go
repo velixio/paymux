@@ -17,22 +17,18 @@ import (
 // AutoPay and net-banking e-mandates. Paymux runs the schedule and triggers
 // every debit itself (merchant_triggered).
 //
-// Verified against the PayU test environment (2026-10-18): the SI registration
-// form (PayU showed the plan: maximum mandate amount, "As Presented", start and
-// end date; a card was registered and the 3-D Secure simulator completed), the
-// status commands (check_mandate_status for cards answers with the status as
-// the "status" string and the amount as a number; upi_mandate_status and
-// NB_mandate_status exist for the other modes), pre_debit_SI and si_transaction
-// with PayU's documented var1 (authpayuid in lower case, invoiceDisplayNumber,
-// amount, txnid; answered "failed" with field9 "Invalid/missing card token" for
-// this merchant, which has no card token), and mandate_revoke (status 1,
-// "Mandate Revoked Successfully"; the mandate then reads "deleted").
+// Read against PayU's recurring-payments guide and run on the test environment
+// (2026-10-18; docs/provider-verification.md has the list of what differed and
+// what could not be run): the SI registration form (the hosted page shows the
+// plan; cards are captured with 3-D Secure), the status commands, mandate_revoke
+// and upi_mandate_revoke, and the request shapes of pre_debit_SI and
+// si_transaction.
 //
-// TODO(spec): not seen with a registered UPI or net-banking mandate (the
-// pg codes and the UPI and net-banking status answers are from the
-// documentation), nor a captured debit, nor the pre-debit rule that the debit
-// may follow only 48 hours after the notice (PayU's documentation; Paymux's
-// notice lead is configurable).
+// TODO(spec): the test merchant cannot register a mandate (a card payment comes
+// back with payment_source "payu", not "sist", and the mandate stays pending; UPI
+// and e-NACH are not available to it), so no registered mandate, no accepted
+// pre-debit and no captured debit has been seen, and neither the UPI nor the
+// net-banking status answers nor the 48-hour notice rule on the test environment.
 
 // setupAmount (Rs 1) is the verification amount a registration debits when
 // the request names none (Info.MandateSetupAmount). A registration for a
