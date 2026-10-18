@@ -251,3 +251,8 @@ The root package (`github.com/paymux/paymux`) and `pkg/...` are the public
 API. `api/pkg.txt` is a snapshot of their exported declarations, and CI fails
 when it is out of date (`go run ./scripts/apisnap -w` regenerates it after an
 intended change). Everything under `internal/` can change at any time.
+
+A connector that is an OAuth client of its provider (Zoho Payments) implements
+`connector.OAuthConnector` and declares the `oauth` capability; the dashboard
+then offers **Connect** on its provider accounts. See *OAuth connectors* in
+[Writing connectors](connectors.md#oauth-connectors-oauthconnector).

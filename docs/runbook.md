@@ -129,12 +129,29 @@ Everything below is in the dashboard (admin role); the same can be scripted with
    - *Branding*: display name, accent colour, logo (PNG/JPEG up to 512 KB).
    - *Tax*: which tax entity, SAC, GST rate, prices inclusive or not, issue invoices on or off.
    - *Settings*: per-app overrides of the org defaults.
-3. **Provider accounts** (*Providers → Add an account*): pick the connector, fill the credentials the form asks for (secrets are write-only afterwards), tick the currencies and purposes, and link the apps that may use it. Use *Test connection* to check the credentials. Create separate **test** and **live** accounts.
+3. **Provider accounts** (*Providers → Add an account*; for Zoho Payments see [Connecting Zoho Payments](#connecting-zoho-payments)): pick the connector, fill the credentials the form asks for (secrets are write-only afterwards), tick the currencies and purposes, and link the apps that may use it. Use *Test connection* to check the credentials. Create separate **test** and **live** accounts.
 4. **Provider access** (app → *Providers* tab) lists which accounts the app may use; **routing** (*Settings → Routing*) decides which of them takes a payment, and *Test routing* shows the outcome for a sample payment.
 5. **Custom domain** (app → *Domains*), optional: add `pay.yourapp.com`, point its DNS (CNAME/A) at this server, and register the domain with each provider (see the checklist on that tab; Razorpay and PayU review merchant websites, so do this before going live).
 6. **Settings** (*Settings*): payment expiry, invoice delivery, dunning, retry schedule, reconciliation time and the rest, each with its default and units.
 
 Before going live, run a payment end to end in **test** mode (the header toggle switches the dashboard between test and live data), then check *Reconciliation* after the first day.
+
+## Connecting Zoho Payments
+
+Zoho Payments needs an OAuth client (client ID and secret) and a **refresh token** for it. You do not copy tokens by hand: create the account, then press **Connect**.
+
+1. **Create the account** (*Providers → Add an account → Zoho Payments*): Zoho account id, client ID, client secret, webhook signing key and the widget API key (or hosted checkout URL). Leave *OAuth refresh token* empty. The account is created *Not connected*; until it is connected, using it fails with "not connected" (nothing is sent to Zoho).
+2. **Create a Server-based client** in Zoho's API console (`api-console.zoho.in`, or your data centre's: `.com`, `.eu`, `.com.au`, `.jp`, `.sa`, `.ca`). A *Self Client* cannot use the redirect flow (see below).
+3. **Register the redirect URI.** The account page shows it, exactly as Zoho must have it: `<PAYMUX_BASE_URL>/dashboard/oauth/callback` (for example `https://pay.example.com/dashboard/oauth/callback`), with a Copy button. Add it to the client's *Authorized redirect URIs*. If Zoho answers *Invalid Redirect Uri*, the URI registered there differs from the one shown (scheme, host, port, path or a trailing slash): fix the client, not Paymux. `PAYMUX_BASE_URL` must be the address you open the dashboard on.
+4. **Connect.** On the account page, under *Connect with Zoho Payments*, enter the client ID and secret (a blank secret keeps the stored one), check the scopes (the defaults are the ones Paymux uses, with the `ZohoPaySandbox` prefix for a sandbox account) and press **Connect**. You go to Zoho, approve, and return to the account page, which now says *Connected* and lists the granted scopes. Then press **Test connection**.
+5. **Reconnect** the same way when the token is revoked, the scopes change or you rotate the client secret.
+
+Good to know:
+
+- Only an **admin** can connect. The authorization is valid for ten minutes and for one use, and only for the user who started it; an expired, repeated or foreign callback is refused with nothing stored.
+- Zoho tells the callback which data centre the account lives in; Paymux follows only Zoho's own accounts hosts for that and records the data centre in the account.
+- **Self Client fallback.** If your client is a Self Client, generate a grant code in the API console (choose the same scopes, a few minutes' validity) and paste it into *Or paste a grant code* on the same panel, with the client ID and secret. It is exchanged without a redirect and the refresh token is stored the same way.
+- The client secret and tokens are sealed in the account's config; they are never shown again, logged or written to the audit log (which records only that the account was connected, by whom, and with which scopes).
 
 ## Payment links
 

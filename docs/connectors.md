@@ -88,6 +88,38 @@ conformance kit fails when the two disagree.
 | `SubscriptionManager` | `subscription_manager` | provider-managed recurring billing |
 | `MandateManager`      | `mandate_manager`      | merchant-triggered debits on a mandate |
 | `Payouter`            | `payout`               | `CreatePayout`, `FetchPayout`: money out to a bank account or UPI id |
+| `OAuthConnector`      | `oauth`                | `OAuthDefaultScopes`, `OAuthAuthorizeURL`, `OAuthCallbackConfig`, `OAuthExchange`: the dashboard's **Connect** button |
+
+### OAuth connectors (`OAuthConnector`)
+
+A provider whose credentials come from an OAuth authorization (Zoho Payments)
+can let the operator authorise the account from the dashboard instead of
+pasting grant codes. Implement `OAuthConnector` and declare `oauth`; the
+provider account page then shows a Connect panel. The contract:
+
+* An account that is **not connected yet** must be constructible (no refresh
+  token): the operator creates it, then connects it. Its API calls fail with
+  `ErrInvalidCredentials` saying it is not connected, without calling the
+  provider.
+* Mark the config properties in the schema so the dashboard knows what they
+  are: `"x-oauth": "client_id"`, `"client_secret"`, `"refresh_token"` or
+  `"scopes"`. A property can be kept out of the form with `"x-hidden": true`
+  (the dashboard keeps its stored value when the form is saved).
+* `OAuthAuthorizeURL(cfg, redirectURI, state, scopes)` builds the provider's
+  authorization URL and must refuse an empty state (the state is what makes the
+  callback safe: the dashboard makes it random, single use, ten minutes, bound
+  to the user and the account).
+* `OAuthCallbackConfig(cfg, params)` lets the provider say, on the callback,
+  which data centre or accounts host the account is in. **Never follow a host
+  that came from outside**: look it up in a list of the provider's own hosts and
+  refuse anything else (the Zoho connector does this; the tests try IP
+  addresses, look-alike hosts, other schemes and ports).
+* `OAuthExchange(ctx, cfg, redirectURI, code)` trades the code for tokens (an
+  empty `redirectURI` is a self client's code). It returns an `OAuthResult`
+  whose `ConfigPatch` is merged into the stored config and sealed: put the
+  refresh token there, never the access token. Error messages must not contain
+  the client secret, the code or a token.
+* The conformance kit runs these checks when `Fixtures.OAuth` is set.
 
 ## 2. Declaring capabilities (`Info`)
 
