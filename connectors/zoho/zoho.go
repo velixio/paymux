@@ -218,6 +218,9 @@ func (z *zoho) CreateCheckout(ctx context.Context, req connector.CheckoutRequest
 	if req.ProviderRef == "" || req.Amount <= 0 {
 		return connector.CheckoutResult{}, errors.New("zoho: provider_ref and a positive amount are required")
 	}
+	if len(req.ProviderRef) > 50 {
+		return connector.CheckoutResult{}, errors.New("zoho: provider_ref is the reference_number, at most 50 characters")
+	}
 	amt, err := money.FormatDecimal(req.Amount, "INR")
 	if err != nil {
 		return connector.CheckoutResult{}, err
@@ -227,14 +230,14 @@ func (z *zoho) CreateCheckout(ctx context.Context, req connector.CheckoutRequest
 		"currency":         "INR",
 		"description":      firstNonEmpty(req.Description, "Payment"),
 		"reference_number": req.ProviderRef,
-		"return_url":       z.deps.URLs.ReturnURL(req.ProviderRef),
 		"meta_data": []map[string]string{
 			{"key": "pay", "value": req.PaymentID}, {"key": "att", "value": req.AttemptID}, {"key": "app", "value": req.AppID},
 		},
 	}
 	var out struct {
 		Session struct {
-			ID string `json:"payments_session_id"`
+			ID         string `json:"payments_session_id"`
+			ExpiryTime int64  `json:"expiry_time"` // unix seconds
 		} `json:"payments_session"`
 	}
 	if err := z.api.do(ctx, "POST", "/api/v1/paymentsessions", nil, in, &out); err != nil {
@@ -245,11 +248,15 @@ func (z *zoho) CreateCheckout(ctx context.Context, req connector.CheckoutRequest
 		return connector.CheckoutResult{}, errors.New("zoho: payment session response has no id")
 	}
 	res := connector.CheckoutResult{ProviderOrderID: sid}
+	if out.Session.ExpiryTime > 0 {
+		res.ExpiresAt = out.Session.ExpiryTime * 1000
+	}
 	if z.cfg.WidgetAPIKey != "" {
 		res.NextAction = connector.NextAction{Kind: connector.ActionSDK, ScriptURL: widgetScript, Options: map[string]any{
 			"account_id": z.cfg.AccountID, "api_key": z.cfg.WidgetAPIKey, "domain": strings.ToUpper(z.cfg.dc()),
 			"payments_session_id": sid, "amount": amt, "currency": "INR",
-			"return_url": z.deps.URLs.ReturnURL(req.ProviderRef),
+			"description": firstNonEmpty(req.Description, "Payment"), // required by requestPaymentMethod
+			"return_url":  z.deps.URLs.ReturnURL(req.ProviderRef),
 		}}
 	} else {
 		sep := "?"

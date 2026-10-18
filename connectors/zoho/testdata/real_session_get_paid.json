@@ -1,0 +1,1 @@
+{"code":0,"message":"success","payments_session":{"payments_session_id":"28000000000219002","currency":"INR","amount":"100.50","status":"succeeded","description":"d","reference_number":"pay_ref_01","max_retry_count":5,"created_time":1792283824,"expiry_time":1792284724,"meta_data":[],"payments":[{"payment_id":"28000000000181002","status":"succeeded","created_time":1792283900}]}}

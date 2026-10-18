@@ -103,13 +103,17 @@ func firstNonEmpty(ss ...string) string {
 
 type apiError struct {
 	Status  int
-	Code    int
+	Code    string // "error", "resource_does_not_exist"...; older docs show numbers
 	Message string
 }
 
 func (e *apiError) Error() string {
-	return fmt.Sprintf("zoho: HTTP %d code %d: %s", e.Status, e.Code, e.Message)
+	return fmt.Sprintf("zoho: HTTP %d code %s: %s", e.Status, e.Code, e.Message)
 }
+
+// notFoundCodes are the codes Zoho answers an unknown id with. The status is 400,
+// not 404 (verified against the live API).
+var notFoundCodes = map[string]bool{"resource_does_not_exist": true, "invalid_payment_session": true}
 
 // do calls an API path (with account_id added). A 401 triggers one token
 // refresh and one retry.
@@ -169,12 +173,14 @@ func (c *client) once(ctx context.Context, tok, method, path string, query url.V
 		return nil
 	}
 	var env struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
+		Code    json.RawMessage `json:"code"`
+		Message string          `json:"message"`
 	}
 	_ = json.Unmarshal(raw, &env)
-	ae := &apiError{Status: resp.StatusCode, Code: env.Code, Message: env.Message}
+	ae := &apiError{Status: resp.StatusCode, Code: strings.Trim(string(env.Code), `"`), Message: env.Message}
 	switch {
+	case notFoundCodes[ae.Code]:
+		return fmt.Errorf("%w: %w", connector.ErrNotFound, ae)
 	case resp.StatusCode == 401 || resp.StatusCode == 403:
 		return fmt.Errorf("%w: %w", connector.ErrInvalidCredentials, ae)
 	case resp.StatusCode == 404:
