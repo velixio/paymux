@@ -268,6 +268,42 @@ func TestChargeWithin24HoursOfTheNoticeIsRefusedAndRescheduled(t *testing.T) {
 	})
 }
 
+// A provider that wants a longer notice (PayU: 48 hours for cards, Info.PreDebitMinHours)
+// is never debited sooner, whether the notice came late, was never sent, or a
+// retry needs a fresh one.
+func TestAProviderThatWantsALongerNoticeGetsIt(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, t0)
+		e.r.noticeHours = 48
+		c := e.mustCreate(func(i *subscriptions.CreateInput) { i.Interval = "day" })
+		sub := e.activateMandate(c)
+		e.r.noticeErr = errors.New("notice API down")
+		e.runJobs()
+		e.r.mu.Lock()
+		e.r.noticeErr = nil
+		e.r.mu.Unlock()
+		e.advanceTo(t0.Add(12 * hour)) // the notice goes out, 12h before the charge is due
+		if len(e.r.notices) != 1 {
+			t.Fatalf("notices = %d", len(e.r.notices))
+		}
+		e.advanceTo(t0.Add(48 * hour)) // the charge was pushed to 48h after the first notice attempt
+		if e.r.chargeCount() != 0 {
+			t.Fatal("debited 36h after the notice")
+		}
+		if got := e.pendingJobs("subscription.charge_renewal"); len(got) != 1 || !got[0].Equal(t0.Add(60*hour)) {
+			t.Fatalf("rescheduled charge = %v, want notice + 48h = %v", got, t0.Add(60*hour))
+		}
+		e.advanceTo(t0.Add(60*hour - time.Minute))
+		if e.r.chargeCount() != 0 {
+			t.Fatal("charged before the 48h gap passed")
+		}
+		e.advanceTo(t0.Add(60 * hour))
+		if e.r.chargeCount() != 1 || e.sub(sub.ID).RenewalsDone != 2 {
+			t.Fatalf("charges = %d", e.r.chargeCount())
+		}
+	})
+}
+
 // A charge that finds no notice sent first asks for one and waits 24h.
 func TestChargeWithoutAnyNoticeSendsOneAndWaits(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {

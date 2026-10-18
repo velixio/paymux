@@ -158,6 +158,7 @@ Paymux must respect:
   `merchant_triggered` (Paymux schedules each debit on a mandate).
 * `MandateLimits`: per-method caps on a single debit.
 * `PreDebitPerAttempt`: the provider needs a notice per debit, not once per mandate.
+* `PreDebitMinHours`: the least time the provider wants between a notice and its debit, when that is longer than the RBI's 24 hours (PayU: 48). Paymux never debits sooner.
 * `MandateSetupAmount` and `RefundsVerificationDebit`: the verification debit a
   mandate registration makes when nothing is due (default 100 minor units).
   When the provider does not reverse it itself, Paymux refunds it

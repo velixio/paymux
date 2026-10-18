@@ -75,7 +75,22 @@ func PreDebitAt(chargeAt time.Time, lead time.Duration) time.Time { return charg
 // ChargeAllowed reports whether a debit may run at now given when the notice
 // was sent; if not, it returns the earliest allowed time.
 func ChargeAllowed(notifiedAt, now time.Time) (bool, time.Time) {
-	earliest := notifiedAt.Add(MinNoticeGap)
+	return ChargeAllowedAfter(notifiedAt, now, MinNoticeGap)
+}
+
+// NoticeGap is the least time between a notice and its debit for a provider
+// that asks for minHours (Info.PreDebitMinHours): never under the RBI's 24h.
+func NoticeGap(minHours int) time.Duration {
+	if g := time.Duration(minHours) * time.Hour; g > MinNoticeGap {
+		return g
+	}
+	return MinNoticeGap
+}
+
+// ChargeAllowedAfter is ChargeAllowed for a provider that wants a notice gap
+// longer than the RBI's (see NoticeGap).
+func ChargeAllowedAfter(notifiedAt, now time.Time, gap time.Duration) (bool, time.Time) {
+	earliest := notifiedAt.Add(gap)
 	if now.Before(earliest) {
 		return false, earliest
 	}

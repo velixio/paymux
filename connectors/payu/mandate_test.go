@@ -81,7 +81,7 @@ func TestMandateCheckoutFormAndGoldenSIHash(t *testing.T) {
 	if err != nil || first.NextAction.Fields["amount"] != "499.00" || first.NextAction.Fields["hash"] != goldenSIHash499 {
 		t.Errorf("first-period registration: %+v %v", first.NextAction.Fields, err)
 	}
-	for method, pg := range map[string]string{"card": "CC", "emandate": "NB"} {
+	for method, pg := range map[string]string{"card": "CC", "emandate": "ENACH"} {
 		r, err := m.CreateMandateCheckout(context.Background(), connector.MandateRequest{ProviderRef: "R", MaxAmount: 100, Currency: "INR", Method: method})
 		if err != nil || r.NextAction.Fields["pg"] != pg {
 			t.Errorf("%s: %+v %v", method, r.NextAction.Fields, err)

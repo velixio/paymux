@@ -164,6 +164,9 @@ func Render(infos []connector.Info) string {
 		if in.PreDebitPerAttempt {
 			notes = append(notes, "pre-debit notice per attempt")
 		}
+		if in.PreDebitMinHours > 24 {
+			notes = append(notes, fmt.Sprintf("notice at least %d hours before the debit", in.PreDebitMinHours))
+		}
 		if in.MandateSetupAmount > 0 {
 			notes = append(notes, fmt.Sprintf("mandate setup debit %d minor units", in.MandateSetupAmount))
 		}

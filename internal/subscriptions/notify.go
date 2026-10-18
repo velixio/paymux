@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/paymux/paymux/internal/billing"
 	"github.com/paymux/paymux/internal/checkout"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/core/state"
@@ -327,7 +326,7 @@ func (s *Service) swapMandate(ctx context.Context, tx store.Tx, sub *store.Subsc
 		cy.State, cy.NotifiedAt = "scheduled", time.Time{}
 		if resumed {
 			cy.Retries = 0
-			if err := s.enqueueCharge(ctx, tx, *sub, &cy, now.Add(billing.MinNoticeGap)); err != nil {
+			if err := s.enqueueCharge(ctx, tx, *sub, &cy, now.Add(s.noticeGap(ctx, sub.ProviderAccountID))); err != nil {
 				return err
 			}
 		}

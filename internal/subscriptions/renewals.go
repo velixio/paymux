@@ -58,6 +58,16 @@ func (s *Service) mandateOf(ctx context.Context, q store.Queryer, sub store.Subs
 	return store.GetMandate(ctx, q, sub.MandateID)
 }
 
+// noticeGap is the least time between a pre-debit notice and its debit on the
+// account's provider: the RBI's 24 hours, or what the provider asks for.
+func (s *Service) noticeGap(ctx context.Context, accountID string) time.Duration {
+	conn, err := s.connectors.Get(ctx, accountID)
+	if err != nil {
+		return billing.MinNoticeGap
+	}
+	return billing.NoticeGap(conn.Info().PreDebitMinHours)
+}
+
 // snap moves t out of the UPI peak windows for UPI mandates.
 func (p policy) snap(method string, t time.Time) time.Time {
 	if method == string(billing.MethodUPI) {
@@ -135,7 +145,7 @@ func (s *Service) queueCycle(ctx context.Context, tx store.Tx, sub store.Subscri
 	if noticeAt.Before(now) {
 		noticeAt = now
 	}
-	if earliest := noticeAt.Add(billing.MinNoticeGap); chargeAt.Before(earliest) {
+	if earliest := noticeAt.Add(s.noticeGap(ctx, sub.ProviderAccountID)); chargeAt.Before(earliest) {
 		chargeAt = earliest
 	}
 	if err := s.enqueueNotify(ctx, tx, sub, k, 0, noticeAt); err != nil {
@@ -493,14 +503,16 @@ func (s *Service) prepareCharge(ctx context.Context, tx store.Tx, sub *store.Sub
 	if m.Status != string(state.MandateActive) || (!m.ValidUntil.IsZero() && !now.Before(m.ValidUntil)) {
 		return true, s.failCycle(ctx, tx, sub, cy, pol, *m, "mandate_not_active", true)
 	}
-	// The RBI notice rule: never debit within 24h of the pre-debit notice.
+	// The RBI notice rule: never debit within 24h of the pre-debit notice (longer
+	// when the provider asks for it, Info.PreDebitMinHours).
+	gap := s.noticeGap(ctx, sub.ProviderAccountID)
 	if cy.NotifiedAt.IsZero() {
 		if err := s.enqueueNotify(ctx, tx, *sub, cy.PeriodIndex, cy.Retries, now); err != nil {
 			return true, err
 		}
-		return true, s.deferCharge(ctx, tx, *sub, cy, pol.snap(m.Method, now.Add(billing.MinNoticeGap)))
+		return true, s.deferCharge(ctx, tx, *sub, cy, pol.snap(m.Method, now.Add(gap)))
 	}
-	if ok, at := billing.ChargeAllowed(cy.NotifiedAt, now); !ok {
+	if ok, at := billing.ChargeAllowedAfter(cy.NotifiedAt, now, gap); !ok {
 		return true, s.deferCharge(ctx, tx, *sub, cy, pol.snap(m.Method, at))
 	}
 	// NPCI: no UPI AutoPay execution in the peak windows.

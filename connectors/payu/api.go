@@ -137,6 +137,7 @@ type txnDetail struct {
 	ErrorCode      flexStr `json:"error_code"`
 	ErrorMessage   flexStr `json:"error_Message"`
 	AddedOn        flexStr `json:"addedon"`
+	PaymentSource  flexStr `json:"payment_source"` // "sist" when the registration created a mandate
 }
 
 func (d txnDetail) snapshot(txnid string) (connector.PaymentSnapshot, error) {
