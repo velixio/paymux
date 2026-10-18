@@ -41,6 +41,13 @@ type Options struct {
 	// Observe receives every provider HTTP attempt of the default per-account
 	// clients, with the connector's name (see ProviderMetrics).
 	Observe func(name string, o connector.RequestObservation)
+	// CallRecorder, when set, gives each default per-account client the recorder
+	// that receives its failed calls (the error log in the database).
+	CallRecorder func(pa store.ProviderAccount, info connector.Info) connector.CallRecorder
+	// KnownSecrets receives the secret config values of an account, under the
+	// owner "account:<id>", each time its connector is built or rebuilt, so a
+	// redactor can replace them wherever they appear.
+	KnownSecrets func(owner string, values []string)
 }
 
 // Service builds and manages connectors.
@@ -405,6 +412,9 @@ func (s *Service) Get(ctx context.Context, accountID string) (Live, error) {
 func (s *Service) deps(pa store.ProviderAccount, info connector.Info, cfg json.RawMessage) connector.Deps {
 	logger := s.o.Logger.With("provider_account", pa.ID, "connector", info.Name)
 	secretValues := secretValues(info.ConfigSchema, cfg)
+	if s.o.KnownSecrets != nil {
+		s.o.KnownSecrets("account:"+pa.ID, secretValues)
+	}
 	var hc *http.Client
 	if s.o.HTTPClient != nil {
 		hc = s.o.HTTPClient(pa, info, secretValues)
@@ -415,6 +425,9 @@ func (s *Service) deps(pa store.ProviderAccount, info connector.Info, cfg json.R
 			DenyPrivate: info.DenyPrivateNetwork && !allowInsecure(cfg)}
 		if s.o.Observe != nil {
 			opts.Observer = func(o connector.RequestObservation) { s.o.Observe(info.Name, o) }
+		}
+		if s.o.CallRecorder != nil {
+			opts.Recorder = s.o.CallRecorder(pa, info)
 		}
 		hc = connector.NewHTTPClient(opts)
 	}
