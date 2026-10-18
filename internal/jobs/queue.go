@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/internal/ids"
+	"github.com/paymux/paymux/internal/logctx"
 	"github.com/paymux/paymux/internal/store"
 )
 
@@ -132,6 +133,7 @@ func (q *Queue) runOnce(claimCtx, workCtx context.Context) (int, error) {
 }
 
 func (q *Queue) process(ctx context.Context, r store.JobRow) {
+	ctx = logctx.With(logctx.Begin(ctx), "job_id", r.ID, "job_kind", r.Kind) // provider calls and logs inside the handler carry them
 	q.mu.RLock()
 	h, ok := q.handlers[r.Kind]
 	q.mu.RUnlock()
@@ -173,6 +175,14 @@ func (q *Queue) fail(ctx context.Context, r store.JobRow, cause error, dead bool
 	next := now.Add(Backoff(r.Attempts, q.opts.Jitter()))
 	ok, err := q.db.FailJob(ctx, r.ID, r.Attempts, now, next, cause.Error(), dead)
 	q.logUpdate("fail", r, ok, err)
+	// The cause is otherwise only in the jobs table. Retried failures are
+	// warnings, a dead job is an error.
+	attrs := []any{"kind", "job", "job_id", r.ID, "job_kind", r.Kind, "attempt", r.Attempts, "max_attempts", r.MaxAttempts, "err", cause.Error()}
+	if dead {
+		q.opts.Logger.Error("job failed for good", attrs...)
+	} else {
+		q.opts.Logger.Warn("job failed, will retry", append(attrs, "retry_at", next.UTC().Format(time.RFC3339))...)
+	}
 }
 
 // logUpdate reports a failed or superseded state update.
