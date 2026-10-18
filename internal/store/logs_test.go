@@ -43,10 +43,10 @@ func searchLogs(t *testing.T, l *store.DB, f store.LogFilter) []store.LogRow {
 	return out
 }
 
-var t0 = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+var logT0 = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 
 func row(id string, at time.Duration, level, kind, msg string) store.LogRow {
-	return store.LogRow{ID: id, At: t0.Add(at), Level: level, Kind: kind, Component: "test", Msg: msg}
+	return store.LogRow{ID: id, At: logT0.Add(at), Level: level, Kind: kind, Component: "test", Msg: msg}
 }
 
 func TestLogsSeparateFileOnSQLiteSharedOnPostgres(t *testing.T) {
@@ -68,7 +68,7 @@ func TestLogsSeparateFileOnSQLiteSharedOnPostgres(t *testing.T) {
 func TestLogsRoundTripAndFilters(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		l := logsDB(t, db)
-		full := store.LogRow{ID: "log_1", At: t0, Level: "error", Kind: "provider", Component: "connector", Msg: "payu 504",
+		full := store.LogRow{ID: "log_1", At: logT0, Level: "error", Kind: "provider", Component: "connector", Msg: "payu 504",
 			RequestID: "req_1", JobID: "job_1", OrgID: "org_1", AppID: "app_1", PaymentID: "pay_1", AttemptID: "att_1", RefundID: "rfd_1",
 			SubscriptionID: "sub_1", ProviderAccountID: "pa_1", Connector: "payu", IDs: `{"mandate_id":"mdt_9","provider_order_id":"ord_77"}`,
 			Attrs: `{"k":"v"}`, Request: `{"method":"POST"}`, Response: `{"body":"gateway timeout"}`, Status: 504, DurationMS: 1500}
@@ -98,15 +98,15 @@ func TestLogsRoundTripAndFilters(t *testing.T) {
 			"any id: column":    {store.LogFilter{AnyID: "rfd_1"}, []string{"log_1"}},
 			"any id: json":      {store.LogFilter{AnyID: "mdt_9"}, []string{"log_1"}},
 			"any id: none":      {store.LogFilter{AnyID: "mdt_"}, nil},
-			"from":              {store.LogFilter{From: t0.Add(90 * time.Second)}, []string{"log_4", "log_3"}},
-			"to":                {store.LogFilter{To: t0.Add(90 * time.Second)}, []string{"log_2", "log_1"}},
+			"from":              {store.LogFilter{From: logT0.Add(90 * time.Second)}, []string{"log_4", "log_3"}},
+			"to":                {store.LogFilter{To: logT0.Add(90 * time.Second)}, []string{"log_2", "log_1"}},
 			"text in msg":       {store.LogFilter{Text: "504"}, []string{"log_1"}},
 			"text is lowercase": {store.LogFilter{Text: "SIGNATURE"}, []string{"log_2"}},
 			"text in response":  {store.LogFilter{Text: "gateway"}, []string{"log_1"}},
 			"text % and _":      {store.LogFilter{Text: "broke_100%"}, []string{"log_3"}},
 			"text wildcard":     {store.LogFilter{Text: "%"}, []string{"log_3"}},
 			"limit":             {store.LogFilter{Limit: 2}, []string{"log_4", "log_3"}},
-			"combined":          {store.LogFilter{Level: "error", From: t0.Add(30 * time.Second)}, []string{"log_3"}},
+			"combined":          {store.LogFilter{Level: "error", From: logT0.Add(30 * time.Second)}, []string{"log_3"}},
 		} {
 			rows := searchLogs(t, l, tc.f)
 			var ids []string
@@ -173,7 +173,7 @@ func TestPurgeLogsByLevelInBatches(t *testing.T) {
 			rows = append(rows, row(fmt.Sprintf("e%d", i), time.Duration(i)*time.Hour, "error", "app", "e"))
 		}
 		writeLogs(t, l, rows...)
-		cutoff := t0.Add(150 * time.Minute) // rows 0, 1, 2 are older
+		cutoff := logT0.Add(150 * time.Minute) // rows 0, 1, 2 are older
 		total := 0
 		for {
 			var n int
