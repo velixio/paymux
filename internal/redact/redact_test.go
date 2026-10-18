@@ -278,17 +278,42 @@ func TestCap(t *testing.T) {
 	}
 }
 
+// Redaction stays linear on hostile input: four times the input may take at
+// most about four times as long (a quadratic path would take sixteen). An
+// absolute bound would flake on slow, shared CI runners under -race; the
+// generous ceiling only catches a hang.
 func TestHostileInputIsFast(t *testing.T) {
 	r := New()
 	r.SetKnown("a", "KNOWNSECRETVALUE")
-	for _, in := range []string{strings.Repeat("a:", 32<<10), strings.Repeat("a=b&", 16<<10), strings.Repeat("1 ", 32<<10),
-		strings.Repeat(`{"a":`, 5000), strings.Repeat("4", 64<<10), strings.Repeat("-----BEGIN X-----", 3000)} {
-		done := make(chan struct{})
-		go func() { r.Body("", []byte(in)); r.Text(in); close(done) }()
-		select {
-		case <-done:
-		case <-time.After(5 * time.Second):
-			t.Fatalf("redacting %.20q... takes too long", in)
+	type gen func(n int) string
+	for name, g := range map[string]gen{
+		"colons":  func(n int) string { return strings.Repeat("a:", n) },
+		"form":    func(n int) string { return strings.Repeat("a=b&", n/2) },
+		"digits+": func(n int) string { return strings.Repeat("1 ", n) },
+		"json":    func(n int) string { return strings.Repeat(`{"a":`, n/6) },
+		"digits":  func(n int) string { return strings.Repeat("4", 2*n) },
+		"pem":     func(n int) string { return strings.Repeat("-----BEGIN X-----", n/16) },
+	} {
+		cost := func(in string) time.Duration {
+			best := time.Duration(1<<63 - 1)
+			for range 3 { // the fastest of three runs: noise only adds time
+				done := make(chan time.Duration, 1)
+				go func() { s := time.Now(); r.Body("", []byte(in)); r.Text(in); done <- time.Since(s) }()
+				select {
+				case d := <-done:
+					best = min(best, d)
+				case <-time.After(60 * time.Second):
+					t.Fatalf("%s: redacting %d bytes hangs", name, len(in))
+				}
+			}
+			return best
+		}
+		small, large := cost(g(8<<10)), cost(g(32<<10))
+		if small < time.Millisecond {
+			small = time.Millisecond // too fast to compare: anything below 8ms for 4x is linear enough
+		}
+		if large > 8*small {
+			t.Errorf("%s: 4x the input took %.1fx as long (%v vs %v): not linear", name, float64(large)/float64(small), large, small)
 		}
 	}
 }
