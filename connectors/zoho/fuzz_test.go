@@ -17,8 +17,8 @@ import (
 var goldenBodies = []string{
 	paymentSucceededBody,
 	refundSucceededBody,
-	`{"event_id":"evt_m1","event_type":"mandate.revoked","payload":{"mandate":{"mandate_id":"md_z1","status":"revoked","max_amount":"748.50","currency":"INR"}}}`,
-	`{"event_id":"e","event_type":"mandate.created","payload":{}}`,
+	`{"event_id":1003,"event_type":"mandate.revoked","event_object":{"mandate":{"mandate_id":"md_z1","status":"revoked","max_amount":"748.50","currency":"INR"}}}`,
+	`{"event_id":1004,"event_type":"mandate.created","event_object":{}}`,
 }
 
 func fuzzConn(tb testing.TB) connector.Connector {

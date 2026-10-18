@@ -24,9 +24,11 @@ type mandateEntity struct {
 	SessionID string `json:"payments_session_id"`
 	Status    string `json:"status"`
 	Amount    number `json:"max_amount"`
-	Currency  string `json:"currency"`
-	Reference string `json:"reference_number"`
-	EndDate   string `json:"end_date"`
+	// AmountField is "amount", the name in the mandate events and the mandate object.
+	AmountField number `json:"amount"`
+	Currency    string `json:"currency"`
+	Reference   string `json:"reference_number"`
+	EndDate     string `json:"end_date"`
 	// Payment is the registration transaction, when Zoho reports it.
 	Payment *paymentEntity `json:"payment"`
 }
@@ -46,7 +48,11 @@ func mapMandateStatus(raw string) string {
 }
 
 func (m mandateEntity) snapshot() (connector.MandateSnapshot, error) {
-	amt, err := m.Amount.minor()
+	a := m.Amount
+	if a == "" {
+		a = m.AmountField
+	}
+	amt, err := a.minor()
 	if err != nil {
 		return connector.MandateSnapshot{}, fmt.Errorf("zoho: mandate amount: %w", err)
 	}

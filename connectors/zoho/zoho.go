@@ -376,7 +376,13 @@ func (z *zoho) VerifyWebhook(_ context.Context, req connector.WebhookRequest) er
 	if req.ReceivedAt > 0 {
 		now = time.UnixMilli(req.ReceivedAt)
 	}
-	if d := now.Sub(time.Unix(ts, 0)); d > webhookTolerance || d < -webhookTolerance {
+	// Zoho's t is in milliseconds (its documented example is 1734340423138); a
+	// seconds value is accepted too.
+	at := time.Unix(ts, 0)
+	if ts > 1e11 {
+		at = time.UnixMilli(ts)
+	}
+	if d := now.Sub(at); d > webhookTolerance || d < -webhookTolerance {
 		return connector.ErrInvalidSignature
 	}
 	m := hmac.New(sha256.New, []byte(z.cfg.WebhookSecret))
@@ -393,22 +399,30 @@ func (z *zoho) VerifyWebhook(_ context.Context, req connector.WebhookRequest) er
 
 // ParseWebhook maps payment.* and refund.* events; others are ignored.
 func (z *zoho) ParseWebhook(_ context.Context, req connector.WebhookRequest) ([]connector.Notification, error) {
+	// The envelope: event_id is a number (mandate events also carry event_id_str),
+	// event_time is in milliseconds, the entity is under event_object.
 	var ev struct {
-		EventID   string `json:"event_id"`
-		EventType string `json:"event_type"`
-		Payload   struct {
+		EventID    json.RawMessage `json:"event_id"`
+		EventIDStr string          `json:"event_id_str"`
+		EventType  string          `json:"event_type"`
+		EventTime  int64           `json:"event_time"`
+		Payload    struct {
 			Payment *paymentEntity `json:"payment"`
 			Refund  *refundEntity  `json:"refund"`
 			Mandate *mandateEntity `json:"mandate"`
-		} `json:"payload"`
+		} `json:"event_object"`
 	}
 	if err := json.Unmarshal(req.Body, &ev); err != nil {
 		return nil, fmt.Errorf("zoho: bad webhook body: %w", err)
 	}
-	if ev.EventID == "" {
+	eventID := firstNonEmpty(ev.EventIDStr, strings.Trim(string(ev.EventID), `" `))
+	if eventID == "" || eventID == "null" {
 		return nil, errors.New("zoho: webhook has no event_id")
 	}
-	n := connector.Notification{EventID: ev.EventID, EventType: ev.EventType, OccurredAt: req.ReceivedAt}
+	n := connector.Notification{EventID: eventID, EventType: ev.EventType, OccurredAt: req.ReceivedAt}
+	if ev.EventTime > 0 {
+		n.OccurredAt = ev.EventTime
+	}
 	switch {
 	case strings.HasPrefix(ev.EventType, "payment.") && ev.Payload.Payment != nil:
 		s, err := ev.Payload.Payment.snapshot("")
