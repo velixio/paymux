@@ -287,9 +287,10 @@ func TestLogsAreScopedToTheOrganisation(t *testing.T) {
 		admin := e.roleClient("admin")
 		for _, p := range []string{"/dashboard/logs", "/dashboard/logs.jsonl", "/dashboard/logs?q=OTHER-ORG-ROW", "/dashboard/logs?id=org_someone_else"} {
 			_, body := e.get(admin, p)
-			lacks(t, body, "OTHER-ORG-ROW")
+			lacks(t, body, "log_other") // the search box echoes the query text, so look for the row id
 		}
 		_, body := e.get(admin, "/dashboard/logs")
+		lacks(t, body, "OTHER-ORG-ROW")
 		has(t, body, "PROCESS-WIDE-ROW")
 		if r, _ := e.get(admin, "/dashboard/logs/log_other"); r.StatusCode != 404 {
 			t.Errorf("another org's log row: %d, want 404", r.StatusCode)

@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -132,12 +133,28 @@ func parseCursor(s string) (time.Time, string, bool) {
 
 func (d *Dashboard) logsDisabled() bool { return d.o.LogDB == nil }
 
+// scopeLogs limits a log query to the dashboard's organisation. Rows with no
+// org are process-wide (startup, the job runner) and stay visible: the
+// dashboard serves the hub's one organisation.
+func (d *Dashboard) scopeLogs(ctx context.Context, sf *store.LogFilter) error {
+	org, err := d.orgID(ctx)
+	if err != nil {
+		return err
+	}
+	sf.OrgID, sf.IncludeUnscoped = org, true
+	return nil
+}
+
 func (d *Dashboard) logsPage(w http.ResponseWriter, r *http.Request, s *session) {
 	ctx := r.Context()
 	f := parseLogFilter(r)
 	sf, bad := d.storeFilter(f)
 	if bad != "" {
 		badRequest(w, bad)
+		return
+	}
+	if err := d.scopeLogs(ctx, &sf); err != nil {
+		d.fail(w, err)
 		return
 	}
 	if before := r.URL.Query().Get("before"); before != "" {
@@ -207,6 +224,17 @@ func (d *Dashboard) logPage(w http.ResponseWriter, r *http.Request, s *session) 
 	}
 	var row store.LogRow
 	err := d.o.LogDB.Read(ctx, func(q store.Querier) (err error) { row, err = store.GetLog(ctx, q, r.PathValue("id")); return })
+	if err == nil {
+		// Another organisation's row is not found, not forbidden.
+		org, oerr := d.orgID(ctx)
+		if oerr != nil {
+			d.fail(w, oerr)
+			return
+		}
+		if row.OrgID != "" && row.OrgID != org {
+			err = store.ErrNotFound
+		}
+	}
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			http.NotFound(w, r)
@@ -312,6 +340,10 @@ func (d *Dashboard) logsExport(w http.ResponseWriter, r *http.Request, s *sessio
 	sf, bad := d.storeFilter(f)
 	if bad != "" {
 		badRequest(w, bad)
+		return
+	}
+	if err := d.scopeLogs(ctx, &sf); err != nil {
+		d.fail(w, err)
 		return
 	}
 	if d.logsDisabled() {

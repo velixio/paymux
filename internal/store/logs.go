@@ -127,6 +127,11 @@ type LogFilter struct {
 	BeforeID                     string // keyset cursor: rows older than (BeforeAt, BeforeID)
 	Limit                        int    // default 100
 	WithBodies                   bool   // include request and response (large)
+	// OrgID scopes the rows to one organisation (rows of other orgs are
+	// excluded). Rows that carry no org (process-wide errors) are included
+	// only with IncludeUnscoped.
+	OrgID           string
+	IncludeUnscoped bool
 }
 
 // escapeLike escapes LIKE wildcards in s for a pattern with ESCAPE '\'.
@@ -140,6 +145,13 @@ func (f LogFilter) where() (string, []any) {
 	var conds []string
 	var args []any
 	add := func(c string, a ...any) { conds = append(conds, c); args = append(args, a...) }
+	if f.OrgID != "" {
+		if f.IncludeUnscoped {
+			add("(org_id = ? OR org_id IS NULL OR org_id = '')", f.OrgID)
+		} else {
+			add("org_id = ?", f.OrgID)
+		}
+	}
 	if !f.From.IsZero() {
 		add("at >= ?", ms(f.From))
 	}
