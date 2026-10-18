@@ -17,18 +17,22 @@ import (
 // AutoPay and net-banking e-mandates. Paymux runs the schedule and triggers
 // every debit itself (merchant_triggered).
 //
-// Verified against the PayU test environment: the commands pre_debit_SI,
-// check_mandate_status and mandate_revoke exist and take the authPayuId in var1;
-// the last two also need a requestId, and these commands answer in "message",
-// not "msg". An unknown mandate is "Mandate entry not found" / "Consent is Not
-// Mandated".
+// Verified against the PayU test environment (2026-10-18): the SI registration
+// form (PayU showed the plan: maximum mandate amount, "As Presented", start and
+// end date; a card was registered and the 3-D Secure simulator completed), the
+// status commands (check_mandate_status for cards answers with the status as
+// the "status" string and the amount as a number; upi_mandate_status and
+// NB_mandate_status exist for the other modes), pre_debit_SI and si_transaction
+// with PayU's documented var1 (authpayuid in lower case, invoiceDisplayNumber,
+// amount, txnid; answered "failed" with field9 "Invalid/missing card token" for
+// this merchant, which has no card token), and mandate_revoke (status 1,
+// "Mandate Revoked Successfully"; the mandate then reads "deleted").
 //
-// TODO(spec): a real mandate was never registered (the test merchant's return
-// page fails, see docs/provider-verification.md), so these remain unverified:
-// the SI hash layout (si_details between the udf block and the salt), the `pg`
-// codes per method, the var1 of si_transaction (the layout here is refused with
-// "Mandatory column missing"; the right field names are unknown), and the JSON of
-// the successful responses.
+// TODO(spec): not seen with a registered UPI or net-banking mandate (the
+// pg codes and the UPI and net-banking status answers are from the
+// documentation), nor a captured debit, nor the pre-debit rule that the debit
+// may follow only 48 hours after the notice (PayU's documentation; Paymux's
+// notice lead is configurable).
 
 // setupAmount (Rs 1) is the verification amount a registration debits when
 // the request names none (Info.MandateSetupAmount). A registration for a
