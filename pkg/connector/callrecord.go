@@ -27,19 +27,27 @@ const (
 )
 
 // CallRecord describes one failed HTTP attempt to a provider, for debugging.
-// It is raw: bodies are the first CallBodyLimit bytes as sent and received,
-// so whoever stores it must redact it first. Credential headers
-// (Authorization, Cookie, Set-Cookie, Proxy-Authorization) are never carried.
+//
+// It is not safe to store as it is. What the client strips before handing it
+// over: the URL's user info; every header except a short allowlist (content
+// type and length, user agent, date, retry-after, and request-id style
+// headers); the values of query parameters whose name looks like a credential
+// (key, secret, token, signature, hash, salt, code, state, t, ...); and the
+// literal HTTPOptions.Secrets wherever they occur. The bodies are the first
+// CallBodyLimit bytes as sent and received and are otherwise raw, and a
+// credential the client does not know by name or value can remain in the path
+// or a body. The code that stores a record must therefore run all of it
+// through a redactor: that is the last line of defence, not an extra.
 type CallRecord struct {
 	Method            string
 	URL               url.URL // without user info
 	Status            int     // 0 when no response arrived
 	Duration          time.Duration
 	Failure           CallFailure
-	Err               error // the transport or decode error
-	Attempt           int   // 1 for the first attempt of one call
-	WillRetry         bool  // the client sends the request again
-	RequestHeader     http.Header
+	Err               error       // the transport or decode error
+	Attempt           int         // 1 for the first attempt of one call
+	WillRetry         bool        // the client sends the request again
+	RequestHeader     http.Header // allowlisted headers only
 	ResponseHeader    http.Header
 	RequestBody       []byte
 	ResponseBody      []byte
@@ -105,6 +113,7 @@ func (t *teeBody) Read(p []byte) (int, error) {
 // callState is what is known about one attempt, until it is reported.
 type callState struct {
 	rec       CallRecorder
+	scrub     func(string) string
 	ctx       context.Context
 	req       *http.Request // the attempt's request
 	getBody   func() (io.ReadCloser, error)
@@ -176,21 +185,24 @@ func (s *callState) emit() {
 	c := CallRecord{
 		Method: s.req.Method, URL: *s.req.URL, Status: s.status, Duration: s.took, Failure: s.failure(),
 		Err: s.err, Attempt: s.attempt, WillRetry: s.willRtry,
-		RequestHeader: safeHeader(s.req.Header), ResponseHeader: safeHeader(s.respHdr),
-		ResponseBody: append([]byte(nil), s.respBuf.b.Bytes()...), ResponseTruncated: s.respBuf.truncated,
-		RequestBody: append([]byte(nil), s.reqBuf.b.Bytes()...), RequestTruncated: s.reqBuf.truncated,
+		RequestHeader: safeHeader(s.req.Header, s.scrub), ResponseHeader: safeHeader(s.respHdr, s.scrub),
+		ResponseBody: []byte(s.scrub(s.respBuf.b.String())), ResponseTruncated: s.respBuf.truncated,
+		RequestBody: []byte(s.scrub(s.reqBuf.b.String())), RequestTruncated: s.reqBuf.truncated,
 	}
 	if c.Err == nil {
 		c.Err = s.decodeErr
 	}
 	s.mu.Unlock()
 	c.URL.User = nil
+	c.URL.Path, c.URL.RawPath = s.scrub(c.URL.Path), ""
+	c.URL.RawQuery = redactQuery(c.URL.RawQuery, s.scrub)
+	c.URL.Fragment = ""
 	if s.getBody != nil {
 		if rc, err := s.getBody(); err == nil {
 			var b capBuf
 			_, _ = io.Copy(&capWriter{&b}, rc)
 			rc.Close()
-			c.RequestBody, c.RequestTruncated = append([]byte(nil), b.b.Bytes()...), b.truncated
+			c.RequestBody, c.RequestTruncated = []byte(s.scrub(b.b.String())), b.truncated
 		}
 	}
 	defer func() { _ = recover() }() // a recorder bug must not break the call
@@ -201,17 +213,57 @@ type capWriter struct{ b *capBuf }
 
 func (w *capWriter) Write(p []byte) (int, error) { w.b.write(p); return len(p), nil }
 
-// safeHeader copies h without the headers that carry credentials.
-func safeHeader(h http.Header) http.Header {
+// allowHeader says which headers a CallRecord may carry. Everything else,
+// including any custom credential header a provider invents (x-api-key,
+// x-client-secret, x-amz-security-token, signatures, sessions), is dropped.
+func allowHeader(name string) bool {
+	n := strings.ToLower(name)
+	switch n {
+	case "content-type", "content-length", "user-agent", "accept", "date", "retry-after", "cf-ray", "x-amzn-requestid":
+		return true
+	}
+	return strings.Contains(n, "request-id") || strings.Contains(n, "request_id") || strings.Contains(n, "correlation-id") ||
+		strings.Contains(n, "trace-id")
+}
+
+// safeHeader copies the allowlisted headers of h, with the client's literal
+// secrets scrubbed from their values.
+func safeHeader(h http.Header, scrub func(string) string) http.Header {
 	out := http.Header{}
 	for k, vs := range h {
-		switch strings.ToLower(k) {
-		case "authorization", "proxy-authorization", "cookie", "set-cookie":
+		if !allowHeader(k) {
 			continue
 		}
-		out[k] = append([]string(nil), vs...)
+		for _, v := range vs {
+			out.Add(k, scrub(v))
+		}
 	}
 	return out
+}
+
+// queryExact are short query parameter names that are credentials.
+var queryExact = map[string]bool{"t": true, "cs": true, "code": true, "state": true, "otp": true, "pin": true, "salt": true,
+	"nonce": true, "sid": true, "session": true}
+
+// redactQuery replaces the value of every credential-looking parameter.
+func redactQuery(raw string, scrub func(string) string) string {
+	if raw == "" {
+		return ""
+	}
+	q, err := url.ParseQuery(raw)
+	if err != nil {
+		return scrub(raw)
+	}
+	for k, vs := range q {
+		for i := range vs {
+			if queryExact[strings.ToLower(k)] || secretName(k) {
+				vs[i] = "xxxxx"
+			} else {
+				vs[i] = scrub(vs[i])
+			}
+		}
+	}
+	return q.Encode()
 }
 
 // captureBody records the response body while the connector reads it, and

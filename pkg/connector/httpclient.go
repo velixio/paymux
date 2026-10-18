@@ -193,7 +193,7 @@ func (t *transport) once(req *http.Request, attempt int) (*http.Response, *callS
 	}
 	var st *callState
 	if t.o.Recorder != nil {
-		st = &callState{rec: t.o.Recorder, ctx: req.Context(), req: r, attempt: attempt, getBody: r.GetBody}
+		st = &callState{rec: t.o.Recorder, scrub: t.scrub, ctx: req.Context(), req: r, attempt: attempt, getBody: r.GetBody}
 		if st.getBody == nil && r.Body != nil && r.Body != http.NoBody {
 			r.Body = &teeBody{ReadCloser: r.Body, buf: &st.reqBuf, mu: &st.mu}
 		}
