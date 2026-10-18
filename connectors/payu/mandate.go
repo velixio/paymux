@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,11 +17,18 @@ import (
 // AutoPay and net-banking e-mandates. Paymux runs the schedule and triggers
 // every debit itself (merchant_triggered).
 //
-// TODO(spec): none of this could be checked against a PayU sandbox. The
-// places to verify first, all isolated in this file: the SI hash layout
-// (si_details between the udf block and the salt), the `pg` codes per method,
-// the command names pre_debit_SI / si_transaction / check_mandate_status /
-// mandate_revoke, and the shape of their JSON var1 and responses.
+// Verified against the PayU test environment: the commands pre_debit_SI,
+// check_mandate_status and mandate_revoke exist and take the authPayuId in var1;
+// the last two also need a requestId, and these commands answer in "message",
+// not "msg". An unknown mandate is "Mandate entry not found" / "Consent is Not
+// Mandated".
+//
+// TODO(spec): a real mandate was never registered (the test merchant's return
+// page fails, see docs/provider-verification.md), so these remain unverified:
+// the SI hash layout (si_details between the udf block and the salt), the `pg`
+// codes per method, the var1 of si_transaction (the layout here is refused with
+// "Mandatory column missing"; the right field names are unknown), and the JSON of
+// the successful responses.
 
 // setupAmount (Rs 1) is the verification amount a registration debits when
 // the request names none (Info.MandateSetupAmount). A registration for a
@@ -163,13 +171,12 @@ func (p *payu) FetchMandate(ctx context.Context, ref connector.MandateRef) (conn
 		}
 		return snap, nil
 	}
-	v1, _ := json.Marshal(struct {
-		AuthPayuID string `json:"authPayuId"`
-	}{id})
+	v1, _ := json.Marshal(mandateCall{AuthPayuID: id, RequestID: p.requestID()})
 	var out struct {
-		Status flexStr `json:"status"`
-		Msg    string  `json:"msg"`
-		Result struct {
+		Status  flexStr `json:"status"`
+		Msg     string  `json:"msg"`
+		Message string  `json:"message"`
+		Result  struct {
 			MandateStatus flexStr `json:"mandateStatus"`
 		} `json:"result"`
 	}
@@ -177,7 +184,7 @@ func (p *payu) FetchMandate(ctx context.Context, ref connector.MandateRef) (conn
 		return connector.MandateSnapshot{}, err
 	}
 	if out.Status != "1" {
-		if err := checkCredentials(out.Msg); err != nil {
+		if err := checkCredentials(firstNonEmpty(out.Msg, out.Message)); err != nil {
 			return connector.MandateSnapshot{}, err
 		}
 		return connector.MandateSnapshot{}, connector.ErrNotFound
@@ -207,19 +214,21 @@ func (p *payu) NotifyPreDebit(ctx context.Context, req connector.PreDebitRequest
 	v1, _ := json.Marshal(preDebit{AuthPayuID: req.Mandate.ProviderMandateID, RequestID: req.ProviderRef,
 		DebitDate: istDate(req.DebitDate), InvoiceAmount: amt})
 	var out struct {
-		Status flexStr `json:"status"`
-		Msg    string  `json:"msg"`
+		Status  flexStr `json:"status"`
+		Msg     string  `json:"msg"`
+		Message string  `json:"message"`
 	}
 	if err := p.api.call(ctx, "pre_debit_SI", string(v1), nil, &out); err != nil {
 		return err
 	}
-	if out.Status == "1" || strings.Contains(strings.ToLower(out.Msg), "already") {
+	msg := firstNonEmpty(out.Msg, out.Message)
+	if out.Status == "1" || strings.Contains(strings.ToLower(msg), "already") {
 		return nil // a repeated notice for the same debit is fine
 	}
-	if cerr := checkCredentials(out.Msg); cerr != nil {
+	if cerr := checkCredentials(msg); cerr != nil {
 		return cerr
 	}
-	return fmt.Errorf("payu: pre-debit notice refused: %s", out.Msg)
+	return fmt.Errorf("payu: pre-debit notice refused: %s", msg)
 }
 
 type siCharge struct {
@@ -272,26 +281,39 @@ func (p *payu) ChargeMandate(ctx context.Context, req connector.ChargeRequest) (
 
 // RevokeMandate cancels the mandate at PayU (mandate_revoke).
 func (p *payu) RevokeMandate(ctx context.Context, ref connector.MandateRef) error {
-	v1, _ := json.Marshal(struct {
-		AuthPayuID string `json:"authPayuId"`
-	}{ref.ProviderMandateID})
+	v1, _ := json.Marshal(mandateCall{AuthPayuID: ref.ProviderMandateID, RequestID: p.requestID()})
 	var out struct {
-		Status flexStr `json:"status"`
-		Msg    string  `json:"msg"`
+		Status  flexStr `json:"status"`
+		Msg     string  `json:"msg"`
+		Message string  `json:"message"`
 	}
 	if err := p.api.call(ctx, "mandate_revoke", string(v1), nil, &out); err != nil {
 		return err
 	}
-	if out.Status == "1" || strings.Contains(strings.ToLower(out.Msg), "already") {
+	msg := firstNonEmpty(out.Msg, out.Message)
+	if out.Status == "1" || strings.Contains(strings.ToLower(msg), "already") {
 		return nil
 	}
-	if cerr := checkCredentials(out.Msg); cerr != nil {
+	if cerr := checkCredentials(msg); cerr != nil {
 		return cerr
 	}
-	if strings.Contains(strings.ToLower(out.Msg), "not found") {
+	if strings.Contains(strings.ToLower(msg), "not found") {
 		return connector.ErrNotFound
 	}
-	return fmt.Errorf("payu: revoking mandate: %s", out.Msg)
+	return fmt.Errorf("payu: revoking mandate: %s", msg)
+}
+
+// mandateCall is the var1 of check_mandate_status and mandate_revoke. PayU
+// refuses them without a requestId ("requestId is mandatory", verified live).
+type mandateCall struct {
+	AuthPayuID string `json:"authPayuId"`
+	RequestID  string `json:"requestId"`
+}
+
+// requestID is a fresh id for a mandate call: the clock plus a counter.
+func (p *payu) requestID() string {
+	n := p.seq.Add(1)
+	return "pmx" + strconv.FormatInt(p.deps.Now().UnixNano(), 36) + strconv.FormatUint(n, 36)
 }
 
 var _ connector.MandateManager = (*payu)(nil)

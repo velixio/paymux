@@ -23,11 +23,13 @@ func parseAddedOn(s string) int64 {
 
 func mapStatus(raw string) connector.PaymentStatus {
 	switch raw {
-	case "success":
+	case "success", "captured": // "captured" is the unmapped status (listings)
 		return connector.PaymentSucceeded
+	case "auth":
+		return connector.PaymentAuthorized
 	case "failure", "failed", "bounced":
 		return connector.PaymentFailed
-	case "userCancelled", "usercancelled":
+	case "userCancelled", "usercancelled", "dropped":
 		return connector.PaymentCanceled
 	case "Not Found", "not found":
 		return connector.PaymentRequiresAction
@@ -73,8 +75,10 @@ func (p *payu) ParseWebhook(_ context.Context, req connector.WebhookRequest) ([]
 	snap := connector.PaymentSnapshot{
 		ProviderRef: f.Get("txnid"), ProviderPaymentID: f.Get("mihpayid"),
 		Status: mapStatus(f.Get("status")), RawStatus: f.Get("status"),
-		Amount: amount, Currency: "INR", Method: f.Get("mode"),
-		ErrorCode: f.Get("error"), ErrorMessage: f.Get("error_Message"), CreatedAt: parseAddedOn(f.Get("addedon")),
+		Amount: amount, Currency: "INR", Method: methodOf(f.Get("mode")), CreatedAt: parseAddedOn(f.Get("addedon")),
+	}
+	if snap.Status == connector.PaymentFailed || snap.Status == connector.PaymentCanceled {
+		snap.ErrorCode, snap.ErrorMessage = f.Get("error"), f.Get("error_Message")
 	}
 	return []connector.Notification{{
 		Kind:       connector.NotifyPayment,
