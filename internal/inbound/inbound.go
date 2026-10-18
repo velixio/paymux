@@ -18,6 +18,7 @@ import (
 
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/logctx"
 	"github.com/paymux/paymux/internal/store"
 )
 
@@ -111,6 +112,7 @@ func bodyHash(b []byte) string {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	account := r.PathValue("provider_account_id")
+	logctx.Note(ctx, "provider_account_id", account)
 	v, err := h.o.Verifiers(ctx, account)
 	switch {
 	case errors.Is(err, ErrUnknownAccount):
@@ -137,6 +139,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Headers: allowedHeaders(r.Header), Body: body, ReceivedAt: h.o.Now()}
 	var job string
 	status := http.StatusOK
+	defer func() { logctx.Note(ctx, "provider_event_id", row.ID, "webhook_event_id", row.ProviderEventID) }()
 	switch {
 	case verr == nil:
 		row.Verified, job = true, JobProcess
