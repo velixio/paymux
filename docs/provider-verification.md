@@ -268,7 +268,37 @@ Fixed on the way:
   and the engine treats that as done). Unverified until the sandbox runs: the
   enrollment/execution session shapes, the mandate id in the payment, the notify
   answer.
-- [ ] **Verification debit:** does Zoho reverse the Rs 1 debit itself?
+- [x] **Verification debit** (help pages, read 2026-10-18): the Rs 1 charged to
+  authorise a future-dated mandate "will be settled in your next payout", so Zoho
+  does **not** reverse it. `RefundsVerificationDebit` is now false: Paymux
+  refunds it through the refund API (to be confirmed on the sandbox that a Rs 1
+  mandate payment can be refunded). A same-day mandate debits its first amount,
+  minimum Rs 6; enrollment accepts exactly Rs 1 or at
+  least Rs 6.
+- [x] **What Zoho's mandate help pages settle**
+  (`/help/mandates/`, `/help/mandates/view/`, and the API reference): UPI
+  AutoPay only (no eNACH or card mandates); frequency `as_presented` (what
+  Paymux uses), `weekly` ... `yearly`; `amount_rule` variable or fixed, a
+  variable mandate needs `max_amount`; end date defaults to 30 years; unattended
+  debits above Rs 15,000 need the customer's UPI PIN (Info cap stays Rs 15,000);
+  executions are **not automated** (Paymux triggers each one) and only run
+  outside NPCI's closed windows (10:00-13:00, 17:00-21:30 IST); the customer
+  pauses or cancels in their UPI app, and there is no cancel API, so
+  `RevokeMandate` = `ErrUnsupported` is safe: Paymux simply never executes a
+  revoked mandate, and a debit on an inactive one is refused client-side.
+  Mandate statuses in the dashboard: Active, Inactive (revoked, paused or
+  expired), Processing, Paused. Pre-debit notice: the customer must be told at
+  least 24h before a debit; Zoho either sends the notice when `notify` is called
+  (execution date T+1 to T+3) or itself when the mandate is executed. `notify`
+  is therefore optional, but keep `predebit_lead` at most 72h (default 48h) so
+  the notice is accepted. Failed debits: an execution session lives 3 days and
+  takes up to 3 attempts at least 1h apart; a notice is bound to its session,
+  so Paymux (one session per attempt, `max_retry_count` 1) sends a new notice
+  per retry (`PreDebitPerAttempt`). Not stated anywhere: per-debit minimum for a
+  later debit, what `inactive` hides (paused vs expired is only visible in the
+  dashboard's separate Paused tab; the API status for a paused mandate is
+  unverified, it maps to pending), whether an automatic notice at execution
+  satisfies the 24h rule (then the debit might be refused).
 - [ ] **Hosted checkout** (`hosted_checkout_url`): the session returns an
   `access_key` and takes `configurations.hosted_checkout_parameters`
   (`success_url`, `failure_url`); the URL the customer is sent to is not
@@ -333,7 +363,7 @@ Written entirely from documentation (`cashfree.go`).
 - [ ] **Minimum charge per provider** (`Info.MinChargeMinor`; a proration credit
   never takes a renewal below it, and an extra proration charge under it waits
   for the next renewal). Values in the code: Razorpay, PayU, Cashfree and Zoho
-  INR 100 (Rs 1; Zoho's is inferred from its verification debit, not documented),
+  INR 100 (Rs 1; Zoho publishes no minimum, only Rs 1 for a future-dated registration and Rs 6 for a same-day one),
   Stripe per currency as in its "minimum and maximum charge amounts" table
   (USD 50, EUR 50, GBP 30, INR 50, AUD 50, CAD 50, SGD 50, HKD 400, JPY 50,
   CHF 50, SEK 300, NOK 300, DKK 250, NZD 50, AED 200, BRL 50, MXN 1000,

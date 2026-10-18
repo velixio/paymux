@@ -196,6 +196,11 @@ func (z *zoho) CreateMandateCheckout(ctx context.Context, req connector.MandateR
 	if first <= 0 {
 		first = 100 // Info.MandateSetupAmount: the verification debit
 	}
+	// Zoho: a future-dated mandate is authorised with exactly Rs 1; a same-day
+	// one debits its first amount and needs at least Rs 6. Nothing in between.
+	if first != 100 && first < 600 {
+		return connector.CheckoutResult{}, fmt.Errorf("zoho: a mandate registration debits Rs 1 (future-dated) or at least Rs 6 (same-day), not %d paise", first)
+	}
 	max := req.MaxAmount
 	if max < first {
 		max = first

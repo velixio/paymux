@@ -378,3 +378,32 @@ func TestInfoDeclaresTheUPICapAndPerAttemptNotices(t *testing.T) {
 		t.Errorf("%+v", i.MandateLimits)
 	}
 }
+
+// Zoho's help pages: a future-dated mandate is authorised with exactly Rs 1, a
+// same-day one needs at least Rs 6; nothing in between is accepted, and the Rs 1
+// is settled to the merchant in the next payout (Zoho does not reverse it).
+func TestMandateEnrollmentAmountRules(t *testing.T) {
+	for amt, ok := range map[int64]bool{50: false, 99: false, 100: true, 101: false, 250: false, 599: false, 600: true, 49900: true} {
+		f := mandateFake()
+		c := f.connAt(t, widgetCfg, time.Unix(mandateNow, 0)).(connector.MandateManager)
+		r := mandateReq()
+		r.Amount = amt
+		_, err := c.CreateMandateCheckout(context.Background(), r)
+		if (err == nil) != ok {
+			t.Errorf("amount %d: err = %v, want accepted=%v", amt, err, ok)
+		}
+		if !ok && len(f.calls) != 0 {
+			t.Errorf("amount %d: requests for a refused mandate: %v", amt, f.calls)
+		}
+	}
+}
+
+func TestInfoDoesNotClaimTheVerificationDebitIsReversed(t *testing.T) {
+	i := newRFake().conn(t, widgetCfg).Info()
+	if i.RefundsVerificationDebit {
+		t.Error("Zoho settles the Rs 1 authorisation to the merchant's payout; Paymux must refund it")
+	}
+	if i.MandateSetupAmount != 100 {
+		t.Errorf("MandateSetupAmount = %d", i.MandateSetupAmount)
+	}
+}

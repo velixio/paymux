@@ -61,9 +61,11 @@ var info = connector.Info{
 	// RBI: an unattended UPI AutoPay debit is capped at Rs 15,000.
 	MandateLimits: []connector.MandateLimit{{Method: "upi", Currency: "INR", MaxAmount: 1_500_000}},
 	// Each execution session needs its own notice, retries included.
-	PreDebitPerAttempt:       true,
-	RefundsVerificationDebit: true, // TODO(spec): unconfirmed that Zoho reverses the Rs 1 verification debit itself
-	MandateSetupAmount:       100,  // the Rs 1 verification debit of a registration without a charge due (trials)
+	PreDebitPerAttempt: true,
+	// Zoho's help pages: the Rs 1 that authorises a future-dated mandate "will be
+	// settled in your next payout", so Zoho does not reverse it; Paymux refunds it.
+	RefundsVerificationDebit: false,
+	MandateSetupAmount:       100, // the Rs 1 verification debit of a registration without a charge due (trials)
 	// Rs 1, as the verification debit shows Zoho takes; Zoho publishes no other minimum (see docs/provider-verification.md).
 	MinChargeMinor: map[string]int64{"INR": 100},
 	// Refunds are limited to 60/min; the client limiter applies that to every call.
