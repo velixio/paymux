@@ -151,7 +151,7 @@ func TestPreDebitIsPerMode(t *testing.T) {
 	}
 	ok := `{"status":1,"action":"MANDATE_PRE_DEBIT","message":"Request Processed Successfully"}`
 
-	// UPI: no invoice number; the execution sequence number counts from 2 (the
+	// UPI: the invoice number too, and the execution sequence number counts from 2 (the
 	// registration was execution 1); a repeated notice for the same debit keeps its number.
 	f := &fake{cmds: map[string]string{"verify_payment": registration("success", "sist", "UPI"), "upi_mandate_status": `{"status":"active","authpayuid":"20000064468","amount":"1500.00"}`, "pre_debit_SI": ok}}
 	m := mandateConn(t, f)
@@ -167,7 +167,7 @@ func TestPreDebitIsPerMode(t *testing.T) {
 	if len(calls) != 3 || calls[0]["mandateSeqNo"] != float64(2) || calls[1]["mandateSeqNo"] != float64(2) || calls[2]["mandateSeqNo"] != float64(3) {
 		t.Errorf("UPI sequence numbers: %v", calls)
 	}
-	if _, has := calls[0]["invoiceDisplayNumber"]; has || calls[0]["amount"] != "499.00" || calls[0]["debitDate"] == "" {
+	if calls[0]["invoiceDisplayNumber"] != "D1" || calls[0]["amount"] != "499.00" || calls[0]["debitDate"] == "" { // the test environment refuses a notice without an invoice number before it looks at the mode
 		t.Errorf("UPI var1: %v", calls[0])
 	}
 
@@ -249,7 +249,7 @@ func TestChargeVar1IsPerMode(t *testing.T) {
 	if err != nil || s.Status != connector.PaymentSucceeded || s.Method != "upi" {
 		t.Fatalf("%+v %v", s, err)
 	}
-	if c := f.calls("si_transaction"); len(c) != 1 || c[0]["mandateSeqNo"] != float64(2) || c[0]["invoiceDisplayNumber"] != nil {
+	if c := f.calls("si_transaction"); len(c) != 1 || c[0]["mandateSeqNo"] != float64(2) || c[0]["invoiceDisplayNumber"] != "D1" {
 		t.Errorf("UPI var1: %v", c)
 	}
 

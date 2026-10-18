@@ -366,6 +366,10 @@ func (p *payu) NotifyPreDebit(ctx context.Context, req connector.PreDebitRequest
 	case methodEMandate:
 		return nil
 	case methodUPI:
+		// The guide asks for the invoice number of cards only, but the test
+		// environment refuses a notice without one ("Invoice display number not
+		// present") before it looks at the mode, so UPI sends it too.
+		pd.InvoiceDisplayNumber = req.ProviderRef
 		pd.MandateSeqNo = p.mandateSeq(ctx, id, req.ProviderRef)
 	default:
 		pd.InvoiceDisplayNumber = req.ProviderRef
@@ -427,6 +431,7 @@ func (p *payu) ChargeMandate(ctx context.Context, req connector.ChargeRequest) (
 	switch method {
 	case methodEMandate: // no invoice number, no sequence number
 	case methodUPI:
+		sc.InvoiceDisplayNumber = req.ProviderRef // as for the notice
 		sc.MandateSeqNo = p.mandateSeq(ctx, id, req.ProviderRef)
 	default:
 		sc.InvoiceDisplayNumber = req.ProviderRef
