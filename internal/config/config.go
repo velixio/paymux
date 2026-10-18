@@ -59,6 +59,8 @@ type Config struct {
 	// database (PAYMUX_DB_LOG_LEVEL; default warn). Info and debug are stored
 	// only when asked for here.
 	DBLogLevel slog.Level
+	// DBLogLevelExplicit is set when info or debug was asked for by name.
+	DBLogLevelExplicit bool
 
 	// OTLPLogsEndpoint, when set (PAYMUX_OTLP_LOGS_ENDPOINT), also ships the
 	// stored, redacted records to an OpenTelemetry collector over OTLP/HTTP
@@ -232,9 +234,9 @@ func loadLogs(c *Config, get func(k, def string) string, bad func(string, ...any
 	case "error":
 		c.DBLogLevel = slog.LevelError
 	case "info":
-		c.DBLogLevel = slog.LevelInfo
+		c.DBLogLevel, c.DBLogLevelExplicit = slog.LevelInfo, true
 	case "debug":
-		c.DBLogLevel = slog.LevelDebug
+		c.DBLogLevel, c.DBLogLevelExplicit = slog.LevelDebug, true
 	default:
 		bad("PAYMUX_DB_LOG_LEVEL must be warn, error, info or debug")
 	}
