@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -81,6 +82,37 @@ type MandateManager interface {
 type Payouter interface {
 	CreatePayout(ctx context.Context, req PayoutRequest) (PayoutSnapshot, error)
 	FetchPayout(ctx context.Context, ref PayoutRef) (PayoutSnapshot, error)
+}
+
+// OAuthConnector is optional, for providers whose credentials come from an
+// OAuth authorization (CapOAuth; Zoho Payments). It lets the dashboard offer a
+// "Connect" button: the operator registers the redirect URI with the provider,
+// pastes the client id and secret, is sent to the provider to approve, and the
+// refresh token that comes back is stored in the account's config, so nobody
+// copies a grant code by hand.
+//
+// The methods are called on an instance built from the account's current
+// config, which may lack the refresh token (an account that is not connected
+// yet must still be constructible; its API calls then fail with
+// ErrInvalidCredentials saying it is not connected). cfg is that config, with
+// the client id and secret the operator just entered. A connector must never
+// call a host that came from outside: where the provider names its own
+// accounts server on the callback (OAuthCallbackConfig), only hosts of the
+// provider's published list are accepted.
+type OAuthConnector interface {
+	// OAuthDefaultScopes are the scopes to ask for when the operator chooses none.
+	OAuthDefaultScopes(cfg json.RawMessage) []string
+	// OAuthAuthorizeURL is the provider's authorization page for the client in
+	// cfg, returning to redirectURI with state.
+	OAuthAuthorizeURL(cfg json.RawMessage, redirectURI, state string, scopes []string) (string, error)
+	// OAuthCallbackConfig returns cfg adjusted to what the provider reported on
+	// the callback (the data centre the account lives in, say), or an error when
+	// that is not acceptable. params are the callback's query parameters.
+	OAuthCallbackConfig(cfg json.RawMessage, params url.Values) (json.RawMessage, error)
+	// OAuthExchange trades a grant code for tokens. An empty redirectURI is a
+	// code from a self client (no redirect). It returns an error, and never a
+	// partial result, when the provider does not return a refresh token.
+	OAuthExchange(ctx context.Context, cfg json.RawMessage, redirectURI, code string) (OAuthResult, error)
 }
 
 // URLs builds the URLs a connector hands to the provider.

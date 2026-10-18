@@ -198,7 +198,11 @@ data, and nothing here reached a real bank.
 
 * A real provider: add a Razorpay, PayU, Zoho or Whop account in test or live
   mode (`docs/connectors.md` lists what each needs), then set routing rules
-  under **Settings**.
+  under **Settings**. For **Zoho Payments**, create the account without a
+  refresh token, then press **Connect** on its page: register the redirect URI
+  shown there (`<your base URL>/dashboard/oauth/callback`) in a Server-based
+  client at `api-console.zoho.in` first (steps in `docs/runbook.md`,
+  *Connecting Zoho Payments*).
 * Run it for real: set `PAYMUX_ENV=production`, remove `PAYMUX_DEV_SKIP_2FA`,
   use a real `PAYMUX_BASE_URL` behind TLS, and read `docs/runbook.md` and
   `docs/upgrades.md`.

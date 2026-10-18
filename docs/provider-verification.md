@@ -199,6 +199,12 @@ Fixed on the way:
 - [x] **Widget script URL** (`https://static.zohocdn.com/zpay/zpay-js/v1/zpayments.js`) and the call shape (`new ZPayments({account_id, domain, otherOptions:{api_key}})`,
   `requestPaymentMethod({amount, currency_code, payments_session_id, description})`),
   read from the script and Zoho's docs.
+- [ ] **The OAuth Connect flow** (dashboard, *Connect with Zoho Payments*; written from Zoho's OAuth documentation and tested against a fake accounts
+  server, not against Zoho): the authorize URL parameters (`response_type=code`, `access_type=offline`, `prompt=consent`, comma-separated `scope`), that
+  a Server-based client accepts `<PAYMUX_BASE_URL>/dashboard/oauth/callback` as registered, the callback's `location` / `accounts-server` parameters and
+  their values (`us`, `in`, `eu`, `au`, `jp`, `ca`, `sa`, `cn` are assumed), the token response (`refresh_token`, `scope` as comma- or space-separated),
+  that the Self Client grant code exchanges without `redirect_uri`, that the default scopes (including `ZohoPay.payouts.READ` and the
+  `ZohoPaySandbox.*` set) are all accepted, and the `accounts.zohocloud.ca` host of the Canadian data centre.
 - [ ] **A completed payment through the widget.** The widget loads in headless
   Chromium (from `127.0.0.1` and from `paymux.shimul.me`) and then rejects with
   `processor_error`: its handshake request

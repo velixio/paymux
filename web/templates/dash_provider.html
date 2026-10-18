@@ -43,6 +43,24 @@
 <p class="muted">Asks the provider for a payment that cannot exist: "not found" proves the credentials work.</p>
 </form>
 {{end}}
+{{with .OAuth}}
+<h3 id="connect">Connect with {{.Display}}</h3>
+<p>{{if .Connected}}<strong>Connected.</strong>{{if .Granted}} Granted scopes: {{range .Granted}}<code>{{.}}</code> {{end}}{{end}}{{else}}<strong>Not connected.</strong> {{.Display}} cannot be used until you connect it.{{end}}</p>
+{{if .IsZoho}}<ol>
+<li>In <code>{{.ConsoleHost}}</code> create a <strong>Server-based</strong> client (a Self Client cannot use this button; use the grant code box below).</li>
+<li>Add this exact redirect URI to the client: <code class="wrap">{{.RedirectURI}}</code> <button type="button" class="linkbtn" data-copy="{{.RedirectURI}}">Copy</button></li>
+<li>Paste the client ID and secret here and press {{if .Connected}}Reconnect{{else}}Connect{{end}}. You approve at {{.Display}} and come back here.</li>
+</ol>{{else}}<p>Register this redirect URI with the provider's OAuth client: <code class="wrap">{{.RedirectURI}}</code> <button type="button" class="linkbtn" data-copy="{{.RedirectURI}}">Copy</button></p>{{end}}
+<form method="post" action="/dashboard/providers/{{$.Prov.ID}}/oauth/connect" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Client ID<input class="field" name="oauth_client_id" value="{{.ClientID}}" autocomplete="off"></label>
+<label>Client secret<input class="field" type="password" name="oauth_client_secret" autocomplete="new-password" placeholder="{{if .HasSecret}}set - leave blank to keep{{else}}secret{{end}}"></label>
+<label>Scopes (one per line)<textarea class="field" name="oauth_scopes" rows="8" spellcheck="false">{{.ScopesText}}</textarea></label>
+<button class="btn" type="submit">{{if .Connected}}Reconnect{{else}}Connect{{end}} with {{.Display}}</button>
+<label>Or paste a grant code (a Self Client's code, valid for a few minutes)<input class="field" name="grant_code" autocomplete="off" placeholder="1000.xxxxxxxx.xxxxxxxx"></label>
+<button class="btn" type="submit" formaction="/dashboard/providers/{{$.Prov.ID}}/oauth/code">Use this grant code</button>
+</form>
+{{end}}
 {{if .CanManage}}
 <h3>Let an app use this account</h3>
 <form method="post" action="/dashboard/providers/{{.ID}}/apps" class="stack">

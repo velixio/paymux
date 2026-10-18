@@ -32,13 +32,14 @@ const (
 const configSchema = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": ["account_id", "client_id", "client_secret", "refresh_token", "webhook_secret"],
+  "required": ["account_id", "client_id", "client_secret", "webhook_secret"],
   "additionalProperties": false,
   "properties": {
     "account_id": {"type": "string", "title": "Zoho Payments account id", "minLength": 1},
-    "client_id": {"type": "string", "title": "OAuth client id", "minLength": 1},
-    "client_secret": {"type": "string", "title": "OAuth client secret", "minLength": 1, "x-secret": true},
-    "refresh_token": {"type": "string", "title": "OAuth refresh token", "minLength": 1, "x-secret": true},
+    "client_id": {"type": "string", "title": "OAuth client id", "minLength": 1, "x-oauth": "client_id"},
+    "client_secret": {"type": "string", "title": "OAuth client secret", "minLength": 1, "x-secret": true, "x-oauth": "client_secret"},
+    "refresh_token": {"type": "string", "title": "OAuth refresh token (filled in by Connect; leave empty until then)", "x-secret": true, "x-oauth": "refresh_token"},
+    "oauth_scopes": {"type": "string", "title": "Scopes granted when the account was connected", "x-hidden": true, "x-oauth": "scopes"},
     "webhook_secret": {"type": "string", "title": "Webhook signing key", "minLength": 1, "x-secret": true},
     "data_center": {"type": "string", "title": "Zoho data centre TLD", "default": "in"},
     "widget_api_key": {"type": "string", "title": "Widget API key (enables the embedded widget)"},
@@ -50,7 +51,7 @@ const configSchema = `{
 var info = connector.Info{
 	Version:      "0.1.0",
 	DisplayName:  "Zoho Payments",
-	Capabilities: []connector.Capability{connector.CapRefund, connector.CapMandateManager},
+	Capabilities: []connector.Capability{connector.CapRefund, connector.CapMandateManager, connector.CapOAuth},
 	ConfigSchema: json.RawMessage(configSchema),
 	Currencies:   []string{"INR"},
 	Methods:      []string{"upi", "card", "netbanking"},
@@ -71,6 +72,7 @@ type config struct {
 	ClientID          string `json:"client_id"`
 	ClientSecret      string `json:"client_secret"`
 	RefreshToken      string `json:"refresh_token"`
+	OAuthScopes       string `json:"oauth_scopes"`
 	WebhookSecret     string `json:"webhook_secret"`
 	DataCenter        string `json:"data_center"`
 	WidgetAPIKey      string `json:"widget_api_key"`
@@ -97,9 +99,15 @@ func New(raw json.RawMessage, deps connector.Deps) (connector.Connector, error) 
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("zoho: invalid config: %w", err)
 	}
-	if cfg.AccountID == "" || cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.RefreshToken == "" || cfg.WebhookSecret == "" {
-		return nil, errors.New("zoho: account_id, client_id, client_secret, refresh_token and webhook_secret are required")
+	if cfg.AccountID == "" || cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.WebhookSecret == "" {
+		return nil, errors.New("zoho: account_id, client_id, client_secret and webhook_secret are required")
 	}
+	// The data centre builds the hosts the connector calls: only Zoho's are accepted.
+	if _, ok := cfg.domain(); !ok {
+		return nil, fmt.Errorf("zoho: data_center %q is not a Zoho data centre", cfg.DataCenter)
+	}
+	// An account without a refresh token is constructible: the operator creates
+	// it, then connects it with Zoho. Until then its API calls say so.
 	if cfg.WidgetAPIKey == "" && cfg.HostedCheckoutURL == "" {
 		return nil, errors.New("zoho: set widget_api_key (widget) or hosted_checkout_url (redirect)")
 	}
@@ -110,7 +118,7 @@ func New(raw json.RawMessage, deps connector.Deps) (connector.Connector, error) 
 	if hc == nil {
 		hc = connector.NewHTTPClient(connector.HTTPOptions{
 			Logger: deps.Logger, RateLimit: info.RateLimit,
-			Secrets: []string{cfg.ClientSecret, cfg.RefreshToken, cfg.WebhookSecret},
+			Secrets: nonEmpty(cfg.ClientSecret, cfg.RefreshToken, cfg.WebhookSecret),
 		})
 	}
 	return &zoho{cfg: cfg, deps: deps, api: &client{http: hc, kv: deps.KV, now: deps.Now, cfg: cfg}}, nil
@@ -632,3 +640,13 @@ func (z *zoho) FetchRefund(ctx context.Context, ref connector.RefundRef) (connec
 }
 
 var _ connector.Refunder = (*zoho)(nil)
+
+func nonEmpty(ss ...string) []string {
+	var out []string
+	for _, s := range ss {
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
