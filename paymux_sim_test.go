@@ -81,8 +81,9 @@ func seedSim(t *testing.T, url, dataDir, endpointURL string) flowSeed {
 		t.Fatal(err)
 	}
 	inv := invoice.New(invoice.Options{DB: db, Settings: set})
-	te, err := inv.AddTaxEntity(ctx, audit.System, invoice.TaxEntityInput{LegalName: "Voice Studio Pvt Ltd", GSTIN: "27AAPFU0939F1ZV",
-		Address: "1 Marine Drive, Mumbai", SignatoryName: "A Director"})
+	// The DEMO entity of the live server: Karnataka, prices including 18% GST.
+	te, err := inv.AddTaxEntity(ctx, audit.System, invoice.TaxEntityInput{LegalName: "DEMO Private Limited", GSTIN: "29AAACD1234D1Z7",
+		Address: "12 MG Road, Bengaluru 560001", SignatoryName: "A Director"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +230,15 @@ func TestSimulatorEndToEnd(t *testing.T) {
 			return len(list) == 1
 		})
 		_, l := api("GET", "/v1/invoices?payment_id="+id, nil)
-		invID := l["data"].([]any)[0].(map[string]any)["id"].(string)
+		invObj := l["data"].([]any)[0].(map[string]any)
+		invID := invObj["id"].(string)
+		// A Karnataka buyer of a Karnataka entity: CGST and SGST, and the invoice
+		// is exactly what was received.
+		num := func(k string) float64 { v, _ := invObj[k].(float64); return v }
+		if num("total") != 49900 || num("igst") != 0 || num("cgst") <= 0 || num("cgst") != num("sgst") || num("taxable")+num("cgst")+num("sgst") != 49900 ||
+			invObj["supply_type"] != "b2c" || invObj["place_of_supply"] != "29" {
+			t.Errorf("the invoice does not match the payment: %v", invObj)
+		}
 		var pdf string
 		waitFor(t, "the invoice PDF", func() bool { // rendered by a job
 			c, _, body := do("GET", "/v1/invoices/"+invID+"/pdf", nil, map[string]string{"Authorization": "Bearer " + seed.apiKey})
