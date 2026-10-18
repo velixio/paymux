@@ -55,6 +55,8 @@ var metas = map[string]Meta{
 		Help: "Credit notes for lost disputes: issued by an operator, or automatically when the dispute is lost."},
 	"credit_note_cutoff": {Kind: KindString, Pattern: `^(off|(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]))$`,
 		Help: `Last day (month-day, for example 11-30) after the end of the financial year of the sale on which a credit note can still be issued; "off" never stops one. The legal day is 30 November.`},
+	"einvoice_igst_refund_claim": {Kind: KindEnum, Options: []string{"auto", "Y", "N"},
+		Help: "Whether an export e-invoice that paid IGST claims a refund of it (RefClm). auto claims it, the usual case for an exporter paying IGST; Y or N force it. An export under a LUT paid no IGST and never claims."},
 	"b2cl_threshold": {Kind: KindInt, Unit: "paise", Min: 1, Max: 1_000_000_000_000,
 		Help: "Invoice value above which an inter-state sale to a consumer goes to the B2CL sheet of the GST report. The legal limit is 1,00,000 rupees."},
 	"dunning_schedule": {Kind: KindList, Unit: "hours", Min: 1, Max: 30 * 24, MaxItems: 6,

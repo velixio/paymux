@@ -95,6 +95,10 @@ var defs = []Def{
 	// financial year of the supply on which a credit note may still be issued;
 	// "off" never stops one. The statutory day is 30 November (CGST Act s.34(2)).
 	{"credit_note_cutoff", `"11-30"`, LevelOrg, validCutoff},
+	// einvoice_igst_refund_claim: RefClm of an export e-invoice that paid IGST.
+	// auto claims the refund (the usual case); Y and N force it. An export under
+	// a LUT paid no IGST and never claims, whatever this says.
+	{"einvoice_igst_refund_claim", `"auto"`, LevelOrg, oneOf("auto", "Y", "N")},
 	// b2cl_threshold: the invoice value (INR paise) above which an inter-state
 	// B2C invoice goes to the B2CL sheet of the GST report (Rs 1,00,000).
 	{"b2cl_threshold", `10000000`, LevelOrg, intRange(1, 1_000_000_000_000)},

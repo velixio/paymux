@@ -29,14 +29,14 @@ type EInvoiceResult struct {
 	Filename string
 }
 
-func (s *Service) einvoiceSource(inv store.Invoice) (einvoice.Source, error) {
-	return s.documentSource(inv, inv.Number, inv.IssuedAt, inv.Lines, amountsOf(inv.Taxable, inv.CGST, inv.SGST, inv.IGST, inv.Total))
+func (s *Service) einvoiceSource(ctx context.Context, inv store.Invoice) (einvoice.Source, error) {
+	return s.documentSource(ctx, inv, inv.Number, inv.IssuedAt, inv.Lines, amountsOf(inv.Taxable, inv.CGST, inv.SGST, inv.IGST, inv.Total))
 }
 
 // documentSource maps an invoice, or a credit note against it (its own number,
 // date, lines and amounts), onto the e-invoice source. Parties and the FX rate
 // are the invoice's.
-func (s *Service) documentSource(inv store.Invoice, number string, issued time.Time, rawLines json.RawMessage, amounts tax.Amounts) (einvoice.Source, error) {
+func (s *Service) documentSource(ctx context.Context, inv store.Invoice, number string, issued time.Time, rawLines json.RawMessage, amounts tax.Amounts) (einvoice.Source, error) {
 	var sup Supplier
 	var rcp Recipient
 	if err := json.Unmarshal(inv.Supplier, &sup); err != nil {
@@ -63,15 +63,23 @@ func (s *Service) documentSource(inv store.Invoice, number string, issued time.T
 	}
 	if inv.SupplyType != string(tax.B2B) {
 		src.Currency, src.ForeignTotal = inv.Currency, amounts.Total
+		src.IGSTRefundClaim = "auto"
+		err := s.db.Read(ctx, func(q store.Querier) error {
+			_, err := s.orgValue(ctx, q, inv.OrgID, "einvoice_igst_refund_claim", &src.IGSTRefundClaim)
+			return err
+		})
+		if err != nil {
+			return einvoice.Source{}, err
+		}
 	}
 	return src, nil
 }
 
-func (s *Service) buildEInvoice(inv store.Invoice) (*einvoice.Invoice, error) {
+func (s *Service) buildEInvoice(ctx context.Context, inv store.Invoice) (*einvoice.Invoice, error) {
 	if !einvoice.Eligible(inv.SupplyType) {
 		return nil, invalid("invoice %s is %s: only B2B and export invoices have an e-invoice", inv.Number, inv.SupplyType)
 	}
-	src, err := s.einvoiceSource(inv)
+	src, err := s.einvoiceSource(ctx, inv)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +102,7 @@ func (s *Service) EInvoice(ctx context.Context, invoiceID string) (EInvoiceResul
 	if err != nil {
 		return EInvoiceResult{}, err
 	}
-	doc, err := s.buildEInvoice(inv)
+	doc, err := s.buildEInvoice(ctx, inv)
 	if err != nil {
 		return EInvoiceResult{}, err
 	}
@@ -135,7 +143,7 @@ func (s *Service) CreditNoteEInvoice(ctx context.Context, creditNoteID string) (
 	if !einvoice.Eligible(inv.SupplyType) {
 		return EInvoiceResult{}, invalid("credit note %s is against a %s invoice: only B2B and export documents have an e-invoice", cn.Number, inv.SupplyType)
 	}
-	src, err := s.documentSource(inv, cn.Number, cn.IssuedAt, cn.Lines, amountsOf(cn.Taxable, cn.CGST, cn.SGST, cn.IGST, cn.Total))
+	src, err := s.documentSource(ctx, inv, cn.Number, cn.IssuedAt, cn.Lines, amountsOf(cn.Taxable, cn.CGST, cn.SGST, cn.IGST, cn.Total))
 	if err != nil {
 		return EInvoiceResult{}, err
 	}
@@ -213,7 +221,7 @@ func (s *Service) EInvoiceMonth(ctx context.Context, entityID, month string, inc
 		var rcp Recipient
 		_ = json.Unmarshal(inv.Recipient, &rcp)
 		row := EInvoiceRow{Invoice: inv, Buyer: rcp.Name}
-		doc, err := s.buildEInvoice(inv)
+		doc, err := s.buildEInvoice(ctx, inv)
 		var pe *einvoice.Problems
 		switch {
 		case errors.As(err, &pe):
