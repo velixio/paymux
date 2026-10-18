@@ -2,9 +2,13 @@
 // Paymux issues no invoice for these payments. It imports only the stdlib and
 // pkg/....
 //
-// TODO(spec): re-verify against the live v1 API at sandbox time: payment
-// status/substatus values, the payments filter used to look up a checkout
-// configuration's payments, and the refund response shape.
+// Verified against the Whop sandbox (2026-10-18): payments (status paid with
+// substatus succeeded / partially_refunded / refunded), the ignored
+// checkout_configuration_id filter on GET /payments (payments are matched by
+// checkout id or metadata ref), the refund call (answers the payment, clamps an
+// over-refund, honours Idempotency-Key), refund objects (rf_...), memberships and
+// renewal plans. TODO(spec): the shape of a failed payment (a declined card
+// created no payment object), and the dispute calls (see disputes.go).
 package whop
 
 import (
@@ -50,7 +54,7 @@ const configSchema = `{
 var info = connector.Info{
 	Version:      "0.1.0",
 	DisplayName:  "Whop",
-	Capabilities: []connector.Capability{connector.CapRefund, connector.CapSubscriptionManager},
+	Capabilities: []connector.Capability{connector.CapRefund, connector.CapSubscriptionManager, connector.CapDisputeRead, connector.CapDisputeRespond},
 	ConfigSchema: json.RawMessage(configSchema),
 	// Two-decimal currencies only; Whop settles in the organisation currency,
 	// so the core records the FX separately.
@@ -60,8 +64,7 @@ var info = connector.Info{
 	MerchantOfRecord: true,
 	// Recurring billing is Whop's: memberships on renewal plans (subscriptions.go).
 	SubscriptionModes: []connector.BillingMode{connector.ProviderManaged},
-	// TODO(spec): dispute evidence API is not built.
-	RateLimit: connector.RateLimit{RequestsPerSecond: 2, Burst: 10},
+	RateLimit:         connector.RateLimit{RequestsPerSecond: 2, Burst: 10},
 }
 
 func init() { connector.Register("whop", New, info) }
