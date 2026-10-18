@@ -1,16 +1,17 @@
+BUN ?= bun
 VERSION ?= $(shell git describe --always --dirty 2>/dev/null || echo dev)
 
 .PHONY: build build-home run-home test test-pg test-all fmt ci run-dev kill
 
-build:
+build: frontend
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/paymux/paymux.Version=$(VERSION)" -o bin/paymux ./cmd/paymux
 
 # Public website: independent binary, no payment-hub configuration or database.
-build-home:
+build-home: frontend-home
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/paymux-home ./web-home
 
 run-home:
-	go run ./web-home
+	$(BUN) run dev:home
 
 test:
 	go test -race -timeout 30m ./...
@@ -47,3 +48,15 @@ kill:
 		for i in $$(seq 1 50); do pgrep -x -u "$$(id -u)" paymux >/dev/null || exit 0; sleep 0.1; done; \
 		echo "paymux still running after 5s; sending SIGKILL" >&2; pkill -9 -x -u "$$(id -u)" paymux; \
 	else echo "no paymux running"; fi
+
+.PHONY: frontend frontend-home frontend-install
+frontend-install:
+	$(BUN) install --frozen-lockfile
+
+frontend: frontend-install
+	$(BUN) run typecheck
+	$(BUN) run build:dashboard
+
+frontend-home: frontend-install
+	$(BUN) run typecheck
+	$(BUN) run build:home

@@ -82,7 +82,7 @@ Whop is a merchant of record, so no GST invoice is issued for its payments. The 
 
 New here? [`docs/quickstart.md`](docs/quickstart.md) takes you from nothing to a test payment, a signed webhook, an invoice and a refund in ten minutes, with no provider account: it uses the built-in simulator. The short version follows.
 
-You need a Go toolchain of version 1.21 or later. `go.mod` pins `toolchain go1.27.2`, and Go downloads it automatically.
+Building from source also requires Bun 1.4.3 or newer to compile the React dashboard. Distributed binaries do not need a JavaScript runtime. You need a Go toolchain of version 1.21 or later. `go.mod` pins `toolchain go1.27.2`, and Go downloads it automatically.
 
 ```bash
 make build                       # → bin/paymux
@@ -192,11 +192,14 @@ scripts/release.sh v1.2.3   # release archives with checksums (and a cosign sign
 
 ## Public website
 
-The marketing and developer-entry website lives in [`web-home/`](web-home) and runs independently of the payment hub. It does not connect to the hub database or require payment-provider secrets.
+The React marketing and developer-entry website lives in [`web-home/`](web-home) and runs independently of the payment hub. Both frontends use TanStack Router and shadcn/ui; the dashboard also uses TanStack Query. They use Vite client builds, without TanStack Start, SSR or new APIs. The home site can deploy directly to a static host or use its separate Go serving binary.
 
 ```bash
+bun install --frozen-lockfile
 make build-home
 ./bin/paymux-home -listen 127.0.0.1:8090
 ```
 
 Routes: `/`, `/integrations`, `/docs`, `/self-hosting`; readiness: `/healthz`. Bind behind your TLS reverse proxy for public hosting. The payment hub continues to serve its own operational dashboard and API reference separately.
+
+Frontend development: `bun run dev:home` serves the public site; `bun run dev` serves the dashboard with a proxy to the existing hub. See [`web-dashboard/README.md`](web-dashboard/README.md) for the existing page/form adapter contract and development setup.

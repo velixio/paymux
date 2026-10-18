@@ -1,4 +1,4 @@
-{{define "dash_open"}}{{if .DevBanner}}<div class="dev-banner" role="alert">2FA disabled (development)</div>{{end}}
+{{define "dash_open"}}<div id="paymux-react-root" data-style-nonce="{{.StyleNonce}}"></div><div id="paymux-server-page">{{if .DevBanner}}<div class="dev-banner" role="alert">2FA disabled (development)</div>{{end}}
 {{range .Warnings}}<div class="banner-warning" role="alert">{{.}}</div>{{end}}
 {{if .User}}<a class="skip-link" href="#workspace">Skip to workspace</a><header class="dash-head">
 <a class="dash-brand" href="/dashboard/overview" aria-label="Paymux overview"><span aria-hidden="true" class="brand-symbol">↗</span>paymux</a>
@@ -11,4 +11,4 @@
 <section class="dash-main" id="workspace" tabindex="-1">{{end}}{{end}}
 
 {{define "dash_close"}}{{if .User}}</section>
-</div><dialog id="change-review" aria-labelledby="change-title"><h2 id="change-title">Review change</h2><p id="change-description"></p><p class="muted">This changes hub behavior. Check the scope and value before continuing.</p><div class="review-actions"><button type="button" id="change-cancel">Cancel</button><button type="button" class="btn" id="change-confirm">Confirm change</button></div></dialog><script src="/assets/js/workspace.js" defer></script>{{end}}{{end}}
+</div><dialog id="change-review" aria-labelledby="change-title"><h2 id="change-title">Review change</h2><p id="change-description"></p><p class="muted">This changes hub behavior. Check the scope and value before continuing.</p><div class="review-actions"><button type="button" id="change-cancel">Cancel</button><button type="button" class="btn" id="change-confirm">Confirm change</button></div></dialog>{{end}}</div><link rel="stylesheet" href="/assets/dashboard/style.css"><script type="module" src="/assets/dashboard/main.js"></script>{{end}}

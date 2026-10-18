@@ -1,0 +1,61 @@
+body {
+  background: #fff;
+}
+.site-head .github {
+  margin-left: auto;
+}
+.mobile-site-menu {
+  display: none;
+}
+.mobile-site-links {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  gap: 12px;
+}
+.product-preview[data-slot="card"] {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+  padding: 0;
+  box-shadow: none;
+}
+.code-panel button.copy {
+  display: inline-flex;
+  color: white;
+  background: transparent;
+}
+.table-wrap > div {
+  overflow: auto;
+}
+@media (max-width: 760px) {
+  .site-head .desktop-site-nav {
+    display: none;
+  }
+  .site-head {
+    flex-wrap: nowrap;
+  }
+  .site-head .github {
+    font-size: 12px;
+    padding: 8px;
+  }
+  .mobile-site-menu {
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+  .site-head .logo {
+    font-size: 24px;
+  }
+  .product-preview[data-slot="card"] {
+    display: block;
+  }
+}
+.pillars h3 {
+  font-weight: 600;
+}
+@media (max-width: 760px) {
+  .mobile-site-menu {
+    height: 44px;
+    width: 44px;
+  }
+}
