@@ -3,11 +3,13 @@ package dashboard
 import (
 	"bytes"
 	"encoding/json"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -124,11 +126,28 @@ func (e *oauthEnv) connect(c *http.Client, extra url.Values) *http.Response {
 	return r
 }
 
+// authStateOf reads the authorization URL off the "continue" page. Connect
+// must not answer with a cross-origin redirect: the dashboard's CSP
+// (form-action 'self') makes browsers block a form submission that redirects
+// to another origin, so the page links (and meta-refreshes) to it instead.
 func authStateOf(t *testing.T, r *http.Response) string {
 	t.Helper()
-	u, err := url.Parse(r.Header.Get("Location"))
-	if err != nil || r.StatusCode != 303 || u.Query().Get("state") == "" {
-		t.Fatalf("not a redirect to an authorization page: %d %q", r.StatusCode, r.Header.Get("Location"))
+	b, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	body := string(b)
+	if r.StatusCode != 200 || r.Header.Get("Location") != "" {
+		t.Fatalf("connect answered %d %q; want 200 with a continue page (no cross-origin redirect)", r.StatusCode, r.Header.Get("Location"))
+	}
+	m := regexp.MustCompile(`<a [^>]*id="oauth-continue"[^>]*href="([^"]+)"`).FindStringSubmatch(body)
+	if m == nil || !strings.Contains(body, `http-equiv="refresh"`) {
+		t.Fatalf("no continue link / refresh on the page:\n%s", body)
+	}
+	u, err := url.Parse(html.UnescapeString(m[1]))
+	if err != nil || u.Query().Get("state") == "" {
+		t.Fatalf("continue link %q has no state", m[1])
+	}
+	if r.Header.Get("Cache-Control") != "no-store" {
+		t.Error("the continue page must not be cached")
 	}
 	return u.Query().Get("state")
 }
