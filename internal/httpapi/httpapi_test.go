@@ -29,6 +29,9 @@ import (
 
 var ctx = context.Background()
 
+// fixtureHook, when a test sets it, is the server's OnResponse hook.
+var fixtureHook server.ResponseHook
+
 type fixture struct {
 	t        *testing.T
 	db       *store.DB
@@ -89,7 +92,7 @@ func newFixtureOpts(t *testing.T, db *store.DB, router core.Router, mod func(*ht
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := server.New(server.Options{})
+	s := server.New(server.Options{OnResponse: fixtureHook})
 	api.Register(s)
 	f.srv = httptest.NewServer(s.Handler())
 	t.Cleanup(f.srv.Close)
