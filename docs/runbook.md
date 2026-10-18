@@ -210,6 +210,33 @@ By default an invoice PDF carries the authorised signatory's name and the line "
 - Operators and admins press *Acknowledge* once somebody has looked; it is audited (`alert.acknowledge`). If the condition returns later it opens a new alert. Filter by open, acknowledged or all, severity and kind.
 - Alerts are kept indefinitely; there is no pruning yet.
 
+## Logs
+
+*Logs* in the dashboard (menu: Operations) is where to look when something failed: it keeps the **errors and warnings** of the hub, so you can review and fix them later. Info and debug lines still go only to stdout and journald. It needs the `logs.read` permission: admins have it, and a custom role can be given it under *Roles*.
+
+**What is kept**
+
+- *Errors* (kept 90 days): application errors, failed provider calls, 5xx responses and jobs that failed for good. A failed provider call row shows the request we sent and the answer, with the provider's request id, how long it took, and the payment, attempt, refund, subscription, mandate or payout it was for. That is usually enough to see why a PayU call timed out or a Zoho call answered 400.
+- *Warnings* (kept 7 days): warnings, retries, and 4xx answers on the API and webhook routes (a bad signature, a rejected API key, a validation error). Warnings carry ids only, no bodies.
+- A call that worked leaves no row, and neither does ordinary page traffic.
+- **Secrets and buyers' details are removed before a row is written** (keys, tokens, passwords, signatures, cards, names, e-mail addresses, phones, addresses, UPI handles, GSTIN, PAN). A row names the payment or refund it belongs to; look the details up on that payment's page. See [the security review](security-review.md).
+
+**Finding things.** Filter by time, level, kind (`app`, `provider`, `http`, `job`), connector, provider account, request id, payment id, any other id (attempt, refund, subscription, mandate, payout, job, the provider's own order or payment id, a webhook event id) and free text (it searches the message, the ids and the bodies). Every id on a row is a link to the rows that share it. A customer or an API caller who quotes a *request id* (it is in the `request_id` of an API error, in the `X-Request-Id` header, and at the end of a plain error page) leads straight to the rows of that request. The payment, attempt, refund and subscription pages have a *Logs for this ...* link for users who may read the logs. *Export JSON lines* downloads the filtered rows (up to 10,000, bodies included, still redacted), for pasting into a bug report.
+
+**Retention and size.** Settings (*Settings*, Delivery and retention): `log_retention_error_days` (default 90), `log_retention_warn_days` (default 7) and `log_max_rows` (default 500,000; when exceeded the oldest go first). An hourly job purges in batches. `audit_retention_days` (default 400, 0 = forever, never below 365) does the same for the audit log.
+
+**Where it lives.** With SQLite the rows are in their own file, `<data dir>/logs.db`, so writing them never competes with payments for the database lock. `paymux backup` does not include it. It is always safe to delete (stop Paymux, remove the file, start Paymux); Paymux makes a new one and sets a damaged one aside as `logs.db.corrupt-<time>`. With PostgreSQL it is the `logs` table of the main database; add `--exclude-table-data=logs` to `pg_dump` to leave the rows out of a dump.
+
+**Settings of the log itself**
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PAYMUX_DB_LOG_LEVEL` | `warn` | The lowest level of application records kept (`warn`, `error`; `info` and `debug` only when you ask for them by name, they are plentiful). Failed provider calls and failing requests are kept whatever it is. |
+| `PAYMUX_OTLP_LOGS_ENDPOINT` | unset | When set, the same redacted rows are also posted to an OpenTelemetry collector over OTLP/HTTP (JSON), for example `http://collector:4318/v1/logs`. The address may be private. Unset means off. |
+| `PAYMUX_OTLP_LOGS_HEADERS` | unset | `Name=value,Name=value` sent with every OTLP request (an auth token). Treated as a secret. |
+
+Rows are written in batches by a queue. If the queue is ever full (a very slow disk), rows are dropped and counted: `paymux_logs_dropped_total` on `/metrics`, and a line "log rows dropped" on stdout every minute. `paymux_logs_stored_total`, `paymux_logs_write_failures_total` and `paymux_logs_queue_depth` complete the picture.
+
 ## Themes and languages
 
 **Themes** change how the dashboard and the customer pages (pay page, subscription checkout, invoices) look. Two ship with the hub: `default` and `minimal-dark`. Choose them in the dashboard under *Appearance* (admins): one theme for the dashboard (also the default for customer pages) and, per app, an optional theme and language for that app's customer pages. *Preview* shows a sample page in any theme before you switch.
@@ -264,6 +291,8 @@ Provider menus change; the descriptions above name the settings to look for, not
 | `PAYMUX_ALLOW_PRIVATE_WEBHOOKS` | `false` | Allow outgoing webhooks to private/loopback addresses (development). |
 | `PAYMUX_SMTP_HOST`, `_PORT` (587), `_USERNAME`, `_PASSWORD`, `_FROM` | unset | Outgoing mail over STARTTLS. Mail and credentials are never sent in clear text. |
 | `PAYMUX_OPS_EMAILS`, `PAYMUX_OPS_WEBHOOK_URL` | unset | Where ops alerts go (email and a Slack-compatible webhook). Identical alerts are sent at most every 10 minutes. |
+| `PAYMUX_DB_LOG_LEVEL` | `warn` | Lowest level of application records kept on the Logs page (see *Logs*). |
+| `PAYMUX_OTLP_LOGS_ENDPOINT`, `PAYMUX_OTLP_LOGS_HEADERS` | unset | Also ship the stored log rows to an OpenTelemetry collector (OTLP/HTTP JSON). |
 | `PAYMUX_ENV_FILE` | `.env` | Extra env file for CLI use. |
 
 ## Backups and restore
@@ -337,6 +366,7 @@ In-flight jobs finish on shutdown (up to 30 seconds); queued jobs survive a rest
 - Prometheus metrics are on the internal listener: `curl http://127.0.0.1:9100/metrics` (request counts, job queue depth by state, oldest pending job age, last heartbeat).
 - Alerts (`PAYMUX_OPS_EMAILS`, `PAYMUX_OPS_WEBHOOK_URL`): failed reconciliation, dispute deadlines (on open, 72 h and 24 h before, on loss), webhook silence, endpoints failing for a day.
 - Audit log: *Audit* in the dashboard (admins) lists every operator action with the actor and address.
+- Errors: *Logs* in the dashboard (see *Logs*) keeps the errors, failed provider calls and rejected requests. Watch `paymux_logs_dropped_total` and `paymux_logs_write_failures_total`: both should stay at 0.
 
 ## If the hub is down
 

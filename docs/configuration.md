@@ -53,8 +53,11 @@ These switches are not substitutes for configuring a public endpoint and dashboa
 | `PAYMUX_SMTP_FROM` | Required with SMTP host | Sender mailbox, optionally with display name. |
 | `PAYMUX_OPS_EMAILS` | Empty | Comma-separated alert recipient addresses. |
 | `PAYMUX_OPS_WEBHOOK_URL` | Empty | Slack-compatible destination for operator alerts. |
+| `PAYMUX_DB_LOG_LEVEL` | `warn` | Lowest level of application log records stored for the dashboard's Logs page: `warn`, `error`, or (on purpose) `info`, `debug`. |
+| `PAYMUX_OTLP_LOGS_ENDPOINT` | Unset | OpenTelemetry collector URL (OTLP/HTTP, JSON); the stored, redacted rows are also posted there. A private address is allowed. |
+| `PAYMUX_OTLP_LOGS_HEADERS` | Unset | `Name=value,Name=value` sent with each OTLP request. Treated as a secret. |
 
-SMTP settings affect invoice and operational email. The ops webhook is separate from an application's signed payment-event endpoint. Alerts also appear in the dashboard; acknowledge them after investigation.
+The last three are described in the runbook under *Logs*. SMTP settings affect invoice and operational email. The ops webhook is separate from an application's signed payment-event endpoint. Alerts also appear in the dashboard; acknowledge them after investigation.
 
 ## Dashboard single sign-on
 

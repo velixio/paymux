@@ -32,6 +32,11 @@ info:
     seconds; the request is not processed.
 
     **Errors** share one shape: `{"error": {"type", "message", "request_id"}}`.
+    The same id is in the `X-Request-Id` header of every response. Send your own
+    `X-Request-Id` (letters, digits and hyphens, up to 64 characters) to match a
+    call to your records, and quote the id when you ask for help: it finds the
+    request in the hub's Logs page, together with the failed provider call, if
+    there was one.
 servers:
   - url: "{baseUrl}"
     variables:
@@ -862,7 +867,9 @@ components:
                 - unsupported
                 - internal
             message: { type: string }
-            request_id: { type: string }
+            request_id:
+              type: string
+              description: The id of this request, also sent as the X-Request-Id header. It identifies the matching rows of the hub's Logs page.
     PaymentStatus:
       type: string
       enum: [created, requires_action, processing, succeeded, failed, expired, canceled, needs_review]
