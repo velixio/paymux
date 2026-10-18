@@ -268,3 +268,34 @@ func TestLogLinksOnPaymentPage(t *testing.T) {
 }
 
 var _ = http.StatusOK
+
+// Logs are scoped to the dashboard's organisation: a row of another org is
+// absent from the list and the export and its detail page is a 404; rows with
+// no org (process-wide errors) stay visible.
+func TestLogsAreScopedToTheOrganisation(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		l := logsOf(t, db)
+		e := newEnv(t, db, func(o *Options) { o.LogDB = l })
+		if err := l.Write(ctx, func(tx store.Tx) error {
+			return store.InsertLogs(ctx, tx, []store.LogRow{
+				{ID: "log_other", At: logT0, Level: "error", Kind: "app", Component: "t", Msg: "OTHER-ORG-ROW", OrgID: "org_someone_else"},
+				{ID: "log_sys", At: logT0, Level: "error", Kind: "app", Component: "t", Msg: "PROCESS-WIDE-ROW"},
+			})
+		}); err != nil {
+			t.Fatal(err)
+		}
+		admin := e.roleClient("admin")
+		for _, p := range []string{"/dashboard/logs", "/dashboard/logs.jsonl", "/dashboard/logs?q=OTHER-ORG-ROW", "/dashboard/logs?id=org_someone_else"} {
+			_, body := e.get(admin, p)
+			lacks(t, body, "OTHER-ORG-ROW")
+		}
+		_, body := e.get(admin, "/dashboard/logs")
+		has(t, body, "PROCESS-WIDE-ROW")
+		if r, _ := e.get(admin, "/dashboard/logs/log_other"); r.StatusCode != 404 {
+			t.Errorf("another org's log row: %d, want 404", r.StatusCode)
+		}
+		if r, _ := e.get(admin, "/dashboard/logs/log_sys"); r.StatusCode != 200 {
+			t.Errorf("process-wide log row: %d, want 200", r.StatusCode)
+		}
+	})
+}
