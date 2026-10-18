@@ -5,7 +5,10 @@ package zoho
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,15 +16,36 @@ import (
 	"github.com/paymux/paymux/pkg/connector/connectortest"
 )
 
-// Run with: go test -tags sandbox ./connectors/zoho -run Sandbox
+// Run with: go test -tags sandbox ./connectors/zoho -run Sandbox -v
 // Needs ZOHO_TEST_ACCOUNT_ID, ZOHO_TEST_CLIENT_ID, ZOHO_TEST_CLIENT_SECRET,
-// ZOHO_TEST_REFRESH_TOKEN, ZOHO_TEST_WEBHOOK_SECRET and ZOHO_TEST_WIDGET_API_KEY.
-// Zoho support must enable the sandbox for the account first.
-func TestSandboxCreateSession(t *testing.T) {
+// ZOHO_TEST_REFRESH_TOKEN, ZOHO_TEST_WEBHOOK_SECRET and ZOHO_TEST_WIDGET_API_KEY,
+// read from the environment only.
+//
+// IMPORTANT: Zoho's sandbox is a separate host with separate credentials. The
+// credentials these tests were written with belong to a LIVE account
+// (payments.zoho.in), so they only create payment sessions (harmless, they
+// expire in 15 minutes) and read; they never pay or refund anything. Set
+// ZOHO_TEST_SANDBOX=1 with sandbox credentials to run against the sandbox.
+func sandboxConnector(t *testing.T) *zoho {
+	t.Helper()
 	cfg := config{
 		AccountID: os.Getenv("ZOHO_TEST_ACCOUNT_ID"), ClientID: os.Getenv("ZOHO_TEST_CLIENT_ID"),
 		ClientSecret: os.Getenv("ZOHO_TEST_CLIENT_SECRET"), RefreshToken: os.Getenv("ZOHO_TEST_REFRESH_TOKEN"),
 		WebhookSecret: os.Getenv("ZOHO_TEST_WEBHOOK_SECRET"), WidgetAPIKey: os.Getenv("ZOHO_TEST_WIDGET_API_KEY"),
+		Sandbox: os.Getenv("ZOHO_TEST_SANDBOX") != "",
+	}
+	if f := os.Getenv("ZOHO_TEST_REFRESH_TOKEN_FILE"); cfg.RefreshToken == "" && f != "" {
+		// A JSON file with a refresh_token field (the OAuth token response), or the bare token.
+		if b, err := os.ReadFile(f); err == nil {
+			var tok struct {
+				RefreshToken string `json:"refresh_token"`
+			}
+			if json.Unmarshal(b, &tok) == nil && tok.RefreshToken != "" {
+				cfg.RefreshToken = tok.RefreshToken
+			} else {
+				cfg.RefreshToken = strings.TrimSpace(string(b))
+			}
+		}
 	}
 	if cfg.AccountID == "" || cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.RefreshToken == "" || cfg.WebhookSecret == "" || cfg.WidgetAPIKey == "" {
 		t.Skip("ZOHO_TEST_* not set")
@@ -33,10 +57,97 @@ func TestSandboxCreateSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := c.CreateCheckout(context.Background(), connector.CheckoutRequest{
-		PaymentID: "pay_sbx", AttemptID: "att_sbx", AppID: "app_sbx", ProviderRef: "sbx_" + time.Now().Format("150405"), Amount: 100, Currency: "INR",
-	})
-	if err != nil || res.ProviderOrderID == "" {
+	return c.(*zoho)
+}
+
+func sandboxRef() string { return "sbx" + strconv.FormatInt(time.Now().UnixNano()/1000, 36) }
+
+func TestSandboxCreateSessionAndFetchItStrictly(t *testing.T) {
+	z := sandboxConnector(t)
+	ctx := context.Background()
+	ref := sandboxRef()
+	res, err := z.CreateCheckout(ctx, connector.CheckoutRequest{PaymentID: "pay_sbx", AttemptID: "att_sbx", AppID: "app_sbx", ProviderRef: ref, Amount: 10050, Currency: "INR", Description: "Paymux sandbox check"})
+	if err != nil || res.ProviderOrderID == "" || res.ExpiresAt == 0 || res.NextAction.Kind != connector.ActionSDK || res.NextAction.Options["description"] != "Paymux sandbox check" {
 		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	snap, err := z.FetchPayment(ctx, connector.PaymentRef{ProviderOrderID: res.ProviderOrderID, ProviderRef: ref})
+	if err != nil || snap.Status != connector.PaymentRequiresAction || snap.Amount != 10050 || snap.ProviderRef != ref || snap.ProviderOrderID != res.ProviderOrderID {
+		t.Fatalf("snap=%+v err=%v", snap, err)
+	}
+	if _, err := z.FetchPayment(ctx, connector.PaymentRef{ProviderOrderID: res.ProviderOrderID, ProviderRef: "someone_else"}); !errors.Is(err, connector.ErrNotFound) {
+		t.Errorf("a session of another reference: %v", err)
+	}
+}
+
+func TestSandboxUnknownIDsAndBadCredentials(t *testing.T) {
+	z := sandboxConnector(t)
+	ctx := context.Background()
+	if _, err := z.FetchPayment(ctx, connector.PaymentRef{ProviderOrderID: "28669000000999999"}); !errors.Is(err, connector.ErrNotFound) {
+		t.Errorf("session: %v", err)
+	}
+	if _, err := z.FetchPayment(ctx, connector.PaymentRef{ProviderPaymentID: "28669000000999999"}); !errors.Is(err, connector.ErrNotFound) {
+		t.Errorf("payment: %v", err)
+	}
+	if _, err := z.FetchRefund(ctx, connector.RefundRef{ProviderRefundID: "28669000000999999"}); !errors.Is(err, connector.ErrNotFound) {
+		t.Errorf("refund: %v", err)
+	}
+	if _, err := z.FetchMandate(ctx, connector.MandateRef{ProviderMandateID: "28669000000999999"}); !errors.Is(err, connector.ErrNotFound) {
+		t.Errorf("mandate: %v", err)
+	}
+	// A refund of a payment that does not exist, and of one refunded already.
+	if _, err := z.Refund(ctx, connector.RefundRequest{ProviderPaymentID: "28669000000999999", ProviderRef: sandboxRef(), Amount: 100, Currency: "INR"}); !errors.Is(err, connector.ErrNotFound) {
+		t.Errorf("refund of an unknown payment: %v", err)
+	}
+	z.api.cfg.RefreshToken = "1000.badbadbad.badbadbad"
+	_ = z.api.kv.Delete(ctx, tokenKey)
+	if _, err := z.FetchPayment(ctx, connector.PaymentRef{ProviderOrderID: "1"}); !errors.Is(err, connector.ErrInvalidCredentials) {
+		t.Errorf("bad refresh token: %v", err)
+	}
+}
+
+// Reads: the payments of the account parse with the connector's entities
+// (payment_method is an object, amounts are strings, refunded payments are paid
+// ones), and each payment fetched by id matches its own session and reference.
+func TestSandboxExistingPaymentsParse(t *testing.T) {
+	z := sandboxConnector(t)
+	ctx := context.Background()
+	var list struct {
+		Payments []paymentEntity `json:"payments"`
+	}
+	if err := z.api.do(ctx, "GET", "/api/v1/payments", nil, nil, &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Payments) == 0 {
+		t.Skip("the account has no payments")
+	}
+	for i, p := range list.Payments {
+		if i >= 5 {
+			break
+		}
+		snap, err := z.FetchPayment(ctx, connector.PaymentRef{ProviderPaymentID: p.PaymentID})
+		if err != nil || snap.ProviderPaymentID != p.PaymentID || snap.Amount <= 0 || snap.Method == "" {
+			t.Errorf("%s: %+v %v", p.PaymentID, snap, err)
+		}
+		if snap.RawStatus == "refunded" && snap.AmountRefunded != snap.Amount {
+			t.Errorf("%s: refunded but %+v", p.PaymentID, snap)
+		}
+		if _, err := z.FetchPayment(ctx, connector.PaymentRef{ProviderPaymentID: p.PaymentID, ProviderRef: "someone_else_" + p.PaymentID}); p.Reference != "" && !errors.Is(err, connector.ErrNotFound) {
+			t.Errorf("%s: another reference was accepted: %v", p.PaymentID, err)
+		}
+	}
+	var refunds struct {
+		Refunds []refundEntity `json:"refunds"`
+	}
+	if err := z.api.do(ctx, "GET", "/api/v1/refunds", nil, nil, &refunds); err != nil {
+		t.Fatal(err)
+	}
+	for i, r := range refunds.Refunds {
+		if i >= 3 {
+			break
+		}
+		snap, err := z.FetchRefund(ctx, connector.RefundRef{ProviderRefundID: r.RefundID})
+		if err != nil || snap.ProviderRefundID != r.RefundID || snap.Amount <= 0 {
+			t.Errorf("%s: %+v %v", r.RefundID, snap, err)
+		}
 	}
 }

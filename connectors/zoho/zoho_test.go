@@ -105,7 +105,7 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]any{"code": 0, "payment": pay(f.status)})
 	case r.Method == "POST" && r.URL.Path == "/api/v1/payments/pay_z1/refunds":
 		if f.refundCode != 0 {
-			write(w, f.refundCode, map[string]any{"code": 9, "message": "refund exceeds payment"})
+			write(w, f.refundCode, map[string]any{"code": "exceeds_payment_amount", "message": "refund exceeds payment"})
 			return
 		}
 		write(w, 200, map[string]any{"code": 0, "refund": map[string]any{"refund_id": "rf_z1", "payment_id": "pay_z1", "amount": "100.00", "status": f.refundStat, "reference_number": "rf_01"}})
@@ -156,8 +156,8 @@ func signedWebhook(secret, body string, ts int64, eventTime int64) connector.Web
 	}
 }
 
-const paymentSucceededBody = `{"event_id":"evt_z1","event_type":"payment.succeeded","payload":{"payment":{"payment_id":"pay_z1","payments_session_id":"ps_1","amount":499.00,"currency":"INR","status":"succeeded","payment_method":"upi","reference_number":"pay_ref_01"}}}`
-const refundSucceededBody = `{"event_id":"evt_z2","event_type":"refund.succeeded","payload":{"refund":{"refund_id":"rf_z1","payment_id":"pay_z1","amount":"100.00","status":"succeeded","reference_number":"rf_01"}}}`
+const paymentSucceededBody = `{"event_id":1001,"event_type":"payment.succeeded","event_object":{"payment":{"payment_id":"pay_z1","payments_session_id":"ps_1","amount":499.00,"currency":"INR","status":"succeeded","payment_method":"upi","reference_number":"pay_ref_01"}}}`
+const refundSucceededBody = `{"event_id":1002,"event_type":"refund.succeeded","event_object":{"refund":{"refund_id":"rf_z1","payment_id":"pay_z1","amount":"100.00","status":"succeeded","reference_number":"rf_01"}}}`
 
 func TestConformance(t *testing.T) {
 	sts := []struct {
@@ -356,7 +356,7 @@ func TestHandleReturnEchoesIDs(t *testing.T) {
 func TestParseWebhookPaymentAndRefund(t *testing.T) {
 	c := newConn(t, newFake(""), widgetCfg)
 	ns, err := c.ParseWebhook(context.Background(), signedWebhook(testSecret, paymentSucceededBody, nowUnix, nowUnix))
-	if err != nil || len(ns) != 1 || ns[0].EventID != "evt_z1" || ns[0].Payment.Status != connector.PaymentSucceeded ||
+	if err != nil || len(ns) != 1 || ns[0].EventID != "1001" || ns[0].Payment.Status != connector.PaymentSucceeded ||
 		ns[0].Payment.Amount != 49900 || ns[0].Payment.ProviderOrderID != "ps_1" || ns[0].Payment.ProviderRef != "pay_ref_01" {
 		t.Fatalf("ns=%+v err=%v", ns, err)
 	}
@@ -364,7 +364,7 @@ func TestParseWebhookPaymentAndRefund(t *testing.T) {
 	if err != nil || len(ns) != 1 || ns[0].Refund.Status != connector.RefundSucceeded || ns[0].Refund.Amount != 10000 || ns[0].Refund.ProviderRef != "rf_01" {
 		t.Fatalf("ns=%+v err=%v", ns, err)
 	}
-	ns, err = c.ParseWebhook(context.Background(), signedWebhook(testSecret, `{"event_id":"e","event_type":"mandate.created","payload":{}}`, nowUnix, nowUnix))
+	ns, err = c.ParseWebhook(context.Background(), signedWebhook(testSecret, `{"event_id":1004,"event_type":"mandate.created","event_object":{}}`, nowUnix, nowUnix))
 	if err != nil || len(ns) != 0 {
 		t.Errorf("unknown event: %v %v", ns, err)
 	}
@@ -402,7 +402,7 @@ func TestRefundFlow(t *testing.T) {
 	}
 	var body map[string]any
 	_ = json.Unmarshal(f.bodies["POST /api/v1/payments/pay_z1/refunds"], &body)
-	if body["reference_number"] != "rf_01" || fmt.Sprint(body["amount"]) != "100" {
+	if fmt.Sprint(body["amount"]) != "100" || body["type"] != "initiated_by_merchant" {
 		t.Errorf("body = %v", body)
 	}
 	f.refundStat = "succeeded"

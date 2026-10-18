@@ -1,0 +1,1 @@
+{"code":0,"message":"success","refund":{"refund_id":"28000000000184001","payment_id":"28000000000181002","default_currency_amount":"10.00","amount":"10.00","type":"initiated_by_merchant","reason":"others","description":"rf_ref_01","status":"succeeded","network_reference_number":"218000000000","date":1792284000,"meta_data":[{"key":"paymux_ref","value":"rf_ref_01"}]}}

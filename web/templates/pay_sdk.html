@@ -7,11 +7,11 @@
 (function () {
   var options = {{.Options}};
   var launcher = {{.Launcher}};
-  {{/* The Zoho call shape is from its documentation and not yet run against the live widget (docs/provider-verification.md). */}}
+  {{/* The call shape follows Zoho's widget documentation and its script (the constructor and requestPaymentMethod options, description required); a payment was not completed in it, see docs/provider-verification.md. */}}
   function openZoho() {
     if (!window.ZPayments) { return; }
-    var widget = new window.ZPayments({account_id: options.account_id, domain: options.domain, otherOptions: {api_key: options.api_key}});
-    widget.requestPaymentMethod({amount: options.amount, currency_code: options.currency, payments_session_id: options.payments_session_id})
+    var widget = new window.ZPayments({account_id: options.account_id, domain: options.domain, otherOptions: {api_key: options.api_key, is_test_mode: options.is_test_mode === true}});
+    widget.requestPaymentMethod({amount: options.amount, currency_code: options.currency, payments_session_id: options.payments_session_id, description: options.description})
       .then(function (data) {
         // Back through Paymux's return URL, which fetches the payment from Zoho
         // and trusts none of these parameters.

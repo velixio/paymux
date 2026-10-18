@@ -1,9 +1,10 @@
 // Package zoho is the Zoho Payments (India) connector. It imports only the
 // stdlib and pkg/.... There is no dispute API: disputes are manual.
 //
-// TODO(spec): re-verify against the live docs at sandbox time (the sandbox must
-// be enabled by Zoho support): the widget script URL, the hosted-checkout URL
-// scheme, and the webhook event names. Those are isolated in constants below.
+// Verified against the live Zoho Payments API (see docs/provider-verification.md):
+// token refresh, payment sessions, payments, refunds, error codes. Not verified:
+// a completed widget payment, successful refunds, live webhook deliveries,
+// mandates (the connector's mandate endpoints do not match Zoho's real flow).
 package zoho
 
 import (
@@ -41,7 +42,8 @@ const configSchema = `{
     "webhook_secret": {"type": "string", "title": "Webhook signing key", "minLength": 1, "x-secret": true},
     "data_center": {"type": "string", "title": "Zoho data centre TLD", "default": "in"},
     "widget_api_key": {"type": "string", "title": "Widget API key (enables the embedded widget)"},
-    "hosted_checkout_url": {"type": "string", "format": "uri", "title": "Hosted checkout base URL (used when no widget key is set)"}
+    "hosted_checkout_url": {"type": "string", "format": "uri", "title": "Hosted checkout base URL (used when no widget key is set)"},
+    "sandbox": {"type": "boolean", "title": "Use Zoho's sandbox (paymentssandbox.zoho.*; needs sandbox credentials)"}
   }
 }`
 
@@ -56,7 +58,7 @@ var info = connector.Info{
 	// debit, so there is no pre-debit API (NotifyPreDebit returns ErrUnsupported).
 	SubscriptionModes:        []connector.BillingMode{connector.MerchantTriggered},
 	MandateLimits:            []connector.MandateLimit{{Method: "upi", Currency: "INR"}},
-	RefundsVerificationDebit: true, // TODO(spec): confirm Zoho reverses the verification debit itself
+	RefundsVerificationDebit: true, // TODO(spec): unconfirmed that Zoho reverses the Rs 1 verification debit itself
 	MandateSetupAmount:       100,  // the Rs 1 verification debit of a registration without a charge due (trials)
 	// Refunds are limited to 60/min; the client limiter applies that to every call.
 	RateLimit: connector.RateLimit{RequestsPerSecond: 1, Burst: 10},
@@ -73,6 +75,7 @@ type config struct {
 	DataCenter        string `json:"data_center"`
 	WidgetAPIKey      string `json:"widget_api_key"`
 	HostedCheckoutURL string `json:"hosted_checkout_url"`
+	Sandbox           bool   `json:"sandbox"`
 }
 
 func (c config) dc() string {
@@ -138,29 +141,86 @@ func (n number) minor() (int64, error) {
 	return money.ParseDecimal(string(n), "INR")
 }
 
+// methodField is payment_method: an object ({"type":"upi","upi":{...}}) in the
+// real API, a plain string in older docs.
+type methodField string
+
+func (m *methodField) UnmarshalJSON(b []byte) error {
+	var s string
+	if json.Unmarshal(b, &s) == nil {
+		*m = methodField(s)
+		return nil
+	}
+	var o struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(b, &o); err != nil {
+		*m = ""
+		return nil // an unexpected shape must not fail the whole payment
+	}
+	*m = methodField(o.Type)
+	return nil
+}
+
+// methodName maps Zoho's payment method types to the names Paymux uses.
+func methodName(t methodField) string {
+	switch strings.ToLower(string(t)) {
+	case "net_banking", "netbanking":
+		return "netbanking"
+	}
+	return strings.ToLower(string(t))
+}
+
+type metaItem struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// metaRef is the key under which Paymux's own reference rides on a refund.
+const metaRef = "paymux_ref"
+
 type paymentEntity struct {
-	PaymentID string `json:"payment_id"`
-	SessionID string `json:"payments_session_id"`
-	Amount    number `json:"amount"`
-	Currency  string `json:"currency"`
-	Status    string `json:"status"`
-	Method    string `json:"payment_method"`
-	Reference string `json:"reference_number"`
-	Message   string `json:"failure_reason"`
+	PaymentID      string         `json:"payment_id"`
+	SessionID      string         `json:"payments_session_id"`
+	Amount         number         `json:"amount"`
+	AmountRefunded number         `json:"amount_refunded"`
+	Fee            number         `json:"fee_amount"`
+	Tax            number         `json:"net_tax_amount"`
+	Currency       string         `json:"currency"`
+	Status         string         `json:"status"`
+	Method         methodField    `json:"payment_method"`
+	Reference      string         `json:"reference_number"`
+	Message        string         `json:"failure_reason"`
+	Date           int64          `json:"date"` // unix seconds
+	Refunds        []refundEntity `json:"refunds"`
 }
 
 type refundEntity struct {
-	RefundID  string `json:"refund_id"`
-	PaymentID string `json:"payment_id"`
-	Amount    number `json:"amount"`
-	Currency  string `json:"currency"`
-	Status    string `json:"status"`
-	Reference string `json:"reference_number"`
+	RefundID    string     `json:"refund_id"`
+	PaymentID   string     `json:"payment_id"`
+	Amount      number     `json:"amount"`
+	Currency    string     `json:"currency"`
+	Status      string     `json:"status"`
+	Reference   string     `json:"reference_number"`
+	Description string     `json:"description"`
+	Date        int64      `json:"date"`
+	MetaData    []metaItem `json:"meta_data"`
+}
+
+// ref is the Paymux reference of a refund: the one stored in its meta_data when
+// the refund was made through Paymux, else Zoho's own reference_number.
+func (r refundEntity) ref() string {
+	for _, m := range r.MetaData {
+		if m.Key == metaRef && m.Value != "" {
+			return m.Value
+		}
+	}
+	return r.Reference
 }
 
 func mapPaymentStatus(raw string) connector.PaymentStatus {
 	switch strings.ToLower(raw) {
-	case "succeeded", "success", "paid":
+	case "succeeded", "success", "paid", "refunded", "partially_refunded": // a refunded payment was paid
 		return connector.PaymentSucceeded
 	case "failed", "failure":
 		return connector.PaymentFailed
@@ -177,10 +237,10 @@ func mapRefundStatus(raw string) connector.RefundStatus {
 	switch strings.ToLower(raw) {
 	case "succeeded", "success", "processed":
 		return connector.RefundSucceeded
-	case "failed", "failure":
+	case "failed", "failure", "canceled", "cancelled":
 		return connector.RefundFailed
 	}
-	return connector.RefundPending
+	return connector.RefundPending // initiated, pending
 }
 
 func (p paymentEntity) snapshot(orderID string) (connector.PaymentSnapshot, error) {
@@ -191,11 +251,21 @@ func (p paymentEntity) snapshot(orderID string) (connector.PaymentSnapshot, erro
 	if p.SessionID != "" {
 		orderID = p.SessionID
 	}
-	return connector.PaymentSnapshot{
+	snap := connector.PaymentSnapshot{
 		ProviderRef: p.Reference, ProviderOrderID: orderID, ProviderPaymentID: p.PaymentID,
 		Status: mapPaymentStatus(p.Status), RawStatus: p.Status, Amount: amt,
-		Currency: firstNonEmpty(p.Currency, "INR"), Method: p.Method, ErrorMessage: p.Message,
-	}, nil
+		Currency: firstNonEmpty(p.Currency, "INR"), Method: methodName(p.Method), ErrorMessage: p.Message,
+	}
+	if p.Date > 0 {
+		snap.CreatedAt = p.Date * 1000
+	}
+	snap.AmountRefunded, _ = p.AmountRefunded.minor()
+	if strings.EqualFold(p.Status, "refunded") && snap.AmountRefunded == 0 {
+		snap.AmountRefunded = amt
+	}
+	snap.Fee, _ = p.Fee.minor()
+	snap.Tax, _ = p.Tax.minor()
+	return snap, nil
 }
 
 func (r refundEntity) snapshot() (connector.RefundSnapshot, error) {
@@ -204,7 +274,7 @@ func (r refundEntity) snapshot() (connector.RefundSnapshot, error) {
 		return connector.RefundSnapshot{}, fmt.Errorf("zoho: refund amount: %w", err)
 	}
 	return connector.RefundSnapshot{
-		ProviderRef: r.Reference, ProviderRefundID: r.RefundID, ProviderPaymentID: r.PaymentID,
+		ProviderRef: r.ref(), ProviderRefundID: r.RefundID, ProviderPaymentID: r.PaymentID,
 		Status: mapRefundStatus(r.Status), RawStatus: r.Status, Amount: amt, Currency: firstNonEmpty(r.Currency, "INR"),
 	}, nil
 }
@@ -218,6 +288,9 @@ func (z *zoho) CreateCheckout(ctx context.Context, req connector.CheckoutRequest
 	if req.ProviderRef == "" || req.Amount <= 0 {
 		return connector.CheckoutResult{}, errors.New("zoho: provider_ref and a positive amount are required")
 	}
+	if len(req.ProviderRef) > 50 {
+		return connector.CheckoutResult{}, errors.New("zoho: provider_ref is the reference_number, at most 50 characters")
+	}
 	amt, err := money.FormatDecimal(req.Amount, "INR")
 	if err != nil {
 		return connector.CheckoutResult{}, err
@@ -227,14 +300,14 @@ func (z *zoho) CreateCheckout(ctx context.Context, req connector.CheckoutRequest
 		"currency":         "INR",
 		"description":      firstNonEmpty(req.Description, "Payment"),
 		"reference_number": req.ProviderRef,
-		"return_url":       z.deps.URLs.ReturnURL(req.ProviderRef),
 		"meta_data": []map[string]string{
 			{"key": "pay", "value": req.PaymentID}, {"key": "att", "value": req.AttemptID}, {"key": "app", "value": req.AppID},
 		},
 	}
 	var out struct {
 		Session struct {
-			ID string `json:"payments_session_id"`
+			ID         string `json:"payments_session_id"`
+			ExpiryTime int64  `json:"expiry_time"` // unix seconds
 		} `json:"payments_session"`
 	}
 	if err := z.api.do(ctx, "POST", "/api/v1/paymentsessions", nil, in, &out); err != nil {
@@ -245,12 +318,19 @@ func (z *zoho) CreateCheckout(ctx context.Context, req connector.CheckoutRequest
 		return connector.CheckoutResult{}, errors.New("zoho: payment session response has no id")
 	}
 	res := connector.CheckoutResult{ProviderOrderID: sid}
+	if out.Session.ExpiryTime > 0 {
+		res.ExpiresAt = out.Session.ExpiryTime * 1000
+	}
 	if z.cfg.WidgetAPIKey != "" {
 		res.NextAction = connector.NextAction{Kind: connector.ActionSDK, ScriptURL: widgetScript, Options: map[string]any{
 			"account_id": z.cfg.AccountID, "api_key": z.cfg.WidgetAPIKey, "domain": strings.ToUpper(z.cfg.dc()),
 			"payments_session_id": sid, "amount": amt, "currency": "INR",
-			"return_url": z.deps.URLs.ReturnURL(req.ProviderRef),
+			"description": firstNonEmpty(req.Description, "Payment"), // required by requestPaymentMethod
+			"return_url":  z.deps.URLs.ReturnURL(req.ProviderRef),
 		}}
+		if z.cfg.Sandbox {
+			res.NextAction.Options["is_test_mode"] = true
+		}
 	} else {
 		sep := "?"
 		if strings.Contains(z.cfg.HostedCheckoutURL, "?") {
@@ -302,7 +382,13 @@ func (z *zoho) VerifyWebhook(_ context.Context, req connector.WebhookRequest) er
 	if req.ReceivedAt > 0 {
 		now = time.UnixMilli(req.ReceivedAt)
 	}
-	if d := now.Sub(time.Unix(ts, 0)); d > webhookTolerance || d < -webhookTolerance {
+	// Zoho's t is in milliseconds (its documented example is 1734340423138); a
+	// seconds value is accepted too.
+	at := time.Unix(ts, 0)
+	if ts > 1e11 {
+		at = time.UnixMilli(ts)
+	}
+	if d := now.Sub(at); d > webhookTolerance || d < -webhookTolerance {
 		return connector.ErrInvalidSignature
 	}
 	m := hmac.New(sha256.New, []byte(z.cfg.WebhookSecret))
@@ -319,22 +405,30 @@ func (z *zoho) VerifyWebhook(_ context.Context, req connector.WebhookRequest) er
 
 // ParseWebhook maps payment.* and refund.* events; others are ignored.
 func (z *zoho) ParseWebhook(_ context.Context, req connector.WebhookRequest) ([]connector.Notification, error) {
+	// The envelope: event_id is a number (mandate events also carry event_id_str),
+	// event_time is in milliseconds, the entity is under event_object.
 	var ev struct {
-		EventID   string `json:"event_id"`
-		EventType string `json:"event_type"`
-		Payload   struct {
+		EventID    json.RawMessage `json:"event_id"`
+		EventIDStr string          `json:"event_id_str"`
+		EventType  string          `json:"event_type"`
+		EventTime  int64           `json:"event_time"`
+		Payload    struct {
 			Payment *paymentEntity `json:"payment"`
 			Refund  *refundEntity  `json:"refund"`
 			Mandate *mandateEntity `json:"mandate"`
-		} `json:"payload"`
+		} `json:"event_object"`
 	}
 	if err := json.Unmarshal(req.Body, &ev); err != nil {
 		return nil, fmt.Errorf("zoho: bad webhook body: %w", err)
 	}
-	if ev.EventID == "" {
+	eventID := firstNonEmpty(ev.EventIDStr, strings.Trim(string(ev.EventID), `" `))
+	if eventID == "" || eventID == "null" {
 		return nil, errors.New("zoho: webhook has no event_id")
 	}
-	n := connector.Notification{EventID: ev.EventID, EventType: ev.EventType, OccurredAt: req.ReceivedAt}
+	n := connector.Notification{EventID: eventID, EventType: ev.EventType, OccurredAt: req.ReceivedAt}
+	if ev.EventTime > 0 {
+		n.OccurredAt = ev.EventTime
+	}
 	switch {
 	case strings.HasPrefix(ev.EventType, "payment.") && ev.Payload.Payment != nil:
 		s, err := ev.Payload.Payment.snapshot("")
@@ -378,21 +472,32 @@ func (z *zoho) FetchPayment(ctx context.Context, ref connector.PaymentRef) (conn
 		if got := out.Payment.Reference; got != "" && ref.ProviderRef != "" && got != ref.ProviderRef {
 			return connector.PaymentSnapshot{}, fmt.Errorf("%w: payment %s belongs to another reference", connector.ErrNotFound, ref.ProviderPaymentID)
 		}
+		if got := out.Payment.SessionID; got != "" && ref.ProviderOrderID != "" && got != ref.ProviderOrderID {
+			return connector.PaymentSnapshot{}, fmt.Errorf("%w: payment %s belongs to another session", connector.ErrNotFound, ref.ProviderPaymentID)
+		}
 		return out.Payment.snapshot(ref.ProviderOrderID)
 	case ref.ProviderOrderID != "":
 		var out struct {
 			Session struct {
-				ID       string          `json:"payments_session_id"`
-				Status   string          `json:"status"`
-				Amount   number          `json:"amount"`
-				Currency string          `json:"currency"`
-				Payments []paymentEntity `json:"payments"`
+				ID        string `json:"payments_session_id"`
+				Status    string `json:"status"`
+				Amount    number `json:"amount"`
+				Currency  string `json:"currency"`
+				Reference string `json:"reference_number"`
+				Payments  []struct {
+					PaymentID string `json:"payment_id"`
+					Status    string `json:"status"`
+				} `json:"payments"`
 			} `json:"payments_session"`
 		}
 		if err := z.api.do(ctx, "GET", "/api/v1/paymentsessions/"+url.PathEscape(ref.ProviderOrderID), nil, nil, &out); err != nil {
 			return connector.PaymentSnapshot{}, err
 		}
 		s := out.Session
+		// The session carries our reference_number: another reference is not ours.
+		if s.Reference != "" && ref.ProviderRef != "" && s.Reference != ref.ProviderRef {
+			return connector.PaymentSnapshot{}, fmt.Errorf("%w: session %s belongs to another reference", connector.ErrNotFound, ref.ProviderOrderID)
+		}
 		if len(s.Payments) == 0 {
 			amt, err := s.Amount.minor()
 			if err != nil {
@@ -402,18 +507,29 @@ func (z *zoho) FetchPayment(ctx context.Context, ref connector.PaymentRef) (conn
 			if mapPaymentStatus(s.Status) == connector.PaymentExpired {
 				st = connector.PaymentExpired
 			}
-			return connector.PaymentSnapshot{ProviderRef: ref.ProviderRef, ProviderOrderID: s.ID, Status: st,
+			return connector.PaymentSnapshot{ProviderRef: firstNonEmpty(s.Reference, ref.ProviderRef), ProviderOrderID: s.ID, Status: st,
 				RawStatus: s.Status, Amount: amt, Currency: firstNonEmpty(s.Currency, "INR")}, nil
 		}
+		// The session lists only ids and statuses: read the best payment itself.
 		best := s.Payments[0]
 		for _, p := range s.Payments[1:] {
 			if rank(p.Status) > rank(best.Status) {
 				best = p
 			}
 		}
-		snap, err := best.snapshot(s.ID)
+		var pay struct {
+			Payment paymentEntity `json:"payment"`
+		}
+		if err := z.api.do(ctx, "GET", "/api/v1/payments/"+url.PathEscape(best.PaymentID), nil, nil, &pay); err != nil {
+			return connector.PaymentSnapshot{}, err
+		}
+		p := pay.Payment
+		if (p.SessionID != "" && p.SessionID != s.ID) || (p.Reference != "" && ref.ProviderRef != "" && p.Reference != ref.ProviderRef) {
+			return connector.PaymentSnapshot{}, fmt.Errorf("%w: payment %s is not this session's", connector.ErrNotFound, best.PaymentID)
+		}
+		snap, err := p.snapshot(s.ID)
 		if snap.ProviderRef == "" {
-			snap.ProviderRef = ref.ProviderRef
+			snap.ProviderRef = firstNonEmpty(s.Reference, ref.ProviderRef)
 		}
 		return snap, err
 	}
@@ -430,7 +546,15 @@ func rank(status string) int {
 	return 1
 }
 
-// Refund creates a refund; the refund provider_ref is sent as reference_number.
+// notRefundableCodes are the codes of a refund Zoho refuses because of the
+// payment (payment_already_refunded was seen live; the others are the refund
+// failure reasons the documentation lists).
+var notRefundableCodes = map[string]bool{
+	"payment_already_refunded": true, "exceeds_payment_amount": true, "exceeds_balance_amount": true, "payment_already_disputed": true,
+	"payment_not_captured": true, "expiry_time_exceeded": true, "insufficient_funds": true,
+}
+
+// Refund creates a refund; the refund provider_ref is stored in its meta_data.
 func (z *zoho) Refund(ctx context.Context, req connector.RefundRequest) (connector.RefundSnapshot, error) {
 	if req.ProviderPaymentID == "" || req.Amount <= 0 {
 		return connector.RefundSnapshot{}, errors.New("zoho: refund needs a payment id and a positive amount")
@@ -439,13 +563,46 @@ func (z *zoho) Refund(ctx context.Context, req connector.RefundRequest) (connect
 	if err != nil {
 		return connector.RefundSnapshot{}, err
 	}
-	in := map[string]any{"amount": json.Number(amt), "reason": req.Reason, "reference_number": req.ProviderRef}
+	// Zoho documents no idempotency for refunds, so a retried refund is looked up
+	// first: the payment lists its refunds with their meta_data, where Paymux's
+	// reference was stored.
+	var pay struct {
+		Payment paymentEntity `json:"payment"`
+	}
+	if err := z.api.do(ctx, "GET", "/api/v1/payments/"+url.PathEscape(req.ProviderPaymentID), nil, nil, &pay); err != nil {
+		return connector.RefundSnapshot{}, err
+	}
+	for _, r := range pay.Payment.Refunds {
+		if r.ref() != req.ProviderRef {
+			continue
+		}
+		s, err := r.snapshot()
+		if err != nil {
+			return connector.RefundSnapshot{}, err
+		}
+		if s.Amount != req.Amount {
+			return connector.RefundSnapshot{}, fmt.Errorf("zoho: refund reference %s already used for %d, not %d", req.ProviderRef, s.Amount, req.Amount)
+		}
+		s.ProviderPaymentID = req.ProviderPaymentID
+		return s, nil
+	}
+	// reason must be one of Zoho's values; a free text goes to the description.
+	reason := "others"
+	switch req.Reason {
+	case "duplicate", "fraudulent", "requested_by_customer", "others":
+		reason = req.Reason
+	}
+	in := map[string]any{"amount": json.Number(amt), "reason": reason, "type": "initiated_by_merchant",
+		"meta_data": []metaItem{{Key: metaRef, Value: req.ProviderRef}}}
+	if req.Reason != "" {
+		in["description"] = req.Reason
+	}
 	var out struct {
 		Refund refundEntity `json:"refund"`
 	}
 	if err := z.api.do(ctx, "POST", "/api/v1/payments/"+url.PathEscape(req.ProviderPaymentID)+"/refunds", nil, in, &out); err != nil {
 		var ae *apiError
-		if errors.As(err, &ae) && ae.Status == 400 {
+		if errors.As(err, &ae) && ae.Status == 400 && notRefundableCodes[ae.Code] {
 			return connector.RefundSnapshot{}, connector.ErrNotRefundable{Reason: ae.Message}
 		}
 		return connector.RefundSnapshot{}, err

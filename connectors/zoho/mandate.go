@@ -14,19 +14,25 @@ import (
 
 // UPI mandates (UPI AutoPay): Paymux triggers every debit (merchant_triggered).
 //
-// TODO(spec): re-verify against the Zoho Payments docs at sandbox time. The
-// endpoints below (/api/v1/mandates, .../charges, .../revoke), their request
-// fields and the mandate statuses are modelled on the payment-session and
-// refund APIs and are NOT confirmed. They are all in this file.
+// TODO(spec): THIS FILE DOES NOT MATCH ZOHO'S REAL MANDATE API. POST
+// /api/v1/mandates answers 405 and there is no /charges or /revoke. The real
+// flow (Zoho's documentation; GET /mandates/{id} and the list exist and were
+// checked): a customer from the Customers API, an enrollment payment session
+// (type mandate_enrollment, mandate_details), POST /mandates/notify, an execution
+// session (type mandate_execution) and POST /mandates/execute. FetchMandate and
+// the mandate webhook parsing follow the real shapes; the rest needs a rewrite
+// once the customers scope and a UPI Autopay test are available.
 
 type mandateEntity struct {
 	MandateID string `json:"mandate_id"`
 	SessionID string `json:"payments_session_id"`
 	Status    string `json:"status"`
 	Amount    number `json:"max_amount"`
-	Currency  string `json:"currency"`
-	Reference string `json:"reference_number"`
-	EndDate   string `json:"end_date"`
+	// AmountField is "amount", the name in the mandate events and the mandate object.
+	AmountField number `json:"amount"`
+	Currency    string `json:"currency"`
+	Reference   string `json:"reference_number"`
+	EndDate     string `json:"end_date"`
 	// Payment is the registration transaction, when Zoho reports it.
 	Payment *paymentEntity `json:"payment"`
 }
@@ -46,7 +52,11 @@ func mapMandateStatus(raw string) string {
 }
 
 func (m mandateEntity) snapshot() (connector.MandateSnapshot, error) {
-	amt, err := m.Amount.minor()
+	a := m.Amount
+	if a == "" {
+		a = m.AmountField
+	}
+	amt, err := a.minor()
 	if err != nil {
 		return connector.MandateSnapshot{}, fmt.Errorf("zoho: mandate amount: %w", err)
 	}
