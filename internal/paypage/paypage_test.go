@@ -112,7 +112,11 @@ func newEnv(t *testing.T, db *store.DB) *env {
 	h.Register(paypage.StdMux(mux))
 	h.RegisterSim(paypage.StdMux(mux))
 	router := &domains.Router{BaseHost: "pay.example.com", Lookup: e.core, Base: mux, Customer: mux}
-	e.srv = httptest.NewServer(router)
+	// The server's middleware sets X-Request-Id on every response; stand in for it.
+	e.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Request-Id", "req-test-9")
+		router.ServeHTTP(w, r)
+	}))
 	t.Cleanup(e.srv.Close)
 	return e
 }
@@ -322,6 +326,29 @@ func TestPayShowsFailureWhenNoProviderWorks(t *testing.T) {
 		r := e.do("GET", c.path(), "", nil)
 		if r.status != http.StatusBadGateway || !strings.Contains(r.body, "try again") || strings.Contains(r.body, "temporary") {
 			t.Errorf("%d %s", r.status, r.body)
+		}
+	})
+}
+
+// An error page for a failure on our side or the provider's names the request,
+// so the customer can quote it to support and an operator can find the log row.
+func TestServerErrorPagesShowTheRequestID(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		e.fake.Locked(func() {
+			e.fake.CheckoutFn = func(connector.CheckoutRequest) (connector.CheckoutResult, error) {
+				return connector.CheckoutResult{}, connector.ErrTemporary
+			}
+		})
+		c := e.create(core.CreatePaymentInput{})
+		r := e.do("GET", c.path(), "", nil)
+		if r.status != http.StatusBadGateway || !strings.Contains(r.body, "request id: req-test-9") {
+			t.Errorf("%d %s", r.status, r.body)
+		}
+		// A page that is not an error does not carry it.
+		ok := e.create(core.CreatePaymentInput{})
+		e.fake.Locked(func() { e.fake.CheckoutFn = nil })
+		if r := e.do("GET", ok.path(), "", nil); strings.Contains(r.body, "request id:") {
+			t.Errorf("%d: %.200s", r.status, r.body)
 		}
 	})
 }

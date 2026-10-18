@@ -15,6 +15,9 @@ type Options struct {
 	Logger  *slog.Logger
 	Metrics *metrics.Registry
 	Checks  []Check // evaluated in order by /readyz
+	// OnResponse, when set, is called after every request (the error log in the
+	// database hangs on it). It must not block.
+	OnResponse ResponseHook
 }
 
 // Server holds the muxes. Register extra routes before serving.
@@ -24,6 +27,7 @@ type Server struct {
 	checks   []Check
 	mux      *http.ServeMux
 	requests *metrics.CounterVec
+	onResp   ResponseHook
 }
 
 // New builds a Server with /healthz and /readyz registered.
@@ -38,6 +42,7 @@ func New(o Options) *Server {
 		log:    o.Logger,
 		reg:    o.Metrics,
 		checks: o.Checks,
+		onResp: o.OnResponse,
 		mux:    http.NewServeMux(),
 		requests: o.Metrics.Counter("paymux_http_requests_total",
 			"HTTP requests by route pattern and status code.", "route", "code"),
@@ -58,7 +63,7 @@ func (s *Server) HandleFunc(pattern string, fn http.HandlerFunc) {
 }
 
 // Handler is the public handler wrapped in the middleware chain.
-func (s *Server) Handler() http.Handler { return chain(s.mux, s.log, s.requests) }
+func (s *Server) Handler() http.Handler { return chain(s.mux, s.log, s.requests, s.onResp) }
 
 // InternalHandler serves /metrics and /debug/pprof/ for the internal listener.
 func (s *Server) InternalHandler() http.Handler {

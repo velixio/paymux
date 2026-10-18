@@ -14,6 +14,7 @@ import (
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/inbound"
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/logctx"
 	"github.com/paymux/paymux/internal/payouts"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector"
@@ -250,6 +251,8 @@ func (s *Service) SubmitRefund(ctx context.Context, payload json.RawMessage) err
 	if err != nil {
 		return jobs.Permanent(err)
 	}
+	noteAttempt(ctx, a)
+	logctx.Note(ctx, "refund_id", r.ID)
 	live, err := s.o.Conns.Get(ctx, a.ProviderAccountID)
 	if err != nil {
 		return err
@@ -295,6 +298,8 @@ func (s *Service) syncRefund(ctx context.Context, refundID, providerRefundID str
 	if err != nil {
 		return core.RefundApplyResult{}, err
 	}
+	noteAttempt(ctx, a)
+	logctx.Note(ctx, "refund_id", r.ID)
 	live, err := s.o.Conns.Get(ctx, a.ProviderAccountID)
 	if err != nil {
 		return core.RefundApplyResult{}, err

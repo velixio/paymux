@@ -172,6 +172,25 @@ func ListAppProviderAccounts(ctx context.Context, q Queryer, appID, mode string)
 	return out, rows.Err()
 }
 
+// ListEveryProviderAccount returns all provider accounts of all orgs, config
+// included (encrypted). It exists for start-up work that needs every secret.
+func ListEveryProviderAccount(ctx context.Context, q Queryer) ([]ProviderAccount, error) {
+	rows, err := q.QueryContext(ctx, `SELECT `+providerAccountCols+` FROM provider_accounts ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ProviderAccount
+	for rows.Next() {
+		pa, err := scanProviderAccount(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, pa)
+	}
+	return out, rows.Err()
+}
+
 // UpdateCustomer writes all mutable fields of c.
 func UpdateCustomer(ctx context.Context, tx Tx, c Customer, now time.Time) error {
 	_, err := tx.ExecContext(ctx, `UPDATE customers SET name = ?, email = ?, phone = ?, billing_legal_name = ?,

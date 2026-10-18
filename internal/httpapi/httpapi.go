@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/paymux/paymux/internal/authz"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/invoice"
+	"github.com/paymux/paymux/internal/logctx"
 	"github.com/paymux/paymux/internal/paylinks"
 	"github.com/paymux/paymux/internal/payouts"
 	"github.com/paymux/paymux/internal/secrets"
@@ -176,6 +178,7 @@ func (a *API) wrap(h handler, idempotent bool, scope string) http.HandlerFunc {
 		if !ok {
 			return
 		}
+		noteRequest(r, pr)
 		if !authz.ScopeAllows(pr.Scopes, scope) {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="paymux", error="insufficient_scope", scope="`+scope+`"`)
 			a.fail(w, r, http.StatusForbidden, "insufficient_scope", "this API key lacks the "+scope+" scope")
@@ -207,6 +210,27 @@ func (a *API) wrap(h handler, idempotent bool, scope string) http.HandlerFunc {
 			return
 		}
 		h(w, r, pr, body)
+	}
+}
+
+var ourID = regexp.MustCompile(`^[a-z]{2,5}_[0-9a-z]{26}$`)
+
+// noteRequest tells the request's log scope who is asking and which object the
+// path names, so that a failure row, or a provider call made while serving the
+// request, can be traced back. The path value is noted only when it looks like
+// one of our ids.
+func noteRequest(r *http.Request, pr core.Principal) {
+	logctx.Note(r.Context(), "org_id", pr.OrgID, "app_id", pr.AppID)
+	id := r.PathValue("id")
+	if !ourID.MatchString(id) {
+		return
+	}
+	for seg, key := range map[string]string{"/v1/payments/": "payment_id", "/v1/refunds/": "refund_id", "/v1/subscriptions/": "subscription_id",
+		"/v1/payment_links/": "link_id", "/v1/invoices/": "invoice_id", "/v1/credit_notes/": "credit_note_id", "/v1/payouts/": "payout_id"} {
+		if strings.Contains(r.Pattern, seg) {
+			logctx.Note(r.Context(), key, id)
+			return
+		}
 	}
 }
 

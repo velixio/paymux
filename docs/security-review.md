@@ -292,6 +292,72 @@ Decisions worth knowing:
   (IGST), B2B in and out of state, an export under a LUT or without one (IGST),
   a payment in rupees from abroad, exclusive pricing, and a duplicate success.
 
+## Fourth batch: the error log in the database
+
+| ID | Finding | Severity | Disposition |
+|----|---------|----------|-------------|
+| F26 | Keeping errors, failed provider calls (with their request and response) and rejected requests in a database table, for later debugging, would put credentials and buyers' details in a second place that is read by people and copied by backups | High if done naively | Designed out, then tested: every row is redacted before it is queued (below); no info or debug rows; no body for a call that worked; readable only with `logs.read` (admin by default); nothing in a column is ever the raw value of a header, cookie, token, key or card |
+| F27 | The audit log had no retention setting: it grew forever, and a future purge could have been set to any length | Low | `audit_retention_days`: default 400, 0 keeps it forever, and nothing below 365 days is accepted (PCI DSS 10.5.1); the purge job repeats the check and every purge is itself audited |
+
+**How the log avoids secrets and personal data.** Three layers, strongest first
+(`internal/redact`), each applied to the message, every attribute, the URL and
+both bodies of a provider call:
+
+1. *Known values.* The redactor is given the actual secrets in use and replaces
+   every occurrence, raw, URL-encoded, JSON-escaped or HTML-escaped, wherever it
+   is: the secret config fields (`x-secret`) of every provider account (loaded
+   at start and refreshed whenever an account is built or changed), the master
+   key in each encoding, SMTP and OIDC secrets, the ops webhook URL, the
+   database password and the OTLP headers. The Logs page and the export apply it
+   once more on the way out, so a secret learned after a row was stored is
+   hidden too.
+2. *Field names*, matched by whole words (so `payment_id` and `key_id` survive
+   but `razorpay_signature`, `refresh_token`, `api_key`, `salt`, `hash`, `otp`,
+   `cvv`, `card_number`, `private_key` and `pkcs12` do not) in JSON bodies (also
+   JSON inside a string and JSON cut short by the size limit), form bodies,
+   query strings and log attributes. Buyer details go the same way: `email`,
+   `phone`, `mobile`, `contact`, `name` (and `first_name`, `customer_name`, ...),
+   `address`, `vpa`, `upi_id`, `gstin`, `pan`. Our own ids and the provider's ids
+   are kept: a row says *which* payment, attempt, refund, subscription, mandate,
+   payout, job and provider account it is about, and the entity row holds the
+   details.
+3. *Value patterns*, for what has no telling name: `sk_`/`rk_`, `rzp_`, `whsec_`,
+   `ws_`, `apik_`, `cfsk_`, `pmx_` keys, session tokens, Zoho `1000.x.y` tokens,
+   JWTs, `Bearer` and `Basic` values, PEM blocks, credentials in URLs, Luhn-valid
+   card numbers (masked to the last four), e-mail addresses, phone numbers,
+   GSTIN, PAN and UPI handles.
+
+Headers are an allowlist (content type and length, user agent, date, retry-after
+and request-id style headers), applied in the HTTP client before a record leaves
+it; the client also removes the query values of credential-named parameters and
+the secrets it was configured with. A body is cut at 64 KiB before redaction
+(the last bytes dropped, so a secret cut in half cannot survive), and stored
+capped at 8 KiB after it.
+
+What is tested: a scan of **every column of every row** after real flows (a
+payment through the pay page, a signed and a forged webhook, a refund, a rejected
+API key and login, a failing hook job, a refused OAuth exchange) against a
+provider that answers with errors echoing every credential and the buyer's
+details; zero hits on SQLite and PostgreSQL. Field-name false-positive guards
+(ids, `footprint`, `monkey`, `connector_name`) and hostile-input timing are unit
+tests.
+
+Residual risks, accepted: a buyer's name in free text with no field name around
+it (`refund failed for Asha Rao`) is not recognisable; a secret in a format the
+patterns do not know, in a field with no secret-like name and not configured
+anywhere, would stay. Both are why the table is admin-only and why bodies are
+kept for failed calls only, for 90 days. The OTLP export (off by default) ships
+the same redacted rows; its endpoint is operator-configured and may be private,
+so it has no address guard.
+
+Availability: rows go through a bounded queue and are inserted in batches by one
+goroutine; a full queue drops rows and counts them (`paymux_logs_dropped_total`
+and a periodic line on stdout); a failed write is reported on stdout only and is
+never itself logged to the table, so logging cannot recurse. On SQLite the table
+lives in its own file, `<data>/logs.db`, so a log write never takes the main
+database's write lock (tested with a long main write transaction); the file can
+be deleted at any time and is left out of `paymux backup`.
+
 ## What remains
 
 Every `TODO(spec)` left in the code needs a provider sandbox, a provider

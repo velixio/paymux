@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -106,6 +107,11 @@ type Options struct {
 	Location *time.Location
 	// PageSize is the number of rows per list page (default 25).
 	PageSize int
+	// LogDB is the database that holds the logs table (store.DB.OpenLogs); nil
+	// disables the Logs page. LogRedact, when set, redacts every stored text once
+	// more on its way to the page or the export.
+	LogDB     *store.DB
+	LogRedact func(string) string
 }
 
 // Dashboard is the http.Handler for everything under /dashboard/.
@@ -181,7 +187,7 @@ var sections = []navItem{
 var navItems = []navItem{
 	{"overview", "Overview", prefix + "/overview"}, {"payments", "Payments", prefix + "/payments"}, {"payment-links", "Payment links", prefix + "/payment-links"},
 	{"subscriptions", "Subscriptions", prefix + "/subscriptions"}, {"invoices", "Invoices", prefix + "/invoices"},
-	{"disputes", "Disputes", prefix + "/disputes"}, {"reconciliation", "Reconciliation", prefix + "/reconciliation"}, {"reports", "Reports", prefix + "/reports"}, {"alerts", "Alerts", prefix + "/alerts"}, {"audit", "Audit", prefix + "/audit"},
+	{"disputes", "Disputes", prefix + "/disputes"}, {"reconciliation", "Reconciliation", prefix + "/reconciliation"}, {"reports", "Reports", prefix + "/reports"}, {"alerts", "Alerts", prefix + "/alerts"}, {"audit", "Audit", prefix + "/audit"}, {"logs", "Logs", prefix + "/logs"},
 	{"apps", "Apps", prefix + "/apps"}, {"providers", "Providers", prefix + "/providers"},
 	{"settings", "Settings", prefix + "/settings"}, {"tax-entities", "Tax entities", prefix + "/tax-entities"}, {"fx", "FX rates", prefix + "/fx"}, {"appearance", "Appearance", prefix + "/appearance"}, {"users", "Users", prefix + "/users"}, {"roles", "Roles", prefix + "/roles"},
 }
@@ -290,6 +296,9 @@ type view struct {
 	// header: the count of open alerts in the nav badge
 	AlertsOpen, AlertsCritical int
 
+	// CanLogs says the user may read the logs: pages show "logs for this ..." links.
+	CanLogs bool
+
 	// header: test/live toggle and where to come back to
 	Mode, Path string
 
@@ -336,7 +345,7 @@ func (d *Dashboard) renderWith(w http.ResponseWriter, status int, rend *web.Rend
 }
 
 func (d *Dashboard) fail(w http.ResponseWriter, err error) {
-	d.o.Logger.Error("dashboard: internal error", "err", err)
+	d.o.Logger.Error("dashboard: internal error", "request_id", w.Header().Get("X-Request-Id"), "err", err)
 	http.Error(w, "internal error", http.StatusInternalServerError)
 }
 
@@ -600,7 +609,10 @@ func (d *Dashboard) authed(action authz.Action, h authedHandler) http.HandlerFun
 func (d *Dashboard) shell(r *http.Request, s *session, active, title string) view {
 	u := s.User
 	v := view{Title: title, Nav: navItems, Active: active, User: &u, CSRF: s.csrf(), Self: u.ID,
-		Mode: d.mode(r, s), Path: r.URL.RequestURI()}
+		Mode: d.mode(r, s), Path: r.URL.RequestURI(), CanLogs: s.can(authz.LogsRead)}
+	if !v.CanLogs {
+		v.Nav = slices.DeleteFunc(slices.Clone(navItems), func(n navItem) bool { return n.Key == "logs" })
+	}
 	v.AlertsOpen, v.AlertsCritical = d.alertCounts(r)
 	return v
 }

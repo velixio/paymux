@@ -77,6 +77,9 @@ func (c *client) accessToken(ctx context.Context, force bool) (string, error) {
 		return "", fmt.Errorf("%w: oauth HTTP %d", connector.ErrTemporary, resp.StatusCode)
 	}
 	if resp.StatusCode != 200 || tok.AccessToken == "" {
+		if resp.StatusCode == 200 {
+			connector.ReportDecodeError(resp, errors.New("zoho: the token answer has no access token")) // so the answer reaches the error log
+		}
 		// Zoho answers 200 with {"error":"invalid_code"} for a bad refresh token.
 		return "", fmt.Errorf("%w: oauth refresh failed (%s)", connector.ErrInvalidCredentials, firstNonEmpty(tok.Error, strconv.Itoa(resp.StatusCode)))
 	}
@@ -195,6 +198,7 @@ func (c *client) onceAt(ctx context.Context, base, tok, method, path string, que
 			return nil
 		}
 		if err := json.Unmarshal(raw, out); err != nil {
+			connector.ReportDecodeError(resp, err)
 			return fmt.Errorf("zoho: decoding %s %s: %w", method, path, err)
 		}
 		return nil

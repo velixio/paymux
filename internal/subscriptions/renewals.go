@@ -12,6 +12,7 @@ import (
 	"github.com/paymux/paymux/internal/core/state"
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/logctx"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector"
 )
@@ -318,6 +319,15 @@ func (s *Service) ensureOpenAttempt(ctx context.Context, tx store.Tx, sub *store
 
 // ---- pre-debit notice ---------------------------------------------------
 
+// noteWork tells the log scope of the job which subscription, mandate, attempt
+// and payment a provider call is about, so a failed call in the error log can
+// be traced back to them.
+func noteWork(ctx context.Context, sub store.Subscription, m store.Mandate, att store.Attempt) {
+	logctx.Note(ctx, "subscription_id", sub.ID, "mandate_id", m.ID, "provider_mandate_id", m.ProviderMandateID,
+		"provider_account_id", sub.ProviderAccountID, "app_id", sub.AppID, "org_id", sub.OrgID,
+		"attempt_id", att.ID, "payment_id", att.PaymentID)
+}
+
 func (s *Service) handleNotify(ctx context.Context, raw json.RawMessage) error {
 	var pl cyclePayload
 	if err := json.Unmarshal(raw, &pl); err != nil {
@@ -360,6 +370,7 @@ func (s *Service) handleNotify(ctx context.Context, raw json.RawMessage) error {
 	if err != nil || skip {
 		return err
 	}
+	noteWork(ctx, sub, m, att)
 	conn, err := s.connectors.Get(ctx, sub.ProviderAccountID)
 	if err != nil {
 		return err
@@ -562,6 +573,7 @@ func toSnapshot(ps connector.PaymentSnapshot, amount int64, currency string) cor
 // executeCharge calls the provider (outside any transaction) and settles the
 // result. The attempt's provider_ref is the provider-side idempotency token.
 func (s *Service) executeCharge(ctx context.Context, sub store.Subscription, cy store.Cycle, att store.Attempt, m store.Mandate) error {
+	noteWork(ctx, sub, m, att)
 	conn, err := s.connectors.Get(ctx, sub.ProviderAccountID)
 	if err != nil {
 		return s.releaseLease(ctx, sub.ID, cy.PeriodIndex, err)
@@ -869,6 +881,7 @@ func (s *Service) handlePoll(ctx context.Context, raw json.RawMessage) error {
 	if err != nil || skip {
 		return err
 	}
+	noteWork(ctx, sub, store.Mandate{}, att)
 	conn, err := s.connectors.Get(ctx, sub.ProviderAccountID)
 	if err != nil {
 		return err

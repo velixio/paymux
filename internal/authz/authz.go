@@ -37,12 +37,13 @@ const (
 	AuditRead             Action = "audit.read"
 	RoleManage            Action = "role.manage"
 	PayoutCreate          Action = "payout.create" // sends money out: admin only unless a role is given it
+	LogsRead              Action = "logs.read"     // the Logs page: errors and failed provider calls; admin only unless a role is given it
 )
 
 // AllActions lists every action.
 var AllActions = []Action{PaymentCreate, PaymentRead, PaymentCancel, RefundCreate, RefundRead, DisputeManage,
 	WebhookReplay, InvoiceReissue, SettingsRead, SettingsWrite, AppCreate, APIKeyCreate, ProviderAccountManage,
-	UserManage, AuditRead, RoleManage, PayoutCreate}
+	UserManage, AuditRead, RoleManage, PayoutCreate, LogsRead}
 
 // adminOnly actions can never be granted to a custom role: whoever holds them
 // can create users and roles, so they could give themselves everything.

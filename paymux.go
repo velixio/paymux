@@ -24,6 +24,7 @@ import (
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/dashboard"
+	"github.com/paymux/paymux/internal/dblog"
 	"github.com/paymux/paymux/internal/disputes"
 	"github.com/paymux/paymux/internal/domains"
 	"github.com/paymux/paymux/internal/events"
@@ -77,6 +78,8 @@ type App struct {
 
 	mu          sync.Mutex
 	addr, iaddr string
+	logDB       *store.DB // the database log (dblogs.go)
+	logRec      *dblog.Recorder
 }
 
 // WithVerifiers overrides how inbound webhooks find the Verifier of a provider
@@ -145,6 +148,10 @@ func (a *App) Start(ctx context.Context) error {
 	if err := db.Migrate(ctx, migrations.FS); err != nil {
 		return err
 	}
+	// Warnings and errors are also kept in the database for later review. From
+	// here on a.log writes to both stdout and that log.
+	dbl := a.openDBLogs(ctx, db)
+	defer dbl.close()
 
 	set := settings.New(db)
 	if _, err := core.Bootstrap(ctx, db, set); err != nil {
@@ -177,8 +184,19 @@ func (a *App) Start(ctx context.Context) error {
 	breaker := routing.NewBreaker(nil)
 	rt := checkout.NewRouting(breaker).WithSettings(set).WithSuggester(a.suggestRoute)
 	reg := metrics.NewRegistry()
-	conns := connectors.New(connectors.Options{DB: db, Box: box, BaseURL: a.cfg.BaseURL, Logger: a.log, HTTPClient: a.connHTTP,
-		Observe: connectors.ProviderMetrics(reg)})
+	connOpts := connectors.Options{DB: db, Box: box, BaseURL: a.cfg.BaseURL, Logger: a.log, HTTPClient: a.connHTTP,
+		Observe: connectors.ProviderMetrics(reg)}
+	if dbl != nil {
+		connOpts.CallRecorder = func(pa store.ProviderAccount, info connector.Info) connector.CallRecorder {
+			return dbl.rec.ProviderCall(dblog.ProviderMeta{Connector: pa.Connector, AccountID: pa.ID, OrgID: pa.OrgID})
+		}
+		connOpts.KnownSecrets = func(owner string, values []string) { dbl.red.SetKnown(owner, values...) }
+		dbl.rec.RegisterMetrics(reg)
+	}
+	conns := connectors.New(connOpts)
+	if err := conns.LoadKnownSecrets(ctx); err != nil {
+		a.log.Warn("could not load provider secrets for log redaction", "err", err.Error())
+	}
 	// GST invoicing: documents are issued by hooks inside the transaction in
 	// which a payment or refund succeeds.
 	mailer := notify.New(a.cfg)
@@ -242,6 +260,11 @@ func (a *App) Start(ctx context.Context) error {
 	if err := hk.Register(q); err != nil {
 		return err
 	}
+	if dbl != nil {
+		if err := dbl.registerPurge(q, db, set); err != nil {
+			return err
+		}
+	}
 	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv, Subscriptions: subs, PaymentLinks: links, Payouts: payoutSvc})
 	if err != nil {
 		return err
@@ -283,8 +306,9 @@ func (a *App) Start(ctx context.Context) error {
 	registerBusinessMetrics(reg, db, a.log, time.Now)
 
 	srv := server.New(server.Options{
-		Logger:  a.log,
-		Metrics: reg,
+		Logger:     a.log,
+		Metrics:    reg,
+		OnResponse: dbl.responseHook(),
 		Checks: []server.Check{
 			{Name: "db", Fn: db.Ping},
 			{Name: "migrations", Fn: func(ctx context.Context) error {
@@ -338,7 +362,8 @@ func (a *App) Start(ctx context.Context) error {
 	internalMux.Handle("/", srv.InternalHandler())
 
 	// Operator dashboard and the shared static assets.
-	dash, err := dashboard.New(dashboard.Options{DB: db, Box: box, Renderer: renderer, Themes: themes, MasterKey: a.cfg.MasterKey,
+	dashLogs, dashRedact := dbl.dashboardLogs()
+	dash, err := dashboard.New(dashboard.Options{LogDB: dashLogs, LogRedact: dashRedact, DB: db, Box: box, Renderer: renderer, Themes: themes, MasterKey: a.cfg.MasterKey,
 		BaseURL: a.cfg.BaseURL, DevSkip2FA: a.cfg.DevSkip2FA, Logger: a.log,
 		TrustedProxies: a.cfg.TrustedProxies, Core: svc, Settings: set, Outbound: out, Invoice: inv, Connectors: conns, Disputes: disp, Recon: rec, Jobs: q,
 		Subscriptions: subs, PaymentLinks: links, Alerts: alertCenter, Location: a.cfg.Location,

@@ -25,6 +25,13 @@ import (
 	"github.com/paymux/paymux/pkg/connector"
 )
 
+// oauthRecorder and oauthKnown, when a test sets them, are the call recorder
+// and the known-secrets hook of the OAuth tests' connectors (the error log).
+var (
+	oauthRecorder func(store.ProviderAccount) connector.CallRecorder
+	oauthKnown    func(owner string, values []string)
+)
+
 type rtFunc func(*http.Request) (*http.Response, error)
 
 func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
@@ -95,13 +102,18 @@ func newOAuthEnv(t *testing.T, db *store.DB) *oauthEnv {
 	e := newEnv(t, db, func(o *Options) {
 		o.Logger = slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		o.Connectors = connectors.New(connectors.Options{DB: o.DB, Box: o.Box, BaseURL: o.BaseURL, Now: o.Now, Logger: o.Logger,
-			HTTPClient: func(store.ProviderAccount, connector.Info, []string) *http.Client {
-				return &http.Client{Transport: rtFunc(func(r *http.Request) (*http.Response, error) {
+			KnownSecrets: oauthKnown,
+			HTTPClient: func(pa store.ProviderAccount, _ connector.Info, _ []string) *http.Client {
+				rt := rtFunc(func(r *http.Request) (*http.Response, error) {
 					c := r.Clone(r.Context())
 					c.Header.Set("X-Original-Host", r.URL.Host)
 					c.URL.Scheme, c.URL.Host = target.Scheme, target.Host
 					return http.DefaultTransport.RoundTrip(c)
-				})}
+				})
+				if oauthRecorder != nil {
+					return connector.NewHTTPClient(connector.HTTPOptions{Base: rt, Recorder: oauthRecorder(pa)})
+				}
+				return &http.Client{Transport: rt}
 			}})
 	})
 	pa, err := e.d.o.Connectors.CreateAccount(ctx, audit.System, orgScope(), connectors.CreateAccountInput{Connector: "zoho", Name: "Zoho", Mode: "test",

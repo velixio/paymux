@@ -27,25 +27,35 @@ func openSQLite(ctx context.Context, path string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	fail := func(err error) (*DB, error) { unlock(); return nil, err }
+	db, err := openSQLiteFile(ctx, path)
+	if err != nil {
+		unlock()
+		return nil, err
+	}
+	db.unlock = unlock
+	return db, nil
+}
 
+// openSQLiteFile opens a SQLite file with one writer and a read pool. It
+// takes no data-dir lock: the caller holds it.
+func openSQLiteFile(ctx context.Context, path string) (*DB, error) {
 	escaped := (&url.URL{Path: path}).EscapedPath()
 	writer, err := sql.Open("sqlite", "file:"+escaped+"?"+sqlitePragmas+"&_txlock=immediate")
 	if err != nil {
-		return fail(err)
+		return nil, err
 	}
 	writer.SetMaxOpenConns(1)
 	if err := writer.PingContext(ctx); err != nil {
 		writer.Close()
-		return fail(fmt.Errorf("open %s: %w", path, err))
+		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 	reader, err := sql.Open("sqlite", "file:"+escaped+"?"+sqlitePragmas)
 	if err != nil {
 		writer.Close()
-		return fail(err)
+		return nil, err
 	}
 	reader.SetMaxOpenConns(4)
-	return &DB{writer: writer, reader: reader, d: dialect.SQLite{}, unlock: unlock, path: path}, nil
+	return &DB{writer: writer, reader: reader, d: dialect.SQLite{}, path: path}, nil
 }
 
 func mkdir0700(dir string) error {

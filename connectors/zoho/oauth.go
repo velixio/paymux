@@ -194,12 +194,14 @@ func (z *zoho) OAuthExchange(ctx context.Context, raw json.RawMessage, redirectU
 		return connector.OAuthResult{}, fmt.Errorf("%w: Zoho's accounts server answered HTTP %d", connector.ErrTemporary, resp.StatusCode)
 	}
 	if tok.Error != "" {
+		connector.ReportDecodeError(resp, errors.New("zoho: the token answer is an error: "+safeCode(tok.Error))) // so the refused request reaches the error log
 		return connector.OAuthResult{}, fmt.Errorf("zoho: authorization failed (%s); a grant code can be used once and expires in minutes, so authorise again", safeCode(tok.Error))
 	}
 	if resp.StatusCode != 200 {
 		return connector.OAuthResult{}, fmt.Errorf("zoho: authorization failed (HTTP %d)", resp.StatusCode)
 	}
 	if tok.RefreshToken == "" {
+		connector.ReportDecodeError(resp, errors.New("zoho: the token answer has no refresh token"))
 		return connector.OAuthResult{}, errors.New("zoho: Zoho returned no refresh token; authorise again (the client must ask for offline access, and a code that was used before returns none)")
 	}
 	scopes := strings.FieldsFunc(tok.Scope, func(r rune) bool { return r == ',' || r == ' ' })

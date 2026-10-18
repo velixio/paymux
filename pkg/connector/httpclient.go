@@ -32,6 +32,11 @@ type HTTPOptions struct {
 	// Observer, when set, receives one RequestObservation per attempt (latency
 	// and outcome only: no URL, headers or body).
 	Observer Observer
+	// Recorder, when set, receives every failed attempt (a transport error, a
+	// timeout, a status outside 2xx, or a decode error the connector reports with
+	// ReportDecodeError) with the first 64 KiB of the request and response. A
+	// successful call is never recorded. The record is raw: redact before storing.
+	Recorder CallRecorder
 	// DenyPrivate refuses to connect to loopback, private, link-local, multicast
 	// and unspecified addresses (checked for every address a name resolves to,
 	// and again at connect time), ignores environment proxies and never follows
@@ -155,10 +160,19 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 				}
 			}
 		}
-		resp, err := t.once(req)
+		resp, st, err := t.once(req, attempt+1)
 		failed := err != nil || resp.StatusCode >= 500
 		if !failed || attempt >= retries || req.Context().Err() != nil {
+			if st != nil && err != nil {
+				st.emit()
+			}
 			return resp, err
+		}
+		if st != nil {
+			st.markRetry()
+			if err != nil {
+				st.emit()
+			}
 		}
 		if resp != nil {
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
@@ -171,26 +185,47 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 }
 
-func (t *transport) once(req *http.Request) (*http.Response, error) {
+func (t *transport) once(req *http.Request, attempt int) (*http.Response, *callState, error) {
 	ctx, cancel := context.WithTimeout(req.Context(), t.o.Timeout)
 	r := req.Clone(ctx)
 	if fn, ok := req.Context().Value(attemptKey{}).(func(*http.Request)); ok {
 		fn(r) // e.g. sign this attempt afresh
 	}
+	var st *callState
+	if t.o.Recorder != nil {
+		st = &callState{rec: t.o.Recorder, scrub: t.scrub, ctx: req.Context(), req: r, attempt: attempt, getBody: r.GetBody}
+		if st.getBody == nil && r.Body != nil && r.Body != http.NoBody {
+			r.Body = &teeBody{ReadCloser: r.Body, buf: &st.reqBuf, mu: &st.mu}
+		}
+	}
 	start := t.o.Now()
 	t.logRequest(r)
 	resp, err := t.o.Base.RoundTrip(r)
+	took := t.o.Now().Sub(start)
 	if t.o.Observer != nil {
-		t.o.Observer(observe(req.Method, resp, err, t.o.Now().Sub(start)))
+		t.o.Observer(observe(req.Method, resp, err, took))
+	}
+	if st != nil {
+		st.start, st.took = start, took
+		if err != nil {
+			st.err = err
+			st.timedOut = observe(req.Method, nil, err, took).Outcome == OutcomeTimeout
+		} else {
+			st.status, st.respHdr = resp.StatusCode, resp.Header
+		}
 	}
 	if err != nil {
 		cancel()
 		t.logError(r, err)
-		return nil, err
+		return nil, st, err
 	}
-	t.logResponse(r, resp, t.o.Now().Sub(start))
-	resp.Body = &cancelBody{resp.Body, cancel}
-	return resp, nil
+	t.logResponse(r, resp, took)
+	var body io.ReadCloser = resp.Body
+	if st != nil {
+		body = &captureBody{ReadCloser: resp.Body, st: st}
+	}
+	resp.Body = &cancelBody{body, cancel}
+	return resp, st, nil
 }
 
 type cancelBody struct {

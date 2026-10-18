@@ -12,6 +12,7 @@ import (
 	"github.com/paymux/paymux/internal/core/state"
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/logctx"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector"
 )
@@ -63,6 +64,12 @@ func (s *Service) handleExpireIncomplete(ctx context.Context, raw json.RawMessag
 	})
 }
 
+// noteMandate tells the log scope which mandate a provider call is about.
+func noteMandate(ctx context.Context, m store.Mandate) {
+	logctx.Note(ctx, "mandate_id", m.ID, "provider_mandate_id", m.ProviderMandateID, "provider_account_id", m.ProviderAccountID,
+		"app_id", m.AppID, "org_id", m.OrgID)
+}
+
 func (s *Service) handleRevokeMandate(ctx context.Context, raw json.RawMessage) error {
 	var pl struct {
 		MandateID string `json:"mandate_id"`
@@ -77,6 +84,7 @@ func (s *Service) handleRevokeMandate(ctx context.Context, raw json.RawMessage) 
 	if m.ProviderMandateID == "" {
 		return nil
 	}
+	noteMandate(ctx, m)
 	conn, err := s.connectors.Get(ctx, m.ProviderAccountID)
 	if err != nil {
 		return err
@@ -735,6 +743,7 @@ func (s *Service) handlePollMandate(ctx context.Context, raw json.RawMessage) er
 	if m.Status != string(state.MandatePending) {
 		return nil // settled by the return, a webhook, or expiry
 	}
+	noteMandate(ctx, m)
 	conn, err := s.connectors.Get(ctx, m.ProviderAccountID)
 	if err != nil {
 		return err

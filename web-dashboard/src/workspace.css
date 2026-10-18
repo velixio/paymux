@@ -1103,3 +1103,59 @@ main.dash:has(#paymux-react-root) {
     max-width: none;
   }
 }
+
+/* Logs page: level badges, wrapped messages and JSON, and stacked rows on a phone. */
+.react-content .status-error {
+  background: #fceeed;
+  color: #a13631;
+}
+.react-content .status-warn {
+  background: #fff3d5;
+  color: #805608;
+}
+.react-content .status-info,
+.react-content .status-debug {
+  background: #e8eefc;
+  color: #274690;
+}
+.react-content .log-msg {
+  overflow-wrap: anywhere;
+}
+.react-content pre.log-json {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .react-content .log-grid thead {
+    display: none;
+  }
+  .react-content .log-grid,
+  .react-content .log-grid tbody {
+    display: block;
+    width: 100%;
+  }
+  .react-content .log-grid tr {
+    display: block;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .react-content .log-grid td {
+    display: block;
+    width: auto;
+    padding: 2px 0;
+    border: 0;
+    white-space: normal;
+  }
+  .react-content .log-grid td::before {
+    content: attr(data-label) ": ";
+    font-size: 11px;
+    color: var(--muted-foreground);
+  }
+}

@@ -87,6 +87,7 @@ func (c *client) send(ctx context.Context, method, path string, query url.Values
 			return nil
 		}
 		if err := json.Unmarshal(raw, out); err != nil {
+			connector.ReportDecodeError(resp, err)
 			return fmt.Errorf("razorpay: decoding %s %s: %w", method, path, err)
 		}
 		return nil

@@ -15,6 +15,14 @@ import (
 // Page holds the page-specific data of the part-2 templates. It is embedded
 // in view, so templates address its fields directly.
 type Page struct {
+	// logs (the Logs page and a log entry)
+	LogFilter    logFilter
+	LogLevels    []string
+	LogKinds     []string
+	LogRows      []logRowView
+	LogEntry     *logDetail
+	LogExportURL string
+
 	// payments list
 	Rows     []payRow
 	Filter   payFilter
@@ -110,6 +118,7 @@ func (d *Dashboard) routesPages() {
 	d.routesApps()
 	d.routesSettings()
 	d.routesAuditOverview()
+	d.routesLogs()
 	d.routesInvoices()
 	d.routesTax()
 	d.routesProviders()

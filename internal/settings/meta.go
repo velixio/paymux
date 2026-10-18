@@ -88,6 +88,14 @@ var metas = map[string]Meta{
 		Help: "How long raw provider webhooks are kept. 0 keeps them forever; otherwise at least 30 days."},
 	"document_retention": {Kind: KindInt, Unit: "years", Min: 8, ZeroOK: true,
 		Help: "How long invoices and credit notes are kept. 0 keeps them forever; otherwise at least 8 years."},
+	"log_retention_error_days": {Kind: KindInt, Unit: "days", Min: 1, Max: 3650,
+		Help: "How long error log rows (errors, failed provider calls with their bodies, 5xx responses, dead jobs) are kept on the Logs page."},
+	"log_retention_warn_days": {Kind: KindInt, Unit: "days", Min: 1, Max: 365,
+		Help: "How long warning log rows (warnings, rejected API and webhook requests, retries) are kept on the Logs page."},
+	"log_max_rows": {Kind: KindInt, Unit: "rows", Min: 1000, Max: 100000000,
+		Help: "The most log rows kept, whatever their age; the oldest go first. Keeps a SQLite logs.db small."},
+	"audit_retention_days": {Kind: KindInt, Unit: "days", Min: 365, ZeroOK: true,
+		Help: "How long audit log entries are kept. 0 keeps them forever; otherwise at least 365 days (PCI DSS 10.5.1)."},
 }
 
 // MetaFor returns the UI description of a setting.

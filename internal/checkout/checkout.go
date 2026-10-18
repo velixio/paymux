@@ -13,6 +13,7 @@ import (
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/core/state"
 	"github.com/paymux/paymux/internal/disputes"
+	"github.com/paymux/paymux/internal/logctx"
 	"github.com/paymux/paymux/internal/routing"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector"
@@ -230,7 +231,16 @@ func (s *Service) reusable(ctx context.Context, paymentID string, accounts []sto
 	return Started{}, false
 }
 
+// noteAttempt tells the log scope of the request or job which payment and
+// attempt it is working on, so a failed provider call or an error row can be
+// traced back to them.
+func noteAttempt(ctx context.Context, a store.Attempt) {
+	logctx.Note(ctx, "payment_id", a.PaymentID, "attempt_id", a.ID, "provider_account_id", a.ProviderAccountID,
+		"provider_order_id", a.ProviderOrderID, "provider_payment_id", a.ProviderPaymentID)
+}
+
 func (s *Service) createCheckout(ctx context.Context, pa store.ProviderAccount, p store.Payment, att store.Attempt, c store.Customer) (connector.CheckoutResult, error) {
+	logctx.Note(ctx, "payment_id", p.ID, "attempt_id", att.ID, "app_id", p.AppID, "org_id", p.OrgID)
 	live, err := s.o.Conns.Get(ctx, pa.ID)
 	if err != nil {
 		return connector.CheckoutResult{}, err
@@ -297,6 +307,7 @@ func (s *Service) syncAttempt(ctx context.Context, attemptID string, hint connec
 	if err != nil {
 		return core.ApplyResult{}, err
 	}
+	noteAttempt(ctx, a)
 	live, err := s.o.Conns.Get(ctx, a.ProviderAccountID)
 	if err != nil {
 		return core.ApplyResult{}, err
@@ -370,6 +381,7 @@ func (s *Service) HandleReturn(ctx context.Context, accountID, providerRef strin
 	if err != nil {
 		return store.Payment{}, err
 	}
+	noteAttempt(ctx, a)
 	live, err := s.o.Conns.Get(ctx, accountID)
 	if err != nil {
 		return store.Payment{}, err

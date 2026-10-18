@@ -84,6 +84,7 @@ func (c *client) do(ctx context.Context, method, path string, in, out any, idem 
 			return nil
 		}
 		if err := json.Unmarshal(raw, out); err != nil {
+			connector.ReportDecodeError(resp, err)
 			return fmt.Errorf("cashfree: decoding %s %s: %w", method, path, err)
 		}
 		return nil

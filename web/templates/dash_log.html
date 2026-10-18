@@ -1,0 +1,21 @@
+{{define "title"}}{{.Title}} - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+{{with .LogEntry}}
+<p><a href="/dashboard/logs">&larr; Logs</a></p>
+<h1>{{.ID}} <span class="status status-{{.Level}}">{{.Level}}</span> <span class="flag">{{.Kind}}</span></h1>
+<p class="log-msg">{{.Msg}}</p>
+<dl class="facts">
+<dt>When</dt><dd>{{.At}}</dd>
+<dt>Component</dt><dd>{{.Component}}</dd>
+{{if .Status}}<dt>Status</dt><dd>{{.Status}}</dd>{{end}}
+{{if .Duration}}<dt>Duration</dt><dd>{{.Duration}}</dd>{{end}}
+{{range .Facts}}<dt>{{.Name}}</dt><dd>{{if .Href}}<a href="{{.Href}}">{{.Value}}</a>{{else}}{{.Value}}{{end}}</dd>{{end}}
+</dl>
+{{if .Attrs}}<h3>Attributes</h3><pre class="wrap log-json">{{.Attrs}}</pre>{{end}}
+{{if .Request}}<h3>Request sent to the provider</h3><pre class="wrap log-json">{{.Request}}</pre>{{end}}
+{{if .Resp}}<h3>Response</h3><pre class="wrap log-json">{{.Resp}}</pre>{{end}}
+<p class="muted">Stored redacted: credentials and customer details were removed before this row was written.</p>
+{{end}}
+{{template "dash_close" .}}{{end}}

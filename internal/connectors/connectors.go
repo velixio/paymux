@@ -41,6 +41,13 @@ type Options struct {
 	// Observe receives every provider HTTP attempt of the default per-account
 	// clients, with the connector's name (see ProviderMetrics).
 	Observe func(name string, o connector.RequestObservation)
+	// CallRecorder, when set, gives each default per-account client the recorder
+	// that receives its failed calls (the error log in the database).
+	CallRecorder func(pa store.ProviderAccount, info connector.Info) connector.CallRecorder
+	// KnownSecrets receives the secret config values of an account, under the
+	// owner "account:<id>", each time its connector is built or rebuilt, so a
+	// redactor can replace them wherever they appear.
+	KnownSecrets func(owner string, values []string)
 }
 
 // Service builds and manages connectors.
@@ -350,6 +357,32 @@ func (s *Service) LinkApp(ctx context.Context, actor audit.Actor, sc core.OrgSco
 	})
 }
 
+// LoadKnownSecrets hands the secret config values of every stored account to
+// Options.KnownSecrets, without building any connector. Call it at start-up, so
+// the redactor knows the secrets before the first use of an account. An account
+// whose config cannot be read is skipped (it is reported when it is used).
+func (s *Service) LoadKnownSecrets(ctx context.Context) error {
+	if s.o.KnownSecrets == nil {
+		return nil
+	}
+	var accounts []store.ProviderAccount
+	if err := s.o.DB.Read(ctx, func(q store.Querier) (err error) { accounts, err = store.ListEveryProviderAccount(ctx, q); return }); err != nil {
+		return err
+	}
+	for _, pa := range accounts {
+		_, info, ok := connector.Lookup(pa.Connector)
+		if !ok {
+			continue
+		}
+		cfg, err := s.o.Box.Open(pa.ConfigEnc, configAAD(pa.ID))
+		if err != nil {
+			continue
+		}
+		s.o.KnownSecrets("account:"+pa.ID, secretValues(info.ConfigSchema, cfg))
+	}
+	return nil
+}
+
 // Invalidate drops the cached instance of an account.
 func (s *Service) Invalidate(accountID string) {
 	s.mu.Lock()
@@ -405,6 +438,9 @@ func (s *Service) Get(ctx context.Context, accountID string) (Live, error) {
 func (s *Service) deps(pa store.ProviderAccount, info connector.Info, cfg json.RawMessage) connector.Deps {
 	logger := s.o.Logger.With("provider_account", pa.ID, "connector", info.Name)
 	secretValues := secretValues(info.ConfigSchema, cfg)
+	if s.o.KnownSecrets != nil {
+		s.o.KnownSecrets("account:"+pa.ID, secretValues)
+	}
 	var hc *http.Client
 	if s.o.HTTPClient != nil {
 		hc = s.o.HTTPClient(pa, info, secretValues)
@@ -415,6 +451,9 @@ func (s *Service) deps(pa store.ProviderAccount, info connector.Info, cfg json.R
 			DenyPrivate: info.DenyPrivateNetwork && !allowInsecure(cfg)}
 		if s.o.Observe != nil {
 			opts.Observer = func(o connector.RequestObservation) { s.o.Observe(info.Name, o) }
+		}
+		if s.o.CallRecorder != nil {
+			opts.Recorder = s.o.CallRecorder(pa, info)
 		}
 		hc = connector.NewHTTPClient(opts)
 	}

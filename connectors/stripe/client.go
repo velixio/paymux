@@ -92,6 +92,7 @@ func (c *client) send(req *http.Request, out any) error {
 			return nil
 		}
 		if err := json.Unmarshal(raw, out); err != nil {
+			connector.ReportDecodeError(resp, err)
 			return fmt.Errorf("stripe: decoding %s %s: %w", req.Method, req.URL.Path, err)
 		}
 		return nil

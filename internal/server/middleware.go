@@ -3,13 +3,16 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"regexp"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/paymux/paymux/internal/ids"
+	"github.com/paymux/paymux/internal/logctx"
 	"github.com/paymux/paymux/internal/metrics"
 )
 
@@ -23,6 +26,11 @@ const (
 	keyRequestID ctxKey = iota
 	keyRoute
 )
+
+// ResponseHook is told about every finished request: its method, the matched
+// route pattern ("unmatched" when none), the status and how long it took. The
+// context carries the request's identifiers (package logctx).
+type ResponseHook func(ctx context.Context, method, route string, status int, d time.Duration)
 
 // RequestID returns the request ID stored by the middleware, or "".
 func RequestID(ctx context.Context) string {
@@ -39,11 +47,16 @@ type statusWriter struct {
 	http.ResponseWriter
 	status int
 	wrote  bool
+	// tagID is set when a plain-text 5xx page is being written: the request id
+	// is added at its end.
+	tagID bool
 }
 
 func (w *statusWriter) WriteHeader(code int) {
 	if !w.wrote {
 		w.status, w.wrote = code, true
+		h := w.Header()
+		w.tagID = code >= 500 && strings.HasPrefix(h.Get("Content-Type"), "text/plain") && h.Get("Content-Length") == ""
 	}
 	w.ResponseWriter.WriteHeader(code)
 }
@@ -58,10 +71,10 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 // chain applies, outermost first: request ID, access log, recover, timeout.
-func chain(h http.Handler, log *slog.Logger, requests *metrics.CounterVec) http.Handler {
+func chain(h http.Handler, log *slog.Logger, requests *metrics.CounterVec, onResponse ResponseHook) http.Handler {
 	h = http.TimeoutHandler(h, requestTimeout, `{"error":{"type":"timeout"}}`)
 	h = recoverer(h, log)
-	h = accessLog(h, log, requests)
+	h = accessLog(h, log, requests, onResponse)
 	return requestID(h)
 }
 
@@ -72,21 +85,33 @@ func requestID(next http.Handler) http.Handler {
 			id = ids.New("req")
 		}
 		w.Header().Set("X-Request-Id", id)
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), keyRequestID, id)))
+		// A scope for the identifiers this request learns (org, app, payment, ...),
+		// so that a log row or a failed provider call made while serving it says
+		// which request it belongs to.
+		ctx := logctx.With(logctx.Begin(r.Context()), "request_id", id)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(ctx, keyRequestID, id)))
 	})
 }
 
-func accessLog(next http.Handler, log *slog.Logger, requests *metrics.CounterVec) http.Handler {
+func accessLog(next http.Handler, log *slog.Logger, requests *metrics.CounterVec, onResponse ResponseHook) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		holder := &routeHolder{}
 		next.ServeHTTP(sw, r.WithContext(context.WithValue(r.Context(), keyRoute, holder)))
+		if sw.tagID {
+			// A plain-text error page ("internal error"): say which request failed,
+			// so a person can quote it and an operator can find the log row.
+			_, _ = fmt.Fprintf(sw.ResponseWriter, "request id: %s\n", RequestID(r.Context()))
+		}
 		route := holder.pattern
 		if route == "" {
 			route = "unmatched"
 		}
 		requests.Inc(route, itoa(sw.status))
+		if onResponse != nil {
+			onResponse(r.Context(), r.Method, route, sw.status, time.Since(start))
+		}
 		log.LogAttrs(r.Context(), slog.LevelInfo, "http request",
 			slog.String("request_id", RequestID(r.Context())),
 			slog.String("method", r.Method),

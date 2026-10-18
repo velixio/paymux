@@ -13,6 +13,7 @@ import (
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/invoice"
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/logctx"
 	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
@@ -49,6 +50,13 @@ type rec struct {
 	noReverse   bool             // the provider does not reverse the verification debit itself
 	minCharge   map[string]int64 // Info.MinChargeMinor of the test connectors
 	noticeHours int              // Info.PreDebitMinHours of the test connectors
+	callIDs     []callIDs        // the log scope ids each provider call ran under
+}
+
+// callIDs are the identifiers (package logctx) a provider call ran under.
+type callIDs struct {
+	Call string
+	IDs  map[string]string
 }
 
 func (r *rec) chargeCount() int { r.mu.Lock(); defer r.mu.Unlock(); return len(r.charges) }
@@ -103,9 +111,10 @@ func (c mandateConn) FetchMandate(_ context.Context, ref connector.MandateRef) (
 	}
 	return connector.MandateSnapshot{}, connector.ErrNotFound
 }
-func (c mandateConn) NotifyPreDebit(_ context.Context, req connector.PreDebitRequest) error {
+func (c mandateConn) NotifyPreDebit(ctx context.Context, req connector.PreDebitRequest) error {
 	c.r.mu.Lock()
 	defer c.r.mu.Unlock()
+	c.r.callIDs = append(c.r.callIDs, callIDs{"notify", logctx.IDs(ctx)})
 	if c.r.noticeErr != nil {
 		return c.r.noticeErr
 	}
@@ -113,8 +122,9 @@ func (c mandateConn) NotifyPreDebit(_ context.Context, req connector.PreDebitReq
 	c.r.noticeTimes = append(c.r.noticeTimes, c.r.now())
 	return nil
 }
-func (c mandateConn) ChargeMandate(_ context.Context, req connector.ChargeRequest) (connector.PaymentSnapshot, error) {
+func (c mandateConn) ChargeMandate(ctx context.Context, req connector.ChargeRequest) (connector.PaymentSnapshot, error) {
 	c.r.mu.Lock()
+	c.r.callIDs = append(c.r.callIDs, callIDs{"charge", logctx.IDs(ctx)})
 	c.r.charges = append(c.r.charges, req)
 	c.r.chargeTimes = append(c.r.chargeTimes, c.r.now())
 	fn, d := c.r.chargeFn, c.r.chargeDelay
