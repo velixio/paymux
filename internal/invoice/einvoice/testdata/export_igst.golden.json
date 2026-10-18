@@ -58,7 +58,7 @@
     "TotInvValFc": 1200.00
   },
   "ExpDtls": {
-    "RefClm": "N",
+    "RefClm": "Y",
     "ForCur": "USD",
     "CntCode": "US"
   }

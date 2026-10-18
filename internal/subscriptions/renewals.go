@@ -42,6 +42,7 @@ func (s *Service) RegisterJobs(q *jobs.Queue) {
 	q.Register(JobChargeRenewal, s.handleCharge)
 	q.Register(JobPollRenewal, s.handlePoll)
 	q.Register(JobExpireIncomplete, s.handleExpireIncomplete)
+	q.Register(JobVerificationFallback, s.handleVerificationFallback)
 	q.Register(JobMandateExpiry, s.handleMandateExpiry)
 	q.Register(JobRevokeMandate, s.handleRevokeMandate)
 	q.Register(JobCancelAtProvider, s.handleCancelAtProvider)

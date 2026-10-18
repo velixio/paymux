@@ -12,6 +12,7 @@ import (
 
 	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/invoice/einvoice"
+	"github.com/paymux/paymux/internal/invoice/irp"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/tax"
@@ -29,14 +30,14 @@ type EInvoiceResult struct {
 	Filename string
 }
 
-func (s *Service) einvoiceSource(inv store.Invoice) (einvoice.Source, error) {
-	return s.documentSource(inv, inv.Number, inv.IssuedAt, inv.Lines, amountsOf(inv.Taxable, inv.CGST, inv.SGST, inv.IGST, inv.Total))
+func (s *Service) einvoiceSource(ctx context.Context, inv store.Invoice) (einvoice.Source, error) {
+	return s.documentSource(ctx, inv, inv.Number, inv.IssuedAt, inv.Lines, amountsOf(inv.Taxable, inv.CGST, inv.SGST, inv.IGST, inv.Total))
 }
 
 // documentSource maps an invoice, or a credit note against it (its own number,
 // date, lines and amounts), onto the e-invoice source. Parties and the FX rate
 // are the invoice's.
-func (s *Service) documentSource(inv store.Invoice, number string, issued time.Time, rawLines json.RawMessage, amounts tax.Amounts) (einvoice.Source, error) {
+func (s *Service) documentSource(ctx context.Context, inv store.Invoice, number string, issued time.Time, rawLines json.RawMessage, amounts tax.Amounts) (einvoice.Source, error) {
 	var sup Supplier
 	var rcp Recipient
 	if err := json.Unmarshal(inv.Supplier, &sup); err != nil {
@@ -63,15 +64,23 @@ func (s *Service) documentSource(inv store.Invoice, number string, issued time.T
 	}
 	if inv.SupplyType != string(tax.B2B) {
 		src.Currency, src.ForeignTotal = inv.Currency, amounts.Total
+		src.IGSTRefundClaim = "auto"
+		err := s.db.Read(ctx, func(q store.Querier) error {
+			_, err := s.orgValue(ctx, q, inv.OrgID, "einvoice_igst_refund_claim", &src.IGSTRefundClaim)
+			return err
+		})
+		if err != nil {
+			return einvoice.Source{}, err
+		}
 	}
 	return src, nil
 }
 
-func (s *Service) buildEInvoice(inv store.Invoice) (*einvoice.Invoice, error) {
+func (s *Service) buildEInvoice(ctx context.Context, inv store.Invoice) (*einvoice.Invoice, error) {
 	if !einvoice.Eligible(inv.SupplyType) {
 		return nil, invalid("invoice %s is %s: only B2B and export invoices have an e-invoice", inv.Number, inv.SupplyType)
 	}
-	src, err := s.einvoiceSource(inv)
+	src, err := s.einvoiceSource(ctx, inv)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +103,7 @@ func (s *Service) EInvoice(ctx context.Context, invoiceID string) (EInvoiceResul
 	if err != nil {
 		return EInvoiceResult{}, err
 	}
-	doc, err := s.buildEInvoice(inv)
+	doc, err := s.buildEInvoice(ctx, inv)
 	if err != nil {
 		return EInvoiceResult{}, err
 	}
@@ -135,7 +144,7 @@ func (s *Service) CreditNoteEInvoice(ctx context.Context, creditNoteID string) (
 	if !einvoice.Eligible(inv.SupplyType) {
 		return EInvoiceResult{}, invalid("credit note %s is against a %s invoice: only B2B and export documents have an e-invoice", cn.Number, inv.SupplyType)
 	}
-	src, err := s.documentSource(inv, cn.Number, cn.IssuedAt, cn.Lines, amountsOf(cn.Taxable, cn.CGST, cn.SGST, cn.IGST, cn.Total))
+	src, err := s.documentSource(ctx, inv, cn.Number, cn.IssuedAt, cn.Lines, amountsOf(cn.Taxable, cn.CGST, cn.SGST, cn.IGST, cn.Total))
 	if err != nil {
 		return EInvoiceResult{}, err
 	}
@@ -213,7 +222,7 @@ func (s *Service) EInvoiceMonth(ctx context.Context, entityID, month string, inc
 		var rcp Recipient
 		_ = json.Unmarshal(inv.Recipient, &rcp)
 		row := EInvoiceRow{Invoice: inv, Buyer: rcp.Name}
-		doc, err := s.buildEInvoice(inv)
+		doc, err := s.buildEInvoice(ctx, inv)
 		var pe *einvoice.Problems
 		switch {
 		case errors.As(err, &pe):
@@ -279,11 +288,32 @@ func parseAckDate(s string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+// verifyPortalSignature checks the RS256 signature of the signed QR code
+// against the portal keys of the einvoice_irp_keys setting. With no key
+// configured it verifies nothing and says so (false); with keys, a token that is
+// not signed by one of them is refused.
+func (s *Service) verifyPortalSignature(ctx context.Context, q store.Queryer, orgID, token string) (bool, error) {
+	var pems []string
+	if _, err := s.orgValue(ctx, q, orgID, "einvoice_irp_keys", &pems); err != nil {
+		return false, err
+	}
+	if len(pems) == 0 {
+		return false, nil
+	}
+	keys, err := irp.ParseKeys(pems)
+	if err != nil {
+		return false, fmt.Errorf("invoice: the einvoice_irp_keys setting: %w", err)
+	}
+	if _, err := irp.Verify(token, keys); err != nil {
+		return false, invalid("the signed QR code's signature is not valid for the portal keys you configured (%s)", strings.TrimPrefix(err.Error(), "irp: "))
+	}
+	return true, nil
+}
+
 // checkSignedQR makes sure the pasted token is the portal's signed QR code of
 // this very invoice: a JWT-shaped string whose claims name the same IRN,
-// document number and seller. The signature itself is not verified.
-// TODO(spec): verify the RS256 signature against the IRP's published
-// certificate; it needs the certificate, which Paymux does not ship.
+// document number and seller. The signature is verified separately, against the
+// configured portal keys (verifyPortalSignature).
 func checkSignedQR(qr, irn, number, sellerGSTIN string) error {
 	parts := strings.Split(qr, ".")
 	if len(parts) != 3 || !b64RE.MatchString(parts[0]) || !b64RE.MatchString(parts[1]) || !b64RE.MatchString(parts[2]) {
@@ -365,6 +395,10 @@ func (s *Service) RecordEInvoice(ctx context.Context, actor audit.Actor, invoice
 		if err := checkSignedQR(in.SignedQR, in.IRN, inv.Number, sup.GSTIN); err != nil {
 			return err
 		}
+		verified, err := s.verifyPortalSignature(ctx, tx, inv.OrgID, in.SignedQR)
+		if err != nil {
+			return err
+		}
 		if err := store.SetInvoiceEInvoice(ctx, tx, inv.ID, in.IRN, in.AckNo, ackDate, in.SignedQR, now); err != nil {
 			if errors.Is(err, store.ErrConflict) {
 				return invalid("this IRN is already recorded on another invoice")
@@ -384,7 +418,8 @@ func (s *Service) RecordEInvoice(ctx context.Context, actor audit.Actor, invoice
 		}
 		return audit.Record(ctx, tx, audit.Entry{OrgID: inv.OrgID, Actor: actor, Action: "invoice.einvoice_record", Target: inv.ID,
 			Before: map[string]string{"irn": inv.IRN, "ack_no": inv.AckNo},
-			After:  map[string]string{"irn": in.IRN, "ack_no": in.AckNo, "ack_date": ackDate.In(tax.IST).Format("2006-01-02 15:04:05")}})
+			After: map[string]string{"irn": in.IRN, "ack_no": in.AckNo, "ack_date": ackDate.In(tax.IST).Format("2006-01-02 15:04:05"),
+				"signature_verified": fmt.Sprint(verified)}})
 	})
 	return out, err
 }

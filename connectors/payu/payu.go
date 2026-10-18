@@ -55,7 +55,9 @@ var info = connector.Info{
 		{Method: "emandate", Currency: "INR", MaxAmount: 1_000_000_000}},
 	// TODO(spec): Chargeback API (separate token, 20-day window) is not built;
 	// DisputeReader is therefore not declared.
-	RateLimit: connector.RateLimit{RequestsPerSecond: 10, Burst: 10},
+	// PayU's smallest transaction is Rs 1.
+	MinChargeMinor: map[string]int64{"INR": 100},
+	RateLimit:      connector.RateLimit{RequestsPerSecond: 10, Burst: 10},
 }
 
 func init() { connector.Register("payu", New, info) }

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/paymux/paymux/internal/invoice/irp"
 	"github.com/paymux/paymux/internal/routing"
 )
 
@@ -95,6 +96,21 @@ var defs = []Def{
 	// financial year of the supply on which a credit note may still be issued;
 	// "off" never stops one. The statutory day is 30 November (CGST Act s.34(2)).
 	{"credit_note_cutoff", `"11-30"`, LevelOrg, validCutoff},
+	// verification_debit_fallback: what to do about the Rs 1 debit of a mandate
+	// registration when it is not known whether the provider reverses it: refund
+	// it explicitly after 72 hours unless the provider (or someone) already has,
+	// or never.
+	{"verification_debit_fallback", `"refund_after_72h"`, LevelOrg, oneOf("refund_after_72h", "never")},
+	// einvoice_irp_keys: the portal's public keys (PEM certificates or public
+	// keys, RSA of 2048 bits or more). While any is set, the signature of a
+	// recorded SignedQRCode is verified against them; with none, only the claims
+	// in it are checked. Paymux ships no key: the IRP publishes its own, and an
+	// invented default would be worse than none.
+	{"einvoice_irp_keys", `[]`, LevelOrg, validIRPKeys},
+	// einvoice_igst_refund_claim: RefClm of an export e-invoice that paid IGST.
+	// auto claims the refund (the usual case); Y and N force it. An export under
+	// a LUT paid no IGST and never claims, whatever this says.
+	{"einvoice_igst_refund_claim", `"auto"`, LevelOrg, oneOf("auto", "Y", "N")},
 	// b2cl_threshold: the invoice value (INR paise) above which an inter-state
 	// B2C invoice goes to the B2CL sheet of the GST report (Rs 1,00,000).
 	{"b2cl_threshold", `10000000`, LevelOrg, intRange(1, 1_000_000_000_000)},
@@ -266,6 +282,21 @@ func validDunning(raw json.RawMessage) error {
 		}
 	}
 	return nil
+}
+
+func validIRPKeys(raw json.RawMessage) error {
+	var pems []string
+	if err := decodeStrict(raw, &pems); err != nil {
+		return err
+	}
+	if len(pems) > 5 {
+		return fmt.Errorf("at most 5 keys")
+	}
+	if len(pems) == 0 {
+		return nil
+	}
+	_, err := irp.ParseKeys(pems)
+	return err
 }
 
 func validRetrySchedule(raw json.RawMessage) error {

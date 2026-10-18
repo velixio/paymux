@@ -167,6 +167,18 @@ func Render(infos []connector.Info) string {
 		if in.MandateSetupAmount > 0 {
 			notes = append(notes, fmt.Sprintf("mandate setup debit %d minor units", in.MandateSetupAmount))
 		}
+		if len(in.MinChargeMinor) > 0 {
+			curs := make([]string, 0, len(in.MinChargeMinor))
+			for c := range in.MinChargeMinor {
+				curs = append(curs, c)
+			}
+			sort.Strings(curs)
+			parts := make([]string, len(curs))
+			for i, c := range curs {
+				parts[i] = fmt.Sprintf("%s %d", c, in.MinChargeMinor[c])
+			}
+			notes = append(notes, "minimum charge (minor units) "+strings.Join(parts, ", "))
+		}
 		if in.RateLimit.RequestsPerSecond > 0 {
 			notes = append(notes, fmt.Sprintf("API rate limit %g/s, burst %d", in.RateLimit.RequestsPerSecond, in.RateLimit.Burst))
 		}

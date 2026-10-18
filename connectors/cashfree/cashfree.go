@@ -63,7 +63,9 @@ var info = connector.Info{
 	Currencies:   []string{"INR"},
 	Methods:      []string{"card", "upi", "netbanking", "wallet", "emi", "paylater"},
 	// TODO(spec): Cashfree's documented limits are per endpoint; stay modest.
-	RateLimit: connector.RateLimit{RequestsPerSecond: 10, Burst: 10},
+	// Cashfree's smallest order is Rs 1.
+	MinChargeMinor: map[string]int64{"INR": 100},
+	RateLimit:      connector.RateLimit{RequestsPerSecond: 10, Burst: 10},
 }
 
 func init() { connector.Register("cashfree", New, info) }
