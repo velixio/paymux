@@ -174,6 +174,7 @@ func (w *whop) do(ctx context.Context, method, path string, query url.Values, in
 			return nil
 		}
 		if err := json.Unmarshal(raw, out); err != nil {
+			connector.ReportDecodeError(resp, err)
 			return fmt.Errorf("whop: decoding %s %s: %w", method, path, err)
 		}
 		return nil

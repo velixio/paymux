@@ -13,7 +13,7 @@ import (
 // the error log.
 func TestUndecodableAnswersAreReported(t *testing.T) {
 	connectortest.RecordsDecodeFailures(t, New, testConfig, func(ctx context.Context, c connector.Connector) error {
-		_, err := c.FetchPayment(ctx, connector.PaymentRef{ProviderRef: "REF0123456789ABCDEFG", ProviderOrderID: "order_1", ProviderPaymentID: "pay_1"})
+		_, err := c.FetchPayment(ctx, connector.PaymentRef{ProviderOrderID: "cs_test_1"})
 		return err
 	})
 }
