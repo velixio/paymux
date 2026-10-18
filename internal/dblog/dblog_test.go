@@ -27,6 +27,7 @@ type env struct {
 	stdout *bytes.Buffer
 	db     *store.DB
 	red    *redact.Redactor
+	sb     *syncBuf
 }
 
 func newEnv(t *testing.T, db *store.DB, mut func(*dblog.Options)) *env {
@@ -39,7 +40,8 @@ func newEnv(t *testing.T, db *store.DB, mut func(*dblog.Options)) *env {
 		t.Cleanup(func() { l.Close() })
 	}
 	e := &env{stdout: &bytes.Buffer{}, db: l, red: redact.New()}
-	o := dblog.Options{DB: l, Redactor: e.red, Stdout: slog.New(slog.NewTextHandler(&syncBuf{b: e.stdout}, nil)), FlushEvery: 5 * time.Millisecond}
+	e.sb = &syncBuf{b: e.stdout}
+	o := dblog.Options{DB: l, Redactor: e.red, Stdout: slog.New(slog.NewTextHandler(e.sb, nil)), FlushEvery: 5 * time.Millisecond}
 	if mut != nil {
 		mut(&o)
 	}
@@ -56,6 +58,8 @@ type syncBuf struct {
 }
 
 func (s *syncBuf) Write(p []byte) (int, error) { s.mu.Lock(); defer s.mu.Unlock(); return s.b.Write(p) }
+
+func (e *env) out() string { e.sb.mu.Lock(); defer e.sb.mu.Unlock(); return e.stdout.String() }
 
 func (e *env) rows(t *testing.T) []store.LogRow {
 	t.Helper()
@@ -228,11 +232,11 @@ func TestQueueOverflowNeverBlocksAndIsCounted(t *testing.T) {
 		t.Errorf("dropped = %d", d)
 	}
 	deadline := time.Now().Add(2 * time.Second)
-	for !strings.Contains(e.stdout.String(), "dropped") && time.Now().Before(deadline) {
+	for !strings.Contains(e.out(), "dropped") && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if !strings.Contains(e.stdout.String(), "dropped") {
-		t.Errorf("no periodic 'dropped N' line on stdout: %q", e.stdout.String())
+	if !strings.Contains(e.out(), "dropped") {
+		t.Errorf("no periodic 'dropped N' line on stdout: %q", e.out())
 	}
 	close(block)
 }
@@ -249,8 +253,8 @@ func TestWriteFailuresAreCountedAndNeverRecurse(t *testing.T) {
 	if f := e.rec.Stats().Failed; f == 0 {
 		t.Error("failures are not counted")
 	}
-	if !strings.Contains(e.stdout.String(), "disk full") {
-		t.Errorf("the write error goes to stdout: %q", e.stdout.String())
+	if !strings.Contains(e.out(), "disk full") {
+		t.Errorf("the write error goes to stdout: %q", e.out())
 	}
 	// The failure line was written to stdout only: it is not itself a stored row.
 	if s := e.rec.Stats(); s.Stored != 0 {

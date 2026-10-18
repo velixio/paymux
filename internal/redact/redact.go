@@ -342,7 +342,7 @@ func (r *Redactor) formWalk(t string) (string, bool) {
 // fieldValue is the redacted text of one named string value.
 func (r *Redactor) fieldValue(key, v string) string {
 	switch {
-	case isCredentialName(key):
+	case isCredentialName(key) || queryCredential[strings.ToLower(key)]:
 		return Secret
 	case isPIIName(key):
 		return PII
@@ -495,13 +495,19 @@ func (r *Redactor) Query(raw string) string {
 
 func (r *Redactor) queryValue(key, v string) string {
 	switch {
-	case isCredentialName(key):
+	case isCredentialName(key) || queryCredential[strings.ToLower(key)]:
 		return Secret
 	case isPIIName(key):
 		return PII
 	}
 	return url.QueryEscape(r.Text(v))
 }
+
+// queryCredential are parameter names that are credentials in a query string
+// or a form (OAuth grant codes and states, one-time codes) though the same
+// names are harmless elsewhere (an error "code" in a JSON body).
+var queryCredential = map[string]bool{"code": true, "state": true, "nonce": true, "sid": true, "session": true, "sessionid": true,
+	"authcode": true, "auth_code": true, "oauth_verifier": true, "code_verifier": true}
 
 // Value redacts one named log attribute.
 func (r *Redactor) Value(key string, v any) any {
@@ -522,8 +528,6 @@ func (r *Redactor) Value(key string, v any) any {
 		return x
 	case json.RawMessage:
 		return r.Body("application/json", x)
-	case fmt.Stringer:
-		return r.Text(x.String())
 	}
 	return r.Text(fmt.Sprint(v))
 }
