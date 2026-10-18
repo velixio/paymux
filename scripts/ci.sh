@@ -24,6 +24,10 @@ bun run check:docs
 bun run test:frontend
 bun run build
 
+step "public website browser tests (same as the GitHub public-browser job)"
+bunx playwright install chromium-headless-shell >/dev/null
+bun run test:home
+
 step "signed webhook receiver example"
 python3 -m unittest discover -s examples/webhook-receiver -p 'test_*.py'
 
