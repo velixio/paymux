@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"log/slog"
 	"net/url"
 	"time"
 
 	"github.com/paymux/paymux/internal/dblog"
+	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/redact"
 	"github.com/paymux/paymux/internal/server"
+	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/migrations"
 )
@@ -93,6 +96,29 @@ func (a *App) registerConfigSecrets(red *redact.Redactor) {
 		vals = append(vals, h.Reveal())
 	}
 	red.SetKnown("config", vals...)
+}
+
+// logPurgeKind is the scheduled job that trims the log and the audit log.
+const logPurgeKind = "logs.purge"
+
+// registerPurge schedules the hourly purge: log rows past their retention
+// (errors and warnings have their own), the row cap, and the audit log's
+// retention. The job queue's lease makes sure one instance runs it at a time.
+func (l *dbLogs) registerPurge(q *jobs.Queue, main *store.DB, set *settings.Service) error {
+	p := dblog.NewPurger(dblog.PurgeOptions{Logs: l.db, Main: main,
+		Retention: func(ctx context.Context, key string) (int, error) {
+			v, err := set.ResolveOrg(ctx, store.DefaultOrgID, key) // TODO(spec): one org today; retention is not per org
+			if err != nil {
+				return 0, err
+			}
+			var n int
+			return n, v.Decode(&n)
+		}})
+	q.Register(logPurgeKind, func(ctx context.Context, _ json.RawMessage) error {
+		_, err := p.Run(ctx)
+		return err
+	})
+	return q.AddSchedule(jobs.Schedule{Name: logPurgeKind, Kind: logPurgeKind, Every: time.Hour})
 }
 
 // responseHook records finished requests that are worth keeping.

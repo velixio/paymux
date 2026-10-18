@@ -260,6 +260,11 @@ func (a *App) Start(ctx context.Context) error {
 	if err := hk.Register(q); err != nil {
 		return err
 	}
+	if dbl != nil {
+		if err := dbl.registerPurge(q, db, set); err != nil {
+			return err
+		}
+	}
 	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv, Subscriptions: subs, PaymentLinks: links, Payouts: payoutSvc})
 	if err != nil {
 		return err
