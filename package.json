@@ -9,7 +9,8 @@
     "build:dashboard": "vite build --config web-dashboard/vite.config.ts",
     "build:home": "vite build --config web-home/vite.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
-    "test:frontend": "bun test frontend web-dashboard/src"
+    "test:frontend": "bun test frontend web-dashboard/src",
+    "test:home": "playwright test --config playwright.home.config.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.4",
@@ -24,6 +25,7 @@
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/bun": "^1.4.3",
     "@types/node": "^26.6.5",
