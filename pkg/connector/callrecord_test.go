@@ -101,6 +101,96 @@ func TestRecorderCapturesAFailedStatusWithBodies(t *testing.T) {
 	}
 }
 
+// Headers are an allowlist: whatever a provider invents for a credential, it
+// is not carried.
+func TestRecorderCarriesOnlyAllowlistedHeaders(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for k, v := range map[string]string{"X-Api-Key": "resp-key", "X-Client-Secret": "resp-secret", "X-Webhook-Signature": "resp-sig",
+			"X-Amz-Security-Token": "resp-amz", "X-Goog-Api-Key": "resp-goog", "X-Session": "resp-session", "X-Custom": "resp-custom",
+			"X-Razorpay-Request-Id": "rzp_req_1", "Request-Id": "req_stripe_1", "Cf-Ray": "ray1", "Retry-After": "3"} {
+			w.Header().Set(k, v)
+		}
+		w.WriteHeader(500)
+	}))
+	defer srv.Close()
+	var c calls
+	req, _ := http.NewRequest("POST", srv.URL, strings.NewReader("{}"))
+	for k, v := range map[string]string{"X-Api-Key": "req-key", "X-Client-Secret": "req-secret", "X-Webhook-Signature": "req-sig",
+		"Authorization": "Zoho-oauthtoken 1000.abc.def", "X-Amz-Security-Token": "req-amz", "X-Goog-Api-Key": "req-goog", "X-Session": "req-session",
+		"Content-Type": "application/json", "User-Agent": "paymux/1", "X-Request-Id": "req_1"} {
+		req.Header.Set(k, v)
+	}
+	resp, err := recClient(&c, HTTPOptions{}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drain(t, resp)
+	r := c.all()[0]
+	for name, h := range map[string]http.Header{"request": r.RequestHeader, "response": r.ResponseHeader} {
+		for k, vs := range h {
+			for _, v := range vs {
+				if strings.Contains(v, "-key") || strings.Contains(v, "-secret") || strings.Contains(v, "-sig") || strings.Contains(v, "-amz") ||
+					strings.Contains(v, "-goog") || strings.Contains(v, "-session") || strings.Contains(v, "-custom") || strings.Contains(v, "oauthtoken") {
+					t.Errorf("%s header %s=%s survived", name, k, v)
+				}
+			}
+		}
+	}
+	for _, want := range []struct {
+		h    http.Header
+		k, v string
+	}{{r.RequestHeader, "Content-Type", "application/json"}, {r.RequestHeader, "User-Agent", "paymux/1"}, {r.RequestHeader, "X-Request-Id", "req_1"},
+		{r.ResponseHeader, "X-Razorpay-Request-Id", "rzp_req_1"}, {r.ResponseHeader, "Request-Id", "req_stripe_1"}, {r.ResponseHeader, "Cf-Ray", "ray1"},
+		{r.ResponseHeader, "Retry-After", "3"}} {
+		if want.h.Get(want.k) != want.v {
+			t.Errorf("header %s dropped: %v", want.k, want.h)
+		}
+	}
+}
+
+// The query string is redacted by parameter name before the record leaves the
+// client; the redactor that stores it does the rest.
+func TestRecorderRedactsQueryParameters(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(400) }))
+	defer srv.Close()
+	var c calls
+	u := srv.URL + "/cb?api_key=AKVALUE123&hash=HASHVALUE123&code=GRANTCODE123&state=STATE123&t=CHECKOUT123&access_token=ATVALUE123&client_secret=CSVALUE123&signature=SIGVALUE123&salt=SALTVALUE&order=ord_1&page=2"
+	resp, err := recClient(&c, HTTPOptions{}).Get(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drain(t, resp)
+	q := c.all()[0].URL.RawQuery
+	for _, secret := range []string{"AKVALUE123", "HASHVALUE123", "GRANTCODE123", "STATE123", "CHECKOUT123", "ATVALUE123", "CSVALUE123", "SIGVALUE123", "SALTVALUE"} {
+		if strings.Contains(q, secret) {
+			t.Errorf("query keeps %s: %s", secret, q)
+		}
+	}
+	if !strings.Contains(q, "order=ord_1") || !strings.Contains(q, "page=2") {
+		t.Errorf("other parameters stay: %s", q)
+	}
+}
+
+// The literal secrets given to the client are scrubbed from everything it records.
+func TestRecorderScrubsConfiguredSecrets(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(401)
+		_, _ = w.Write([]byte(`{"error":"bad key LITERALSECRET99"}`))
+	}))
+	defer srv.Close()
+	var c calls
+	req, _ := http.NewRequest("POST", srv.URL+"/x/LITERALSECRET99", strings.NewReader(`{"k":"LITERALSECRET99"}`))
+	resp, err := recClient(&c, HTTPOptions{Secrets: []string{"LITERALSECRET99"}}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drain(t, resp)
+	r := c.all()[0]
+	if strings.Contains(r.URL.Path, "LITERAL") || strings.Contains(string(r.RequestBody), "LITERAL") || strings.Contains(string(r.ResponseBody), "LITERAL") {
+		t.Errorf("%+v", r)
+	}
+}
+
 func TestRecorderCapturesTransportErrorsAndTimeouts(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { time.Sleep(300 * time.Millisecond) }))
 	var c calls
