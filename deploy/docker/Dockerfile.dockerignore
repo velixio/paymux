@@ -11,6 +11,6 @@ docs/*
 !docs/embed.go
 !docs/openapi.yaml
 
-node_modules
+**/node_modules
 web-home/dist
 web/static/dashboard
