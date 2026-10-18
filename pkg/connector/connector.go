@@ -84,6 +84,25 @@ type Payouter interface {
 	FetchPayout(ctx context.Context, ref PayoutRef) (PayoutSnapshot, error)
 }
 
+// ConnectionTester is optional. The dashboard's "Test" button asks it whether
+// the account's credentials work, with a real, authenticated, read-only call
+// that changes nothing and needs only the permissions the connector already
+// uses. Without it Paymux asks FetchPayment about a payment that cannot exist
+// and takes ErrNotFound as "the credentials were accepted", which only works
+// for a connector that can look a payment up by Paymux's reference alone;
+// Stripe, Zoho and Whop cannot (they would fail before any request is made), so
+// they implement this.
+//
+// TestConnection returns nil when the provider accepted the credentials, an
+// error wrapping ErrInvalidCredentials when it rejected them, and any other
+// error when the result is inconclusive (network, rate limit, outage). The text
+// of an ErrInvalidCredentials error is shown to the operator, so it should say
+// what is wrong and what to do: "not connected yet", "this token is for the
+// sandbox, not for the live host".
+type ConnectionTester interface {
+	TestConnection(ctx context.Context) error
+}
+
 // OAuthConnector is optional, for providers whose credentials come from an
 // OAuth authorization (CapOAuth; Zoho Payments). It lets the dashboard offer a
 // "Connect" button: the operator registers the redirect URI with the provider,
