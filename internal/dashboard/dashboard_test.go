@@ -334,8 +334,9 @@ func TestWrongPasswordIsGenericAndCreatesNoSession(t *testing.T) {
 		if !strings.Contains(b1, "Invalid email or password") || !strings.Contains(b2, "Invalid email or password") {
 			t.Fatal("no generic error")
 		}
-		// identical page for unknown and known accounts (apart from the echoed email)
+		// Identical page apart from echoed email and per-response CSRF/style nonces.
 		strip := func(s, email string) string {
+			s = regexp.MustCompile(`data-style-nonce="[A-Za-z0-9_-]{32}"`).ReplaceAllString(s, `data-style-nonce="NONCE"`)
 			return strings.ReplaceAll(csrfRE.ReplaceAllString(s, ""), email, "EMAIL")
 		}
 		if strip(b1, "alice@example.com") != strip(b2, "nobody@example.com") {

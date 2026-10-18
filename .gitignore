@@ -4,3 +4,7 @@
 .env
 /.claude/
 /.playwright-mcp/
+/node_modules/
+/web-home/dist/*
+!/web-home/dist/.keep
+/web/static/dashboard/

@@ -17,6 +17,12 @@ fi
 step "gofmt"
 test -z "$(git ls-files -z "*.go" | xargs -0 gofmt -l)" || { git ls-files -z "*.go" | xargs -0 gofmt -l; echo "gofmt: files need formatting" >&2; exit 1; }
 
+step "React frontends (typecheck and production builds)"
+bun install --frozen-lockfile
+bun run typecheck
+bun run test:frontend
+bun run build
+
 step "go vet"
 go vet ./...
 go vet -tags loadtest ./...

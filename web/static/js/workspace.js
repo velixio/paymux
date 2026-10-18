@@ -1,5 +1,6 @@
 "use strict";
 (function () {
+  if (document.getElementById("paymux-react-root")) return;
   const button = document.querySelector(".workspace-menu");
   const nav = document.getElementById("workspace-nav");
   if (!button || !nav) return;
@@ -17,6 +18,7 @@
 })();
 
 (function () {
+  if (document.getElementById("paymux-react-root")) return;
   const table = document.querySelector("table.settings");
   if (table) {
     const groups = [
