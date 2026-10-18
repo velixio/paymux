@@ -25,7 +25,7 @@ build-examples:
 
 # Build everything, then run the hub (PAYMUX_LISTEN, default from .env) and the
 # public website (HOME_LISTEN) together. Ctrl-C stops both.
-HOME_LISTEN ?= 127.0.0.1:8051
+HOME_LISTEN ?= 0.0.0.0:8051
 dev: SHELL := /bin/bash
 dev: build
 	@./bin/paymux-home -listen $(HOME_LISTEN) & home=$$!; \
