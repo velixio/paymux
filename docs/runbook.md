@@ -39,7 +39,7 @@ PAYMUX_DATA_DIR=/var/lib/paymux
 PAYMUX_MASTER_KEY_FILE=/etc/paymux/master.key
 PAYMUX_TZ=Asia/Kolkata
 # Behind Caddy on the same machine:
-PAYMUX_TRUSTED_PROXIES=127.0.0.1/32
+# PAYMUX_TRUSTED_PROXIES defaults to the local network, which covers Caddy on 127.0.0.1
 # Where alerts go (optional but strongly recommended):
 PAYMUX_OPS_EMAILS=ops@example.com
 PAYMUX_OPS_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
@@ -66,7 +66,7 @@ curl -fsS http://127.0.0.1:8080/readyz
 
 Install Caddy, copy `deploy/Caddyfile` to `/etc/caddy/Caddyfile`, replace `pay.example.com` and the e-mail address, and `systemctl reload caddy`. Point DNS for the hub's host at this server. App custom domains (added on the app's *Domains* tab) get certificates on demand, but only for hosts the hub knows: Caddy asks `http://127.0.0.1:9100/internal/tls-allow?domain=...` before it requests one.
 
-**nginx on another device instead of Caddy:** [`deploy/nginx/paymux.shimul.me.conf`](../deploy/nginx/paymux.shimul.me.conf) proxies `paymux.shimul.me` to the Paymux host on the LAN (`192.168.0.174:8050`). On the Paymux host set `PAYMUX_TRUSTED_PROXIES=<nginx device IP>/32` and allow port 8050 only from that device. nginx has no on-demand TLS, so each app custom domain needs its own server block and certificate.
+**nginx on another device instead of Caddy:** [`deploy/nginx/paymux.shimul.me.conf`](../deploy/nginx/paymux.shimul.me.conf) proxies `paymux.shimul.me` to the Paymux host on the LAN (`192.168.0.174:8050`). `PAYMUX_TRUSTED_PROXIES` defaults to the local network, so the nginx device is believed without a setting; set its exact address for a stricter setup. Allow port 8050 only from that device. nginx has no on-demand TLS, so each app custom domain needs its own server block and certificate.
 
 ### Docker
 
@@ -287,7 +287,7 @@ Provider menus change; the descriptions above name the settings to look for, not
 | `PAYMUX_DATABASE_URL` | `sqlite://<data dir>/paymux.db` | `sqlite://path` or `postgres://...`. |
 | `PAYMUX_MASTER_KEY` / `PAYMUX_MASTER_KEY_FILE` | exactly one required | Base64, 32 bytes. |
 | `PAYMUX_TZ` | `Asia/Kolkata` | Time zone of "today", reconciliation time and date filters. |
-| `PAYMUX_TRUSTED_PROXIES` | none | Comma-separated CIDRs/addresses of reverse proxies whose `X-Forwarded-For` is believed (for the sign-in limit, sessions and audit). Without it the proxy's address would be recorded for everyone. A `/0` block is refused. |
+| `PAYMUX_TRUSTED_PROXIES` | local network | Comma-separated CIDRs/addresses of reverse proxies whose `X-Forwarded-For` is believed (for the sign-in limit, sessions and audit). The default is the local network (loopback, private and link-local ranges); `none` believes no proxy. A host on a trusted network can set the client address Paymux records, so name the proxy's exact address where the LAN is shared. A `/0` block is refused. |
 | `PAYMUX_ALLOW_PRIVATE_WEBHOOKS` | `false` | Allow outgoing webhooks to private/loopback addresses (development). |
 | `PAYMUX_SMTP_HOST`, `_PORT` (587), `_USERNAME`, `_PASSWORD`, `_FROM` | unset | Outgoing mail over STARTTLS. Mail and credentials are never sent in clear text. |
 | `PAYMUX_OPS_EMAILS`, `PAYMUX_OPS_WEBHOOK_URL` | unset | Where ops alerts go (email and a Slack-compatible webhook). Identical alerts are sent at most every 10 minutes. |

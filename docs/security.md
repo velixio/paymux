@@ -6,7 +6,7 @@ Self-hosting gives you control of provider credentials, payment records, and dep
 
 The public listener serves the application API, hosted customer pages, dashboard, and provider webhook endpoints. Put it behind a correctly configured HTTPS proxy.
 
-The internal listener serves metrics, profiling, and custom-domain TLS authorization. Keep it private. If a proxy runs on another machine, restrict network access and set `PAYMUX_TRUSTED_PROXIES` to that proxy's exact address or network, not every possible client.
+The internal listener serves metrics, profiling, and custom-domain TLS authorization. Keep it private. If a proxy runs on another machine, restrict network access and note that `PAYMUX_TRUSTED_PROXIES` defaults to the whole local network: on a shared LAN, set it to that proxy's exact address so other hosts cannot set the client address Paymux records.
 
 ## Master key and stored credentials
 

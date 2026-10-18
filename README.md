@@ -137,7 +137,7 @@ Settings are read from environment variables, or from a `.env` file. A real envi
 | `PAYMUX_DATABASE_URL` | `sqlite://<data dir>/paymux.db` | Or `postgres://…` |
 | `PAYMUX_MASTER_KEY` / `_FILE` | required | 32 bytes, base64; encrypts secrets at rest |
 | `PAYMUX_TZ` | `Asia/Kolkata` | Time zone used for reconciliation and report windows |
-| `PAYMUX_TRUSTED_PROXIES` | none | Reverse proxies whose `X-Forwarded-For` is believed (login limit, sessions, audit) |
+| `PAYMUX_TRUSTED_PROXIES` | local network | Reverse proxies whose `X-Forwarded-For` is believed (login limit, sessions, audit); `none` to believe no proxy |
 | `PAYMUX_SMTP_HOST`, `_PORT`, `_USERNAME`, `_PASSWORD`, `_FROM` | unset | Invoice and pre-debit e-mail, ops alerts |
 | `PAYMUX_OPS_EMAILS`, `PAYMUX_OPS_WEBHOOK_URL` | unset | Ops alert targets |
 | `PAYMUX_JS_HOOKS_DIR` | `<data dir>/hooks` | Folder of JavaScript hook files; hooks are off if it does not exist (see docs/extending.md) |

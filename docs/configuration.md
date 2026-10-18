@@ -21,7 +21,7 @@ Configuration examples below use placeholder domains and credentials. Copy `.env
 | `PAYMUX_MASTER_KEY` | Exactly one key source required | Base64 encoding of 32 random bytes. |
 | `PAYMUX_MASTER_KEY_FILE` | Exactly one key source required | File containing the same base64 key; alternative to the direct variable. |
 | `PAYMUX_TZ` | `Asia/Kolkata` | Date boundaries, scheduling, and date filters. Use an IANA time-zone name. |
-| `PAYMUX_TRUSTED_PROXIES` | Empty | Comma-separated trusted proxy addresses or CIDRs; a `/0` network is rejected. |
+| `PAYMUX_TRUSTED_PROXIES` | Local network | Comma-separated trusted proxy addresses or CIDRs, or `none`. Unset, any address on the local network (loopback, 10/8, 172.16/12, 192.168/16, link-local, fc00::/7) is believed, so a reverse proxy on the LAN needs no setting; a host on those networks can then set the client address Paymux records. A `/0` network is rejected. |
 | `PAYMUX_ENV_FILE` | `.env` | Optional dotenv file loaded by CLI commands. |
 
 Generate a key once, then preserve it separately from the database:

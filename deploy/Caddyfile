@@ -8,7 +8,7 @@
 #
 # Replace pay.example.com and the e-mail address. Set in /etc/paymux/paymux.env:
 #     PAYMUX_BASE_URL=https://pay.example.com
-#     PAYMUX_TRUSTED_PROXIES=127.0.0.1/32
+#     (PAYMUX_TRUSTED_PROXIES defaults to the local network, which covers Caddy on 127.0.0.1)
 # so the hub believes the client address Caddy forwards (login lockout, audit).
 
 {
