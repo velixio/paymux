@@ -80,7 +80,7 @@ Whop is a merchant of record, so no GST invoice is issued for its payments. The 
 
 ## Documentation
 
-Start with the [complete documentation index](docs/README.md). Guides cover installation, application integration, payments and routing, signed webhooks, billing, dashboard operations, configuration, security, recovery, and troubleshooting. The [glossary](GLOSSARY.md) defines the product language. The separate public site renders the same Markdown at `/docs` and `/docs/<guide>`; the payment hub’s `/docs` remains its API reference.
+Start with the [complete documentation index](docs/README.md). Guides cover installation, application integration, payments and routing, signed webhooks, billing, dashboard operations, configuration, security, recovery, and troubleshooting. The [glossary](docs/glossary.md) defines the product language. The separate public site renders the same Markdown at `/docs` and `/docs/<guide>`; the payment hub’s `/docs` remains its API reference.
 
 ## Quick start
 

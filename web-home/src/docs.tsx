@@ -28,13 +28,8 @@ const rawGuides = import.meta.glob<string>("../../docs/*.md", {
   import: "default",
   eager: true,
 });
-const glossary = import.meta.glob<string>("../../GLOSSARY.md", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
 const content: Record<string, string> = Object.fromEntries(
-  Object.entries({ ...rawGuides, ...glossary }).map(([file, text]) => [
+  Object.entries(rawGuides).map(([file, text]) => [
     file.replace(/^\.\.\/\.\.\//, ""),
     text,
   ]),

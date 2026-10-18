@@ -44,7 +44,7 @@ describe("public documentation catalog", () => {
     expect(documentLink("docs/payments.md", "docs/README.md")).toBe(
       "/docs/payments",
     );
-    expect(documentLink("../GLOSSARY.md", "docs/README.md")).toBe(
+    expect(documentLink("glossary.md", "docs/README.md")).toBe(
       "/docs/glossary",
     );
     expect(documentLink("openapi.yaml", "docs/api-guide.md")).toBe(
