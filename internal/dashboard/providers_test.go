@@ -263,7 +263,7 @@ func (e *env) createProvider(st *fakeconn.State, cfg string) store.ProviderAccou
 	return pa
 }
 
-func TestProviderListWebhookURLAndAppLinking(t *testing.T) {
+func TestProviderDetailWebhookURLAndAppLinking(t *testing.T) {
 	storetest.Each(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		st := fakeconn.RegisterSchema("dashfake", providerSchema)
@@ -280,7 +280,8 @@ func TestProviderListWebhookURLAndAppLinking(t *testing.T) {
 		admin := e.roleClient("admin")
 		list := e.pageOK(admin, "/dashboard/providers")
 		hook := "http://localhost:8080/hooks/" + pa.ID
-		has(t, list, pa.Name, st.Name, hook, `data-copy="`+hook+`"`, "Copy")
+		has(t, list, pa.Name, st.Name)
+		lacks(t, list, "Webhook URL", hook, `data-copy="`+hook+`"`)
 		lacks(t, list, "pa_foreign", "Foreign account")
 		if r, _ := e.get(admin, "/dashboard/providers/pa_foreign"); r.StatusCode != 404 {
 			t.Errorf("another org's account: %d", r.StatusCode)
