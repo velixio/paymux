@@ -25,6 +25,11 @@ const JobPoll = "poll.due"
 // PollWindow is how long a non-terminal attempt or refund is polled.
 const PollWindow = 72 * time.Hour
 
+// CheckoutPollGrace is how long after its checkout expires an attempt that is
+// still only "created" (the customer may have paid at the provider and never
+// come back) keeps being polled.
+const CheckoutPollGrace = 60 * time.Minute
+
 var pollLadder = []time.Duration{time.Minute, 2 * time.Minute, 5 * time.Minute, 15 * time.Minute, time.Hour, 6 * time.Hour, 24 * time.Hour}
 
 // PollDelay is the wait before poll number count+1 (spec section 6: 1m, 2m,

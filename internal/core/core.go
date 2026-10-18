@@ -152,7 +152,18 @@ type Service struct {
 
 	onPaymentSucceeded PaymentHook
 	onRefundSucceeded  RefundHook
+	syncer             AttemptSyncer
 }
+
+// AttemptSyncer fetches an attempt's truth from its provider and applies it
+// (*checkout.Service). Expiring a payment asks it first.
+type AttemptSyncer interface {
+	SyncAttempt(ctx context.Context, attemptID string) (ApplyResult, error)
+}
+
+// SetAttemptSyncer sets the syncer used before a payment is expired (call
+// before serving).
+func (s *Service) SetAttemptSyncer(a AttemptSyncer) { s.syncer = a }
 
 // NewService builds a Service.
 func NewService(o Options) *Service {
