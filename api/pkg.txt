@@ -810,6 +810,8 @@ func CheckNotifications(ns []connector.Notification) error
 
 func NewDeps(srv *httptest.Server, now time.Time) connector.Deps
 
+func RecordsDecodeFailures(t *testing.T, factory connector.Factory, cfg json.RawMessage, call func(ctx context.Context, c connector.Connector) error)
+
 func RedirectClient(srv *httptest.Server) *http.Client
 
 func Run(t *testing.T, factory connector.Factory, fx Fixtures)
