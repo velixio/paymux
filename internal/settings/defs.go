@@ -95,6 +95,11 @@ var defs = []Def{
 	// financial year of the supply on which a credit note may still be issued;
 	// "off" never stops one. The statutory day is 30 November (CGST Act s.34(2)).
 	{"credit_note_cutoff", `"11-30"`, LevelOrg, validCutoff},
+	// verification_debit_fallback: what to do about the Rs 1 debit of a mandate
+	// registration when it is not known whether the provider reverses it: refund
+	// it explicitly after 72 hours unless the provider (or someone) already has,
+	// or never.
+	{"verification_debit_fallback", `"refund_after_72h"`, LevelOrg, oneOf("refund_after_72h", "never")},
 	// einvoice_igst_refund_claim: RefClm of an export e-invoice that paid IGST.
 	// auto claims the refund (the usual case); Y and N force it. An export under
 	// a LUT paid no IGST and never claims, whatever this says.

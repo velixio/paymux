@@ -67,10 +67,13 @@ const (
 	JobChargeRenewal    = "subscription.charge_renewal"
 	JobPollRenewal      = "subscription.poll_renewal"
 	JobExpireIncomplete = "subscription.expire_incomplete"
-	JobMandateExpiry    = "mandate.expiry"
-	JobRevokeMandate    = "mandate.revoke"
-	JobCancelAtProvider = "subscription.cancel_at_provider"
-	JobPollMandate      = "mandate.poll"
+	// JobVerificationFallback checks, 72 hours after a verification debit that
+	// the provider is believed to reverse, that it did, and refunds it if not.
+	JobVerificationFallback = "subscription.verification_fallback"
+	JobMandateExpiry        = "mandate.expiry"
+	JobRevokeMandate        = "mandate.revoke"
+	JobCancelAtProvider     = "subscription.cancel_at_provider"
+	JobPollMandate          = "mandate.poll"
 )
 
 // Event types.
