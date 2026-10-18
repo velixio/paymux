@@ -1,4 +1,4 @@
-import catalog from "../../docs-catalog.json";
+import catalog from "../../docs-catalog.json" with { type: "json" };
 
 export type Guide = (typeof catalog)[number];
 export const guides: Guide[] = catalog;
