@@ -184,6 +184,10 @@ func TestConformance(t *testing.T) {
 			PaymentID: "pay_01", AttemptID: "att_01", AppID: "app_01", ProviderRef: "pay_ref_01", Amount: 499, Currency: "USD",
 		},
 		CheckoutHandler: newFake(""),
+		ConnectionOK:    newFake(""),
+		ConnectionRejected: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			write(w, 401, map[string]any{"error": map[string]any{"message": "bad key"}})
+		}),
 	})
 }
 

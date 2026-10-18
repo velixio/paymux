@@ -21,11 +21,12 @@ import (
 // ZOHO_TEST_REFRESH_TOKEN, ZOHO_TEST_WEBHOOK_SECRET and ZOHO_TEST_WIDGET_API_KEY,
 // read from the environment only.
 //
-// IMPORTANT: Zoho's sandbox is a separate host with separate credentials. The
-// credentials these tests were written with belong to a LIVE account
-// (payments.zoho.in), so they only create payment sessions (harmless, they
-// expire in 15 minutes) and read; they never pay or refund anything. Set
-// ZOHO_TEST_SANDBOX=1 with sandbox credentials to run against the sandbox.
+// Zoho has two servers with separate credentials: payments.zoho.in (scopes
+// ZohoPay.*) and paymentssandbox.zoho.in (scopes ZohoPaySandbox.*, soid on the
+// authorization). The environment's credentials decide which one these tests
+// reach: set ZOHO_TEST_SANDBOX=1 (or "sandbox": true in ZOHO_TEST_CONFIG_FILE)
+// for the sandbox. The tests only create payment sessions (they expire in 15
+// minutes) and read; they never pay or refund anything.
 func sandboxConnector(t *testing.T) *zoho {
 	t.Helper()
 	cfg := config{
@@ -33,6 +34,13 @@ func sandboxConnector(t *testing.T) *zoho {
 		ClientSecret: os.Getenv("ZOHO_TEST_CLIENT_SECRET"), RefreshToken: os.Getenv("ZOHO_TEST_REFRESH_TOKEN"),
 		WebhookSecret: os.Getenv("ZOHO_TEST_WEBHOOK_SECRET"), WidgetAPIKey: os.Getenv("ZOHO_TEST_WIDGET_API_KEY"),
 		Sandbox: os.Getenv("ZOHO_TEST_SANDBOX") != "",
+	}
+	if f := os.Getenv("ZOHO_TEST_CONFIG_FILE"); f != "" {
+		// A whole account config (as stored by Paymux): account_id, client_id,
+		// client_secret, refresh_token, data_center, widget_api_key, webhook_secret, sandbox.
+		if b, err := os.ReadFile(f); err == nil {
+			_ = json.Unmarshal(b, &cfg)
+		}
 	}
 	if f := os.Getenv("ZOHO_TEST_REFRESH_TOKEN_FILE"); cfg.RefreshToken == "" && f != "" {
 		// A JSON file with a refresh_token field (the OAuth token response), or the bare token.
