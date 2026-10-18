@@ -33,14 +33,16 @@ const configSchema = `{
   "properties": {
     "key": {"type": "string", "title": "Merchant key", "minLength": 1},
     "salt": {"type": "string", "title": "Merchant salt (V1)", "minLength": 1, "x-secret": true},
-    "test_mode": {"type": "boolean", "title": "Use test.payu.in", "default": false}
+    "test_mode": {"type": "boolean", "title": "Use test.payu.in", "default": false},
+    "chargeback_token": {"type": "string", "title": "Chargeback API token (Chargeback dashboard, profile, tokens; for disputes)", "x-secret": true},
+    "chargeback_merchant_id": {"type": "string", "title": "PayU merchant id for the Chargeback API (for disputes)"}
   }
 }`
 
 var info = connector.Info{
 	Version:      "0.1.0",
 	DisplayName:  "PayU India",
-	Capabilities: []connector.Capability{connector.CapRefund, connector.CapList, connector.CapMandateManager},
+	Capabilities: []connector.Capability{connector.CapRefund, connector.CapList, connector.CapMandateManager, connector.CapDisputeRead, connector.CapDisputeRespond},
 	ConfigSchema: json.RawMessage(configSchema),
 	Currencies:   []string{"INR"},
 	Methods:      []string{"card", "upi", "netbanking", "wallet", "emi"},
@@ -53,8 +55,8 @@ var info = connector.Info{
 	MandateSetupAmount:       100,  // the Rs 1 verification debit of a registration without a charge due (trials)
 	MandateLimits: []connector.MandateLimit{{Method: "upi", Currency: "INR"}, {Method: "card", Currency: "INR"},
 		{Method: "emandate", Currency: "INR", MaxAmount: 1_000_000_000}},
-	// TODO(spec): Chargeback API (separate token, 20-day window) is not built;
-	// DisputeReader is therefore not declared.
+	// Disputes come from the Chargeback API (chargebacks.go), which needs its own
+	// token; without it the dispute calls say so.
 	RateLimit: connector.RateLimit{RequestsPerSecond: 10, Burst: 10},
 }
 
@@ -64,6 +66,9 @@ type config struct {
 	Key      string `json:"key"`
 	Salt     string `json:"salt"`
 	TestMode bool   `json:"test_mode"`
+	// The Chargeback API is a separate service with its own token.
+	ChargebackToken      string `json:"chargeback_token"`
+	ChargebackMerchantID string `json:"chargeback_merchant_id"`
 }
 
 type payu struct {
