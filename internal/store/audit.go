@@ -49,3 +49,15 @@ func ListAudit(ctx context.Context, q Queryer, orgID, action string, limit int) 
 	}
 	return out, rows.Err()
 }
+
+// PurgeAudit deletes up to limit audit rows of an org older than before and
+// returns how many it deleted.
+func PurgeAudit(ctx context.Context, tx Tx, orgID string, before time.Time, limit int) (int, error) {
+	res, err := tx.ExecContext(ctx, `DELETE FROM audit_log WHERE id IN (
+		SELECT id FROM audit_log WHERE org_id = ? AND at < ? ORDER BY at LIMIT ?)`, orgID, ms(before), limit)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
+}
