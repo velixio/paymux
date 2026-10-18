@@ -3,12 +3,11 @@
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
 <h1>Provider accounts</h1>
-<p class="muted">Payment provider accounts, one per legal entity or provider login. Register each account's webhook URL in the provider's dashboard.</p>
+<p class="muted">Payment provider accounts, one per legal entity or provider login.</p>
 <div class="table-scroll"><table class="grid">
-<thead><tr><th>Account</th><th>Connector</th><th>Mode</th><th>Status</th><th>Currencies</th><th>Purposes</th><th>Webhook URL</th></tr></thead>
-<tbody>{{range .Providers}}<tr><td><a href="/dashboard/providers/{{.ID}}">{{.Name}}</a></td><td>{{.Display}}</td><td>{{.Mode}}</td><td>{{.Status}}</td><td>{{.Currencies}}</td><td>{{.Purposes}}</td>
-<td><code class="wrap">{{.Webhook}}</code> <button type="button" class="linkbtn" data-copy="{{.Webhook}}">Copy</button></td></tr>
-{{else}}<tr><td colspan="7" class="muted">No provider accounts yet.</td></tr>{{end}}</tbody>
+<thead><tr><th>Account</th><th>Connector</th><th>Mode</th><th>Status</th><th>Currencies</th><th>Purposes</th></tr></thead>
+<tbody>{{range .Providers}}<tr><td><a href="/dashboard/providers/{{.ID}}">{{.Name}}</a></td><td>{{.Display}}</td><td>{{.Mode}}</td><td>{{.Status}}</td><td>{{.Currencies}}</td><td>{{.Purposes}}</td></tr>
+{{else}}<tr><td colspan="6" class="muted">No provider accounts yet.</td></tr>{{end}}</tbody>
 </table></div>
 {{if .CanManage}}
 <h3>Add an account</h3>
