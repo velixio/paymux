@@ -4,6 +4,7 @@ package stripe
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"testing"
 	"time"
@@ -88,5 +89,18 @@ func TestSandboxSubscriptionCheckoutOptions(t *testing.T) {
 		if err != nil || res.ProviderOrderID == "" || res.NextAction.URL == "" {
 			t.Errorf("%s: %+v %v", name, res, err)
 		}
+	}
+}
+
+// The Test button's call against the real API: a good key passes, a bad one is
+// ErrInvalidCredentials.
+func TestSandboxConnectionTester(t *testing.T) {
+	s := sandboxConnector(t)
+	if err := s.TestConnection(context.Background()); err != nil {
+		t.Fatalf("a working key: %v", err)
+	}
+	s.api.key = "bad_key_value"
+	if err := s.TestConnection(context.Background()); !errors.Is(err, connector.ErrInvalidCredentials) {
+		t.Fatalf("a bad key: %v", err)
 	}
 }

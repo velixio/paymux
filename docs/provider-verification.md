@@ -162,16 +162,20 @@ reports it as a payment still waiting for the customer (`requires_action`), not
 
 ## Zoho Payments
 
-Verified on 2026-10-18 against the **live** Zoho Payments API (payments.zoho.in)
-with the credentials Zoho issued; no sandbox account was available (Zoho's
-sandbox is a separate host, `paymentssandbox.zoho.in`, with its own credentials
-and `ZohoPaySandbox.*` scopes, and refuses these ones). Nothing was paid or
-refunded: sessions were created (they expire in 15 minutes) and the account's
-existing payments and refunds were read (`sandbox_test.go`). Verified: the
-OAuth refresh against `accounts.zoho.in`, creating payment sessions (`amount`
-as a number, answered as a string "100.50"), fetching a session, a payment and a
-refund, unknown ids, a bad refresh token, the shape of payments and refunds,
-the refund request's validation, and the widget script and its call shape.
+Verified on 2026-10-18 against **payments.zoho.in** (Zoho's live server) with
+`ZohoPay.*` scopes. The user's own Zoho portal is the **sandbox**
+(`paymentssandbox.zoho.in`, which needs `ZohoPaySandbox.*` scopes and
+`soid=zohopaysandbox.<account id>` on the authorization); those scopes were not
+used, so the sandbox server answered 401 "Not An Authorized User" and a payment
+through the widget could not be completed. The payments and refunds the live
+server returned looked like real ones (real UPI ids, receipt e-mails, gateway
+reference numbers), so nothing was paid or refunded: sessions were created (they
+expire in 15 minutes) and existing payments and refunds were read
+(`sandbox_test.go`). Verified: the OAuth refresh against `accounts.zoho.in`,
+creating payment sessions (`amount` as a number, answered as a string
+"100.50"), fetching a session, a payment and a refund, unknown ids, a bad
+refresh token, the shape of payments and refunds, the refund request's
+validation, and the widget script and its call shape.
 Fixed on the way:
 
 - A payment session rejects `return_url` ("Invalid data provided."), so every
@@ -205,14 +209,25 @@ Fixed on the way:
   their values (`us`, `in`, `eu`, `au`, `jp`, `ca`, `sa`, `cn` are assumed), the token response (`refresh_token`, `scope` as comma- or space-separated),
   that the Self Client grant code exchanges without `redirect_uri`, that the default scopes (including `ZohoPay.payouts.READ` and the
   `ZohoPaySandbox.*` set) are all accepted, and the `accounts.zohocloud.ca` host of the Canadian data centre.
-- [ ] **A completed payment through the widget.** The widget loads in headless
-  Chromium (from `127.0.0.1` and from `paymux.shimul.me`) and then rejects with
-  `processor_error`: its handshake request
-  (`payments.zoho.in/zwaf/encryption/server/key`) answers 401. In test mode
-  (`is_test_mode`) it asks the sandbox host, which does not know the live
-  session (`invalid_payment_session`). The account is live, so there was no
-  test card; the widget's resolved value (`payment_id`, `signature`, `message`)
-  and the return flow are unverified. Check them on a sandbox account.
+- [ ] **A completed payment through the widget.** Not completed. The widget loads
+  in headless Chromium and then rejects with `processor_error`: its handshake
+  request (`payments.zoho.in/zwaf/encryption/server/key`) answers 401. Zoho's
+  documentation does not mention a domain allowlist; it lists the API key
+  (Settings, Developer Space, Authentication Keys) as what lets the widget embed,
+  says a regenerated key breaks authentication, and says sandbox and live have
+  their own API keys, base URLs and session ids. What the widget does with
+  `is_test_mode` was observed: it asks the **sandbox** host (it said
+  `invalid_payment_session` for a session made on the live host). So the likely
+  cause of the failure on a sandbox account is the environment mix: sandbox
+  needs all of `sandbox: true` on the Paymux account (sandbox host for the
+  sessions, `is_test_mode` for the widget), the **sandbox** API key from the
+  sandbox portal's Developer Space, and a token with `ZohoPaySandbox.*` scopes.
+  Re-check on the sandbox account once it is connected. Zoho's test values: UPI
+  amounts up to 500 succeed (222, 333, 444 pick the instrument), 501 to 1,000
+  fail; cards 4111 1111 1111 1111 (Visa), 5299 9202 1000 0277 (Mastercard),
+  6071 4898 7654 3212 (RuPay), any future expiry, any CVV, cardholder name
+  "Failure" fails authentication; net-banking "Success Test Bank" / "Failure Test
+  Bank" / "Refund Failure Test Bank"; refunds up to 300 succeed, 301 to 500 fail.
 - [ ] **Refunds that succeed.** The account had no payment to refund (only
   refunded ones; refunding a customer's real payment was out of the question).
   Verified: validation, an already-refunded payment (400
@@ -225,9 +240,12 @@ Fixed on the way:
   `GET /api/v1/webhooks` answers 401 "Not An Authorized User" with the current
   token). Each webhook has its own signing key, returned when it is created and
   shown in the web app. No live delivery was received, so which of the keys the
-  user holds signs real deliveries is not proven; per the documentation it is
-  the webhook's own key (Developer Space, Webhooks), and the Developer Space
-  "Signing Key" is the one for the widget response and payment links.
+  user holds signs real deliveries is not proven. Zoho's go-live checklist says:
+  register the endpoint under Settings, Developer Space, Webhooks and store the
+  signing key shown there (that one signs `X-Zoho-Webhook-Signature`); the
+  "signing keys" generated in Developer Space verify the **widget response** and
+  the **payment link return URLs**. Sandbox webhooks are registered in the sandbox
+  portal (Settings, Webhooks) and signed with the sandbox credentials.
 - [ ] **Mandates** (`mandate.go`): the connector's endpoints (`POST /mandates`,
   `.../charges`, `.../revoke`) do not exist (`POST /api/v1/mandates` answers 405).
   The real flow per Zoho's docs: a customer (Customers API,
@@ -245,6 +263,13 @@ Fixed on the way:
 - [ ] **Scopes** not yet granted: `ZohoPay.settings.*` (webhooks),
   `ZohoPay.payouts.READ` (payouts), `ZohoPay.customers.CREATE` / `.READ`
   (mandates), `ZohoPay.payments.UPDATE`.
+
+- [x] **The dashboard's Test button** (`ConnectionTester`): refreshes the token and
+  lists one payment; a refused call is retried on the other server with the same
+  token, and a success there is reported as "wrong server (sandbox vs live)".
+  Covered by unit tests; against the real API the refresh was refused
+  (`invalid_client`) when it was last run, so the message for a refused refresh
+  token (which names the accounts host and the usual causes) is what was seen.
 
 ## Whop
 

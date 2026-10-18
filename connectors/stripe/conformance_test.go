@@ -57,5 +57,13 @@ func TestConformance(t *testing.T) {
 		Checkout: connector.CheckoutRequest{PaymentID: "pay_01", AttemptID: "att_01", AppID: "app_01", ProviderRef: "pay_ref_01", Amount: 49900, Currency: "INR",
 			Customer: connector.Customer{Email: "asha@example.com"}},
 		CheckoutHandler: providerFor("open", "unpaid", ""),
+		ConnectionOK: func() http.Handler {
+			f := newFake()
+			f.reply("GET /v1/checkout/sessions", 200, map[string]any{"object": "list", "data": []any{}, "has_more": false})
+			return f
+		}(),
+		ConnectionRejected: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			stripeErr(w, 401, "invalid_request_error", "", "Invalid API Key provided")
+		}),
 	})
 }

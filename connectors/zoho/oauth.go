@@ -98,6 +98,12 @@ func (z *zoho) OAuthAuthorizeURL(raw json.RawMessage, redirectURI, state string,
 		"response_type": {"code"}, "access_type": {"offline"}, "prompt": {"consent"},
 		"client_id": {cfg.ClientID}, "redirect_uri": {redirectURI}, "scope": {strings.Join(scopes, ",")}, "state": {state},
 	}
+	// soid names the server the grant is for: zohopaysandbox.<account id> for the
+	// sandbox, zohopay.<account id> for the live server (Zoho's sandbox setup and
+	// go-live guides). Without it a sandbox account's token is not usable.
+	if cfg.AccountID != "" {
+		q.Set("soid", map[bool]string{true: "zohopaysandbox.", false: "zohopay."}[cfg.Sandbox]+cfg.AccountID)
+	}
 	return "https://" + cfg.accountsHost() + "/oauth/v2/auth?" + q.Encode(), nil
 }
 

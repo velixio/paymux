@@ -300,14 +300,36 @@ func (s *Service) TestConnection(ctx context.Context, sc core.OrgScope, accountI
 	if err != nil {
 		return TestResult{OK: false, Message: "could not build the connector: " + err.Error()}, nil
 	}
-	_, err = live.Connector.FetchPayment(ctx, connector.PaymentRef{ProviderRef: testRef})
+	return probe(ctx, live.Connector), nil
+}
+
+// probe tests a connector's credentials: through ConnectionTester when it has
+// one, else by asking FetchPayment about a payment that cannot exist.
+func probe(ctx context.Context, c connector.Connector) TestResult {
+	if t, ok := c.(connector.ConnectionTester); ok {
+		err := t.TestConnection(ctx)
+		switch {
+		case err == nil:
+			return TestResult{OK: true, Message: "The provider accepted the credentials."}
+		case errors.Is(err, connector.ErrInvalidCredentials):
+			// The connector's own words say what is wrong; show them.
+			detail := strings.TrimPrefix(err.Error(), connector.ErrInvalidCredentials.Error()+": ")
+			if detail == err.Error() || detail == "" {
+				return TestResult{Message: "The provider rejected the credentials (invalid credentials)."}
+			}
+			return TestResult{Message: "The provider rejected the credentials: " + detail}
+		default:
+			return TestResult{Message: "Could not tell: " + err.Error()}
+		}
+	}
+	_, err := c.FetchPayment(ctx, connector.PaymentRef{ProviderRef: testRef})
 	switch {
 	case err == nil || errors.Is(err, connector.ErrNotFound):
-		return TestResult{OK: true, Message: "The provider accepted the credentials."}, nil
+		return TestResult{OK: true, Message: "The provider accepted the credentials."}
 	case errors.Is(err, connector.ErrInvalidCredentials):
-		return TestResult{Message: "The provider rejected the credentials (invalid credentials)."}, nil
+		return TestResult{Message: "The provider rejected the credentials (invalid credentials)."}
 	default:
-		return TestResult{Message: "Could not tell: " + err.Error()}, nil
+		return TestResult{Message: "Could not tell: " + err.Error()}
 	}
 }
 

@@ -277,6 +277,10 @@ type CheckoutResult struct {
 	ExpiresAt       int64      `json:"expires_at,omitempty"`
 }
 
+type ConnectionTester interface {
+	TestConnection(ctx context.Context) error
+}
+
 type Connector interface {
 	Info() Info
 	CreateCheckout(ctx context.Context, req CheckoutRequest) (CheckoutResult, error)
@@ -778,16 +782,17 @@ func Run(t *testing.T, factory connector.Factory, fx Fixtures)
 func SampleValues() []any
 
 type Fixtures struct {
-	Config          json.RawMessage
-	Now             time.Time
-	Ref             connector.PaymentRef
-	Statuses        []StatusCase
-	Webhooks        WebhookFixtures
-	Return          *ReturnFixtures
-	Checkout        connector.CheckoutRequest
-	CheckoutHandler http.Handler
-	CheckNextAction func(t *testing.T, na connector.NextAction)
-	OAuth           *OAuthFixtures
+	Config                           json.RawMessage
+	Now                              time.Time
+	Ref                              connector.PaymentRef
+	Statuses                         []StatusCase
+	Webhooks                         WebhookFixtures
+	Return                           *ReturnFixtures
+	Checkout                         connector.CheckoutRequest
+	CheckoutHandler                  http.Handler
+	CheckNextAction                  func(t *testing.T, na connector.NextAction)
+	OAuth                            *OAuthFixtures
+	ConnectionOK, ConnectionRejected http.Handler
 }
 
 type OAuthFixtures struct {

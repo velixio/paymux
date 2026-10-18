@@ -89,6 +89,30 @@ conformance kit fails when the two disagree.
 | `MandateManager`      | `mandate_manager`      | merchant-triggered debits on a mandate |
 | `Payouter`            | `payout`               | `CreatePayout`, `FetchPayout`: money out to a bank account or UPI id |
 | `OAuthConnector`      | `oauth`                | `OAuthDefaultScopes`, `OAuthAuthorizeURL`, `OAuthCallbackConfig`, `OAuthExchange`: the dashboard's **Connect** button |
+| `ConnectionTester`    | (none)                 | `TestConnection`: the dashboard's **Test** button; see below |
+
+### Testing the credentials (`ConnectionTester`)
+
+The dashboard's **Test** button asks the connector whether the account's
+credentials work. A connector that does not implement `ConnectionTester` is asked
+`FetchPayment` for a payment that cannot exist, and `ErrNotFound` counts as
+"accepted". That only works if the connector can look a payment up by Paymux's
+reference alone and makes a request to do it. Stripe, Zoho and Whop cannot
+(they need their own ids), so they would fail before any request and the button
+would say "Could not tell". Implement
+
+```go
+TestConnection(ctx context.Context) error
+```
+
+with one authenticated, read-only call that needs only the permissions the
+connector already uses (list one payment). Return nil when the provider accepted
+the credentials, an error wrapping `ErrInvalidCredentials` when it rejected them,
+and anything else when the result is inconclusive (network, rate limit, outage).
+The text after `ErrInvalidCredentials` is shown to the operator, so make it say
+what is wrong and what to do: "not connected yet", "this token belongs to the
+sandbox server, the account is set to live". The conformance kit requires
+`Fixtures.ConnectionOK` and `ConnectionRejected` of a connector that implements it.
 
 ### OAuth connectors (`OAuthConnector`)
 
