@@ -84,7 +84,7 @@ function PaymentJourney() {
       waiting ? "Webhook waiting for retry" : "App webhook delivered",
       waiting
         ? "Sample HTTP 503 · payment remains captured"
-        : `Sample HTTP 200 · ${declined ? "payment.failed" : "payment.captured"}`,
+        : `Sample HTTP 200 · ${declined ? "payment.failed" : "payment.succeeded"}`,
     ],
   ];
   return (
@@ -296,7 +296,7 @@ function PaymentJourney() {
                   </p>
                   {step >= 4 && (
                     <>
-                      <code className="event-payload">{`{ "type": "${declined ? "payment.failed" : "payment.captured"}",\n  "amount": 49900, "currency": "INR" }`}</code>
+                      <code className="event-payload">{`{ "type": "${declined ? "payment.failed" : "payment.succeeded"}",\n  "amount": 49900, "currency": "INR" }`}</code>
                       {waiting && (
                         <Button
                           className="retry-delivery"
@@ -318,7 +318,7 @@ function PaymentJourney() {
             <LockKeyhole aria-hidden="true" size={13} /> Your infrastructure.
             Your provider accounts.
           </span>
-          <SiteLink href="/docs#routing">
+          <SiteLink href="/docs/payments#routing-hierarchy">
             Read the actual routing rules{" "}
             <ArrowUpRight aria-hidden="true" size={14} />
           </SiteLink>
@@ -531,7 +531,7 @@ export default function Page() {
               Ordered rules, currency and purpose matching, and account
               eligibility. Explicit decisions instead of hidden magic.
             </p>
-            <SiteLink href="/docs#routing">
+            <SiteLink href="/docs/payments#routing-hierarchy">
               Explore routing <ArrowUpRight aria-hidden="true" size={15} />
             </SiteLink>
           </article>

@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["bun"]
+    "types": ["vite/client", "node"]
   },
   "include": ["web-dashboard/src/*.test.ts"],
   "exclude": []

@@ -78,6 +78,10 @@ Which provider can do what, generated from each connector's declared `Info` (the
 
 Whop is a merchant of record, so no GST invoice is issued for its payments. The matrix is regenerated with `go run ./scripts/capmatrix -w`; CI fails when it is stale.
 
+## Documentation
+
+Start with the [complete documentation index](docs/README.md). Guides cover installation, application integration, payments and routing, signed webhooks, billing, dashboard operations, configuration, security, recovery, and troubleshooting. The [glossary](GLOSSARY.md) defines the product language. The separate public site renders the same Markdown at `/docs` and `/docs/<guide>`; the payment hub’s `/docs` remains its API reference.
+
 ## Quick start
 
 New here? [`docs/quickstart.md`](docs/quickstart.md) takes you from nothing to a test payment, a signed webhook, an invoice and a refund in ten minutes, with no provider account: it uses the built-in simulator. The short version follows.

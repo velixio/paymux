@@ -20,8 +20,12 @@ test -z "$(git ls-files -z "*.go" | xargs -0 gofmt -l)" || { git ls-files -z "*.
 step "React frontends (typecheck and production builds)"
 bun install --frozen-lockfile
 bun run typecheck
+bun run check:docs
 bun run test:frontend
 bun run build
+
+step "signed webhook receiver example"
+python3 -m unittest discover -s examples/webhook-receiver -p 'test_*.py'
 
 step "go vet"
 go vet ./...

@@ -4,13 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Check, Copy, LoaderCircle } from "lucide-react";
 export function SiteLink({
   href = "",
+  exact = false,
   ...props
-}: AnchorHTMLAttributes<HTMLAnchorElement>) {
+}: AnchorHTMLAttributes<HTMLAnchorElement> & { exact?: boolean }) {
   if (href.startsWith("/") && !href.startsWith("//")) {
     const url = new URL(href, location.origin);
     return (
       <Link
         to={url.pathname}
+        activeOptions={{ exact }}
         search={Object.fromEntries(url.searchParams)}
         hash={url.hash.slice(1)}
         {...props}
