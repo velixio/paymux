@@ -1,5 +1,5 @@
 {{define "dash_provider_fields"}}{{with .Prov}}
-{{range .Fields}}
+{{range .Fields}}{{if not .Hidden}}
 <label>{{.Title}}{{if .Required}} *{{end}}
 {{if .Enum}}<select class="field" name="cfg_{{.Name}}">{{if not .Required}}<option value="">(not set)</option>{{end}}{{range .Enum}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Value}}</option>{{end}}</select>
 {{else if eq .Type "boolean"}}<input type="checkbox" name="cfg_{{.Name}}" value="1"{{if .Checked}} checked{{end}}>
@@ -7,7 +7,7 @@
 {{else if or (eq .Type "integer") (eq .Type "number")}}<input class="field" type="number" step="any" name="cfg_{{.Name}}" value="{{.Value}}">
 {{else}}<input class="field" name="cfg_{{.Name}}" value="{{.Value}}"{{if .Required}} required{{end}}>{{end}}
 </label>
-{{end}}
+{{end}}{{end}}
 <fieldset><legend>Accepted currencies</legend>{{range .Currencies}}<label class="inline"><input type="checkbox" name="currency" value="{{.Value}}"{{if .Checked}} checked{{end}}> {{.Value}}</label> {{end}}</fieldset>
 <fieldset><legend>Enabled purposes</legend>{{range .Purposes}}<label class="inline"><input type="checkbox" name="purpose" value="{{.Value}}"{{if .Checked}} checked{{end}}> {{.Value}}</label> {{end}}</fieldset>
 {{end}}{{end}}

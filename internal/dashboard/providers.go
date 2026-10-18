@@ -38,6 +38,11 @@ type cfgField struct {
 	Value             string
 	Checked           bool // booleans
 	HasValue          bool // a secret that is stored (never shown)
+	// Hidden fields are kept in the config but never shown (x-hidden).
+	Hidden bool
+	// OAuthRole says what the property is to the OAuth connect flow (x-oauth):
+	// client_id, client_secret, refresh_token or scopes.
+	OAuthRole string
 }
 
 type checkOpt struct {
@@ -59,6 +64,7 @@ type provForm struct {
 	Test                                               string
 	TestOK                                             bool
 	Unavailable                                        bool
+	OAuth                                              *oauthPanel
 }
 
 func (d *Dashboard) routesProviders() {
@@ -70,6 +76,7 @@ func (d *Dashboard) routesProviders() {
 	m.HandleFunc("POST "+prefix+"/providers/{id}", d.authed(authz.ProviderAccountManage, d.providerUpdate))
 	m.HandleFunc("POST "+prefix+"/providers/{id}/apps", d.authed(authz.ProviderAccountManage, d.providerLink))
 	m.HandleFunc("POST "+prefix+"/providers/{id}/test", d.authed(authz.ProviderAccountManage, d.providerTest))
+	d.routesOAuth()
 }
 
 // schemaFields lists the config inputs of a connector's JSON schema, in the
@@ -100,13 +107,16 @@ func schemaFields(schema json.RawMessage) []cfgField {
 			Title   string `json:"title"`
 			Enum    []any  `json:"enum"`
 			Secret  bool   `json:"x-secret"`
+			Hidden  bool   `json:"x-hidden"`
+			OAuth   string `json:"x-oauth"`
 			Default any    `json:"default"`
 		}
 		if err := dec.Decode(&p); err != nil {
 			break
 		}
 		name := kt.(string)
-		f := cfgField{Name: name, Title: firstNonBlank(p.Title, name), Type: p.Type, Secret: p.Secret, Required: slices.Contains(doc.Required, name)}
+		f := cfgField{Name: name, Title: firstNonBlank(p.Title, name), Type: p.Type, Secret: p.Secret, Required: slices.Contains(doc.Required, name),
+			Hidden: p.Hidden, OAuthRole: p.OAuth}
 		for _, ev := range p.Enum {
 			f.Enum = append(f.Enum, enumOpt{Value: fmt.Sprint(ev)})
 		}
@@ -130,6 +140,7 @@ func fillFields(fields []cfgField, existing map[string]any, post url.Values) []c
 	for i, f := range fields {
 		key := "cfg_" + f.Name
 		switch {
+		case f.Hidden:
 		case f.Secret:
 			_, f.HasValue = existing[f.Name]
 			f.HasValue = f.HasValue && fmt.Sprint(existing[f.Name]) != ""
@@ -163,6 +174,11 @@ func buildConfig(fields []cfgField, post url.Values, existing map[string]any) (j
 	for _, f := range fields {
 		raw := strings.TrimSpace(post.Get("cfg_" + f.Name))
 		switch {
+		case f.Hidden: // not on the form: whatever was stored stays
+			if v, ok := existing[f.Name]; ok {
+				cfg[f.Name] = v
+			}
+			continue
 		case f.Type == "boolean":
 			cfg[f.Name] = raw != ""
 			continue
@@ -365,7 +381,11 @@ func (d *Dashboard) renderProvider(w http.ResponseWriter, r *http.Request, s *se
 		display = firstNonBlank(info.DisplayName, info.Name)
 		f.Currencies = checks(info.Currencies, pa.AcceptedCurrencies)
 		if f.CanManage {
-			f.Fields = fillFields(schemaFields(info.ConfigSchema), d.storedConfig(pa), post)
+			stored := d.storedConfig(pa)
+			f.Fields = fillFields(schemaFields(info.ConfigSchema), stored, post)
+			if info.Has(connector.CapOAuth) {
+				f.OAuth = d.buildOAuthPanel(r.Context(), pa, info, stored, post)
+			}
 		}
 	} else {
 		f.Unavailable = true
@@ -392,6 +412,14 @@ func (d *Dashboard) renderProvider(w http.ResponseWriter, r *http.Request, s *se
 	}
 	v := d.shell(r, s, "providers", pa.Name)
 	v.Prov, v.Error = f, errMsg
+	switch n := r.URL.Query().Get("n"); n {
+	case "oauth_ok":
+		v.Notice = oauthNotices[n]
+	case "oauth_denied":
+		v.Error = "The authorization was not approved at the provider, so nothing was changed."
+	case "oauth_failed":
+		v.Error = "The provider returned an error, so nothing was changed. Try Connect again."
+	}
 	d.render(w, status, "dash_provider", v)
 }
 
