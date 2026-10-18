@@ -107,6 +107,7 @@ func (c *client) call(ctx context.Context, command, var1 string, extra map[strin
 		return fmt.Errorf("payu: HTTP %d", resp.StatusCode)
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
+		connector.ReportDecodeError(resp, err) // so the unreadable answer reaches the error log
 		return fmt.Errorf("payu: decoding %s response: %w", command, err)
 	}
 	return nil
