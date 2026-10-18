@@ -12,6 +12,7 @@ import (
 
 	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/invoice/einvoice"
+	"github.com/paymux/paymux/internal/invoice/irp"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/tax"
@@ -287,11 +288,32 @@ func parseAckDate(s string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+// verifyPortalSignature checks the RS256 signature of the signed QR code
+// against the portal keys of the einvoice_irp_keys setting. With no key
+// configured it verifies nothing and says so (false); with keys, a token that is
+// not signed by one of them is refused.
+func (s *Service) verifyPortalSignature(ctx context.Context, q store.Queryer, orgID, token string) (bool, error) {
+	var pems []string
+	if _, err := s.orgValue(ctx, q, orgID, "einvoice_irp_keys", &pems); err != nil {
+		return false, err
+	}
+	if len(pems) == 0 {
+		return false, nil
+	}
+	keys, err := irp.ParseKeys(pems)
+	if err != nil {
+		return false, fmt.Errorf("invoice: the einvoice_irp_keys setting: %w", err)
+	}
+	if _, err := irp.Verify(token, keys); err != nil {
+		return false, invalid("the signed QR code's signature is not valid for the portal keys you configured (%s)", strings.TrimPrefix(err.Error(), "irp: "))
+	}
+	return true, nil
+}
+
 // checkSignedQR makes sure the pasted token is the portal's signed QR code of
 // this very invoice: a JWT-shaped string whose claims name the same IRN,
-// document number and seller. The signature itself is not verified.
-// TODO(spec): verify the RS256 signature against the IRP's published
-// certificate; it needs the certificate, which Paymux does not ship.
+// document number and seller. The signature is verified separately, against the
+// configured portal keys (verifyPortalSignature).
 func checkSignedQR(qr, irn, number, sellerGSTIN string) error {
 	parts := strings.Split(qr, ".")
 	if len(parts) != 3 || !b64RE.MatchString(parts[0]) || !b64RE.MatchString(parts[1]) || !b64RE.MatchString(parts[2]) {
@@ -373,6 +395,10 @@ func (s *Service) RecordEInvoice(ctx context.Context, actor audit.Actor, invoice
 		if err := checkSignedQR(in.SignedQR, in.IRN, inv.Number, sup.GSTIN); err != nil {
 			return err
 		}
+		verified, err := s.verifyPortalSignature(ctx, tx, inv.OrgID, in.SignedQR)
+		if err != nil {
+			return err
+		}
 		if err := store.SetInvoiceEInvoice(ctx, tx, inv.ID, in.IRN, in.AckNo, ackDate, in.SignedQR, now); err != nil {
 			if errors.Is(err, store.ErrConflict) {
 				return invalid("this IRN is already recorded on another invoice")
@@ -392,7 +418,8 @@ func (s *Service) RecordEInvoice(ctx context.Context, actor audit.Actor, invoice
 		}
 		return audit.Record(ctx, tx, audit.Entry{OrgID: inv.OrgID, Actor: actor, Action: "invoice.einvoice_record", Target: inv.ID,
 			Before: map[string]string{"irn": inv.IRN, "ack_no": inv.AckNo},
-			After:  map[string]string{"irn": in.IRN, "ack_no": in.AckNo, "ack_date": ackDate.In(tax.IST).Format("2006-01-02 15:04:05")}})
+			After: map[string]string{"irn": in.IRN, "ack_no": in.AckNo, "ack_date": ackDate.In(tax.IST).Format("2006-01-02 15:04:05"),
+				"signature_verified": fmt.Sprint(verified)}})
 	})
 	return out, err
 }

@@ -97,7 +97,8 @@ func TestRecordEInvoiceVerifiesThePortalsSignature(t *testing.T) {
 			"names a key that is not ours": portal.qr(t, map[string]any{"alg": "RS256", "x5t": impostor.x5t}, irnHex, inv.Number, supplierGSTIN),
 		} {
 			err := record(qr)
-			if !errors.Is(err, invoice.ErrInvalid) || !strings.Contains(strings.ToLower(err.Error()), "signature") {
+			// (An alg-none token has an empty signature and is refused as malformed first.)
+			if !errors.Is(err, invoice.ErrInvalid) || (name != "alg none" && !strings.Contains(strings.ToLower(err.Error()), "signature")) {
 				t.Errorf("%s: err = %v, want ErrInvalid about the signature", name, err)
 			}
 		}
