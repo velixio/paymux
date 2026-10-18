@@ -162,25 +162,83 @@ reports it as a payment still waiting for the customer (`requires_action`), not
 
 ## Zoho Payments
 
-The sandbox has to be enabled by Zoho support (`zoho.go`).
+Verified on 2026-10-18 against the **live** Zoho Payments API (payments.zoho.in)
+with the credentials Zoho issued; no sandbox account was available (Zoho's
+sandbox is a separate host, `paymentssandbox.zoho.in`, with its own credentials
+and `ZohoPaySandbox.*` scopes, and refuses these ones). Nothing was paid or
+refunded: sessions were created (they expire in 15 minutes) and the account's
+existing payments and refunds were read (`sandbox_test.go`). Verified: the
+OAuth refresh against `accounts.zoho.in`, creating payment sessions (`amount`
+as a number, answered as a string "100.50"), fetching a session, a payment and a
+refund, unknown ids, a bad refresh token, the shape of payments and refunds,
+the refund request's validation, and the widget script and its call shape.
+Fixed on the way:
 
-- [ ] **Constants:** the widget script URL, the hosted-checkout URL scheme and the
-  webhook event names.
-- [ ] **Widget launcher** (`web/templates/pay_sdk.html`): the `ZPayments`
-  construction and `requestPaymentMethod` call, what the promise resolves to
-  (a `payment_id`?) and the `widget_closed` error code. The page returns to
-  Paymux's return URL, which fetches the payment, so a wrong guess about the
-  resolved value costs only the `payment_id` hint.
-- [ ] **Payment by id** (`FetchPayment`): the `reference` field on a payment is
-  our reference and `payments_session_id` is our session; both are used to
-  refuse a payment that is not ours.
-- [ ] **Refund idempotency:** does Zoho treat `reference_number` as a
-  deduplication key? If not, a refund whose response is lost can be made twice.
-  Paymux detects the duplicate in reconciliation and flags it, but cannot
-  prevent it.
-- [ ] **Mandates** (`mandate.go`): the endpoints (`/api/v1/mandates`, `.../charges`,
-  `.../revoke`), their request fields and the mandate statuses.
+- A payment session rejects `return_url` ("Invalid data provided."), so every
+  checkout failed; it is a widget option only. `description` is required by the
+  widget's `requestPaymentMethod`.
+- Unknown ids are HTTP **400** with codes `resource_does_not_exist` /
+  `invalid_payment_session`, not 404; they are now `ErrNotFound`.
+- `payment_method` is an object (`{"type":"upi",...}`), which made every payment
+  fetch fail to decode. Statuses `refunded` / `partially_refunded` are paid
+  payments (with `amount_refunded`); a refund can be `canceled`.
+- A session lists its payments as ids and statuses only; the payment is read, and
+  both the session's and the payment's `reference_number` / `payments_session_id`
+  must match.
+- A refund needs `type` ("initiated_by_merchant") and a `reason` from a fixed
+  list ("Please ensure that the type / reason is valid."); every refund was
+  refused. The Paymux reference is stored in `meta_data`, and a retried refund is
+  found in the payment's `refunds` before another is made (Zoho documents no
+  idempotency).
+- The webhook envelope is `event_object` with a numeric `event_id` and a
+  millisecond `event_time`, and the signature timestamp is in milliseconds; the
+  connector saw no event and rejected every signature.
+
+- [x] **Payment session create / fetch, token refresh, error codes.**
+- [x] **Payment, refund, session shapes; strict matching by session and reference.**
+- [x] **Widget script URL** (`https://static.zohocdn.com/zpay/zpay-js/v1/zpayments.js`) and the call shape (`new ZPayments({account_id, domain, otherOptions:{api_key}})`,
+  `requestPaymentMethod({amount, currency_code, payments_session_id, description})`),
+  read from the script and Zoho's docs.
+- [ ] **A completed payment through the widget.** The widget loads in headless
+  Chromium (from `127.0.0.1` and from `paymux.shimul.me`) and then rejects with
+  `processor_error`: its handshake request
+  (`payments.zoho.in/zwaf/encryption/server/key`) answers 401. In test mode
+  (`is_test_mode`) it asks the sandbox host, which does not know the live
+  session (`invalid_payment_session`). The account is live, so there was no
+  test card; the widget's resolved value (`payment_id`, `signature`, `message`)
+  and the return flow are unverified. Check them on a sandbox account.
+- [ ] **Refunds that succeed.** The account had no payment to refund (only
+  refunded ones; refunding a customer's real payment was out of the question).
+  Verified: validation, an already-refunded payment (400
+  `payment_already_refunded`), an unknown payment. Unverified: that `meta_data`
+  is stored and returned on a refund (the retry lookup depends on it), the
+  success response, and the over-refund code.
+- [ ] **Webhooks.** Zoho documents them (envelope above, header
+  `X-Zoho-Webhook-Signature: t=<ms>,v=<hex>`, HMAC-SHA256 of `t + "." + body`)
+  and manages them through `/webhooks` (needs the `ZohoPay.settings.*` scopes;
+  `GET /api/v1/webhooks` answers 401 "Not An Authorized User" with the current
+  token). Each webhook has its own signing key, returned when it is created and
+  shown in the web app. No live delivery was received, so which of the keys the
+  user holds signs real deliveries is not proven; per the documentation it is
+  the webhook's own key (Developer Space, Webhooks), and the Developer Space
+  "Signing Key" is the one for the widget response and payment links.
+- [ ] **Mandates** (`mandate.go`): the connector's endpoints (`POST /mandates`,
+  `.../charges`, `.../revoke`) do not exist (`POST /api/v1/mandates` answers 405).
+  The real flow per Zoho's docs: a customer (Customers API,
+  `ZohoPay.customers.CREATE`), an enrollment payment session
+  (`type: mandate_enrollment`, `mandate_details`), `POST /mandates/notify`
+  (24 hours ahead), an execution session (`type: mandate_execution`) and
+  `POST /mandates/execute`, `GET /mandates/{id}` (exists; unknown id: 400
+  `resource_does_not_exist`). Not built; Zoho mandates will not work until the
+  connector is rewritten to that flow.
 - [ ] **Verification debit:** does Zoho reverse the Rs 1 debit itself?
+- [ ] **Hosted checkout** (`hosted_checkout_url`): the session returns an
+  `access_key` and takes `configurations.hosted_checkout_parameters`
+  (`success_url`, `failure_url`); the URL the customer is sent to is not
+  documented, so the setting stays a guess.
+- [ ] **Scopes** not yet granted: `ZohoPay.settings.*` (webhooks),
+  `ZohoPay.payouts.READ` (payouts), `ZohoPay.customers.CREATE` / `.READ`
+  (mandates), `ZohoPay.payments.UPDATE`.
 
 ## Whop
 

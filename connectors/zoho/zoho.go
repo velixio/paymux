@@ -1,9 +1,10 @@
 // Package zoho is the Zoho Payments (India) connector. It imports only the
 // stdlib and pkg/.... There is no dispute API: disputes are manual.
 //
-// TODO(spec): re-verify against the live docs at sandbox time (the sandbox must
-// be enabled by Zoho support): the widget script URL, the hosted-checkout URL
-// scheme, and the webhook event names. Those are isolated in constants below.
+// Verified against the live Zoho Payments API (see docs/provider-verification.md):
+// token refresh, payment sessions, payments, refunds, error codes. Not verified:
+// a completed widget payment, successful refunds, live webhook deliveries,
+// mandates (the connector's mandate endpoints do not match Zoho's real flow).
 package zoho
 
 import (
@@ -41,7 +42,8 @@ const configSchema = `{
     "webhook_secret": {"type": "string", "title": "Webhook signing key", "minLength": 1, "x-secret": true},
     "data_center": {"type": "string", "title": "Zoho data centre TLD", "default": "in"},
     "widget_api_key": {"type": "string", "title": "Widget API key (enables the embedded widget)"},
-    "hosted_checkout_url": {"type": "string", "format": "uri", "title": "Hosted checkout base URL (used when no widget key is set)"}
+    "hosted_checkout_url": {"type": "string", "format": "uri", "title": "Hosted checkout base URL (used when no widget key is set)"},
+    "sandbox": {"type": "boolean", "title": "Use Zoho's sandbox (paymentssandbox.zoho.*; needs sandbox credentials)"}
   }
 }`
 
@@ -56,7 +58,7 @@ var info = connector.Info{
 	// debit, so there is no pre-debit API (NotifyPreDebit returns ErrUnsupported).
 	SubscriptionModes:        []connector.BillingMode{connector.MerchantTriggered},
 	MandateLimits:            []connector.MandateLimit{{Method: "upi", Currency: "INR"}},
-	RefundsVerificationDebit: true, // TODO(spec): confirm Zoho reverses the verification debit itself
+	RefundsVerificationDebit: true, // TODO(spec): unconfirmed that Zoho reverses the Rs 1 verification debit itself
 	MandateSetupAmount:       100,  // the Rs 1 verification debit of a registration without a charge due (trials)
 	// Refunds are limited to 60/min; the client limiter applies that to every call.
 	RateLimit: connector.RateLimit{RequestsPerSecond: 1, Burst: 10},
@@ -73,6 +75,7 @@ type config struct {
 	DataCenter        string `json:"data_center"`
 	WidgetAPIKey      string `json:"widget_api_key"`
 	HostedCheckoutURL string `json:"hosted_checkout_url"`
+	Sandbox           bool   `json:"sandbox"`
 }
 
 func (c config) dc() string {
@@ -325,6 +328,9 @@ func (z *zoho) CreateCheckout(ctx context.Context, req connector.CheckoutRequest
 			"description": firstNonEmpty(req.Description, "Payment"), // required by requestPaymentMethod
 			"return_url":  z.deps.URLs.ReturnURL(req.ProviderRef),
 		}}
+		if z.cfg.Sandbox {
+			res.NextAction.Options["is_test_mode"] = true
+		}
 	} else {
 		sep := "?"
 		if strings.Contains(z.cfg.HostedCheckoutURL, "?") {

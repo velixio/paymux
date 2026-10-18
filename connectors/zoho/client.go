@@ -30,7 +30,12 @@ type client struct {
 	mu sync.Mutex // serializes token refreshes
 }
 
-func (c *client) apiBase() string  { return "https://payments.zoho." + c.cfg.dc() }
+func (c *client) apiBase() string {
+	if c.cfg.Sandbox {
+		return "https://paymentssandbox.zoho." + c.cfg.dc()
+	}
+	return "https://payments.zoho." + c.cfg.dc()
+}
 func (c *client) tokenURL() string { return "https://accounts.zoho." + c.cfg.dc() + "/oauth/v2/token" }
 func (c *client) acct() url.Values { return url.Values{"account_id": {c.cfg.AccountID}} }
 func (c *client) accessToken(ctx context.Context, force bool) (string, error) {
