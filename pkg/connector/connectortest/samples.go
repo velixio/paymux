@@ -81,6 +81,7 @@ func SampleValues() []any {
 		*mnd,
 		connector.PreDebitRequest{Mandate: connector.MandateRef{ProviderMandateID: "m"}, ProviderRef: "r", Amount: 1, Currency: "INR", DebitDate: 7},
 		connector.ChargeRequest{Mandate: connector.MandateRef{ProviderMandateID: "m"}, ProviderRef: "r", Amount: 1, Currency: "INR"},
+		connector.OAuthResult{RefreshToken: "rt", Scopes: []string{"a", "b"}, ExpiresIn: 3600, ConfigPatch: map[string]any{"refresh_token": "rt"}},
 		connector.TimeRange{From: 1, To: 2},
 		connector.Cursor("c"),
 		connector.Page[connector.PaymentSnapshot]{Items: []connector.PaymentSnapshot{*pay}, Next: "n"},

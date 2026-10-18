@@ -22,6 +22,7 @@ const (
 	CapSubscriptionManager Capability = "subscription_manager"
 	CapMandateManager      Capability = "mandate_manager"
 	CapPayout              Capability = "payout"
+	CapOAuth               Capability = "oauth"
 )
 
 // BillingMode is how recurring renewals are driven.
@@ -225,6 +226,20 @@ type Notification struct {
 	Mandate      *MandateSnapshot      `json:"mandate,omitempty"`
 	Subscription *SubscriptionSnapshot `json:"subscription,omitempty"`
 	Payout       *PayoutSnapshot       `json:"payout,omitempty"`
+}
+
+// OAuthResult is what exchanging a grant code returned.
+type OAuthResult struct {
+	// RefreshToken is the long-lived token to store. It is a secret.
+	RefreshToken string `json:"refresh_token"`
+	// Scopes are the scopes the provider granted.
+	Scopes []string `json:"scopes,omitempty"`
+	// ExpiresIn is the lifetime in seconds of the access token that came with it.
+	ExpiresIn int64 `json:"expires_in,omitempty"`
+	// ConfigPatch holds the config fields to set on the account (the connector
+	// names them: its refresh token field, the data centre it was authorised
+	// in, the scopes). They are merged into the stored config and sealed.
+	ConfigPatch map[string]any `json:"config_patch,omitempty"`
 }
 
 // PaymentRef identifies a payment at the provider. At least one id must be set.

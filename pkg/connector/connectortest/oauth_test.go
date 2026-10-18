@@ -22,7 +22,9 @@ func (m *oauthMock) Info() connector.Info {
 	return i
 }
 
-func (m *oauthMock) OAuthDefaultScopes(json.RawMessage) []string { return []string{"pay.read", "pay.write"} }
+func (m *oauthMock) OAuthDefaultScopes(json.RawMessage) []string {
+	return []string{"pay.read", "pay.write"}
+}
 
 func (m *oauthMock) OAuthAuthorizeURL(cfg json.RawMessage, redirectURI, state string, scopes []string) (string, error) {
 	if state == "" || redirectURI == "" {
@@ -32,7 +34,9 @@ func (m *oauthMock) OAuthAuthorizeURL(cfg json.RawMessage, redirectURI, state st
 	return "https://accounts.example.com/oauth/auth?" + q.Encode(), nil
 }
 
-func (m *oauthMock) OAuthCallbackConfig(cfg json.RawMessage, _ url.Values) (json.RawMessage, error) { return cfg, nil }
+func (m *oauthMock) OAuthCallbackConfig(cfg json.RawMessage, _ url.Values) (json.RawMessage, error) {
+	return cfg, nil
+}
 
 func (m *oauthMock) OAuthExchange(ctx context.Context, _ json.RawMessage, redirectURI, code string) (connector.OAuthResult, error) {
 	if code == "" {

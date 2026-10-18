@@ -249,6 +249,7 @@ const (
 	CapSubscriptionManager Capability = "subscription_manager"
 	CapMandateManager      Capability = "mandate_manager"
 	CapPayout              Capability = "payout"
+	CapOAuth               Capability = "oauth"
 )
 
 type ChargeRequest struct {
@@ -503,6 +504,20 @@ const (
 	NotifySubscription NotificationKind = "subscription"
 	NotifyPayout       NotificationKind = "payout"
 )
+
+type OAuthConnector interface {
+	OAuthDefaultScopes(cfg json.RawMessage) []string
+	OAuthAuthorizeURL(cfg json.RawMessage, redirectURI, state string, scopes []string) (string, error)
+	OAuthCallbackConfig(cfg json.RawMessage, params url.Values) (json.RawMessage, error)
+	OAuthExchange(ctx context.Context, cfg json.RawMessage, redirectURI, code string) (OAuthResult, error)
+}
+
+type OAuthResult struct {
+	RefreshToken string         `json:"refresh_token"`
+	Scopes       []string       `json:"scopes,omitempty"`
+	ExpiresIn    int64          `json:"expires_in,omitempty"`
+	ConfigPatch  map[string]any `json:"config_patch,omitempty"`
+}
 
 type Observer func(RequestObservation)
 
@@ -772,6 +787,13 @@ type Fixtures struct {
 	Checkout        connector.CheckoutRequest
 	CheckoutHandler http.Handler
 	CheckNextAction func(t *testing.T, na connector.NextAction)
+	OAuth           *OAuthFixtures
+}
+
+type OAuthFixtures struct {
+	RedirectURI string
+	Code        string
+	Handler     http.Handler
 }
 
 type ReturnFixtures struct {

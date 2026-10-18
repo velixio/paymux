@@ -72,6 +72,16 @@ type Fixtures struct {
 	Checkout        connector.CheckoutRequest
 	CheckoutHandler http.Handler
 	CheckNextAction func(t *testing.T, na connector.NextAction)
+	// OAuth is required of a connector that declares CapOAuth.
+	OAuth *OAuthFixtures
+}
+
+// OAuthFixtures drive the OAuth checks: Handler is the fake provider answering
+// the token exchange of Code with a refresh token.
+type OAuthFixtures struct {
+	RedirectURI string
+	Code        string
+	Handler     http.Handler
 }
 
 // URLs is a fixed connector.URLs for tests.
@@ -262,6 +272,7 @@ func Run(t *testing.T, factory connector.Factory, fx Fixtures) {
 			connector.CapSubscriptionManager: isA[connector.SubscriptionManager](c),
 			connector.CapMandateManager:      isA[connector.MandateManager](c),
 			connector.CapPayout:              isA[connector.Payouter](c),
+			connector.CapOAuth:               isA[connector.OAuthConnector](c),
 		}
 		for cap, has := range impl {
 			if has != info.Has(cap) {
@@ -275,6 +286,45 @@ func Run(t *testing.T, factory connector.Factory, fx Fixtures) {
 		}
 		if info.Has(connector.CapMandateManager) {
 			t.Log("MandateManager: ChargeMandate must pass ChargeRequest.ProviderRef as idempotency token (verify in connector tests)")
+		}
+	})
+
+	t.Run("oauth", func(t *testing.T) {
+		if !isA[connector.OAuthConnector](build(t, nil)) {
+			t.Skip("not an OAuth connector")
+		}
+		if fx.OAuth == nil {
+			t.Fatal("the connector declares OAuth: Fixtures.OAuth is required")
+		}
+		c := build(t, fx.OAuth.Handler).(connector.OAuthConnector)
+		scopes := c.OAuthDefaultScopes(fx.Config)
+		if len(scopes) == 0 {
+			t.Error("OAuthDefaultScopes is empty")
+		}
+		raw, err := c.OAuthAuthorizeURL(fx.Config, fx.OAuth.RedirectURI, "state-123", scopes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme != "https" || u.Host == "" {
+			t.Fatalf("authorize URL %q is not an https URL: %v", raw, err)
+		}
+		if q := u.Query(); q.Get("state") != "state-123" || q.Get("redirect_uri") != fx.OAuth.RedirectURI {
+			t.Errorf("authorize URL lacks the state or the redirect URI: %s", raw)
+		}
+		if _, err := c.OAuthAuthorizeURL(fx.Config, fx.OAuth.RedirectURI, "", scopes); err == nil {
+			t.Error("an authorize URL without a state was built (the state is what makes the callback safe)")
+		}
+		if out, err := c.OAuthCallbackConfig(fx.Config, url.Values{}); err != nil || !json.Valid(out) {
+			t.Errorf("OAuthCallbackConfig with nothing to adjust: %s %v", out, err)
+		}
+		res, err := c.OAuthExchange(ctx, fx.Config, fx.OAuth.RedirectURI, fx.OAuth.Code)
+		if err != nil || res.RefreshToken == "" {
+			t.Fatalf("exchange: %+v %v", res, err)
+		}
+		roundTripJSON(t, res)
+		if _, err := c.OAuthExchange(ctx, fx.Config, fx.OAuth.RedirectURI, ""); err == nil {
+			t.Error("an empty code was exchanged")
 		}
 	})
 
