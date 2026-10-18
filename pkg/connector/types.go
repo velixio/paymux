@@ -69,6 +69,12 @@ type Info struct {
 	// charge is due yet (a trial): the provider's minimal or verification
 	// amount, in minor units. 0 means the provider default of 100 (Rs 1).
 	MandateSetupAmount int64 `json:"mandate_setup_amount,omitempty"`
+	// MinChargeMinor is the smallest amount the provider will charge, by
+	// upper-case currency, in minor units (its documented minimum). A currency
+	// that is missing has a minimum of one minor unit. Paymux never asks for
+	// less: a prorated renewal that would fall under it carries the credit
+	// forward, and a prorated extra charge under it waits for the next renewal.
+	MinChargeMinor map[string]int64 `json:"min_charge_minor,omitempty"`
 	// RefundsVerificationDebit says the provider reverses that verification
 	// debit by itself. When false, Paymux refunds it (initiated_by=system,
 	// reason=mandate_verification).

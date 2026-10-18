@@ -44,8 +44,9 @@ type rec struct {
 	payFn       func(connector.PaymentRef) (connector.PaymentSnapshot, error)
 	perAttempt  bool
 	nsub        int
-	fetchCalls  []string // ids FetchMandate was asked for
-	noReverse   bool     // the provider does not reverse the verification debit itself
+	fetchCalls  []string         // ids FetchMandate was asked for
+	noReverse   bool             // the provider does not reverse the verification debit itself
+	minCharge   map[string]int64 // Info.MinChargeMinor of the test connectors
 }
 
 func (r *rec) chargeCount() int { r.mu.Lock(); defer r.mu.Unlock(); return len(r.charges) }
@@ -60,7 +61,7 @@ type base struct {
 func (b base) Info() connector.Info {
 	return connector.Info{Name: b.name, Version: "1", DisplayName: b.name, Currencies: []string{"INR"}, SubscriptionModes: b.modes,
 		MandateLimits: b.limits, PreDebitPerAttempt: b.r.perAttempt, MandateSetupAmount: 100,
-		RefundsVerificationDebit: !b.r.noReverse}
+		RefundsVerificationDebit: !b.r.noReverse, MinChargeMinor: b.r.minCharge}
 }
 func (b base) CreateCheckout(context.Context, connector.CheckoutRequest) (connector.CheckoutResult, error) {
 	return connector.CheckoutResult{}, connector.ErrUnsupported
