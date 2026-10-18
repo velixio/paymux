@@ -181,21 +181,22 @@ func listReconItems(ctx context.Context, q Queryer, where string, args ...any) (
 
 // ReconAttempt is our side of a payment record for reconciliation.
 type ReconAttempt struct {
-	AttemptID, ProviderPaymentID, ProviderOrderID, Status string
-	AmountReceived                                        int64
-	CurrencyReceived                                      string
-	PaymentAmount                                         int64
-	PaymentCurrency                                       string
+	AttemptID, ProviderPaymentID, ProviderOrderID, ProviderRef, Status string
+	AmountReceived                                                     int64
+	CurrencyReceived                                                   string
+	PaymentAmount                                                      int64
+	PaymentCurrency                                                    string
 }
 
 // ListReconAttempts returns the account's attempts created in [from, to] that
-// reached a provider (they have an order or payment id).
+// reached a provider: they have an order or payment id, or a started checkout
+// (a next action), which a provider that keys on our reference can match.
 func ListReconAttempts(ctx context.Context, q Queryer, accountID string, from, to time.Time) ([]ReconAttempt, error) {
-	rows, err := q.QueryContext(ctx, `SELECT a.id, COALESCE(a.provider_payment_id,''), COALESCE(a.provider_order_id,''), a.status,
+	rows, err := q.QueryContext(ctx, `SELECT a.id, COALESCE(a.provider_payment_id,''), COALESCE(a.provider_order_id,''), a.provider_ref, a.status,
 		a.amount_received, COALESCE(a.currency_received,''), p.amount, p.currency
 		FROM payment_attempts a JOIN payments p ON p.id = a.payment_id
 		WHERE a.provider_account_id = ? AND a.created_at >= ? AND a.created_at <= ?
-		AND (a.provider_payment_id IS NOT NULL OR a.provider_order_id IS NOT NULL) ORDER BY a.created_at, a.id`,
+		AND (a.provider_payment_id IS NOT NULL OR a.provider_order_id IS NOT NULL OR a.next_action IS NOT NULL) ORDER BY a.created_at, a.id`,
 		accountID, ms(from), ms(to))
 	if err != nil {
 		return nil, err
@@ -204,7 +205,7 @@ func ListReconAttempts(ctx context.Context, q Queryer, accountID string, from, t
 	var out []ReconAttempt
 	for rows.Next() {
 		var r ReconAttempt
-		if err := rows.Scan(&r.AttemptID, &r.ProviderPaymentID, &r.ProviderOrderID, &r.Status, &r.AmountReceived, &r.CurrencyReceived,
+		if err := rows.Scan(&r.AttemptID, &r.ProviderPaymentID, &r.ProviderOrderID, &r.ProviderRef, &r.Status, &r.AmountReceived, &r.CurrencyReceived,
 			&r.PaymentAmount, &r.PaymentCurrency); err != nil {
 			return nil, err
 		}

@@ -28,6 +28,9 @@ func (s *Service) ExpireDue(ctx context.Context, limit int) (int, error) {
 	}
 	n := 0
 	for _, id := range ids {
+		if skip := s.askProviderFirst(ctx, id); skip {
+			continue
+		}
 		done, err := s.expireOne(ctx, id)
 		if err != nil {
 			return n, err
@@ -37,6 +40,41 @@ func (s *Service) ExpireDue(ctx context.Context, limit int) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+// askProviderFirst fetches the provider's truth for each open attempt of the
+// payment before it is expired, so that a payment the customer has paid (and
+// never came back from) is applied rather than expired. It reports whether the
+// payment is to be left alone this time: the provider could not be asked, or
+// answered with a success (or anything else) that moved the payment on. "Not
+// found" is an answer: nothing was paid, and the payment may expire.
+func (s *Service) askProviderFirst(ctx context.Context, paymentID string) (skip bool) {
+	if s.syncer == nil {
+		return false
+	}
+	var attempts []store.Attempt
+	if err := s.db.Read(ctx, func(q store.Querier) (err error) { attempts, err = store.ListAttempts(ctx, q, paymentID); return }); err != nil {
+		return true
+	}
+	cutoff := s.nowUTC().UnixMilli() - openAttemptWindow
+	for _, a := range attempts {
+		switch state.AttemptStatus(a.Status) {
+		case state.AttemptCreated, state.AttemptPending, state.AttemptAuthorized:
+		default:
+			continue
+		}
+		if a.CreatedAt.UnixMilli() <= cutoff || (a.NextAction == "" && a.ProviderOrderID == "" && a.ProviderPaymentID == "") {
+			continue
+		}
+		if _, err := s.syncer.SyncAttempt(ctx, a.ID); err != nil {
+			return true // the provider could not be asked: not now
+		}
+	}
+	var p store.Payment
+	if err := s.db.Read(ctx, func(q store.Querier) (err error) { p, err = store.GetPayment(ctx, q, paymentID); return }); err != nil {
+		return true
+	}
+	return p.Status != string(state.PaymentCreated) && p.Status != string(state.PaymentRequiresAction)
 }
 
 func (s *Service) expireOne(ctx context.Context, id string) (bool, error) {

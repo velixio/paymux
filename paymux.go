@@ -223,6 +223,7 @@ func (a *App) Start(ctx context.Context) error {
 		})})
 	payoutSvc.RegisterJobs(q)
 	flow := checkout.New(checkout.Options{DB: db, Core: svc, Conns: conns, Routing: rt, Breaker: breaker, Logger: a.log, Disputes: disp, Subs: subs, Payouts: payoutSvc})
+	svc.SetAttemptSyncer(flow) // expiring a payment asks the provider first
 	if err := flow.Register(q); err != nil {
 		return err
 	}

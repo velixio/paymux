@@ -305,6 +305,7 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 	}
 	byPayID := map[string]connector.PaymentSnapshot{}
 	byOrder := map[string]string{} // provider order id -> provider payment id
+	byRef := map[string]string{}   // our reference (the provider's transaction id) -> provider payment id
 	var theirRecs []recon.Record
 	for _, t := range theirs {
 		if t.ProviderPaymentID == "" {
@@ -313,6 +314,9 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 		byPayID[t.ProviderPaymentID] = t
 		if t.ProviderOrderID != "" {
 			byOrder[t.ProviderOrderID] = t.ProviderPaymentID
+		}
+		if t.ProviderRef != "" {
+			byRef[t.ProviderRef] = t.ProviderPaymentID
 		}
 		theirRecs = append(theirRecs, recon.Record{ProviderID: t.ProviderPaymentID, Status: string(checkout.ToSnapshot(t).Status),
 			Amount: t.Amount, Currency: t.Currency, SubscriptionID: t.SubscriptionID})
@@ -325,6 +329,9 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 		id := a.ProviderPaymentID
 		if id == "" {
 			id = byOrder[a.ProviderOrderID] // a payment we never heard about, found by its order
+		}
+		if id == "" && a.ProviderRef != "" {
+			id = byRef[a.ProviderRef] // or by our reference, when the provider keys its transactions on it
 		}
 		if id == "" {
 			continue
