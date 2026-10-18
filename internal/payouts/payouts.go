@@ -31,6 +31,7 @@ import (
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/logctx"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector"
@@ -378,6 +379,7 @@ func (s *Service) handleSubmit(ctx context.Context, raw json.RawMessage) error {
 	if p.Status != StatusPending {
 		return nil // submitted already
 	}
+	logctx.Note(ctx, "payout_id", p.ID, "provider_account_id", p.ProviderAccountID, "app_id", p.AppID, "org_id", p.OrgID)
 	var ben connector.Beneficiary
 	plain, err := s.o.Box.Open(p.BeneficiaryEnc, aad(p.ID))
 	if err != nil {
@@ -458,6 +460,7 @@ func (s *Service) handlePoll(ctx context.Context, raw json.RawMessage) error {
 	if p.Status != StatusProcessing && p.Status != StatusSucceeded { // a succeeded payout is checked once more for a reversal
 		return nil
 	}
+	logctx.Note(ctx, "payout_id", p.ID, "provider_account_id", p.ProviderAccountID, "app_id", p.AppID, "org_id", p.OrgID)
 	po, err := s.payouter(ctx, p.ProviderAccountID)
 	if err != nil {
 		return err
