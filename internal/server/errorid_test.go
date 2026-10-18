@@ -10,7 +10,9 @@ import (
 // and an operator can find the log row.
 func TestPlainTextServerErrorsCarryTheRequestID(t *testing.T) {
 	s := New(Options{})
-	s.HandleFunc("GET /plain", func(w http.ResponseWriter, r *http.Request) { http.Error(w, "internal error", http.StatusInternalServerError) })
+	s.HandleFunc("GET /plain", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	})
 	s.HandleFunc("GET /missing", func(w http.ResponseWriter, r *http.Request) { http.Error(w, "not found", http.StatusNotFound) })
 	s.HandleFunc("GET /json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

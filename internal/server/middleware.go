@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"regexp"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/paymux/paymux/internal/ids"
@@ -45,11 +47,16 @@ type statusWriter struct {
 	http.ResponseWriter
 	status int
 	wrote  bool
+	// tagID is set when a plain-text 5xx page is being written: the request id
+	// is added at its end.
+	tagID bool
 }
 
 func (w *statusWriter) WriteHeader(code int) {
 	if !w.wrote {
 		w.status, w.wrote = code, true
+		h := w.Header()
+		w.tagID = code >= 500 && strings.HasPrefix(h.Get("Content-Type"), "text/plain") && h.Get("Content-Length") == ""
 	}
 	w.ResponseWriter.WriteHeader(code)
 }
@@ -92,6 +99,11 @@ func accessLog(next http.Handler, log *slog.Logger, requests *metrics.CounterVec
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		holder := &routeHolder{}
 		next.ServeHTTP(sw, r.WithContext(context.WithValue(r.Context(), keyRoute, holder)))
+		if sw.tagID {
+			// A plain-text error page ("internal error"): say which request failed,
+			// so a person can quote it and an operator can find the log row.
+			_, _ = fmt.Fprintf(sw.ResponseWriter, "request id: %s\n", RequestID(r.Context()))
+		}
 		route := holder.pattern
 		if route == "" {
 			route = "unmatched"
