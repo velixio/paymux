@@ -4,7 +4,7 @@
 {{define "content"}}{{template "dash_open" .}}
 {{with .Doc}}
 <p><a href="/dashboard/invoices{{if eq .Kind "credit_note"}}?type=credit_note{{end}}">&larr; {{if eq .Kind "credit_note"}}Credit notes{{else}}Invoices{{end}}</a></p>
-<h2>{{if eq .Kind "credit_note"}}Credit note{{else}}Tax invoice{{end}} {{.Number}}</h2>
+<h1>{{if eq .Kind "credit_note"}}Credit note{{else}}Tax invoice{{end}} {{.Number}}</h1>
 {{with $.Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 {{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <dl class="facts">
@@ -47,9 +47,9 @@
 {{if .CanRecord}}<form method="post" action="/dashboard/invoices/{{$.Doc.ID}}/einvoice" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <h4>{{if .Recorded}}Correct the recorded values{{else}}Record what the portal returned{{end}}</h4>
-<input class="field" name="irn" placeholder="IRN (64 characters)" value="{{.Form.IRN}}" required autocomplete="off" spellcheck="false">
-<input class="field" name="ack_no" placeholder="Ack No (digits)" value="{{.Form.AckNo}}" required inputmode="numeric" autocomplete="off">
-<input class="field" name="ack_date" placeholder="Ack Date, e.g. 2026-10-18 10:15:30" value="{{.Form.AckDate}}" required autocomplete="off">
+<input class="field" name="irn" placeholder="IRN (64 characters)" value="{{.Form.IRN}}" required autocomplete="off" spellcheck="false" aria-label="IRN (64 characters)">
+<input class="field" name="ack_no" placeholder="Ack No (digits)" value="{{.Form.AckNo}}" required inputmode="numeric" autocomplete="off" aria-label="Ack No (digits)">
+<input class="field" name="ack_date" placeholder="Ack Date, e.g. 2026-10-18 10:15:30" value="{{.Form.AckDate}}" required autocomplete="off" aria-label="Ack Date, e.g. 2026-10-18 10:15:30">
 <textarea class="field mono" name="signed_qr" rows="4" placeholder="Signed QR code (the long text of three parts separated by dots)" required spellcheck="false">{{.Form.SignedQR}}</textarea>
 <button class="btn" type="submit">{{if .Recorded}}Save the correction{{else}}Record e-invoice{{end}}</button>
 </form>{{end}}
@@ -66,15 +66,15 @@
 <p class="muted">Issues a full credit note against this invoice and a new invoice for the same payment, using the details below. The customer's saved billing details are updated. This cannot be undone.</p>
 <form method="post" action="/dashboard/invoices/{{.ID}}/reissue" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
-<input class="field" name="legal_name" placeholder="Name or registered business name" value="{{.Billing.LegalName}}" required>
-<input class="field" name="gstin" placeholder="GSTIN (if registered)" value="{{.Billing.GSTIN}}">
-<input class="field" name="state_code" placeholder="State code (e.g. 29)" value="{{.Billing.StateCode}}">
-<input class="field" name="line1" placeholder="Address line 1" value="{{.Billing.Line1}}">
-<input class="field" name="line2" placeholder="Address line 2" value="{{.Billing.Line2}}">
-<input class="field" name="city" placeholder="City" value="{{.Billing.City}}">
-<input class="field" name="postal_code" placeholder="PIN code" value="{{.Billing.PostalCode}}">
-<input class="field" name="country" placeholder="Country (IN)" value="{{.Billing.Country}}" maxlength="2">
-<input class="field" name="reason" placeholder="Reason" value="{{.ReissueReason}}" maxlength="200">
+<input class="field" name="legal_name" placeholder="Name or registered business name" value="{{.Billing.LegalName}}" required aria-label="Name or registered business name">
+<input class="field" name="gstin" placeholder="GSTIN (if registered)" value="{{.Billing.GSTIN}}" aria-label="GSTIN (if registered)">
+<input class="field" name="state_code" placeholder="State code (e.g. 29)" value="{{.Billing.StateCode}}" aria-label="State code (e.g. 29)">
+<input class="field" name="line1" placeholder="Address line 1" value="{{.Billing.Line1}}" aria-label="Address line 1">
+<input class="field" name="line2" placeholder="Address line 2" value="{{.Billing.Line2}}" aria-label="Address line 2">
+<input class="field" name="city" placeholder="City" value="{{.Billing.City}}" aria-label="City">
+<input class="field" name="postal_code" placeholder="PIN code" value="{{.Billing.PostalCode}}" aria-label="PIN code">
+<input class="field" name="country" placeholder="Country (IN)" value="{{.Billing.Country}}" maxlength="2" aria-label="Country (IN)">
+<input class="field" name="reason" placeholder="Reason" value="{{.ReissueReason}}" maxlength="200" aria-label="Reason">
 <button class="btn" type="submit">Reissue invoice</button>
 </form>
 {{end}}

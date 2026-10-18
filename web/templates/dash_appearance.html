@@ -2,7 +2,7 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h2>Appearance</h2>
+<h1>Appearance</h1>
 <p class="muted">A theme sets colours, corner radius and fonts, and can add its own styles, templates and images. Themes live in <code>themes/&lt;name&gt;/</code> inside the data directory; a change to a theme's files is live within a second, without a restart. A theme that cannot be loaded is skipped and the standard look is used instead.</p>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 

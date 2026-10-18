@@ -2,7 +2,7 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h2>Payment links <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h2>
+<h1>Payment links <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h1>
 <p class="muted">A payment link is a page you can share. The customer enters their name and email (and the amount, if you let them choose) and is taken to the normal payment page. Links of {{.Mode}} mode are shown; switch the mode in the header to see the others.</p>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 

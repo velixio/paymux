@@ -2,3 +2,18 @@
 .card { border: 1px solid var(--color-line); background: #0f172a; }
 .btn { box-shadow: none; }
 a { color: #93c5fd; }
+/* Explicit theme selection also works when the operating system is light. */
+:root {
+  --color-bg: #111827;
+  --color-fg: #e6edf7;
+  --color-muted: #a8b6c9;
+  --color-line: #344156;
+  --color-nav: #192234;
+  --surface: #192234;
+  --focus: #8caeff;
+}
+.dash-nav a.active { background: #25385f; color: #b6ccff; }
+.dash-nav a:hover { background: #253149; color: #e6edf7; }
+table.grid th { background: #202c40; }
+table.grid tbody tr:hover { background: #202c40; }
+.settings .source-badge, .settings .setting-group th { background: #253149; color: #e6edf7; }

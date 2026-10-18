@@ -2,7 +2,7 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h2>Apps</h2>
+<h1>Apps</h1>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <div class="table-scroll"><table class="grid">
 <thead><tr><th>Name</th><th>Slug</th><th>Default return URL</th><th>Created</th></tr></thead>
@@ -12,9 +12,9 @@
 <h3>Create an app</h3>
 <form method="post" action="/dashboard/apps" class="stack">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
-<input class="field" name="name" placeholder="Name" required maxlength="200">
-<input class="field" name="slug" placeholder="slug (a-z, 0-9, -)" required pattern="[a-z0-9][a-z0-9-]{0,39}">
-<input class="field" name="return_url" type="url" placeholder="Default return URL (optional)">
+<input class="field" name="name" placeholder="Name" required maxlength="200" aria-label="Name">
+<input class="field" name="slug" placeholder="slug (a-z, 0-9, -)" required pattern="[a-z0-9][a-z0-9-]{0,39}" aria-label="slug (a-z, 0-9, -)">
+<input class="field" name="return_url" type="url" placeholder="Default return URL (optional)" aria-label="Default return URL (optional)">
 <button class="btn" type="submit">Create app</button>
 </form>
 {{end}}

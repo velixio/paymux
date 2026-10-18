@@ -180,13 +180,10 @@ var sections = []navItem{
 // navItems is the full menu; built pages and placeholders interleaved.
 var navItems = []navItem{
 	{"overview", "Overview", prefix + "/overview"}, {"payments", "Payments", prefix + "/payments"}, {"payment-links", "Payment links", prefix + "/payment-links"},
-	{"subscriptions", "Subscriptions", prefix + "/subscriptions"}, {"disputes", "Disputes", prefix + "/disputes"},
-	{"reconciliation", "Reconciliation", prefix + "/reconciliation"},
-	{"invoices", "Invoices", prefix + "/invoices"}, {"reports", "Reports", prefix + "/reports"},
+	{"subscriptions", "Subscriptions", prefix + "/subscriptions"}, {"invoices", "Invoices", prefix + "/invoices"},
+	{"disputes", "Disputes", prefix + "/disputes"}, {"reconciliation", "Reconciliation", prefix + "/reconciliation"}, {"reports", "Reports", prefix + "/reports"}, {"alerts", "Alerts", prefix + "/alerts"}, {"audit", "Audit", prefix + "/audit"},
 	{"apps", "Apps", prefix + "/apps"}, {"providers", "Providers", prefix + "/providers"},
-	{"tax-entities", "Tax entities", prefix + "/tax-entities"}, {"fx", "FX rates", prefix + "/fx"},
-	{"settings", "Settings", prefix + "/settings"}, {"appearance", "Appearance", prefix + "/appearance"}, {"alerts", "Alerts", prefix + "/alerts"}, {"audit", "Audit", prefix + "/audit"}, {"users", "Users", prefix + "/users"},
-	{"roles", "Roles", prefix + "/roles"},
+	{"settings", "Settings", prefix + "/settings"}, {"tax-entities", "Tax entities", prefix + "/tax-entities"}, {"fx", "FX rates", prefix + "/fx"}, {"appearance", "Appearance", prefix + "/appearance"}, {"users", "Users", prefix + "/users"}, {"roles", "Roles", prefix + "/roles"},
 }
 
 type navItem struct{ Key, Label, Href string }

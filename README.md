@@ -189,3 +189,14 @@ scripts/release.sh v1.2.3   # release archives with checksums (and a cosign sign
 ## License
 
 [Apache License 2.0](LICENSE).
+
+## Public website
+
+The marketing and developer-entry website lives in [`web-home/`](web-home) and runs independently of the payment hub. It does not connect to the hub database or require payment-provider secrets.
+
+```bash
+make build-home
+./bin/paymux-home -listen 127.0.0.1:8090
+```
+
+Routes: `/`, `/integrations`, `/docs`, `/self-hosting`; readiness: `/healthz`. Bind behind your TLS reverse proxy for public hosting. The payment hub continues to serve its own operational dashboard and API reference separately.

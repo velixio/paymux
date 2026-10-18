@@ -1,9 +1,16 @@
 VERSION ?= $(shell git describe --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: build test test-pg test-all fmt ci run-dev kill
+.PHONY: build build-home run-home test test-pg test-all fmt ci run-dev kill
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/paymux/paymux.Version=$(VERSION)" -o bin/paymux ./cmd/paymux
+
+# Public website: independent binary, no payment-hub configuration or database.
+build-home:
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/paymux-home ./web-home
+
+run-home:
+	go run ./web-home
 
 test:
 	go test -race -timeout 30m ./...

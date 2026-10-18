@@ -2,7 +2,7 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h2>Audit log</h2>
+<h1>Audit log</h1>
 <form class="filters" method="get" action="/dashboard/audit">
 <input name="actor" value="{{.AuditFilter.Actor}}" placeholder="Actor id or type (user, api_key, system)" aria-label="Actor" size="32">
 <input name="action" value="{{.AuditFilter.Action}}" placeholder="Action, e.g. refund. or setting.update" aria-label="Action" size="28">

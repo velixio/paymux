@@ -2,7 +2,7 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h2>Alerts</h2>
+<h1>Alerts</h1>
 <p class="muted">Everything Paymux raised for the operator: provider silence, failed reconciliations, dispute deadlines, failing domains and hooks. Each is also sent by email and webhook if you set those up. A condition that happens again while its alert is open adds to the count instead of adding a row; acknowledge an alert once somebody has looked at it.</p>
 <form class="filters" method="get" action="/dashboard/alerts">
 <select name="state" aria-label="State"><option value="open"{{if or (eq .AlertFilter.State "") (eq .AlertFilter.State "open")}} selected{{end}}>Open</option><option value="acknowledged"{{if eq .AlertFilter.State "acknowledged"}} selected{{end}}>Acknowledged</option><option value="all"{{if eq .AlertFilter.State "all"}} selected{{end}}>All</option></select>

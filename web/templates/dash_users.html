@@ -2,7 +2,7 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h2>Users</h2>
+<h1>Users</h1>
 {{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <div class="table-scroll"><table class="grid">
@@ -33,9 +33,9 @@
 <h3>Add a user</h3>
 <form method="post" action="/dashboard/users" class="stack">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
-<input class="field" name="email" type="email" placeholder="Email" required>
+<input class="field" name="email" type="email" placeholder="Email" required aria-label="Email">
 <select class="field" name="role" aria-label="Role">{{range .Roles}}<option value="{{.}}">{{.}}</option>{{end}}</select>
-<input class="field" name="password" type="password" placeholder="Initial password (12+ characters)" autocomplete="new-password" minlength="12" required>
+<input class="field" name="password" type="password" placeholder="Initial password (12+ characters)" autocomplete="new-password" minlength="12" required aria-label="Initial password (12+ characters)">
 <button class="btn" type="submit">Create user</button>
 </form>
 {{end}}

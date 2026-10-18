@@ -4,7 +4,7 @@
 {{define "content"}}{{template "dash_open" .}}
 {{with .Pay}}
 <p><a href="/dashboard/payments">&larr; Payments</a></p>
-<h2>{{.ID}} <span class="status status-{{.Status}}">{{.Status}}</span> <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h2>
+<h1>{{.ID}} <span class="status status-{{.Status}}">{{.Status}}</span> <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h1>
 {{with $.Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 {{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <dl class="facts">
@@ -46,8 +46,8 @@
 <form method="post" action="/dashboard/payments/{{.ID}}/refund" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <h4>Refund</h4>
-<input class="field" name="amount" inputmode="decimal" placeholder="Amount in {{.Currency}} (blank = everything refundable)">
-<input class="field" name="reason" maxlength="500" placeholder="Reason">
+<label>Refund amount in {{.Currency}}<input class="field" name="amount" inputmode="decimal" placeholder="Blank = everything refundable" autocomplete="off"></label>
+<label>Reason for refund<input class="field" name="reason" maxlength="500" placeholder="Customer request…" autocomplete="off"></label>
 <select name="attempt_id" class="field" aria-label="Attempt to refund"><option value="">Default (the succeeded attempt)</option>{{range .Pickable}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select>
 <button class="btn" type="submit">Create refund</button>
 </form>

@@ -2,11 +2,11 @@
 <div class="table-scroll"><table class="grid settings">
 <thead><tr><th>Setting</th><th>Effective value</th><th>Source</th>{{if .CanWrite}}<th>Change</th>{{end}}</tr></thead>
 <tbody>
-{{range .Rows}}<tr id="setting-{{.Key}}">
-<td data-label="Setting"><code>{{.Key}}</code><p class="help">{{.Help}}</p></td>
+{{$group := ""}}{{range .Rows}}{{if ne .Group $group}}<tr class="setting-group" data-setting-group="{{.Group}}"><th colspan="{{if $.Table.CanWrite}}4{{else}}3{{end}}">{{.Group}}</th></tr>{{$group = .Group}}{{end}}<tr id="setting-{{.Key}}" data-setting-group="{{.Group}}">
+<td data-label="Setting"><span class="setting-name">{{.Label}}</span><code class="setting-key">{{.Key}}</code><p class="help">{{.Help}}</p></td>
 <td data-label="Effective value">{{if eq .Kind "json"}}<pre>{{.Value}}</pre>{{else}}<span class="eff">{{.Display}}</span>{{end}}{{with .Aux}} <small class="muted">({{.}})</small>{{end}}
 <p class="muted default">Default: {{.Default}}</p></td>
-<td data-label="Source">{{.Source}}</td>
+<td data-label="Source"><span class="source-badge">{{.Source}}</span></td>
 {{if $.Table.CanWrite}}<td data-label="Change">
 <form method="post" action="{{$.Table.Base}}/{{.Key}}" class="setting-form">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">

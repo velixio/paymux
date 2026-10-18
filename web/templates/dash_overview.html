@@ -2,8 +2,8 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h2>Overview <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h2>
-<p class="muted">Gross charges, refunds and net, per app and currency, from the ledger.</p>
+<h1>Overview <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h1>
+<p class="muted">Gross charges, refunds and net, per app and currency, from the ledger. Each currency is reported separately.</p><nav class="overview-actions" aria-label="Workspace actions"><a class="btn" href="/dashboard/payments">View payments</a><a href="/dashboard/providers">Manage provider accounts</a><a href="/docs">API reference</a></nav>
 {{range .Periods}}
 <section id="period-{{.ID}}">
 <h3>{{.Label}}</h3>
