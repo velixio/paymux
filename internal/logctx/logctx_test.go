@@ -22,9 +22,11 @@ func TestWithAndIDs(t *testing.T) {
 	}
 }
 
+type otherKey struct{}
+
 func TestNoteReachesTheRequestScopeFromDeeperCode(t *testing.T) {
 	root := Begin(context.Background())
-	child := context.WithValue(root, struct{}{}, 1) // a handler's derived context
+	child := context.WithValue(root, otherKey{}, 1) // a handler's derived context
 	Note(child, "org_id", "org_1")
 	if IDs(root)["org_id"] != "org_1" {
 		t.Errorf("%v", IDs(root))
