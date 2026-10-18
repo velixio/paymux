@@ -25,12 +25,26 @@ const JobPoll = "poll.due"
 // PollWindow is how long a non-terminal attempt or refund is polled.
 const PollWindow = 72 * time.Hour
 
+// CheckoutPollGrace is how long after its checkout expires an attempt that is
+// still only "created" (the customer may have paid at the provider and never
+// come back) keeps being polled.
+const CheckoutPollGrace = 60 * time.Minute
+
 var pollLadder = []time.Duration{time.Minute, 2 * time.Minute, 5 * time.Minute, 15 * time.Minute, time.Hour, 6 * time.Hour, 24 * time.Hour}
 
 // PollDelay is the wait before poll number count+1 (spec section 6: 1m, 2m,
 // 5m, 15m, 1h, 6h, then every 24h).
 func PollDelay(count int) time.Duration {
 	return pollLadder[min(max(count, 0), len(pollLadder)-1)]
+}
+
+var checkoutLadder = []time.Duration{2 * time.Minute, 5 * time.Minute, 10 * time.Minute, 20 * time.Minute, 30 * time.Minute}
+
+// CheckoutPollDelay is the wait before poll number count+1 of a started
+// checkout: 2m, 5m, 10m, 20m, then every 30m, until the checkout's expiry plus
+// CheckoutPollGrace.
+func CheckoutPollDelay(count int) time.Duration {
+	return checkoutLadder[min(max(count, 0), len(checkoutLadder)-1)]
 }
 
 // Register installs the job handlers (refund.submit, provider event
@@ -341,7 +355,7 @@ func (s *Service) PollDue(ctx context.Context) error {
 	cutoff := now.Add(-PollWindow)
 	var attempts, refunds []store.PollItem
 	err := s.o.DB.Read(ctx, func(q store.Querier) (err error) {
-		if attempts, err = store.ListDueAttempts(ctx, q, now, cutoff, pollBatch); err != nil {
+		if attempts, err = store.ListDueAttempts(ctx, q, now, cutoff, CheckoutPollGrace, pollBatch); err != nil {
 			return err
 		}
 		refunds, err = store.ListDueRefunds(ctx, q, now, cutoff, pollBatch)
@@ -354,7 +368,11 @@ func (s *Service) PollDue(ctx context.Context) error {
 		if _, err := s.SyncAttempt(ctx, it.ID); err != nil {
 			s.o.Logger.Warn("poll: attempt", "attempt", it.ID, "err", err)
 		}
-		next := now.Add(PollDelay(it.PollCount + 1))
+		delay := PollDelay(it.PollCount + 1)
+		if it.Checkout {
+			delay = CheckoutPollDelay(it.PollCount + 1)
+		}
+		next := now.Add(delay)
 		if err := s.o.DB.Write(ctx, func(tx store.Tx) error { return store.BumpAttemptPoll(ctx, tx, it.ID, it.PollCount+1, next) }); err != nil {
 			return err
 		}

@@ -184,15 +184,43 @@ func FindRefund(ctx context.Context, q Queryer, accountID, providerRef, provider
 type PollItem struct {
 	ID        string
 	PollCount int
+	// Checkout marks an attempt that is only a started checkout: created, with
+	// a next action but no provider order or payment id yet (a form posted to
+	// the provider). It is polled on a shorter, bounded schedule.
+	Checkout bool
 }
 
-// ListDueAttempts returns open attempts created after cutoff whose next poll
-// is due. Attempts that never reached a provider checkout are skipped.
-func ListDueAttempts(ctx context.Context, q Queryer, now, cutoff time.Time, limit int) ([]PollItem, error) {
-	return listDue(ctx, q, `SELECT id, poll_count FROM payment_attempts
-		WHERE (status IN ('pending','authorized') OR (status = 'created' AND (provider_order_id IS NOT NULL OR provider_payment_id IS NOT NULL)))
-		AND created_at > ? AND COALESCE(next_poll_at, created_at + 60000) <= ? ORDER BY COALESCE(next_poll_at, created_at + 60000) LIMIT ?`,
-		ms(cutoff), ms(now), limit)
+// ListDueAttempts returns open attempts whose next poll is due: attempts
+// created after cutoff that are pending, authorized or created and already
+// known to the provider by an id; and started checkouts (created, only a next
+// action) until checkoutGrace after their checkout expires. Attempts that never
+// reached a provider checkout are skipped.
+func ListDueAttempts(ctx context.Context, q Queryer, now, cutoff time.Time, checkoutGrace time.Duration, limit int) ([]PollItem, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id, poll_count,
+			CASE WHEN status = 'created' AND provider_order_id IS NULL AND provider_payment_id IS NULL THEN 1 ELSE 0 END
+		FROM payment_attempts
+		WHERE (
+			(created_at > ? AND (status IN ('pending','authorized') OR (status = 'created' AND (provider_order_id IS NOT NULL OR provider_payment_id IS NOT NULL))))
+			OR (status = 'created' AND provider_order_id IS NULL AND provider_payment_id IS NULL AND next_action IS NOT NULL
+				AND COALESCE(checkout_expires_at, created_at) + ? > ?)
+		) AND COALESCE(next_poll_at, created_at + 60000) <= ?
+		ORDER BY COALESCE(next_poll_at, created_at + 60000) LIMIT ?`,
+		ms(cutoff), checkoutGrace.Milliseconds(), ms(now), ms(now), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PollItem
+	for rows.Next() {
+		var it PollItem
+		var co int
+		if err := rows.Scan(&it.ID, &it.PollCount, &co); err != nil {
+			return nil, err
+		}
+		it.Checkout = co == 1
+		out = append(out, it)
+	}
+	return out, rows.Err()
 }
 
 // ListDueRefunds returns pending refunds created after cutoff whose next poll is due.
