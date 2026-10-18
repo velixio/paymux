@@ -17,3 +17,6 @@ Third-party dependencies, one line each with the reason.
 ## Frontend build dependencies
 
 The browser interfaces use React, TanStack Router and Query, Radix-based shadcn/ui components, Tailwind CSS and Vite. Bun installs and builds them from the committed `bun.lock`. Browser code adds no payment-provider credentials or backend APIs. Compiled assets are embedded in Go binaries; no JavaScript runtime is needed in production. The public site can also deploy as static files. See `web-dashboard/README.md` and `web-home/README.md` for the build and runtime boundaries.
+
+
+The public documentation renderer uses `react-markdown` and `remark-gfm` to render the repository's Markdown without raw HTML injection. Documentation code is loaded separately from the homepage. Vitest with V8 coverage, Testing Library, Happy DOM, and Playwright are development-only test tools; they are not needed by deployed Go binaries.

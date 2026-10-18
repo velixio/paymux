@@ -228,7 +228,9 @@ func runBuild(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return fail(err)
 	}
-	if err := goRun([]string{"CGO_ENABLED=0"}, "build", "-trimpath", "-o", dest, "."); err != nil {
+	// This main package is generated in a temporary directory, not a VCS
+	// checkout. Do not ask Go to stamp a repository that does not exist.
+	if err := goRun([]string{"CGO_ENABLED=0"}, "build", "-buildvcs=false", "-trimpath", "-o", dest, "."); err != nil {
 		return fail(err)
 	}
 	fmt.Fprintln(stdout, dest)

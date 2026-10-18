@@ -8,6 +8,7 @@ import {
   RouterProvider,
   useLocation,
   Link,
+  lazyRouteComponent,
 } from "@tanstack/react-router";
 import { ArrowUpRight, Menu, Code, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,7 @@ import {
 import { SiteLink } from "./components";
 import Home from "./home";
 import Integrations from "./integrations";
-import Docs from "./docs";
+const Docs = lazyRouteComponent(() => import("./docs"));
 import Hosting from "./hosting";
 import "../../frontend/styles.css";
 import "./marketing.css";
@@ -68,8 +69,11 @@ function Layout() {
       "/integrations": "Provider capabilities",
       "/self-hosting": "Self-hosting and security",
     };
-    document.title =
-      (titles[location.pathname] || "Page not found") + " · Paymux";
+    if (!(
+      location.pathname === "/docs" || location.pathname.startsWith("/docs/")
+    ))
+      document.title =
+        (titles[location.pathname] || "Page not found") + " · Paymux";
   }, [location.pathname]);
   return (
     <>
@@ -176,6 +180,11 @@ const routes = [
     component: Integrations,
   }),
   createRoute({ getParentRoute: () => root, path: "/docs", component: Docs }),
+  createRoute({
+    getParentRoute: () => root,
+    path: "/docs/$slug",
+    component: Docs,
+  }),
   createRoute({
     getParentRoute: () => root,
     path: "/self-hosting",

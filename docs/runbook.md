@@ -237,7 +237,7 @@ To change wording or add a language, put `i18n/<code>.json` in the `custom/` dir
 
 ## Webhook URLs to register at each provider
 
-Each provider account has its own URL: `https://pay.example.com/hooks/<provider_account_id>`. It is shown, with a copy button, on the account's page and in the *Providers* list. Register it in the provider's dashboard and subscribe to payment, refund and dispute events. Paymux treats a webhook only as a hint and re-fetches the object from the provider's API, so a missing event delays things rather than corrupting them; reconciliation catches the rest.
+Each provider account has its own URL: `https://pay.example.com/hooks/<provider_account_id>`. It is shown, with a copy button, on the account's detail page. Register it in the provider's dashboard and subscribe to payment, refund and dispute events. Paymux treats a webhook only as a hint and re-fetches the object from the provider's API, so a missing event delays things rather than corrupting them; reconciliation catches the rest.
 
 | Provider | What to do | Notes |
 |---|---|---|

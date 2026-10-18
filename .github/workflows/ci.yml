@@ -51,3 +51,18 @@ jobs:
           cache: true
       - name: scripts/ci.sh
         run: ./scripts/ci.sh
+
+  public-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install --with-deps chromium
+      - run: bun run test:home

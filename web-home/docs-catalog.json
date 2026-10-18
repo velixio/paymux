@@ -1,0 +1,149 @@
+[
+  {
+    "slug": "",
+    "title": "Documentation",
+    "section": "Getting started",
+    "description": "Find your path from first payment to operating your own hub.",
+    "source": "docs/README.md"
+  },
+  {
+    "slug": "installation",
+    "title": "Installation",
+    "section": "Getting started",
+    "description": "Build or download Paymux and choose a database.",
+    "source": "docs/installation.md"
+  },
+  {
+    "slug": "quickstart",
+    "title": "Simulator quickstart",
+    "section": "Getting started",
+    "description": "Create a test payment, receive an event, and issue a refund.",
+    "source": "docs/quickstart.md"
+  },
+  {
+    "slug": "glossary",
+    "title": "Product glossary",
+    "section": "Getting started",
+    "description": "Payments, attempts, provider accounts, and event delivery.",
+    "source": "GLOSSARY.md"
+  },
+  {
+    "slug": "api",
+    "title": "Application integration",
+    "section": "Build an integration",
+    "description": "Authentication, scopes, amounts, pagination, errors, and retries.",
+    "source": "docs/api-guide.md"
+  },
+  {
+    "slug": "payments",
+    "title": "Payments and routing",
+    "section": "Build an integration",
+    "description": "Checkout, payment states, routing, links, and refunds.",
+    "source": "docs/payments.md"
+  },
+  {
+    "slug": "webhooks",
+    "title": "Webhooks",
+    "section": "Build an integration",
+    "description": "Verify signatures and handle duplicate or delayed delivery.",
+    "source": "docs/webhooks.md"
+  },
+  {
+    "slug": "billing",
+    "title": "Subscriptions and invoicing",
+    "section": "Build an integration",
+    "description": "Recurring billing, mandates, documents, and payouts.",
+    "source": "docs/billing.md"
+  },
+  {
+    "slug": "capabilities",
+    "title": "Provider capabilities",
+    "section": "Connect providers",
+    "description": "Generated compatibility declarations for every connector.",
+    "source": "docs/capabilities.md"
+  },
+  {
+    "slug": "provider-verification",
+    "title": "Provider verification",
+    "section": "Connect providers",
+    "description": "Live-account verification gaps and remaining provider checks.",
+    "source": "docs/provider-verification.md"
+  },
+  {
+    "slug": "connectors",
+    "title": "Connector development",
+    "section": "Connect providers",
+    "description": "Build a Go connector or a signed remote service.",
+    "source": "docs/connectors.md"
+  },
+  {
+    "slug": "dashboard",
+    "title": "Dashboard operations",
+    "section": "Operate Paymux",
+    "description": "Apps, provider accounts, roles, settings, and investigations.",
+    "source": "docs/dashboard.md"
+  },
+  {
+    "slug": "configuration",
+    "title": "Configuration reference",
+    "section": "Operate Paymux",
+    "description": "Deployment variables, secrets, mail, SSO, and hooks.",
+    "source": "docs/configuration.md"
+  },
+  {
+    "slug": "runbook",
+    "title": "Deployment and recovery",
+    "section": "Operate Paymux",
+    "description": "Deploy with TLS, back up data, monitor, and recover.",
+    "source": "docs/runbook.md"
+  },
+  {
+    "slug": "security",
+    "title": "Security",
+    "section": "Operate Paymux",
+    "description": "Credentials, access boundaries, SSO, and secure delivery.",
+    "source": "docs/security.md"
+  },
+  {
+    "slug": "upgrades",
+    "title": "Upgrades",
+    "section": "Operate Paymux",
+    "description": "Migrations, verified updates, backups, and rollback.",
+    "source": "docs/upgrades.md"
+  },
+  {
+    "slug": "troubleshooting",
+    "title": "Troubleshooting",
+    "section": "Operate Paymux",
+    "description": "Diagnose failed requests, missing events, and billing issues.",
+    "source": "docs/troubleshooting.md"
+  },
+  {
+    "slug": "extending",
+    "title": "Hooks and framework mode",
+    "section": "Extend the hub",
+    "description": "Customize the hub using Go or JavaScript hooks.",
+    "source": "docs/extending.md"
+  },
+  {
+    "slug": "performance",
+    "title": "Performance",
+    "section": "Extend the hub",
+    "description": "Workload, benchmarks, and measured limitations.",
+    "source": "docs/performance.md"
+  },
+  {
+    "slug": "dependencies",
+    "title": "Dependencies",
+    "section": "Extend the hub",
+    "description": "Why each build and runtime dependency is present.",
+    "source": "docs/dependencies.md"
+  },
+  {
+    "slug": "testing",
+    "title": "Testing and coverage",
+    "section": "Extend the hub",
+    "description": "Run test suites, inspect coverage, and track the repository-wide target.",
+    "source": "docs/testing.md"
+  }
+]

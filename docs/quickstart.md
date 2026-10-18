@@ -2,11 +2,11 @@
 
 You will run Paymux on your machine, make a payment, click "Succeed" on a fake
 bank page, and watch the signed webhook, the invoice and a refund arrive. No
-payment provider account and no API keys are needed: the **simulator**, a
+payment provider account or provider credentials are needed: the **simulator**, a
 built-in provider for test mode, plays the bank.
 
-You need a terminal with `curl` and either a Go toolchain (to build) or a
-release download. Python 3 is used once, for a ten-line webhook receiver.
+You need a terminal with `curl` and either a release download or Git, Make,
+Go (the repository pins its toolchain), and Bun 1.4.3 or newer to build from source. Python 3 is used once, for a ten-line webhook receiver.
 
 ## 1. Get the binary (1 minute)
 
@@ -100,7 +100,9 @@ In the dashboard open your app, go to **Webhooks**, add the URL
 `http://127.0.0.1:9000/` and save. The signing secret (`whsec_...`) is shown
 once; a real app uses it to verify each webhook with the
 [Standard Webhooks](https://www.standardwebhooks.com) libraries. The receiver
-above skips that to stay short.
+above skips verification and is only for a local trial. For a signed receiver
+with a durable inbox, use [the verification example](../examples/webhook-receiver/receiver.py)
+and read [the webhook guide](webhooks.md).
 
 ## 6. Invoices (optional, 1 minute)
 

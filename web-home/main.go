@@ -3,6 +3,7 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"flag"
 	"io/fs"
 	"log"
@@ -17,6 +18,9 @@ import (
 //go:embed all:dist
 var assets embed.FS
 
+//go:embed docs-catalog.json
+var docsCatalog []byte
+
 func handler() http.Handler {
 	site, err := fs.Sub(assets, "dist")
 	if err != nil {
@@ -27,7 +31,18 @@ func handler() http.Handler {
 func websiteHandler(site fs.FS) http.Handler {
 	files := http.FileServerFS(site)
 	index, indexErr := fs.ReadFile(site, "index.html")
+	var guides []struct {
+		Slug string `json:"slug"`
+	}
+	if err := json.Unmarshal(docsCatalog, &guides); err != nil {
+		panic(err)
+	}
 	pages := map[string]bool{"/": true, "/integrations": true, "/docs": true, "/self-hosting": true}
+	for _, guide := range guides {
+		if guide.Slug != "" {
+			pages["/docs/"+guide.Slug] = true
+		}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if indexErr != nil {

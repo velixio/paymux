@@ -112,7 +112,7 @@ export default function Page() {
           </strong>
           <p>
             {"This table reflects connector declarations. Check the "}
-            <SiteLink href="https://github.com/velixio/paymux/blob/main/docs/provider-verification.md">
+            <SiteLink href="/docs/provider-verification">
               {"provider verification checklist"}
             </SiteLink>
             {
@@ -125,10 +125,7 @@ export default function Page() {
             "Whop acts as merchant of record; Paymux does not issue GST invoices for Whop payments. Payment methods, currencies and mandate caps also vary by connector."
           }
         </p>
-        <SiteLink
-          className="text-link"
-          href="https://github.com/velixio/paymux/blob/main/docs/capabilities.md"
-        >
+        <SiteLink className="text-link" href="/docs/capabilities">
           {"Read the complete generated capability matrix"}
         </SiteLink>
       </section>
@@ -145,10 +142,7 @@ export default function Page() {
             }
           </p>
         </div>
-        <SiteButton
-          className="button"
-          href="https://github.com/velixio/paymux/blob/main/docs/connectors.md"
-        >
+        <SiteButton className="button" href="/docs/connectors">
           {"Build a connector"}
         </SiteButton>
       </section>

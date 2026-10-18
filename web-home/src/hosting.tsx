@@ -43,7 +43,7 @@ export default function Page() {
               "The master key encrypts stored provider secrets. Terminate TLS, restrict administrative access, configure trusted proxies and retain a secure copy of the encryption key."
             }
           </p>
-          <SiteLink href="https://github.com/velixio/paymux/blob/main/docs/runbook.md">
+          <SiteLink href="/docs/runbook">
             {"Read the operations runbook"}
           </SiteLink>
         </article>
@@ -54,7 +54,7 @@ export default function Page() {
               "Use Litestream for SQLite or your Postgres backup strategy. Back up the database and required configuration, test restoration and back up before an upgrade."
             }
           </p>
-          <SiteLink href="https://github.com/velixio/paymux/blob/main/docs/upgrades.md">
+          <SiteLink href="/docs/upgrades">
             {"Plan upgrades and recovery"}
           </SiteLink>
         </article>
@@ -65,7 +65,7 @@ export default function Page() {
               "Health endpoints, structured logs, Prometheus metrics, audit records and operational alerts help you investigate. Configure monitoring, delivery endpoints and incident ownership."
             }
           </p>
-          <SiteLink href="https://github.com/velixio/paymux/blob/main/docs/security-review.md">
+          <SiteLink href="/docs/security">
             {"Read the security review"}
           </SiteLink>
         </article>

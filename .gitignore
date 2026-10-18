@@ -10,3 +10,8 @@
 /web/static/dashboard/
 /test-results/
 /playwright-report/
+
+/coverage/
+__pycache__/
+.coverage
+webhook-inbox.db
