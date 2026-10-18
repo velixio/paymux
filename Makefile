@@ -1,7 +1,7 @@
 BUN ?= bun
 VERSION ?= $(shell git describe --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: build build-paymux build-home build-examples dev run-home test test-pg test-all fmt ci run-dev kill
+.PHONY: build build-paymux build-home build-examples dev run-home test test-pg test-all fmt ci run-dev kill docker
 
 GOBUILD = CGO_ENABLED=0 go build -trimpath
 
@@ -36,7 +36,11 @@ dev: build
 	kill $$home $$hub 2>/dev/null; wait; exit $$status
 
 run-home:
-	$(BUN) run dev:home
+	$(BUN) run --cwd frontend dev:home
+
+# The hub image (build context = the repository root).
+docker:
+	docker build -f deploy/docker/Dockerfile --build-arg VERSION=$(VERSION) -t paymux:$(VERSION) -t paymux:latest .
 
 test:
 	go test -race -timeout 30m ./...
@@ -77,12 +81,12 @@ kill:
 
 .PHONY: frontend frontend-home frontend-install
 frontend-install:
-	$(BUN) install --frozen-lockfile
+	$(BUN) install --cwd frontend --frozen-lockfile
 
 frontend: frontend-install
-	$(BUN) run typecheck
-	$(BUN) run build:dashboard
+	$(BUN) run --cwd frontend typecheck
+	$(BUN) run --cwd frontend build:dashboard
 
 frontend-home: frontend-install
-	$(BUN) run typecheck
-	$(BUN) run build:home
+	$(BUN) run --cwd frontend typecheck
+	$(BUN) run --cwd frontend build:home

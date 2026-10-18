@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Build the frontend with `bun run build:home` before building this binary.
+// Build the frontend with `make frontend-home` (or `bun run --cwd frontend build:home`) before building this binary.
 // The tracked .keep lets Go source checks run before frontend installation.
 //
 //go:embed all:dist
@@ -58,7 +58,7 @@ func websiteHandler(site fs.FS) http.Handler {
 	})
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		if indexErr != nil {
-			http.Error(w, "Build the website with bun run build:home, then rebuild paymux-home.", http.StatusServiceUnavailable)
+			http.Error(w, "Build the website with make frontend-home, then rebuild paymux-home.", http.StatusServiceUnavailable)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

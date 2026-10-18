@@ -23,14 +23,14 @@ import {
 } from "./docs/catalog";
 import "./docs.css";
 
-const rawGuides = import.meta.glob<string>("../../docs/*.md", {
+const rawGuides = import.meta.glob<string>("../../../docs/*.md", {
   query: "?raw",
   import: "default",
   eager: true,
 });
 const content: Record<string, string> = Object.fromEntries(
   Object.entries(rawGuides).map(([file, text]) => [
-    file.replace(/^\.\.\/\.\.\//, ""),
+    file.replace(/^(\.\.\/)+/, ""),
     text,
   ]),
 );

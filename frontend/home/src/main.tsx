@@ -24,7 +24,7 @@ import Home from "./home";
 import Integrations from "./integrations";
 const Docs = lazyRouteComponent(() => import("./docs"));
 import Hosting from "./hosting";
-import "../../frontend/styles.css";
+import "../../styles.css";
 import "./marketing.css";
 import "./site.css";
 const links = [

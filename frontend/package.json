@@ -3,18 +3,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --config web-dashboard/vite.config.ts",
-    "dev:home": "vite --config web-home/vite.config.ts",
+    "dev": "vite --config dashboard/vite.config.ts",
+    "dev:home": "vite --config home/vite.config.ts",
     "build": "bun run build:dashboard && bun run build:home",
-    "build:dashboard": "vite build --config web-dashboard/vite.config.ts",
-    "build:home": "vite build --config web-home/vite.config.ts",
+    "build:dashboard": "vite build --config dashboard/vite.config.ts",
+    "build:home": "vite build --config home/vite.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test:frontend": "vitest run --config vitest.config.ts",
     "test:home": "playwright test --config playwright.home.config.ts",
-    "check:docs": "bun scripts/check-docs.ts",
+    "check:docs": "cd .. && bun scripts/check-docs.ts",
     "test:docs": "vitest run --config vitest.config.ts",
     "coverage:frontend": "vitest run --config vitest.config.ts --coverage",
-    "coverage:go": "bash scripts/coverage-go.sh"
+    "coverage:go": "bash ../scripts/coverage-go.sh"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.4",

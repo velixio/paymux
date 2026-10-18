@@ -41,8 +41,8 @@ Add behavioral tests for dashboard actions and errors, subscription renewal/mand
 ## Reproduce
 
 ```sh
-bun run coverage:go
-bun run coverage:frontend
+bun run --cwd frontend coverage:go
+bun run --cwd frontend coverage:frontend
 ```
 
 Both commands enforce the 100% target and currently fail their coverage gate. See [testing and coverage](testing.md) for baseline collection, PostgreSQL configuration, browser checks, and report locations.

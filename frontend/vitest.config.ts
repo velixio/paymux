@@ -3,12 +3,14 @@ import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   resolve: {
-    alias: { "@": fileURLToPath(new URL("./frontend", import.meta.url)) },
+    alias: { "@": fileURLToPath(new URL(".", import.meta.url)) },
   },
+  // The website renders the repository's Markdown guides (docs/*.md).
+  server: { fs: { allow: [fileURLToPath(new URL("..", import.meta.url))] } },
   test: {
     include: [
-      "web-home/src/**/*.spec.{ts,tsx}",
-      "web-dashboard/src/**/*.test.ts",
+      "home/src/**/*.spec.{ts,tsx}",
+      "dashboard/src/**/*.test.ts",
     ],
     environment: "happy-dom",
     coverage: {
@@ -20,11 +22,12 @@ export default defineConfig({
         lines: 100,
       },
       reporter: ["text", "json-summary", "html", "lcov"],
-      reportsDirectory: "coverage/frontend",
+      reportsDirectory: "../coverage/frontend",
       include: [
-        "frontend/**/*.{ts,tsx}",
-        "web-dashboard/src/**/*.{ts,tsx}",
-        "web-home/src/**/*.{ts,tsx}",
+        "components/**/*.{ts,tsx}",
+        "lib/**/*.{ts,tsx}",
+        "dashboard/src/**/*.{ts,tsx}",
+        "home/src/**/*.{ts,tsx}",
       ],
       exclude: ["**/*.test.*", "**/*.spec.*"],
     },

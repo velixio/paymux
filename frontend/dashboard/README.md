@@ -15,8 +15,8 @@ The original Go view is available until React mounts and remains a no-JavaScript
 Install Bun 1.4.3 or newer. From the repository root:
 
 ```sh
-bun install --frozen-lockfile
-bun run dev
+bun install --cwd frontend --frozen-lockfile
+bun run --cwd frontend dev
 ```
 
 Run the existing Go hub separately at `http://localhost:18080` (adjust the proxy in `vite.config.ts` for another address). Open `http://localhost:5173/dashboard/overview`. Vite serves only the React shell and assets; requests for page data, sign-in and form actions are proxied to the existing hub. No development API is introduced.
@@ -24,14 +24,14 @@ Run the existing Go hub separately at `http://localhost:18080` (adjust the proxy
 ## Build and check
 
 ```sh
-bun run typecheck
-bun run test:frontend
+bun run --cwd frontend typecheck
+bun run --cwd frontend test:frontend
 make build
 ```
 
 `make build` compiles the dashboard frontend before embedding its assets into `bin/paymux`. Node or Bun is not required at runtime. Direct `go build` without the frontend build retains the server-rendered fallback but does not include the React UI.
 
-Shared UI components are installed from the official shadcn registry. Add components with `bunx shadcn@latest add COMPONENT`. Vite builds client assets only; TanStack Start and server-side rendering are not used.
+Shared UI components are installed from the official shadcn registry. Add components with `(cd frontend && bunx shadcn@latest add COMPONENT)`. Vite builds client assets only; TanStack Start and server-side rendering are not used.
 
 ## Compact application shell
 

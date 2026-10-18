@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { guides, guidePath, headings } from "../web-home/src/docs/catalog";
+import { guides, guidePath, headings } from "../frontend/home/src/docs/catalog";
 
 const errors: string[] = [];
 const seen = new Set<string>();

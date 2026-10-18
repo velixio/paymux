@@ -44,7 +44,7 @@ export default defineConfig({
     tailwindcss(),
   ],
   resolve: {
-    alias: { "@": fileURLToPath(new URL("../frontend", import.meta.url)) },
+    alias: { "@": fileURLToPath(new URL("..", import.meta.url)) },
   },
   server: {
     port: 5173,
@@ -57,7 +57,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: "../web/static/dashboard",
+    outDir: "../../web/static/dashboard",
     emptyOutDir: true,
     cssCodeSplit: false,
     rollupOptions: {

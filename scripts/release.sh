@@ -36,9 +36,9 @@ for t in $TARGETS; do
     *) echo "release: unsupported target '$t' (supported: $SUPPORTED)" >&2; exit 2 ;;
   esac
 done
-bun install --frozen-lockfile
-bun run typecheck
-bun run build
+bun install --cwd frontend --frozen-lockfile
+bun run --cwd frontend typecheck
+bun run --cwd frontend build
 
 OUT="${OUT:-dist/release/$VERSION}"
 rm -rf "$OUT"

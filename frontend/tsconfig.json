@@ -11,16 +11,11 @@
     "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "paths": {
-      "@/*": ["./frontend/*"]
+      "@/*": ["./*"]
     },
     "types": ["vite/client"],
     "resolveJsonModule": true
   },
-  "include": [
-    "frontend",
-    "web-dashboard",
-    "web-home/src",
-    "web-home/vite.config.ts"
-  ],
+  "include": ["components", "lib", "dashboard", "home/src", "home/vite.config.ts"],
   "exclude": ["**/*.test.ts"]
 }

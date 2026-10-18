@@ -74,7 +74,7 @@ import {
   useRuntime,
 } from "./runtime";
 import { PageContent, RenderNode } from "./render";
-import "../../frontend/styles.css";
+import "../../styles.css";
 import "./workspace.css";
 import "./app-shell.css";
 const source = document.getElementById("paymux-server-page");

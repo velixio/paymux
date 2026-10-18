@@ -13,13 +13,18 @@ export default defineConfig({
       name: "go-embed-placeholder",
       apply: "build",
       writeBundle() {
-        writeFileSync(new URL("dist/.keep", import.meta.url), "");
+        writeFileSync(new URL("../../web-home/dist/.keep", import.meta.url), "");
       },
     },
   ],
   resolve: {
-    alias: { "@": fileURLToPath(new URL("../frontend", import.meta.url)) },
+    alias: { "@": fileURLToPath(new URL("..", import.meta.url)) },
   },
-  server: { port: 5174 },
-  build: { outDir: "dist", assetsInlineLimit: 0, emptyOutDir: true },
+  server: {
+    port: 5174,
+    // The guides are rendered from the repository's Markdown (docs/*.md).
+    fs: { allow: [fileURLToPath(new URL("../..", import.meta.url))] },
+  },
+  // The Go website server embeds web-home/dist.
+  build: { outDir: "../../web-home/dist", assetsInlineLimit: 0, emptyOutDir: true },
 });
