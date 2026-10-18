@@ -1,5 +1,5 @@
 import { setNonce } from "get-nonce";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import {
   createRootRoute,
@@ -18,6 +18,8 @@ import {
 import {
   ArrowUpRight,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
   Sun,
   Moon,
@@ -33,6 +35,17 @@ import {
   SlidersHorizontal,
   Search,
   Code,
+  Link as LinkIcon,
+  Repeat,
+  Scale,
+  BarChart3,
+  Bell,
+  ScrollText,
+  Users,
+  UserRoundCog,
+  Palette,
+  Coins,
+  Landmark,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -63,6 +76,7 @@ import {
 import { PageContent, RenderNode } from "./render";
 import "../../frontend/styles.css";
 import "./workspace.css";
+import "./app-shell.css";
 const source = document.getElementById("paymux-server-page");
 const mount = document.getElementById("paymux-react-root");
 if (mount?.dataset.styleNonce) setNonce(mount.dataset.styleNonce);
@@ -95,13 +109,22 @@ const sections = [
 const iconMap: Record<string, React.ComponentType<{ size?: number }>> = {
   overview: House,
   payments: CreditCard,
-  "payment-links": Webhook,
-  subscriptions: Layers,
+  "payment-links": LinkIcon,
+  subscriptions: Repeat,
   invoices: FileText,
   disputes: ShieldCheck,
   apps: Code,
   providers: Building2,
   settings: Settings,
+  reconciliation: Scale,
+  reports: BarChart3,
+  alerts: Bell,
+  audit: ScrollText,
+  users: Users,
+  roles: UserRoundCog,
+  appearance: Palette,
+  fx: Coins,
+  "tax-entities": Landmark,
 };
 function Logo() {
   return (
@@ -113,7 +136,7 @@ function Logo() {
       <span aria-hidden>
         <ArrowUpRight size={23} />
       </span>
-      paymux
+      <b className="react-wordmark">paymux</b>
     </WorkspaceLink>
   );
 }
@@ -143,6 +166,8 @@ function Navigation({
                   className={
                     "navigation-item " + (item.active ? "selected" : "")
                   }
+                  aria-label={item.label}
+                  title={item.label}
                   aria-current={item.active ? "page" : undefined}
                 >
                   <Icon size={16} />
@@ -191,6 +216,14 @@ function Workspace({
   loading: boolean;
 }) {
   const [menu, setMenu] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("paymux-sidebar-collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const contentRef = useRef<HTMLElement>(null);
   const loc = useLocation();
   const [dark, setDark] = useState(() => {
     try {
@@ -234,10 +267,20 @@ function Workspace({
         );
     } catch {}
   }, [page.theme]);
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [loc.pathname, loc.searchStr]);
   const name = page.nav.find((n) => n.active)?.label || page.title;
   return (
     <RuntimeProvider page={page}>
-      <div className={"paymux-react " + (page.auth ? "auth-workspace" : "")}>
+      <div
+        className={
+          "paymux-react " +
+          (page.auth
+            ? "auth-workspace"
+            : "app-shell " + (collapsed ? "sidebar-collapsed" : ""))
+        }
+      >
         <a href="#react-workspace" className="react-skip">
           Skip to workspace
         </a>
@@ -251,7 +294,7 @@ function Workspace({
           </div>
         ) : (
           <>
-            <aside className="react-sidebar">
+            <aside className="react-sidebar" id="desktop-workspace-navigation">
               <Logo />
               <div className="workspace-identity">
                 <span className="workspace-initial">P</span>
@@ -290,6 +333,31 @@ function Workspace({
                       <Navigation page={page} close={() => setMenu(false)} />
                     </SheetContent>
                   </Sheet>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="desktop-sidebar-trigger"
+                    aria-label={
+                      collapsed ? "Expand sidebar" : "Collapse sidebar"
+                    }
+                    aria-expanded={!collapsed}
+                    aria-controls="desktop-workspace-navigation"
+                    onClick={() => {
+                      setCollapsed(!collapsed);
+                      try {
+                        localStorage.setItem(
+                          "paymux-sidebar-collapsed",
+                          String(!collapsed),
+                        );
+                      } catch {}
+                    }}
+                  >
+                    {collapsed ? (
+                      <PanelLeftOpen aria-hidden="true" size={17} />
+                    ) : (
+                      <PanelLeftClose aria-hidden="true" size={17} />
+                    )}
+                  </Button>
                   <span className="breadcrumb-root">Workspace</span>
                   <ChevronRight size={14} />
                   <strong>{name}</strong>
@@ -347,6 +415,7 @@ function Workspace({
               ))}
               <section
                 className="react-content"
+                ref={contentRef}
                 id="react-workspace"
                 tabIndex={-1}
               >

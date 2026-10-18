@@ -1,0 +1,510 @@
+/* Operational density. Auth screens retain the spacious sign-in layout. */
+.app-shell {
+  --shell-sidebar-width: 208px;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.app-shell .react-sidebar {
+  width: var(--shell-sidebar-width);
+  padding: 16px 8px 10px;
+  overflow: hidden;
+}
+.app-shell .react-logo {
+  font-size: 21px;
+  padding: 0 10px;
+  gap: 8px;
+  min-height: 30px;
+  flex-shrink: 0;
+}
+.react-wordmark {
+  font: inherit;
+}
+.app-shell .react-logo > span {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.app-shell .workspace-identity {
+  padding: 8px;
+  margin: 16px 2px 7px;
+  gap: 8px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.app-shell .workspace-initial {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+.app-shell .workspace-identity small {
+  font-size: 10px;
+}
+.app-shell .react-sidebar .react-navigation {
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+.app-shell .navigation-group {
+  padding-top: 12px;
+}
+.app-shell .navigation-caption {
+  padding: 0 10px 5px;
+  font-size: 10px;
+}
+.app-shell .navigation-item {
+  min-height: 32px;
+  padding: 6px 10px;
+  gap: 9px;
+  border-radius: 5px;
+  margin-bottom: 1px;
+  font-size: 12px;
+}
+.app-shell .sidebar-bottom {
+  padding: 13px 10px 0;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.app-shell .react-workspace {
+  margin-left: var(--shell-sidebar-width);
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.app-shell .react-header {
+  min-height: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  padding: 6px 20px;
+  gap: 10px;
+}
+.app-shell .header-location {
+  gap: 9px;
+  min-width: 0;
+}
+.app-shell .header-location strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell .header-controls {
+  gap: 5px;
+  flex-shrink: 0;
+}
+.app-shell .header-controls [data-slot="button"],
+.app-shell .desktop-sidebar-trigger {
+  min-height: 32px;
+  height: 32px;
+  width: 32px;
+  padding: 6px;
+}
+.app-shell .account-trigger {
+  border-radius: 6px;
+}
+.app-shell .react-content {
+  padding: 20px;
+  overflow: auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+.app-shell .react-content:focus {
+  outline-offset: -3px;
+}
+.app-shell .react-content > h1 {
+  font-size: 22px;
+  letter-spacing: -0.5px;
+  margin-bottom: 6px;
+}
+.app-shell .react-content h2 {
+  font-size: 18px;
+  margin: 20px 0 10px;
+}
+.app-shell .react-content h3 {
+  font-size: 15px;
+  margin: 20px 0 10px;
+}
+.app-shell .react-content h4 {
+  font-size: 13px;
+  margin: 14px 0 8px;
+}
+.app-shell .react-content p {
+  margin: 6px 0 10px;
+}
+.app-shell .muted {
+  font-size: 12px;
+}
+.app-shell .filters {
+  margin: 16px 0 12px;
+  padding: 10px;
+  gap: 8px;
+  border-radius: 6px;
+}
+.app-shell .react-content [data-slot="input"],
+.app-shell .react-content [data-slot="native-select"] {
+  min-height: 34px;
+  height: 34px;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 5px;
+}
+.app-shell .react-content [data-slot="native-select"] {
+  padding-right: 30px;
+}
+.app-shell .react-content [data-slot="textarea"] {
+  min-height: 80px;
+  padding: 8px 10px;
+  font-size: 12px;
+  border-radius: 5px;
+}
+.app-shell .react-content [data-slot="input"][type="checkbox"],
+.app-shell .react-content [data-slot="input"][type="radio"] {
+  height: 16px;
+  min-height: 0;
+  width: 16px;
+  padding: 0;
+}
+.app-shell .react-content [data-slot="button"] {
+  min-height: 32px;
+  height: auto;
+  padding: 6px 11px;
+  font-size: 12px;
+  border-radius: 5px;
+}
+.app-shell .react-content .table-scroll {
+  margin: 12px 0 16px;
+  border-radius: 6px;
+}
+.app-shell .react-content [data-slot="table-head"] {
+  padding: 9px 12px;
+  font-size: 11px;
+}
+.app-shell .react-content [data-slot="table-cell"] {
+  padding: 9px 12px;
+  line-height: 1.5;
+  vertical-align: middle;
+}
+.app-shell .react-content .status,
+.app-shell .react-content .mode {
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.app-shell .react-content form.stack {
+  padding: 16px;
+  margin: 14px 0;
+  border-radius: 6px;
+}
+.app-shell .react-content dl.facts {
+  padding: 16px;
+  margin: 14px 0;
+  gap: 8px 18px;
+  border-radius: 6px;
+}
+.app-shell .react-content fieldset {
+  padding: 10px 14px;
+  margin: 12px 0;
+  border-radius: 5px;
+}
+.app-shell .react-content label {
+  margin: 6px 0;
+}
+.app-shell .react-content .tabs {
+  gap: 18px;
+  margin: 15px 0;
+}
+.app-shell .react-content .tabs > a {
+  padding: 8px 0;
+}
+.app-shell .react-content .policy-tabs {
+  padding: 8px 10px;
+  min-height: 40px;
+  gap: 4px;
+}
+.app-shell .react-content .policy-tabs > [data-slot="tabs-trigger"] {
+  padding: 6px 10px;
+  min-height: 30px;
+  font-size: 11px;
+  border-radius: 4px;
+}
+.app-shell .react-content .settings p.help {
+  line-height: 1.5;
+  margin: 5px 0;
+  font-size: 12px;
+}
+.app-shell .react-content .setting-key {
+  margin-top: 2px;
+}
+.app-shell .react-content .setting-form {
+  gap: 6px;
+}
+.app-shell .react-content .setting-nav {
+  margin: 14px 0;
+  gap: 6px;
+}
+.app-shell .react-content .setting-nav a {
+  padding: 6px 10px;
+  min-height: 32px;
+}
+.app-shell .react-content .setting-scope {
+  margin: 14px 0;
+  padding: 5px 12px;
+}
+.app-shell .react-content .routing-disclosure {
+  padding: 14px;
+  margin: 16px 0;
+  border-radius: 6px;
+}
+.app-shell .react-content .rc-row {
+  gap: 10px;
+}
+.app-shell .react-content .overview-actions {
+  gap: 15px;
+  margin: 14px 0 18px;
+}
+.app-shell .workspace-warning {
+  padding: 6px 20px;
+  flex-shrink: 0;
+}
+.app-shell .workspace-bottom {
+  margin: 0;
+  padding: 5px 20px;
+  min-height: 26px;
+  flex-shrink: 0;
+  background: var(--card);
+  font-size: 10px;
+}
+.app-shell .desktop-sidebar-trigger {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.app-shell.sidebar-collapsed {
+  --shell-sidebar-width: 64px;
+}
+.sidebar-collapsed .react-sidebar .react-wordmark,
+.sidebar-collapsed .react-sidebar .workspace-identity,
+.sidebar-collapsed .react-sidebar .navigation-caption,
+.sidebar-collapsed .react-sidebar .navigation-item > span,
+.sidebar-collapsed .react-sidebar .sidebar-bottom {
+  display: none;
+}
+.sidebar-collapsed .react-sidebar .react-logo {
+  padding: 0;
+  justify-content: center;
+}
+.sidebar-collapsed .react-sidebar .react-navigation {
+  margin-top: 15px;
+}
+.sidebar-collapsed .react-sidebar .navigation-group {
+  padding-top: 8px;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.sidebar-collapsed .react-sidebar .navigation-item {
+  justify-content: center;
+  padding: 8px;
+  min-height: 36px;
+}
+@media (pointer: coarse) {
+  .app-shell .navigation-item,
+  .app-shell .react-content [data-slot="button"],
+  .app-shell
+    .react-content
+    [data-slot="input"]:not([type="checkbox"]):not([type="radio"]),
+  .app-shell .react-content [data-slot="native-select"],
+  .app-shell .react-content .policy-tabs > [data-slot="tabs-trigger"],
+  .app-shell .react-content .setting-nav a {
+    min-height: 44px;
+  }
+  .app-shell .header-controls [data-slot="button"],
+  .app-shell .desktop-sidebar-trigger {
+    height: 44px;
+    width: 44px;
+  }
+  .app-shell .react-header {
+    height: 58px;
+    min-height: 58px;
+  }
+}
+@media (max-width: 760px) {
+  .app-shell .react-workspace {
+    margin-left: 0;
+  }
+  .app-shell .desktop-sidebar-trigger {
+    display: none;
+  }
+  .app-shell .react-header {
+    height: 58px;
+    min-height: 58px;
+    padding: 6px 10px;
+  }
+  .app-shell .header-location {
+    gap: 4px;
+  }
+  .app-shell .header-location > svg {
+    display: none;
+  }
+  .app-shell .header-controls {
+    gap: 1px;
+  }
+  .app-shell .header-controls [data-slot="button"] {
+    min-height: 44px;
+    height: 44px;
+    width: 44px;
+    padding: 8px;
+  }
+  .app-shell .react-content {
+    padding: 16px 12px;
+  }
+  .app-shell .react-content > h1 {
+    font-size: 21px;
+  }
+  .app-shell .workspace-bottom {
+    padding-inline: 12px;
+  }
+  .app-shell .workspace-warning {
+    padding-inline: 12px;
+  }
+  .app-shell
+    .react-content
+    [data-slot="input"]:not([type="checkbox"]):not([type="radio"]),
+  .app-shell .react-content [data-slot="native-select"],
+  .app-shell .react-content [data-slot="button"] {
+    min-height: 44px;
+  }
+  .app-shell .react-content .policy-tabs > [data-slot="tabs-trigger"],
+  .app-shell .react-content .setting-nav a {
+    min-height: 44px;
+  }
+  .app-shell .react-content .policy-table td {
+    padding: 8px 12px;
+  }
+  .app-shell .react-content .policy-table tr {
+    padding: 7px 0;
+  }
+  .app-shell .react-content .policy-table td[data-label]::before {
+    margin-bottom: 3px;
+  }
+  .app-shell .react-content .policy-tabs {
+    padding: 8px;
+  }
+  .app-shell .react-content .settings p.help {
+    max-width: none;
+  }
+  .app-shell .react-content .facts {
+    gap: 4px;
+  }
+}
+/* Go page/form styles share the React palette when the personal theme changes. */
+.app-shell,
+.account-menu,
+[data-slot="dialog-content"] {
+  --color-fg: var(--foreground);
+  --color-bg: var(--background);
+  --color-muted: var(--muted-foreground);
+  --color-line: var(--border);
+  --color-nav: var(--card);
+  --color-accent: var(--primary);
+  --accent: var(--primary);
+  --surface: var(--card);
+}
+.app-shell .header-controls [data-slot="button"],
+.app-shell .desktop-sidebar-trigger,
+.app-shell .react-content .setting-name,
+.app-shell .react-content .setting-group th,
+.app-shell .react-content [data-slot="native-select"],
+.app-shell .react-content [data-slot="textarea"] {
+  color: var(--foreground);
+}
+.app-shell .react-content [data-slot="button"] {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: var(--input);
+}
+.app-shell .react-content .btn[data-slot="button"] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.app-shell .react-content .linkbtn[data-slot="button"] {
+  background: transparent;
+  color: var(--primary);
+}
+.app-shell .react-content .policy-tabs > [data-slot="tabs-trigger"] {
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.app-shell .react-content .policy-tabs > [data-state="active"] {
+  background: var(--ui-accent);
+  color: var(--accent-foreground);
+}
+
+.app-shell .react-content [data-slot="button"]:hover {
+  background: color-mix(in srgb, var(--foreground) 5%, var(--card));
+}
+.app-shell .react-content .btn[data-slot="button"]:hover {
+  background: color-mix(in srgb, var(--foreground) 10%, var(--primary));
+}
+.app-shell .react-content .linkbtn[data-slot="button"]:hover {
+  background: var(--ui-accent);
+}
+@media (pointer: coarse) {
+  .app-shell .react-logo {
+    min-height: 44px;
+  }
+  .app-shell .workspace-bottom a {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-shell .react-content .setting-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    padding: 2px 0 6px;
+  }
+  .app-shell .react-content .setting-nav a {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .app-shell .react-content .policy-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .app-shell .react-content .policy-tabs > [data-slot="tabs-trigger"] {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .app-shell .filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: end;
+  }
+  .app-shell .filters > input[type="search"],
+  .app-shell .filters > [data-slot="button"] {
+    grid-column: 1 / -1;
+  }
+  .app-shell .filters > label.filter-date-field {
+    min-width: 0;
+  }
+}
+.app-shell .account-trigger {
+  width: 32px;
+  min-height: 32px;
+  height: 32px;
+}
+@media (pointer: coarse), (max-width: 760px) {
+  .app-shell .header-controls .account-trigger {
+    width: 44px;
+    min-height: 44px;
+    height: 44px;
+  }
+}
