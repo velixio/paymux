@@ -38,13 +38,20 @@ run its `sandbox_test.go` (skipped without credentials; see
   Confirm both are always present on authorized and captured payments.
 - [ ] **Order lookup by receipt** (`GET /v1/orders?receipt=`): confirm the filter
   is honoured. Paymux checks each order's `receipt` anyway.
-- [ ] **Dispute evidence** (`disputes_respond.go`): the field list, the document
-  reference shape (`{"id": ...}`) and the `others` shape.
+- [x] **Dispute evidence** (`disputes_respond.go`), from Razorpay's Contest a
+  Dispute documentation (no secret in the last session, no test dispute): the
+  named fields take lists of document id **strings** (the connector sent
+  `{"id": ...}` objects; fixed), `others` is a list of `{type, document_ids}`,
+  and a contest needs at least one document (a summary alone is now refused
+  before anything is sent). Still unverified against a live dispute.
 - [ ] **Settlements** (`settlements.go`): `settled_at` taken from the
   settlement's `created_at`; refund lines read from `amount`, falling back to
   minus `debit`; line types other than payment and refund reported as adjustments.
-- [ ] **Subscriptions** (`subscriptions.go`): the `total_count` limits per period
-  and the `schedule_change_at` semantics of `PATCH /v1/subscriptions`.
+- [x] **Subscriptions** (`subscriptions.go`), from the documentation only:
+  `total_count` times the interval may not run past 100 years (1200 monthly, 100
+  yearly, 5200 weekly, 36500 daily; now refused before the call), `schedule_change_at`
+  is `now` or `cycle_end` (cycle_end is used), and a UPI subscription cannot be
+  updated (mapped to `ErrUnsupported`). Not run against the test API.
 
 ## Stripe
 
@@ -151,9 +158,11 @@ reports it as a payment still waiting for the customer (`requires_action`), not
   `mandate_revoke` exist, with the `requestId` fix above.
 - [ ] **Verification debit** (`payu.go`): does PayU reverse the Rs 1 debit of a
   mandate registration itself (`RefundsVerificationDebit: true` assumes it does)?
-- [ ] **Chargebacks.** The Chargeback API (a separate token, a 20-day window) is
-  not built, so PayU disputes are entered by hand. The OAuth client credentials
-  PayU issued (scope `create_payment_links` only) do not cover it.
+- [ ] **Chargebacks** (`chargebacks.go`): built on the Chargeback API (read,
+  accept, contest) behind its own token (`chargeback_token`,
+  `chargeback_merchant_id`); the OAuth client credentials PayU issued (scope
+  `create_payment_links` only) do not cover it. From the documentation and
+  fakes; no chargeback token was available, so nothing ran live.
 - [ ] **Settlements.** `get_settlement_details` timed out on the test environment;
   PayU is not a `Settler`.
 - [x] **Refund listing.** PayU has no listing API Paymux uses (`ListRefunds` is
@@ -246,15 +255,19 @@ Fixed on the way:
   "signing keys" generated in Developer Space verify the **widget response** and
   the **payment link return URLs**. Sandbox webhooks are registered in the sandbox
   portal (Settings, Webhooks) and signed with the sandbox credentials.
-- [ ] **Mandates** (`mandate.go`): the connector's endpoints (`POST /mandates`,
-  `.../charges`, `.../revoke`) do not exist (`POST /api/v1/mandates` answers 405).
-  The real flow per Zoho's docs: a customer (Customers API,
-  `ZohoPay.customers.CREATE`), an enrollment payment session
-  (`type: mandate_enrollment`, `mandate_details`), `POST /mandates/notify`
-  (24 hours ahead), an execution session (`type: mandate_execution`) and
-  `POST /mandates/execute`, `GET /mandates/{id}` (exists; unknown id: 400
-  `resource_does_not_exist`). Not built; Zoho mandates will not work until the
-  connector is rewritten to that flow.
+- [ ] **Mandates** (`mandate.go`), rewritten to Zoho's real flow: a customer
+  (Customers API, cached), an enrollment payment session (`type:
+  mandate_enrollment`), `GET /mandates/{id}`, `POST /mandates/notify` (T+1 to T+3
+  days, IST), an execution session (`type: mandate_execution`) plus `POST
+  /mandates/execute`. The old endpoints never existed. Built from the
+  documentation and unit tests with fakes; the sandbox tests
+  (`sandbox_mandate_test.go`, `-tags sandbox`, `ZOHO_TEST_*`, `sandbox: true`)
+  **have not run**: the sandbox refresh token is not connected yet. UPI
+  unattended debits are capped at Rs 15,000 and refused in NPCI's closed windows
+  (`ErrTemporary`); Zoho has no revoke API (`RevokeMandate` is `ErrUnsupported`,
+  and the engine treats that as done). Unverified until the sandbox runs: the
+  enrollment/execution session shapes, the mandate id in the payment, the notify
+  answer.
 - [ ] **Verification debit:** does Zoho reverse the Rs 1 debit itself?
 - [ ] **Hosted checkout** (`hosted_checkout_url`): the session returns an
   `access_key` and takes `configurations.hosted_checkout_parameters`
@@ -282,11 +295,22 @@ Fixed on the way:
   the payment's cumulative `refunded_amount`. With two partial refunds in flight
   the amounts can be reported together; Paymux then refuses the mismatch and the
   refund stays pending. Check what the Resolution Center sends.
-- [ ] **Subscriptions** (`subscriptions.go`): the inline renewal plan of
-  `POST /checkout_configurations`, `billing_period` in days, `trial_period_days`,
-  membership statuses and fields, `POST /memberships/{id}/cancel` and its
-  `cancellation_mode`, and the `membership.*` event names.
-- [ ] **Disputes.** The dispute evidence API is not built.
+- [x] **Subscriptions** (`subscriptions.go`), run on the sandbox (2026-10-18):
+  the inline renewal plan works, but **`initial_price` on a non-trial renewal
+  plan doubled the first charge** (fixed: it is omitted; a $9.99 first payment
+  was verified); a membership carries `current_period_start/end` and a
+  `renewal_price` object; status "canceling" means active until the period ends.
+  Cancellation and the `membership.*` event names are from the documentation.
+- [x] **Payments and refunds**, re-run on the sandbox: refunds above the
+  remainder are clamped by Whop with a 200, so the connector reads the payment
+  first and refuses with `ErrNotRefundable`; refund objects are `rf_...` ids
+  with the currency inside `amount`.
+- [ ] **Disputes** (`disputes.go`): list, fetch, `update_evidence` (files are
+  uploaded to `POST /files`, then PUT to the returned `upload_url`) and
+  `submit_evidence`; Whop has no accept call (`ErrUnsupported`). Built from the
+  documentation with fakes. The sandbox key lacks the `payment:dispute:read`
+  scope, so no live dispute call succeeded: add that scope (and the write scope
+  for evidence) to the Whop key to verify.
 
 ## Cashfree
 

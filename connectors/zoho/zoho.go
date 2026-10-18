@@ -57,8 +57,11 @@ var info = connector.Info{
 	Methods:      []string{"upi", "card", "netbanking"},
 	// UPI AutoPay mandates only; the issuer notifies the customer before each
 	// debit, so there is no pre-debit API (NotifyPreDebit returns ErrUnsupported).
-	SubscriptionModes:        []connector.BillingMode{connector.MerchantTriggered},
-	MandateLimits:            []connector.MandateLimit{{Method: "upi", Currency: "INR"}},
+	SubscriptionModes: []connector.BillingMode{connector.MerchantTriggered},
+	// RBI: an unattended UPI AutoPay debit is capped at Rs 15,000.
+	MandateLimits: []connector.MandateLimit{{Method: "upi", Currency: "INR", MaxAmount: 1_500_000}},
+	// Each execution session needs its own notice, retries included.
+	PreDebitPerAttempt:       true,
 	RefundsVerificationDebit: true, // TODO(spec): unconfirmed that Zoho reverses the Rs 1 verification debit itself
 	MandateSetupAmount:       100,  // the Rs 1 verification debit of a registration without a charge due (trials)
 	// Rs 1, as the verification debit shows Zoho takes; Zoho publishes no other minimum (see docs/provider-verification.md).
@@ -153,32 +156,37 @@ func (n number) minor() (int64, error) {
 
 // methodField is payment_method: an object ({"type":"upi","upi":{...}}) in the
 // real API, a plain string in older docs.
-type methodField string
+type methodField struct {
+	Type string
+	// MandateID is set on the payment that registered or was made through a UPI mandate.
+	MandateID string
+}
 
 func (m *methodField) UnmarshalJSON(b []byte) error {
 	var s string
 	if json.Unmarshal(b, &s) == nil {
-		*m = methodField(s)
+		*m = methodField{Type: s}
 		return nil
 	}
 	var o struct {
-		Type string `json:"type"`
+		Type      string `json:"type"`
+		MandateID string `json:"mandate_id"`
 	}
 	if err := json.Unmarshal(b, &o); err != nil {
-		*m = ""
+		*m = methodField{}
 		return nil // an unexpected shape must not fail the whole payment
 	}
-	*m = methodField(o.Type)
+	*m = methodField{Type: o.Type, MandateID: o.MandateID}
 	return nil
 }
 
 // methodName maps Zoho's payment method types to the names Paymux uses.
 func methodName(t methodField) string {
-	switch strings.ToLower(string(t)) {
+	switch strings.ToLower(t.Type) {
 	case "net_banking", "netbanking":
 		return "netbanking"
 	}
-	return strings.ToLower(string(t))
+	return strings.ToLower(t.Type)
 }
 
 type metaItem struct {
@@ -542,6 +550,16 @@ func (z *zoho) FetchPayment(ctx context.Context, ref connector.PaymentRef) (conn
 			snap.ProviderRef = firstNonEmpty(s.Reference, ref.ProviderRef)
 		}
 		return snap, err
+	}
+	// A debit made through a mandate is known by Paymux's reference only: its
+	// execution session was remembered when it was made.
+	if ref.ProviderRef != "" {
+		if sid := z.kvGet(ctx, "zoho:execd:"+ref.ProviderRef); sid != "" {
+			return z.FetchPayment(ctx, connector.PaymentRef{ProviderOrderID: sid, ProviderRef: ref.ProviderRef})
+		}
+		if sid := z.kvGet(ctx, "zoho:msess:"+ref.ProviderRef); sid != "" {
+			return z.FetchPayment(ctx, connector.PaymentRef{ProviderOrderID: sid, ProviderRef: ref.ProviderRef})
+		}
 	}
 	return connector.PaymentSnapshot{}, errors.New("zoho: PaymentRef has no id")
 }

@@ -19,8 +19,10 @@ import (
 // evidenceFields are the evidence types the contest endpoint takes as named
 // fields. Any other type is sent under "others".
 //
-// TODO(spec): re-verify the field list, the document reference shape
-// ({"id": ...}) and the "others" shape against Razorpay's Dispute APIs.
+// Checked against Razorpay's Contest a Dispute documentation: each named field
+// is a list of document id strings (not objects), "others" is a list of
+// {type, document_ids}, and at least one document is needed to submit. Not
+// run against a live dispute (no test dispute could be created).
 var evidenceFields = map[string]bool{
 	"billing_proof": true, "shipping_proof": true, "cancellation_proof": true, "customer_communication": true,
 	"proof_of_service": true, "explanation_letter": true, "refund_confirmation": true, "access_activity_log": true,
@@ -47,8 +49,8 @@ func (r *razorpay) SubmitEvidence(ctx context.Context, ref connector.DisputeRef,
 	if ref.ProviderDisputeID == "" {
 		return errors.New("razorpay: SubmitEvidence needs a dispute id")
 	}
-	if ev.Text == "" && len(ev.Files) == 0 {
-		return errors.New("razorpay: evidence needs a summary or at least one file")
+	if len(ev.Files) == 0 {
+		return errors.New("razorpay: evidence needs at least one document (Razorpay refuses a contest with a summary alone)")
 	}
 	keys := make([]string, 0, len(ev.Files))
 	for k := range ev.Files {
@@ -69,8 +71,8 @@ func (r *razorpay) SubmitEvidence(ctx context.Context, ref connector.DisputeRef,
 		}
 		typ := dupSuffix.ReplaceAllString(k, "")
 		if evidenceFields[typ] {
-			list, _ := body[typ].([]map[string]string)
-			body[typ] = append(list, map[string]string{"id": id})
+			list, _ := body[typ].([]string)
+			body[typ] = append(list, id)
 			continue
 		}
 		if _, seen := others[typ]; !seen {

@@ -55,8 +55,14 @@ func TestCreateSubscriptionCheckoutBuildsARenewalPlan(t *testing.T) {
 	_ = json.Unmarshal(raw, &generic)
 	pl := generic["plan"]
 	if pl["plan_type"] != "renewal" || pl["currency"] != "bdt" || pl["company_id"] != "biz_1" || pl["billing_period"] != float64(60) ||
-		pl["renewal_price"] != 499.0 || pl["initial_price"] != 499.0 || pl["trial_period_days"] != nil {
+		pl["renewal_price"] != 499.0 || pl["trial_period_days"] != nil {
 		t.Errorf("plan = %v (%+v)", pl, p)
+	}
+	// A renewal plan with an initial_price charges it on top of the first renewal
+	// ("Due today $19.98" for a $9.99 plan, seen in the sandbox): none is sent, and
+	// the first payment is the renewal price.
+	if _, has := pl["initial_price"]; has {
+		t.Errorf("initial_price must not be sent for a plan without a trial: %v", pl)
 	}
 	if body.Metadata["sub"] != "sub_x" || body.Metadata["ref"] != "SUBREF01" || body.RedirectURL != "https://pay.example.com/return/acc/SUBREF01" {
 		t.Errorf("body = %s", raw)

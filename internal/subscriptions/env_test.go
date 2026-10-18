@@ -41,6 +41,7 @@ type rec struct {
 	chargeFn    func(connector.ChargeRequest) (connector.PaymentSnapshot, error)
 	chargeDelay time.Duration
 	noticeErr   error
+	revokeErr   error // what RevokeMandate answers
 	payFn       func(connector.PaymentRef) (connector.PaymentSnapshot, error)
 	perAttempt  bool
 	nsub        int
@@ -128,7 +129,7 @@ func (c mandateConn) RevokeMandate(_ context.Context, ref connector.MandateRef) 
 	c.r.mu.Lock()
 	defer c.r.mu.Unlock()
 	c.r.revoked = append(c.r.revoked, ref.ProviderMandateID)
-	return nil
+	return c.r.revokeErr
 }
 
 type managedConn struct{ base }

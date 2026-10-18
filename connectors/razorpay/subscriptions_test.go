@@ -294,3 +294,30 @@ func TestPaymentEntityCarriesItsSubscription(t *testing.T) {
 		t.Error("a one-time payment has no subscription")
 	}
 }
+
+func TestTotalCountBeyondHundredYearsIsRefused(t *testing.T) {
+	f := newFake("")
+	m, _ := newSubConn(t, f)
+	for _, c := range []struct {
+		interval string
+		n, total int
+		ok       bool
+	}{{"month", 1, 1200, true}, {"month", 1, 1201, false}, {"year", 1, 100, true}, {"year", 1, 101, false}, {"week", 1, 5200, true}, {"week", 1, 5201, false}, {"month", 3, 400, true}, {"month", 3, 401, false}} {
+		_, err := m.CreateSubscriptionCheckout(context.Background(), connector.SubscriptionRequest{
+			SubscriptionID: "s1", ProviderRef: "ref1", Amount: 49900, Currency: "INR", Interval: c.interval, IntervalCount: c.n, TotalCount: c.total})
+		if (err == nil) != c.ok {
+			t.Errorf("%s x%d total %d: err=%v", c.interval, c.n, c.total, err)
+		}
+	}
+}
+
+func TestUPISubscriptionCannotBeRepriced(t *testing.T) {
+	f := newFake("")
+	f.subStatus = "active"
+	f.patchSubErr = "Subscription cannot be updated when payment mode is UPI"
+	m, _ := newSubConn(t, f)
+	err := m.UpdateSubscriptionAmount(context.Background(), connector.SubscriptionRef{ProviderSubscriptionID: "sub_Nx5"}, 79900)
+	if !errors.Is(err, connector.ErrUnsupported) {
+		t.Errorf("err = %v", err)
+	}
+}

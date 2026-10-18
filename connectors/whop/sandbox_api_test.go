@@ -17,7 +17,19 @@ import (
 func sandboxWhop(t *testing.T, key string) *whop {
 	t.Helper()
 	cfg := config{APIKey: key, CompanyID: os.Getenv("WHOP_TEST_COMPANY_ID"), WebhookSecret: "ws_unused", Sandbox: os.Getenv("WHOP_TEST_PRODUCTION") == ""}
-	if os.Getenv("WHOP_TEST_API_KEY") == "" || cfg.CompanyID == "" {
+	if f := os.Getenv("WHOP_TEST_CONFIG_FILE"); f != "" {
+		// A whole account config (api_key, company_id, webhook_secret, sandbox) in a file.
+		if b, err := os.ReadFile(f); err == nil {
+			var fromFile config
+			if json.Unmarshal(b, &fromFile) == nil {
+				cfg = fromFile
+				if key != "" && key != os.Getenv("WHOP_TEST_API_KEY") {
+					cfg.APIKey = key // a test that deliberately uses another key
+				}
+				key = cfg.APIKey
+			}
+		}
+	} else if os.Getenv("WHOP_TEST_API_KEY") == "" || cfg.CompanyID == "" {
 		t.Skip("WHOP_TEST_* not set")
 	}
 	raw, _ := json.Marshal(cfg)

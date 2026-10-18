@@ -90,6 +90,11 @@ func (s *Service) handleRevokeMandate(ctx context.Context, raw json.RawMessage) 
 	if errors.Is(err, connector.ErrNotFound) {
 		return nil
 	}
+	if errors.Is(err, connector.ErrUnsupported) {
+		// The provider has no API to end a mandate (Zoho: the customer cancels in
+		// their UPI app). Paymux has stopped presenting debits; nothing to retry.
+		return nil
+	}
 	return err
 }
 

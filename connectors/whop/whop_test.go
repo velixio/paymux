@@ -196,7 +196,7 @@ func TestRegisteredAndInfo(t *testing.T) {
 		t.Fatal("not registered")
 	}
 	i := newConn(t, newFake("")).Info()
-	if !i.MerchantOfRecord || !i.Has(connector.CapRefund) || i.Has(connector.CapDisputeRespond) {
+	if !i.MerchantOfRecord || !i.Has(connector.CapRefund) || !i.Has(connector.CapDisputeRespond) || !i.Has(connector.CapDisputeRead) {
 		t.Errorf("info = %+v", i)
 	}
 	has := map[string]bool{}

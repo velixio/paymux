@@ -112,6 +112,9 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if b, ok := f.cmds[r.PostForm.Get("command")]; ok {
 		body = b
 	}
+	if body == "" { // a command nobody configured: PayU's answer for an unknown mandate
+		body = `{"status":0,"message":"Mandate entry not found"}`
+	}
 	_, _ = w.Write([]byte(body))
 }
 

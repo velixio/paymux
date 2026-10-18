@@ -120,16 +120,40 @@ func TestSandboxPaidPaymentAndRefunds(t *testing.T) {
 	}
 }
 
-// The standing-instruction commands exist and take the var1 Paymux sends; an
-// unknown mandate is ErrNotFound.
-func TestSandboxMandateCommandsOnAnUnknownMandate(t *testing.T) {
+// The standing-instruction commands against the test environment. With
+// PAYU_TEST_MANDATE_ID (the mihpayid of a registration made in the browser with
+// PAYU_BROWSER_MANDATE=card) the mandate is read, a debit is attempted (the test
+// merchant has no card token, so PayU answers "failed" for it, which must come
+// back as a failed payment, not an error), and the mandate is revoked.
+func TestSandboxMandateCommands(t *testing.T) {
 	c := sandboxConnector(t)
 	ctx := context.Background()
-	m := connector.MandateRef{ProviderMandateID: "1999999999999"}
-	if _, err := c.FetchMandate(ctx, m); !errors.Is(err, connector.ErrNotFound) {
-		t.Errorf("FetchMandate: %v", err)
+	if _, err := c.FetchMandate(ctx, connector.MandateRef{ProviderMandateID: "1999999999999"}); !errors.Is(err, connector.ErrNotFound) {
+		t.Errorf("FetchMandate of an unknown mandate: %v", err)
 	}
-	if err := c.RevokeMandate(ctx, m); !errors.Is(err, connector.ErrNotFound) {
+	if err := c.RevokeMandate(ctx, connector.MandateRef{ProviderMandateID: "1999999999999"}); !errors.Is(err, connector.ErrNotFound) {
+		t.Errorf("RevokeMandate of an unknown mandate: %v", err)
+	}
+	id := os.Getenv("PAYU_TEST_MANDATE_ID")
+	if id == "" {
+		t.Skip("PAYU_TEST_MANDATE_ID not set")
+	}
+	m := connector.MandateRef{ProviderMandateID: id}
+	s, err := c.FetchMandate(ctx, m)
+	if err != nil || s.RawStatus == "" || s.MaxAmount <= 0 {
+		t.Fatalf("FetchMandate: %+v %v", s, err)
+	}
+	t.Logf("mandate: %+v", s)
+	ref := "sbxrec" + strconv.FormatInt(time.Now().Unix(), 36)
+	p, err := c.ChargeMandate(ctx, connector.ChargeRequest{Mandate: m, ProviderRef: ref, Amount: 5000, Currency: "INR"})
+	if err != nil || p.ProviderRef != ref || p.Status == "" {
+		t.Fatalf("ChargeMandate: %+v %v", p, err)
+	}
+	t.Logf("debit: %+v", p)
+	if err := c.RevokeMandate(ctx, m); err != nil {
 		t.Errorf("RevokeMandate: %v", err)
+	}
+	if s, err = c.FetchMandate(ctx, m); err != nil || s.Status != "revoked" {
+		t.Errorf("after the revocation: %+v %v", s, err)
 	}
 }

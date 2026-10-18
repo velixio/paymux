@@ -78,8 +78,14 @@ func TestSandboxBrowserCheckout(t *testing.T) {
 		t.Fatal(err)
 	}
 	ref := "sbx" + strconv.FormatInt(time.Now().UnixNano()/1000, 36)
-	res, err := c.CreateCheckout(context.Background(), connector.CheckoutRequest{PaymentID: "pay_sbx", AttemptID: "att_sbx", AppID: "app_sbx", ProviderRef: ref,
-		Amount: amount, Currency: "INR", Description: "Paymux sandbox check", Customer: connector.Customer{Name: "Test User", Email: "test@example.com", Phone: "9876543210"}})
+	var res connector.CheckoutResult
+	if m := os.Getenv("PAYU_BROWSER_MANDATE"); m != "" { // a standing-instruction registration: card, upi or emandate
+		res, err = c.(connector.MandateManager).CreateMandateCheckout(context.Background(), connector.MandateRequest{MandateID: "mdt_sbx", ProviderRef: ref, Amount: amount, MaxAmount: 150000,
+			Currency: "INR", Method: m, Customer: connector.Customer{Name: "Test User", Email: "test@example.com", Phone: "9876543210"}})
+	} else {
+		res, err = c.CreateCheckout(context.Background(), connector.CheckoutRequest{PaymentID: "pay_sbx", AttemptID: "att_sbx", AppID: "app_sbx", ProviderRef: ref,
+			Amount: amount, Currency: "INR", Description: "Paymux sandbox check", Customer: connector.Customer{Name: "Test User", Email: "test@example.com", Phone: "9876543210"}})
+	}
 	if err != nil || res.NextAction.Kind != connector.ActionFormPost {
 		t.Fatalf("%+v %v", res, err)
 	}

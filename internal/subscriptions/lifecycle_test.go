@@ -23,6 +23,26 @@ func active(t *testing.T, e *env, mut func(*subscriptions.CreateInput)) store.Su
 	return e.sub(sub.ID)
 }
 
+// A provider with no API to revoke a mandate (Zoho) answers ErrUnsupported; the
+// job is then done, not retried: Paymux stops presenting debits on its own.
+func TestRevokeUnsupportedByTheProviderIsNotRetried(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, t0)
+		e.r.revokeErr = connector.ErrUnsupported
+		sub := active(t, e, nil)
+		if _, err := e.subs.Cancel(ctx, e.scope, sub.ID, false); err != nil {
+			t.Fatal(err)
+		}
+		e.runJobs()
+		if len(e.r.revoked) != 1 {
+			t.Errorf("provider revocations = %v", e.r.revoked)
+		}
+		if p := e.pendingJobs("mandate.revoke"); len(p) != 0 {
+			t.Errorf("the revoke job is retried (%v) although the provider cannot do it", p)
+		}
+	})
+}
+
 func TestCancelNowRevokesTheMandate(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, t0)
