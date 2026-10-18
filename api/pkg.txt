@@ -389,6 +389,7 @@ type Info struct {
 	MerchantOfRecord         bool             `json:"merchant_of_record"`
 	SubscriptionModes        []BillingMode    `json:"subscription_modes"`
 	PreDebitPerAttempt       bool             `json:"pre_debit_per_attempt"`
+	PreDebitMinHours         int              `json:"pre_debit_min_hours,omitempty"`
 	DenyPrivateNetwork       bool             `json:"deny_private_network,omitempty"`
 	MandateLimits            []MandateLimit   `json:"mandate_limits"`
 	MandateSetupAmount       int64            `json:"mandate_setup_amount,omitempty"`

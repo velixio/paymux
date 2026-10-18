@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -133,6 +134,13 @@ func TestSandboxMandateCommands(t *testing.T) {
 	}
 	if err := c.RevokeMandate(ctx, connector.MandateRef{ProviderMandateID: "1999999999999"}); !errors.Is(err, connector.ErrNotFound) {
 		t.Errorf("RevokeMandate of an unknown mandate: %v", err)
+	}
+	// The request shapes are accepted (PayU answers about the consent, not about
+	// missing columns): a notice and a debit for a mandate it does not know.
+	unknown := connector.MandateRef{ProviderMandateID: "1999999999999"}
+	err := c.NotifyPreDebit(ctx, connector.PreDebitRequest{Mandate: unknown, ProviderRef: "sbxpd" + strconv.FormatInt(time.Now().Unix(), 36), Amount: 500, Currency: "INR", DebitDate: time.Now().Add(72 * time.Hour).UnixMilli()})
+	if err == nil || !strings.Contains(err.Error(), "not found") && !strings.Contains(err.Error(), "Not Enrolled") {
+		t.Errorf("NotifyPreDebit of an unknown mandate: %v", err)
 	}
 	id := os.Getenv("PAYU_TEST_MANDATE_ID")
 	if id == "" {

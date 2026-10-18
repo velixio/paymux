@@ -151,11 +151,96 @@ reports it as a payment still waiting for the customer (`requires_action`), not
   verifies payment events by the reverse hash and treats refund events as an
   unsigned hint that it confirms with `check_action_status`. Not exercised: the
   dashboard screens and a live delivery.
-- [ ] **Mandates** (`mandate.go`): the SI hash layout, the `pg` code per method,
-  the var1 of `si_transaction` (the current layout is refused with "Mandatory
-  column missing"; the field names are unknown) and the JSON of the successful
-  responses. The commands `pre_debit_SI`, `check_mandate_status` and
-  `mandate_revoke` exist, with the `requestId` fix above.
+- [ ] **Mandates (SI), against PayU's recurring-payments guide** (read on
+  2026-10-18 with every page it links: the three consent transactions,
+  `pre_debit_notification_api`, `recurring_payment_api`, the status, modify and
+  cancel pages, the mandate webhooks, the SI parameter details, the FAQ).
+  Where the implementation differed from the guide, and what was done:
+  - net-banking e-mandate registration used `pg=NB`; the guide says `ENACH`
+    (fixed); UPI now sends `bankcode=UPI`;
+  - a registration whose transaction succeeded but whose `payment_source` is
+    `payu`, not `sist`, is PayU's "mandate failed, transaction successful": the
+    customer was charged and no mandate exists. It was reported active; it is now
+    a failed mandate, with the captured payment still reported so that it is
+    refunded;
+  - the mode of the registration (`mode`: CC, DC, UPI, ENACH) selects the status
+    command (`check_mandate_status`, `upi_mandate_status`, `NB_mandate_status`),
+    the cancel command (`mandate_revoke` for cards and net banking,
+    `upi_mandate_revoke` for UPI; net-banking cancellation is offline and only
+    acknowledged) and the var1 of notices and debits; it is remembered per
+    account, or found by asking the status commands;
+  - `pre_debit_SI`: cards send `invoiceDisplayNumber`; UPI AutoPay adds
+    `mandateSeqNo` (execution 1 is the registration, notices start at 2, one number
+    per debit); net banking takes no notice at all ("applies only to Cards and
+    UPI"). The test environment refuses a notice without an invoice number before
+    it looks at the mode, so UPI sends one as well. Answers: `E9254`/`E9256`
+    (notice or execution already exists) are success, `E9260` (more than 30 days
+    ahead) and `E9263` (wrong period) are `ErrTemporary`;
+  - the notice must come at least 48 hours ahead (the guide; its FAQ says 24):
+    new `Info.PreDebitMinHours`, and the subscription engine now keeps that gap
+    between notice and debit, including for retries and a late notice;
+  - `si_transaction` details: `pending` and `in progress` are not final, `failed`
+    and a blank status are failures (blank was "processing"); the method is
+    reported per mandate (it was always "card");
+  - the mandate status vocabulary now covers the guide's lists: cards (`active`,
+    `cancelled`, `discarded`, `deleted`, `failed`, `expired`, `paused`), UPI
+    (`active`, `revoked`, `pause`), net banking (`SUCCESS`, `INITIATED`, `FAILED`,
+    `CANCEL_SUCCESS`, `CANCEL_INITIATED`, `CANCEL_PENDING`, `CANCEL_FAILED`,
+    `CANCEL_INITIATION_FAILED`); a failed cancellation leaves the mandate active;
+  - UPI AutoPay is capped at Rs 15,000 per debit (`Info.MandateLimits`); the
+    NPCI peak windows (10:00-13:00 and 17:00-21:30 IST) and the four-attempt cap
+    the guide states are the engine's existing defaults (`upi_execution_windows`;
+    three retries after the first attempt);
+  - not built, by design: **modify** (cards need a new `_payment` with `si=3` and
+    the customer's additional authentication; UPI `upi_mandate_modify` needs the
+    customer's approval in the UPI app and works for collect registrations only;
+    the guide's alternative is to revoke and register again, which is what Paymux
+    does) and pause or unpause (the customer does these in the UPI app; the
+    webhook is parsed but changes nothing in the engine).
+
+  Run on the PayU test environment, with the test merchant, on 2026-10-18: the SI form (the
+  hosted page shows the plan, and offers UPI and cards only, not net banking);
+  `pg=ENACH` is answered "Selected payment option is not available at this
+  moment" (the merchant has no e-NACH); UPI collect with `anything@payu` fails
+  at the bank ("Bank was unable to authenticate"), and UPI intent needs a UPI
+  app; cards (Mastercard 5123456789012346, Visa 4012001037141112, tokenised
+  Mastercard 5506900480000008, with and without `user_credentials`, ADHOC and
+  MONTHLY) are captured with 3-D Secure, but `payment_source` is `payu` and the
+  mandate stays `pending`, so **no mandate could be registered**, and
+  `pre_debit_SI` answers "Consent is Not Enrolled Or Not IN Active State" and
+  `si_transaction` "Invalid/missing card token". Request shapes accepted by PayU:
+  the registration form, `check_mandate_status`, `upi_mandate_status`,
+  `NB_mandate_status` (unknown id answers), `mandate_revoke` (a pending mandate:
+  "Mandate Revoked Successfully"), `upi_mandate_revoke`, `pre_debit_SI` with
+  `mandateSeqNo`, `si_transaction` with `mandateSeqNo`. Ask the PayU account
+  manager to enable Subscriptions/SI for the test merchant (the guide's
+  prerequisite) and e-NACH and UPI AutoPay; then run the browser registration
+  (`PAYU_BROWSER_MANDATE=card|upi|emandate`), `TestSandboxMandateCommands` with
+  `PAYU_TEST_MANDATE_ID`, a pre-debit, and a debit after the notice window (the
+  test environment's shorter window, if there is one, is not documented).
+  Still unverified: the pre-debit lead on the test environment (48 hours), a
+  captured debit, `payment_source=sist` on a real registration, and which
+  `status` a paused UPI mandate answers.
+- [ ] **Mandate webhooks** (`webhook_mandate.go`): cards post JSON
+  (`MANDATE_MODIFICATION`, `MANDATE_CANCELLATION`, `MANDATE_DELETION`,
+  `MANDATE_CANCELLATION_TOKEN_DELETION`) signed with
+  `sha512(status|authpayuId|notificationType|billingAmount|paymentStartDate|
+  paymentEndDate|message|eventDate|key|udf1..udf5|salt)`; UPI posts a form
+  (`MANDATE_PAUSE`, `MANDATE_UNPAUSE`, `MANDATE_REVOKE`) signed with
+  `status|action|authpayuid|dateTime|amount|endDate|salt`; net-banking e-NACH
+  cancellations come as JSON with no hash and are only a hint, so the connector
+  reads the mandate back with `NB_mandate_status` and reports that. PayU's
+  integration team switches these on (UPI form, cards JSON, e-NACH through the
+  merchant parameter `notifyMandateRevoke`); the UPI webhook has no retries. A
+  debit's result is an ordinary payment notice keyed by the txnid Paymux sent.
+  Posting notices signed with the test salt to the Paymux URL
+  (`/hooks/pa_01m565tk8xfevv09tzde145ve6`) showed that the build deployed at
+  paymux.shimul.me predates this change: the card notice (bad hash too) was
+  accepted unverified, the UPI form was refused as "invalid signature". After a
+  redeploy a signed notice must answer 200 and a bad hash 401. The hash formulas
+  are from the documentation only: no real notice has arrived (the test
+  merchant cannot register a mandate), and the guide does not say whether the
+  UPI hash is SHA-512.
 - [ ] **Verification debit** (`payu.go`): does PayU reverse the Rs 1 debit of a
   mandate registration itself (`RefundsVerificationDebit: true` assumes it does)?
 - [ ] **Chargebacks** (`chargebacks.go`): built on the Chargeback API (read,

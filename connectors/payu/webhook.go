@@ -44,6 +44,9 @@ func mapStatus(raw string) connector.PaymentStatus {
 // carry no hash field at all are ErrUnsigned: the provider does not sign
 // them, so the caller polls FetchRefund instead of trusting them.
 func (p *payu) VerifyWebhook(_ context.Context, req connector.WebhookRequest) error {
+	if n, ok := parseMandateNotice(req.Body); ok {
+		return p.verifyMandateNotice(n)
+	}
 	f, err := url.ParseQuery(string(req.Body))
 	if err != nil {
 		return connector.ErrInvalidSignature
@@ -60,7 +63,10 @@ func (p *payu) VerifyWebhook(_ context.Context, req connector.WebhookRequest) er
 // ParseWebhook turns a verified payment webhook into a Notification. PayU has
 // no event id, so one is synthesized from the payu id and the statuses; a
 // retried delivery therefore dedupes while a later status change does not.
-func (p *payu) ParseWebhook(_ context.Context, req connector.WebhookRequest) ([]connector.Notification, error) {
+func (p *payu) ParseWebhook(ctx context.Context, req connector.WebhookRequest) ([]connector.Notification, error) {
+	if n, ok := parseMandateNotice(req.Body); ok {
+		return p.mandateNotification(ctx, n)
+	}
 	f, err := url.ParseQuery(string(req.Body))
 	if err != nil {
 		return nil, fmt.Errorf("payu: bad webhook body: %w", err)
