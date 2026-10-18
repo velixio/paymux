@@ -8,3 +8,5 @@
 /web-home/dist/*
 !/web-home/dist/.keep
 /web/static/dashboard/
+/test-results/
+/playwright-report/

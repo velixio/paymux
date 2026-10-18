@@ -31,3 +31,16 @@ make build-home
 This binary embeds the Vite build and has only static page serving and `/healthz`. It does not render React on the server or connect to the hub. Use `-listen :8090` behind a TLS reverse proxy to listen on all interfaces. A missing frontend build returns 503 rather than reporting a healthy site.
 
 Update integration claims from `docs/capabilities.md` and `docs/provider-verification.md`. Homepage payment records remain labeled illustrations. No forms collect payment-provider credentials.
+
+## Homepage design and browser checks
+
+The homepage uses a light paper/cobalt palette or a dark slate palette, with an explicit theme toggle that remembers the choice. A dark payment workbench demonstrates successful captures, provider declines, and failed webhook delivery with a manual retry. Its provider selection and records are illustrative browser-only data: no network payment requests are made.
+
+Run the repeatable Chromium checks after installing the browser:
+
+```sh
+bunx playwright install chromium
+bun run test:home
+```
+
+The tests build the site and launch its actual Go static server, preserving production CSP checks. They cover payment/ledger/delivery outcomes, canceling a running demo, theme persistence, system preference, keyboard tabs, mobile navigation, and five viewport widths. Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to use an existing Chromium installation.

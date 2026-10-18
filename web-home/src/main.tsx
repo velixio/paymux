@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
 import {
   createRouter,
@@ -9,7 +9,7 @@ import {
   useLocation,
   Link,
 } from "@tanstack/react-router";
-import { ArrowUpRight, Menu, Code } from "lucide-react";
+import { ArrowUpRight, Menu, Code, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -34,6 +34,32 @@ const links = [
 function Layout() {
   const location = useLocation();
   const [open, setOpen] = React.useState(false);
+  const [dark, setDark] = React.useState(() => {
+    try {
+      const saved = localStorage.getItem("paymux-home-theme");
+      return saved
+        ? saved === "dark"
+        : matchMedia("(prefers-color-scheme: dark)").matches;
+    } catch {
+      return false;
+    }
+  });
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle("dark", dark);
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", dark ? "#101c20" : "#fbfcfa");
+  }, [dark]);
+  function toggleTheme() {
+    setDark((value) => {
+      try {
+        localStorage.setItem("paymux-home-theme", value ? "light" : "dark");
+      } catch {
+        /* Theme still works when storage is unavailable. */
+      }
+      return !value;
+    });
+  }
   useEffect(() => {
     setOpen(false);
     const titles: Record<string, string> = {
@@ -72,6 +98,19 @@ function Layout() {
           <a href="https://github.com/velixio/paymux">
             <Code size={16} /> GitHub
           </a>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="site-theme-toggle"
+          onClick={toggleTheme}
+          aria-label={dark ? "Use light theme" : "Use dark theme"}
+        >
+          {dark ? (
+            <Sun aria-hidden="true" size={18} />
+          ) : (
+            <Moon aria-hidden="true" size={18} />
+          )}
         </Button>
         <Sheet modal={false} open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
