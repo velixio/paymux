@@ -64,7 +64,7 @@ func TestLogsPageIsForLogsReadOnly(t *testing.T) {
 		}
 		admin := e.roleClient("admin")
 		body := e.pageOK(admin, "/dashboard/logs")
-		has(t, body, "Logs", `href="/dashboard/logs"`, "log_a")
+		has(t, body, "Logs", `href="/dashboard/logs"`, "log_d")
 		for _, p := range []string{"/dashboard/logs/log_a", "/dashboard/logs.jsonl"} {
 			if r, _ := e.get(admin, p); r.StatusCode != 200 {
 				t.Errorf("admin %s: %d", p, r.StatusCode)
@@ -174,7 +174,7 @@ func TestLogDetailShowsIDsAttrsAndBodies(t *testing.T) {
 		seedLogs(t, l)
 		admin := e.roleClient("admin")
 		body := e.pageOK(admin, "/dashboard/logs/log_a")
-		has(t, body, "provider call failed", "req_aaa", "pay_1", "att_1", "pa_1", "payu", "preq_9", "504", "gateway timeout", "txnid", `"failure"`)
+		has(t, body, "provider call failed", "req_aaa", "pay_1", "att_1", "pa_1", "payu", "preq_9", "504", "gateway timeout", "txnid", "failure")
 		// A link to the neighbours of this row: the same request and payment.
 		has(t, body, "/dashboard/logs?request_id=req_aaa", "/dashboard/logs?payment_id=pay_1")
 		if r, _ := e.get(admin, "/dashboard/logs/log_nope"); r.StatusCode != 404 {

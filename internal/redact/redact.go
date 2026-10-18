@@ -260,6 +260,12 @@ func kvDepth(s string, pii bool, depth int) string {
 	})
 }
 
+// Scrub replaces only the known secret values, leaving everything else as it
+// is. For text that was redacted when it was stored and is being shown again:
+// a secret that became known since is still hidden, and a JSON document stays
+// valid JSON.
+func (r *Redactor) Scrub(s string) string { return r.known(s) }
+
 // Text redacts free text: log messages, error strings, URLs.
 func (r *Redactor) Text(s string) string {
 	if s == "" {

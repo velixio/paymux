@@ -124,6 +124,15 @@ func (l *dbLogs) registerPurge(q *jobs.Queue, main *store.DB, set *settings.Serv
 	return q.AddSchedule(jobs.Schedule{Name: logPurgeKind, Kind: logPurgeKind, Every: time.Hour})
 }
 
+// dashboardLogs is what the Logs page needs: the logs database and a function
+// that hides the secrets known now from a stored text.
+func (l *dbLogs) dashboardLogs() (*store.DB, func(string) string) {
+	if l == nil {
+		return nil, nil
+	}
+	return l.db, l.red.Scrub
+}
+
 // responseHook records finished requests that are worth keeping.
 func (l *dbLogs) responseHook() server.ResponseHook {
 	if l == nil {

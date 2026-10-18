@@ -1,0 +1,35 @@
+{{define "title"}}Logs - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h1>Logs</h1>
+<p class="muted">Errors and warnings kept for debugging: application errors, failed provider calls with their request and response, rejected API and webhook requests, 5xx responses and failed jobs. Secrets and customer details are removed before anything is stored.</p>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<form class="filters log-filters" method="get" action="/dashboard/logs">
+<select name="level" aria-label="Level"><option value="">Any level</option>{{range .LogLevels}}<option value="{{.}}"{{if eq . $.LogFilter.Level}} selected{{end}}>{{.}}</option>{{end}}</select>
+<select name="kind" aria-label="Kind"><option value="">Any kind</option>{{range .LogKinds}}<option value="{{.}}"{{if eq . $.LogFilter.Kind}} selected{{end}}>{{.}}</option>{{end}}</select>
+<input name="connector" value="{{.LogFilter.Connector}}" placeholder="Connector, e.g. payu" aria-label="Connector" size="14">
+<input name="account" value="{{.LogFilter.Account}}" placeholder="Provider account id" aria-label="Provider account" size="18">
+<input name="request_id" value="{{.LogFilter.RequestID}}" placeholder="Request id" aria-label="Request id" size="18">
+<input name="payment_id" value="{{.LogFilter.PaymentID}}" placeholder="Payment id" aria-label="Payment id" size="18">
+<input name="id" value="{{.LogFilter.ID}}" placeholder="Any id: attempt, refund, mandate, job" aria-label="Any id" size="24">
+<input name="q" type="search" value="{{.LogFilter.Q}}" placeholder="Search the text" aria-label="Search text" size="22">
+<input name="from" type="date" value="{{.LogFilter.From}}" aria-label="From date" data-date-label="From">
+<input name="to" type="date" value="{{.LogFilter.To}}" aria-label="To date" data-date-label="To">
+<button class="btn small" type="submit">Filter</button>
+<a class="btn small" href="{{.LogExportURL}}" download>Export JSON lines</a>
+</form>
+<div class="table-scroll"><table class="grid log-grid">
+<thead><tr><th>When</th><th>Level</th><th>Kind</th><th>Message</th><th>Ids</th></tr></thead>
+<tbody>
+{{range .LogRows}}<tr>
+<td data-label="When"><a href="/dashboard/logs/{{.ID}}">{{.At}}</a></td>
+<td data-label="Level"><span class="status status-{{.Level}}">{{.Level}}</span></td>
+<td data-label="Kind">{{.Kind}}{{if .Status}} <small>{{.Status}}</small>{{end}}</td>
+<td data-label="Message"><span class="log-msg">{{.Msg}}</span><br><small class="muted">{{.Component}}{{if .Duration}} &middot; {{.Duration}}{{end}}</small></td>
+<td data-label="Ids"><small>{{range .Chips}}<a href="{{.Href}}">{{.Label}}</a><br>{{end}}</small></td>
+</tr>{{else}}<tr><td colspan="5" class="muted">No log entries match.</td></tr>{{end}}
+</tbody>
+</table></div>
+{{with .NextURL}}<p><a class="next" href="{{.}}">Older entries &rarr;</a></p>{{end}}
+{{template "dash_close" .}}{{end}}

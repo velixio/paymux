@@ -362,7 +362,8 @@ func (a *App) Start(ctx context.Context) error {
 	internalMux.Handle("/", srv.InternalHandler())
 
 	// Operator dashboard and the shared static assets.
-	dash, err := dashboard.New(dashboard.Options{DB: db, Box: box, Renderer: renderer, Themes: themes, MasterKey: a.cfg.MasterKey,
+	dashLogs, dashRedact := dbl.dashboardLogs()
+	dash, err := dashboard.New(dashboard.Options{LogDB: dashLogs, LogRedact: dashRedact, DB: db, Box: box, Renderer: renderer, Themes: themes, MasterKey: a.cfg.MasterKey,
 		BaseURL: a.cfg.BaseURL, DevSkip2FA: a.cfg.DevSkip2FA, Logger: a.log,
 		TrustedProxies: a.cfg.TrustedProxies, Core: svc, Settings: set, Outbound: out, Invoice: inv, Connectors: conns, Disputes: disp, Recon: rec, Jobs: q,
 		Subscriptions: subs, PaymentLinks: links, Alerts: alertCenter, Location: a.cfg.Location,

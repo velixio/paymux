@@ -292,3 +292,13 @@ func TestHostileInputIsFast(t *testing.T) {
 		}
 	}
 }
+
+func TestScrubReplacesOnlyKnownValues(t *testing.T) {
+	r := New()
+	r.SetKnown("a", "LATE-SECRET-VALUE")
+	in := `{"hash":123,"msg":"x LATE-SECRET-VALUE y","email":"asha@example.com"}`
+	got := r.Scrub(in)
+	if got != `{"hash":123,"msg":"x [redacted] y","email":"asha@example.com"}` {
+		t.Errorf("got %s", got)
+	}
+}
