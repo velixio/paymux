@@ -38,6 +38,15 @@ func PollDelay(count int) time.Duration {
 	return pollLadder[min(max(count, 0), len(pollLadder)-1)]
 }
 
+var checkoutLadder = []time.Duration{2 * time.Minute, 5 * time.Minute, 10 * time.Minute, 20 * time.Minute, 30 * time.Minute}
+
+// CheckoutPollDelay is the wait before poll number count+1 of a started
+// checkout: 2m, 5m, 10m, 20m, then every 30m, until the checkout's expiry plus
+// CheckoutPollGrace.
+func CheckoutPollDelay(count int) time.Duration {
+	return checkoutLadder[min(max(count, 0), len(checkoutLadder)-1)]
+}
+
 // Register installs the job handlers (refund.submit, provider event
 // processing, polling) on q and schedules the poller every minute.
 func (s *Service) Register(q *jobs.Queue) error {
@@ -346,7 +355,7 @@ func (s *Service) PollDue(ctx context.Context) error {
 	cutoff := now.Add(-PollWindow)
 	var attempts, refunds []store.PollItem
 	err := s.o.DB.Read(ctx, func(q store.Querier) (err error) {
-		if attempts, err = store.ListDueAttempts(ctx, q, now, cutoff, pollBatch); err != nil {
+		if attempts, err = store.ListDueAttempts(ctx, q, now, cutoff, CheckoutPollGrace, pollBatch); err != nil {
 			return err
 		}
 		refunds, err = store.ListDueRefunds(ctx, q, now, cutoff, pollBatch)
@@ -359,7 +368,11 @@ func (s *Service) PollDue(ctx context.Context) error {
 		if _, err := s.SyncAttempt(ctx, it.ID); err != nil {
 			s.o.Logger.Warn("poll: attempt", "attempt", it.ID, "err", err)
 		}
-		next := now.Add(PollDelay(it.PollCount + 1))
+		delay := PollDelay(it.PollCount + 1)
+		if it.Checkout {
+			delay = CheckoutPollDelay(it.PollCount + 1)
+		}
+		next := now.Add(delay)
 		if err := s.o.DB.Write(ctx, func(tx store.Tx) error { return store.BumpAttemptPoll(ctx, tx, it.ID, it.PollCount+1, next) }); err != nil {
 			return err
 		}

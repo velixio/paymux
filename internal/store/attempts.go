@@ -99,9 +99,14 @@ func boolInt(b bool) int {
 
 // SetAttemptCheckout records what CreateCheckout returned: the provider order,
 // the next action (JSON) and when the checkout expires.
-func SetAttemptCheckout(ctx context.Context, tx Tx, id, providerOrderID, nextAction string, expiresAt, now time.Time) error {
-	_, err := tx.ExecContext(ctx, `UPDATE payment_attempts SET provider_order_id = ?, next_action = ?, checkout_expires_at = ?, updated_at = ? WHERE id = ?`,
-		nullIfEmpty(providerOrderID), nullIfEmpty(nextAction), ms(expiresAt), ms(now), id)
+//
+// firstPoll is when the provider is first asked about the attempt: a customer
+// can pay and never come back, and the provider may send no webhook, so
+// nothing else would ever look.
+func SetAttemptCheckout(ctx context.Context, tx Tx, id, providerOrderID, nextAction string, expiresAt, now, firstPoll time.Time) error {
+	_, err := tx.ExecContext(ctx, `UPDATE payment_attempts SET provider_order_id = ?, next_action = ?, checkout_expires_at = ?,
+		poll_count = 0, next_poll_at = ?, updated_at = ? WHERE id = ?`,
+		nullIfEmpty(providerOrderID), nullIfEmpty(nextAction), ms(expiresAt), ms(firstPoll), ms(now), id)
 	return err
 }
 

@@ -842,7 +842,7 @@ func TestPollDuePollsOnTheLadder(t *testing.T) {
 		if err := e.flow.PollDue(ctx); err != nil || polls() != 0 {
 			t.Fatalf("nothing due yet: %v %d", err, polls())
 		}
-		e.clk.Add(61 * time.Second)
+		e.clk.Add(core.FirstPollDelay + time.Second) // the first poll is scheduled with the checkout
 		e.setPayment(ref, connector.PaymentSnapshot{Status: connector.PaymentRequiresAction, RawStatus: "created", Amount: 50000, Currency: "INR"})
 		if err := e.flow.PollDue(ctx); err != nil || polls() != 1 {
 			t.Fatalf("first poll: %v %d", err, polls())

@@ -137,7 +137,7 @@ func TestDueAttemptsAndBump(t *testing.T) {
 		due := func(now time.Time) map[string]int {
 			var items []store.PollItem
 			_ = db.Read(ctx, func(q store.Querier) (err error) {
-				items, err = store.ListDueAttempts(ctx, q, now, now.Add(-72*time.Hour), 10)
+				items, err = store.ListDueAttempts(ctx, q, now, now.Add(-72*time.Hour), time.Hour, 10)
 				return
 			})
 			m := map[string]int{}

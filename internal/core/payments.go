@@ -430,6 +430,10 @@ func (s *Service) GetPaymentByID(ctx context.Context, id string) (store.Payment,
 	return p, mapStoreErr(err, "payment")
 }
 
+// FirstPollDelay is how long after a checkout starts the provider is first
+// asked about it, in case the customer pays and never comes back.
+const FirstPollDelay = 2 * time.Minute
+
 // RecordCheckoutAction stores everything a later reload of the pay page needs
 // from CreateCheckout: the provider order id, the next action (JSON) and when
 // that checkout expires.
@@ -438,7 +442,8 @@ func (s *Service) RecordCheckoutAction(ctx context.Context, attemptID, providerO
 		if _, err := store.GetAttempt(ctx, tx, attemptID); err != nil {
 			return mapStoreErr(err, "attempt")
 		}
-		return store.SetAttemptCheckout(ctx, tx, attemptID, providerOrderID, string(nextAction), expiresAt, s.nowUTC())
+		now := s.nowUTC()
+		return store.SetAttemptCheckout(ctx, tx, attemptID, providerOrderID, string(nextAction), expiresAt, now, now.Add(FirstPollDelay))
 	})
 }
 
