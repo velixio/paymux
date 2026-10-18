@@ -281,6 +281,29 @@ type refundEntity struct {
 	Currency  string `json:"currency"`
 	Status    string `json:"status"`
 	CreatedAt string `json:"created_at"`
+	// AmountObj reads the currency of "amount" when Whop sends the money object
+	// {"currency":"usd","amount":"1.50"} (it does for refunds).
+	AmountObj struct {
+		Currency string `json:"currency"`
+	} `json:"-"`
+}
+
+func (r *refundEntity) UnmarshalJSON(b []byte) error {
+	type plain refundEntity
+	var p plain
+	if err := json.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	var m struct {
+		Amount struct {
+			Currency string `json:"currency"`
+		} `json:"amount"`
+	}
+	if json.Unmarshal(b, &m) == nil {
+		p.AmountObj.Currency = m.Amount.Currency
+	}
+	*r = refundEntity(p)
+	return nil
 }
 
 func mapPaymentStatus(status, substatus string) connector.PaymentStatus {
@@ -334,7 +357,7 @@ func (p paymentEntity) snapshot() (connector.PaymentSnapshot, error) {
 }
 
 func (r refundEntity) snapshot() (connector.RefundSnapshot, error) {
-	cur := strings.ToUpper(r.Currency)
+	cur := strings.ToUpper(firstNonEmpty(r.Currency, r.AmountObj.Currency))
 	amt, err := minor(r.Amount, firstNonEmpty(cur, "USD"))
 	if err != nil {
 		return connector.RefundSnapshot{}, err
@@ -600,6 +623,16 @@ func (w *whop) Refund(ctx context.Context, req connector.RefundRequest) (connect
 	if err != nil {
 		return connector.RefundSnapshot{}, err
 	}
+	// Whop does not refuse a refund above what is left: it refunds the remainder
+	// and answers 200 (seen in the sandbox). The remainder is therefore checked
+	// first, so an over-refund is refused and never sent.
+	var pay paymentEntity
+	if err := w.do(ctx, "GET", "/payments/"+url.PathEscape(req.ProviderPaymentID), nil, nil, &pay, nil); err != nil {
+		return connector.RefundSnapshot{}, err
+	}
+	if ps, err := pay.snapshot(); err == nil && ps.Amount > 0 && req.Amount > ps.Amount-ps.AmountRefunded {
+		return connector.RefundSnapshot{}, connector.ErrNotRefundable{Reason: fmt.Sprintf("only %d of %d is left to refund", ps.Amount-ps.AmountRefunded, ps.Amount)}
+	}
 	in := map[string]any{"partial_amount": json.Number(price)}
 	var out struct {
 		refundEntity
@@ -630,7 +663,9 @@ func (w *whop) Refund(ctx context.Context, req connector.RefundRequest) (connect
 // FetchRefund reads a Whop refund by id, or derives the state from the payment
 // when only the synthetic id (the provider_ref) is known.
 func (w *whop) FetchRefund(ctx context.Context, ref connector.RefundRef) (connector.RefundSnapshot, error) {
-	if strings.HasPrefix(ref.ProviderRefundID, "rfnd_") {
+	// Whop's refund objects have ids "rf_..."; the id Paymux keeps for a refund it made
+	// is its own reference (synthetic, see below), which may look the same.
+	if (strings.HasPrefix(ref.ProviderRefundID, "rf_") || strings.HasPrefix(ref.ProviderRefundID, "rfnd_")) && ref.ProviderRefundID != ref.ProviderRef {
 		var r refundEntity
 		if err := w.do(ctx, "GET", "/refunds/"+url.PathEscape(ref.ProviderRefundID), nil, nil, &r, nil); err != nil {
 			return connector.RefundSnapshot{}, err
@@ -640,7 +675,7 @@ func (w *whop) FetchRefund(ctx context.Context, ref connector.RefundRef) (connec
 		return s, err
 	}
 	if ref.ProviderPaymentID == "" {
-		return connector.RefundSnapshot{}, errors.New("whop: RefundRef needs a rfnd_ id or a payment id")
+		return connector.RefundSnapshot{}, errors.New("whop: RefundRef needs a refund id (rf_...) or a payment id")
 	}
 	var p paymentEntity
 	if err := w.do(ctx, "GET", "/payments/"+url.PathEscape(ref.ProviderPaymentID), nil, nil, &p, nil); err != nil {

@@ -19,22 +19,36 @@ import (
 // Renewal payments arrive as payment.succeeded webhooks and are reported as
 // subscription notifications carrying the payment.
 //
-// TODO(spec): none of this could be checked against the live v1 API. The wire
-// details to verify first, all in this file or marked below: the inline
-// renewal plan of POST /checkout_configurations (and whether to cache real
-// plans instead), billing_period in days, trial_period_days, the membership
-// statuses and fields, POST /memberships/{id}/cancel and its cancellation_mode,
-// and the membership.* event names.
+// Verified against the Whop sandbox (2026-10-18): the inline renewal plan of POST
+// /checkout_configurations (product details with an external_identifier, no
+// initial_price: it would be charged on top of the first renewal), a purchase on
+// that checkout (the first payment has billing_reason subscription_create and the
+// renewal price), the membership read (current_period_start/end, renewal_price,
+// metadata), and POST /memberships/{id}/cancel.
+//
+// TODO(spec): not seen live: a renewal payment after the first period, the
+// membership.updated event on a cancellation, trial_period_days through a
+// purchase. cancellation_mode "at_period_end" cancelled the sandbox membership
+// at once (status canceled) although the documentation says it waits for the
+// period's end; check on production.
 
 var intervalDays = map[string]int{"day": 1, "week": 7, "month": 30, "year": 365}
 
 type membershipEntity struct {
-	ID                string            `json:"id"`
-	Status            string            `json:"status"`
-	Metadata          map[string]string `json:"metadata"`
-	RenewalPeriodFrom string            `json:"renewal_period_start"`
-	RenewalPeriodTo   string            `json:"renewal_period_end"`
-	CancelAtPeriodEnd bool              `json:"cancel_at_period_end"`
+	ID       string            `json:"id"`
+	Status   string            `json:"status"`
+	Metadata map[string]string `json:"metadata"`
+	// The sandbox returns the period as current_period_*; the documentation
+	// says renewal_period_*. Both are read.
+	CurrentPeriodFrom string `json:"current_period_start"`
+	CurrentPeriodTo   string `json:"current_period_end"`
+	RenewalPeriodFrom string `json:"renewal_period_start"`
+	RenewalPeriodTo   string `json:"renewal_period_end"`
+	CancelAtPeriodEnd bool   `json:"cancel_at_period_end"`
+	RenewalPrice      struct {
+		Currency string `json:"currency"`
+		Amount   number `json:"amount"`
+	} `json:"renewal_price"`
 }
 
 // membershipStatus maps Whop's membership status to the SDK's subscription
@@ -50,12 +64,19 @@ func membershipStatus(raw string) string {
 	case "completed":
 		return "ended"
 	}
-	return "active" // "trialing", "active" and anything new
+	return "active" // "trialing", "active", "canceling" (until the period ends) and anything new
 }
 
 func (m membershipEntity) snapshot() connector.SubscriptionSnapshot {
-	return connector.SubscriptionSnapshot{ProviderSubscriptionID: m.ID, ProviderRef: m.Metadata["ref"], Status: membershipStatus(m.Status),
-		RawStatus: m.Status, CurrentPeriodStart: parseTime(m.RenewalPeriodFrom), CurrentPeriodEnd: parseTime(m.RenewalPeriodTo)}
+	from, to := firstNonEmptyStr(m.CurrentPeriodFrom, m.RenewalPeriodFrom), firstNonEmptyStr(m.CurrentPeriodTo, m.RenewalPeriodTo)
+	snap := connector.SubscriptionSnapshot{ProviderSubscriptionID: m.ID, ProviderRef: m.Metadata["ref"], Status: membershipStatus(m.Status),
+		RawStatus: m.Status, CurrentPeriodStart: parseTime(from), CurrentPeriodEnd: parseTime(to)}
+	if cur := strings.ToUpper(m.RenewalPrice.Currency); cur != "" {
+		if amt, err := minor(m.RenewalPrice.Amount, cur); err == nil {
+			snap.Amount, snap.Currency = amt, cur
+		}
+	}
+	return snap
 }
 
 // CreateSubscriptionCheckout creates a checkout configuration with an inline
@@ -76,7 +97,10 @@ func (w *whop) CreateSubscriptionCheckout(ctx context.Context, req connector.Sub
 	}
 	plan := map[string]any{
 		"company_id": w.cfg.CompanyID, "plan_type": "renewal", "currency": strings.ToLower(req.Currency),
-		"renewal_price": json.Number(price), "initial_price": json.Number(price), "billing_period": days * req.IntervalCount,
+		// No initial_price: it is charged on top of the first renewal ("Due today
+		// $19.98" for a $9.99 plan, seen in the sandbox). The first payment is the
+		// renewal price.
+		"renewal_price": json.Number(price), "billing_period": days * req.IntervalCount,
 		// Whop requires inline product details for a renewal plan. A stable
 		// external id per price point lets repeat subscriptions share a product.
 		"product": map[string]any{
