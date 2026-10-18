@@ -112,7 +112,10 @@ func (l *dbLogs) registerPurge(q *jobs.Queue, main *store.DB, set *settings.Serv
 				return 0, err
 			}
 			var n int
-			return n, v.Decode(&n)
+			if err := v.Decode(&n); err != nil {
+				return 0, err
+			}
+			return n, nil
 		}})
 	q.Register(logPurgeKind, func(ctx context.Context, _ json.RawMessage) error {
 		_, err := p.Run(ctx)
