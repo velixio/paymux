@@ -86,7 +86,7 @@ func TestBuildLinksAnExtraModule(t *testing.T) {
 	write("hookmod.go", `package hookmod
 
 import (
-	"github.com/paymux/paymux"
+	"github.com/paymux/paymux/hub"
 	"github.com/paymux/paymux/framework"
 )
 
@@ -95,7 +95,7 @@ import (
 var Marker = "hookmod-linked-6d1f0c2a"
 
 func init() {
-	framework.OnSetup(func(app *paymux.App) { app.OnRoute(func(r paymux.RouteRequest) []string { println(Marker); return nil }) })
+	framework.OnSetup(func(app *hub.App) { app.OnRoute(func(r hub.RouteRequest) []string { println(Marker); return nil }) })
 }
 `)
 	out := filepath.Join(t.TempDir(), "bin", "paymux-custom")

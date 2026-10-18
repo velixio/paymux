@@ -71,7 +71,7 @@ Install Caddy, copy `deploy/Caddyfile` to `/etc/caddy/Caddyfile`, replace `pay.e
 ### Docker
 
 ```sh
-docker build -t paymux:latest --build-arg VERSION=$(git describe --always) .
+docker build -f deploy/docker/Dockerfile -t paymux:latest --build-arg VERSION=$(git describe --always) .   # or: make docker
 docker run -d --name paymux --restart unless-stopped \
   -p 127.0.0.1:8080:8080 -v paymux-data:/data \
   --env-file /etc/paymux/paymux.env -e PAYMUX_DATA_DIR=/data \

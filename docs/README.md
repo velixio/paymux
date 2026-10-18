@@ -31,7 +31,7 @@ These guides describe the implementation in this repository. Connector capabilit
 - [Performance](performance.md): measured workload and benchmark commands.
 - [Testing and coverage](testing.md): test suites, reports, and the repository-wide 100% target.
 - [Dependency notes](dependencies.md): build and runtime dependencies.
-- [Glossary](../GLOSSARY.md): canonical product terminology.
+- [Glossary](glossary.md): canonical product terminology.
 
 ## API reference and examples
 

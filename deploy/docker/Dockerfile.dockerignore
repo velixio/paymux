@@ -1,0 +1,16 @@
+.git
+.claude
+.playwright-mcp
+data
+dist
+.env
+*.db
+*.db-wal
+*.db-shm
+docs/*
+!docs/embed.go
+!docs/openapi.yaml
+
+**/node_modules
+web-home/dist
+web/static/dashboard

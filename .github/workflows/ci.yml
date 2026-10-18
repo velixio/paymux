@@ -63,6 +63,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: bun install --frozen-lockfile
+      - run: bun install --cwd frontend --frozen-lockfile
       - run: bunx playwright install --with-deps chromium
-      - run: bun run test:home
+        working-directory: frontend
+      - run: bun run --cwd frontend test:home

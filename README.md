@@ -80,7 +80,7 @@ Whop is a merchant of record, so no GST invoice is issued for its payments. The 
 
 ## Documentation
 
-Start with the [complete documentation index](docs/README.md). Guides cover installation, application integration, payments and routing, signed webhooks, billing, dashboard operations, configuration, security, recovery, and troubleshooting. The [glossary](GLOSSARY.md) defines the product language. The separate public site renders the same Markdown at `/docs` and `/docs/<guide>`; the payment hub’s `/docs` remains its API reference.
+Start with the [complete documentation index](docs/README.md). Guides cover installation, application integration, payments and routing, signed webhooks, billing, dashboard operations, configuration, security, recovery, and troubleshooting. The [glossary](docs/glossary.md) defines the product language. The separate public site renders the same Markdown at `/docs` and `/docs/<guide>`; the payment hub’s `/docs` remains its API reference.
 
 ## Quick start
 
@@ -198,14 +198,14 @@ scripts/release.sh v1.2.3   # release archives with checksums (and a cosign sign
 
 ## Public website
 
-The React marketing and developer-entry website lives in [`web-home/`](web-home) and runs independently of the payment hub. Both frontends use TanStack Router and shadcn/ui; the dashboard also uses TanStack Query. They use Vite client builds, without TanStack Start, SSR or new APIs. The home site can deploy directly to a static host or use its separate Go serving binary.
+The React marketing and developer-entry website (sources in [`frontend/home/`](frontend/home), Go server in [`web-home/`](web-home)) runs independently of the payment hub. Both frontends use TanStack Router and shadcn/ui; the dashboard also uses TanStack Query. They use Vite client builds, without TanStack Start, SSR or new APIs. The home site can deploy directly to a static host or use its separate Go serving binary.
 
 ```bash
-bun install --frozen-lockfile
+bun install --cwd frontend --frozen-lockfile
 make build-home
 ./bin/paymux-home -listen 127.0.0.1:8051
 ```
 
 Routes: `/`, `/integrations`, `/docs`, `/self-hosting`; readiness: `/healthz`. Bind behind your TLS reverse proxy for public hosting. The payment hub continues to serve its own operational dashboard and API reference separately.
 
-Frontend development: `bun run dev:home` serves the public site; `bun run dev` serves the dashboard with a proxy to the existing hub. See [`web-dashboard/README.md`](web-dashboard/README.md) for the existing page/form adapter contract and development setup.
+Frontend development: `bun run --cwd frontend dev:home` serves the public site; `bun run --cwd frontend dev` serves the dashboard with a proxy to the existing hub. See [`frontend/dashboard/README.md`](frontend/dashboard/README.md) for the existing page/form adapter contract and development setup.

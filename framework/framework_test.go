@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux"
 	"github.com/paymux/paymux/framework"
+	"github.com/paymux/paymux/hub"
 	"github.com/paymux/paymux/pkg/connector"
 )
 
@@ -30,11 +30,11 @@ func TestRunAppliesRegisteredAndPassedSetupToServe(t *testing.T) {
 	lookup := func(k string) (string, bool) { v, ok := env[k]; return v, ok }
 
 	var order []string
-	framework.OnSetup(func(*paymux.App) { order = append(order, "registered") }) // what a plugin module does in init()
+	framework.OnSetup(func(*hub.App) { order = append(order, "registered") }) // what a plugin module does in init()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var out, errb bytes.Buffer
-	code := framework.Run(ctx, []string{"serve"}, lookup, &out, &errb, func(a *paymux.App) {
+	code := framework.Run(ctx, []string{"serve"}, lookup, &out, &errb, func(a *hub.App) {
 		order = append(order, "passed")
 		go func() {
 			for a.Addr() == "" {

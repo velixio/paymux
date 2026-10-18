@@ -25,7 +25,7 @@
     "title": "Product glossary",
     "section": "Getting started",
     "description": "Payments, attempts, provider accounts, and event delivery.",
-    "source": "GLOSSARY.md"
+    "source": "docs/glossary.md"
   },
   {
     "slug": "api",

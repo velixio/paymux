@@ -1,7 +1,7 @@
 // Package jsvm runs JavaScript hooks: small scripts in a directory that react
 // to Paymux events (payment succeeded, refund succeeded, ...) and may suggest
 // an order for provider accounts. It is the scripting counterpart of the Go
-// hooks in the root package, and carries the same guarantees: a script sees
+// hooks in the hub package, and carries the same guarantees: a script sees
 // JSON copies of an event, has no way to move money, and can never hold up or
 // roll back a payment.
 //

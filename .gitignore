@@ -5,11 +5,12 @@
 /.claude/
 /.playwright-mcp/
 /node_modules/
+/frontend/node_modules/
 /web-home/dist/*
 !/web-home/dist/.keep
 /web/static/dashboard/
-/test-results/
-/playwright-report/
+test-results/
+playwright-report/
 
 /coverage/
 __pycache__/

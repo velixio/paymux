@@ -29,7 +29,7 @@ The documentation catalog and homepage demo have 100% unit statement/branch/func
 | `connectors/simulator` | 81.57% | 181 |
 | `internal/core` | 87.26% | 112 |
 | `connectors/zoho` | 84.68% | 106 |
-| `github.com/paymux/paymux` | 81.57% | 87 |
+| `hub` | 81.57% | 87 |
 | `connectors/payu` | 83.62% | 87 |
 | `connectors/razorpay` | 85.96% | 75 |
 | `connectors/whop` | 83.66% | 75 |
@@ -41,8 +41,8 @@ Add behavioral tests for dashboard actions and errors, subscription renewal/mand
 ## Reproduce
 
 ```sh
-bun run coverage:go
-bun run coverage:frontend
+bun run --cwd frontend coverage:go
+bun run --cwd frontend coverage:frontend
 ```
 
 Both commands enforce the 100% target and currently fail their coverage gate. See [testing and coverage](testing.md) for baseline collection, PostgreSQL configuration, browser checks, and report locations.

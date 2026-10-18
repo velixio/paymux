@@ -18,15 +18,15 @@ step "gofmt"
 test -z "$(git ls-files -z "*.go" | xargs -0 gofmt -l)" || { git ls-files -z "*.go" | xargs -0 gofmt -l; echo "gofmt: files need formatting" >&2; exit 1; }
 
 step "React frontends (typecheck and production builds)"
-bun install --frozen-lockfile
-bun run typecheck
-bun run check:docs
-bun run test:frontend
-bun run build
+bun install --cwd frontend --frozen-lockfile
+bun run --cwd frontend typecheck
+bun run --cwd frontend check:docs
+bun run --cwd frontend test:frontend
+bun run --cwd frontend build
 
 step "public website browser tests (same as the GitHub public-browser job)"
-bunx playwright install chromium-headless-shell >/dev/null
-bun run test:home
+(cd frontend && bunx playwright install chromium-headless-shell >/dev/null)
+bun run --cwd frontend test:home
 
 step "signed webhook receiver example"
 python3 -m unittest discover -s examples/webhook-receiver -p 'test_*.py'
@@ -64,7 +64,7 @@ done
 
 step "docker build (skipped when docker is not usable)"
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-  docker build --build-arg VERSION=ci -t paymux:ci .
+  docker build -f deploy/docker/Dockerfile --build-arg VERSION=ci -t paymux:ci .
 else
   echo "docker is not installed or its daemon is not reachable: skipping the image build"
 fi

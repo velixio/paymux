@@ -7,16 +7,16 @@ React + Vite + TanStack Router with shared shadcn/ui components. The website has
 From the repository root with Bun 1.4.3 or newer:
 
 ```sh
-bun install --frozen-lockfile
-bun run dev:home
+bun install --cwd frontend --frozen-lockfile
+bun run --cwd frontend dev:home
 ```
 
-Open `http://localhost:5174`. Source files are in `web-home/src/`. Shared components and tokens are in `frontend/`.
+Open `http://localhost:5174`. Source files are in `frontend/home/src/`. Shared components and tokens are in `frontend/`.
 
 ## Build
 
 ```sh
-bun run build:home
+bun run --cwd frontend build:home
 ```
 
 Deploy `web-home/dist/` to any static host, with the marketing and guide routes (`/`, `/integrations`, `/docs`, `/docs/<guide>`, `/self-hosting`) mapped to `index.html`. Asset files under `/assets/` should be served normally. The public `/docs` is a developer entry guide; the payment hub's `/docs` remains its API reference.
@@ -39,8 +39,8 @@ The homepage uses a light paper/cobalt palette or a dark slate palette, with an 
 Run the repeatable Chromium checks after installing the browser:
 
 ```sh
-bunx playwright install chromium
-bun run test:home
+(cd frontend && bunx playwright install chromium)
+bun run --cwd frontend test:home
 ```
 
 The tests build the site and launch its actual Go static server, preserving production CSP checks. They cover payment/ledger/delivery outcomes, canceling a running demo, theme persistence, system preference, keyboard tabs, mobile navigation, and five viewport widths. Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to use an existing Chromium installation.
@@ -48,6 +48,6 @@ The tests build the site and launch its actual Go static server, preserving prod
 
 ## Documentation library
 
-The site renders the guides listed in `docs-catalog.json` directly from repository Markdown. The same catalog configures client navigation and the Go server's valid guide routes. Add a guide's source, slug, section, and summary there, then run `bun run check:docs`, `bun run test:frontend`, and `bun run test:home`. Unknown guide URLs return 404. The API specification and source/example links point to the repository; guide-to-guide links stay inside the site.
+The site renders the guides listed in `docs-catalog.json` directly from repository Markdown. The same catalog configures client navigation and the Go server's valid guide routes. Add a guide's source, slug, section, and summary there, then run `bun run --cwd frontend check:docs`, `bun run --cwd frontend test:frontend`, and `bun run --cwd frontend test:home`. Unknown guide URLs return 404. The API specification and source/example links point to the repository; guide-to-guide links stay inside the site.
 
 Markdown parsing/rendering is in a lazy-loaded documentation chunk. Raw HTML in Markdown is skipped. Search runs locally across published guide content. Neither Markdown content nor search introduces a server API.

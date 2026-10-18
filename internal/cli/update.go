@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux"
+	"github.com/paymux/paymux/hub"
 )
 
 const updateUsage = "usage: paymux update [--check] [--version vX.Y.Z] [--repo owner/name] [--dest path] [--force]\n" +
@@ -38,7 +38,7 @@ const (
 )
 
 // currentVersion is the running binary's version (replaced in tests).
-var currentVersion = func() string { return paymux.Version }
+var currentVersion = func() string { return hub.Version }
 
 // compareVersions orders two release tags ("v1.2.3", "1.2.3-rc.1"): -1, 0 or
 // 1. A pre-release sorts before its release.
