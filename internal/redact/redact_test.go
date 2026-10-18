@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 func notContains(t *testing.T, label, got string, secrets ...string) {
@@ -274,5 +275,20 @@ func TestCap(t *testing.T) {
 	}
 	if strings.ToValidUTF8(got, "?") != got {
 		t.Error("cut inside a character")
+	}
+}
+
+func TestHostileInputIsFast(t *testing.T) {
+	r := New()
+	r.SetKnown("a", "KNOWNSECRETVALUE")
+	for _, in := range []string{strings.Repeat("a:", 32<<10), strings.Repeat("a=b&", 16<<10), strings.Repeat("1 ", 32<<10),
+		strings.Repeat(`{"a":`, 5000), strings.Repeat("4", 64<<10), strings.Repeat("-----BEGIN X-----", 3000)} {
+		done := make(chan struct{})
+		go func() { r.Body("", []byte(in)); r.Text(in); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("redacting %.20q... takes too long", in)
+		}
 	}
 }
