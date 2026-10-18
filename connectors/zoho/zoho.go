@@ -526,7 +526,15 @@ func rank(status string) int {
 	return 1
 }
 
-// Refund creates a refund; the refund provider_ref is sent as reference_number.
+// notRefundableCodes are the codes of a refund Zoho refuses because of the
+// payment (payment_already_refunded was seen live; the others are the refund
+// failure reasons the documentation lists).
+var notRefundableCodes = map[string]bool{
+	"payment_already_refunded": true, "exceeds_payment_amount": true, "exceeds_balance_amount": true, "payment_already_disputed": true,
+	"payment_not_captured": true, "expiry_time_exceeded": true, "insufficient_funds": true,
+}
+
+// Refund creates a refund; the refund provider_ref is stored in its meta_data.
 func (z *zoho) Refund(ctx context.Context, req connector.RefundRequest) (connector.RefundSnapshot, error) {
 	if req.ProviderPaymentID == "" || req.Amount <= 0 {
 		return connector.RefundSnapshot{}, errors.New("zoho: refund needs a payment id and a positive amount")
@@ -535,13 +543,46 @@ func (z *zoho) Refund(ctx context.Context, req connector.RefundRequest) (connect
 	if err != nil {
 		return connector.RefundSnapshot{}, err
 	}
-	in := map[string]any{"amount": json.Number(amt), "reason": req.Reason, "reference_number": req.ProviderRef}
+	// Zoho documents no idempotency for refunds, so a retried refund is looked up
+	// first: the payment lists its refunds with their meta_data, where Paymux's
+	// reference was stored.
+	var pay struct {
+		Payment paymentEntity `json:"payment"`
+	}
+	if err := z.api.do(ctx, "GET", "/api/v1/payments/"+url.PathEscape(req.ProviderPaymentID), nil, nil, &pay); err != nil {
+		return connector.RefundSnapshot{}, err
+	}
+	for _, r := range pay.Payment.Refunds {
+		if r.ref() != req.ProviderRef {
+			continue
+		}
+		s, err := r.snapshot()
+		if err != nil {
+			return connector.RefundSnapshot{}, err
+		}
+		if s.Amount != req.Amount {
+			return connector.RefundSnapshot{}, fmt.Errorf("zoho: refund reference %s already used for %d, not %d", req.ProviderRef, s.Amount, req.Amount)
+		}
+		s.ProviderPaymentID = req.ProviderPaymentID
+		return s, nil
+	}
+	// reason must be one of Zoho's values; a free text goes to the description.
+	reason := "others"
+	switch req.Reason {
+	case "duplicate", "fraudulent", "requested_by_customer", "others":
+		reason = req.Reason
+	}
+	in := map[string]any{"amount": json.Number(amt), "reason": reason, "type": "initiated_by_merchant",
+		"meta_data": []metaItem{{Key: metaRef, Value: req.ProviderRef}}}
+	if req.Reason != "" {
+		in["description"] = req.Reason
+	}
 	var out struct {
 		Refund refundEntity `json:"refund"`
 	}
 	if err := z.api.do(ctx, "POST", "/api/v1/payments/"+url.PathEscape(req.ProviderPaymentID)+"/refunds", nil, in, &out); err != nil {
 		var ae *apiError
-		if errors.As(err, &ae) && ae.Status == 400 {
+		if errors.As(err, &ae) && ae.Status == 400 && notRefundableCodes[ae.Code] {
 			return connector.RefundSnapshot{}, connector.ErrNotRefundable{Reason: ae.Message}
 		}
 		return connector.RefundSnapshot{}, err

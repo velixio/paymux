@@ -105,7 +105,7 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]any{"code": 0, "payment": pay(f.status)})
 	case r.Method == "POST" && r.URL.Path == "/api/v1/payments/pay_z1/refunds":
 		if f.refundCode != 0 {
-			write(w, f.refundCode, map[string]any{"code": 9, "message": "refund exceeds payment"})
+			write(w, f.refundCode, map[string]any{"code": "exceeds_payment_amount", "message": "refund exceeds payment"})
 			return
 		}
 		write(w, 200, map[string]any{"code": 0, "refund": map[string]any{"refund_id": "rf_z1", "payment_id": "pay_z1", "amount": "100.00", "status": f.refundStat, "reference_number": "rf_01"}})
@@ -402,7 +402,7 @@ func TestRefundFlow(t *testing.T) {
 	}
 	var body map[string]any
 	_ = json.Unmarshal(f.bodies["POST /api/v1/payments/pay_z1/refunds"], &body)
-	if body["reference_number"] != "rf_01" || fmt.Sprint(body["amount"]) != "100" {
+	if fmt.Sprint(body["amount"]) != "100" || body["type"] != "initiated_by_merchant" {
 		t.Errorf("body = %v", body)
 	}
 	f.refundStat = "succeeded"
