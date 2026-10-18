@@ -1228,3 +1228,48 @@ table.grid .money {
     grid-row: 3;
   }
 }
+
+/* Logs page */
+.status-error {
+  background: #7f1d1d;
+  color: #fff;
+}
+.status-warn {
+  background: #b45309;
+  color: #fff;
+}
+.log-msg {
+  overflow-wrap: anywhere;
+}
+pre.log-json {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  border-radius: 6px;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .log-grid thead {
+    display: none;
+  }
+  .log-grid,
+  .log-grid tbody,
+  .log-grid tr,
+  .log-grid td {
+    display: block;
+    width: auto;
+    border: 0;
+  }
+  .log-grid tr {
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(127, 127, 127, 0.4);
+  }
+  .log-grid td::before {
+    content: attr(data-label) ": ";
+    font-size: 11px;
+    opacity: 0.7;
+  }
+}

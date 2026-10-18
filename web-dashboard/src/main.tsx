@@ -84,7 +84,7 @@ const sections = [
   { name: "Billing", keys: ["subscriptions", "invoices"] },
   {
     name: "Operations",
-    keys: ["disputes", "reconciliation", "reports", "alerts", "audit"],
+    keys: ["disputes", "reconciliation", "reports", "alerts", "audit", "logs"],
   },
   { name: "Connections", keys: ["apps", "providers"] },
   {
