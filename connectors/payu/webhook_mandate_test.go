@@ -144,3 +144,48 @@ func TestPaymentWebhookStillWorksBesideMandateNotices(t *testing.T) {
 		t.Fatalf("%+v %v", ns, err)
 	}
 }
+
+// L3: naming an unsigned notice must not call PayU. The inbound handler asks for
+// the event id on every delivery, so a flood of forged e-NACH notices would
+// otherwise use up the account's PayU rate limit. The fetch that confirms the
+// notice belongs to the background job (ParseWebhook).
+func TestMandateNoticeEventIDNeedsNoNetworkCall(t *testing.T) {
+	ctx := context.Background()
+	f := &fake{cmds: map[string]string{"NB_mandate_status": `{"status":"CANCEL_SUCCESS","authpayuid":"20000064468","amount":"1500.00"}`}}
+	c := newConn(t, f)
+	ider, ok := c.(connector.WebhookEventIDer)
+	if !ok {
+		t.Fatal("the PayU connector does not implement connector.WebhookEventIDer")
+	}
+	enach := `{"statusCode":1,"notificationType":"MANDATE_CANCELLATION","status":"CANCEL_SUCCESS","authPayuId":"20000064468"}`
+	id1, ok := ider.WebhookEventID(rawHook(enach))
+	if !ok || id1 == "" {
+		t.Fatalf("no id for an unsigned notice: %q %v", id1, ok)
+	}
+	for i := 0; i < 50; i++ {
+		ider.WebhookEventID(rawHook(enach))
+	}
+	if n := len(f.commands()); n != 0 {
+		t.Fatalf("naming 51 unsigned notices made %d PayU calls", n)
+	}
+	if id2, _ := ider.WebhookEventID(rawHook(enach)); id2 != id1 {
+		t.Errorf("a retried notice must get the same id: %q vs %q", id1, id2)
+	}
+	other := strings.Replace(enach, "20000064468", "20000064469", 1)
+	if id3, _ := ider.WebhookEventID(rawHook(other)); id3 == id1 {
+		t.Error("a notice about another mandate got the same id")
+	}
+	// It is the id ParseWebhook reports (that one fetches, in the job).
+	ns, err := c.ParseWebhook(ctx, rawHook(enach))
+	if err != nil || len(ns) != 1 || ns[0].EventID != id1 {
+		t.Errorf("ParseWebhook id %v (%v), want %q", ns, err, id1)
+	}
+	// Signed notices are named from the body too; a payment webhook is not this
+	// method's business (the caller parses it).
+	if id, ok := ider.WebhookEventID(rawHook(cardNotice("MANDATE_CANCELLATION", "deleted", "Mandate cancelled", cardCancelHash))); !ok || id == "" {
+		t.Errorf("signed card notice: %q %v", id, ok)
+	}
+	if _, ok := ider.WebhookEventID(webhook(successForm(testSalt, ""))); ok {
+		t.Error("a payment webhook was claimed")
+	}
+}

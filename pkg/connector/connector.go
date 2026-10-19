@@ -53,6 +53,19 @@ type Canceler interface {
 	CancelCheckout(ctx context.Context, ref PaymentRef) error
 }
 
+// WebhookEventIDer is optional. The inbound handler needs a webhook's event id
+// on every delivery, before anything is stored, and it must do so without
+// calling the provider (a flood of forged deliveries would otherwise use up the
+// account's rate limit with the provider). A connector whose ParseWebhook can
+// reach the provider for some events (PayU confirms an unsigned mandate notice by
+// reading the mandate back) implements this to name the event from the request
+// alone: the same id ParseWebhook reports, derived deterministically from the
+// body. ok is false for a delivery the connector does not name this way, and the
+// caller then parses it.
+type WebhookEventIDer interface {
+	WebhookEventID(req WebhookRequest) (id string, ok bool)
+}
+
 // SubscriptionManager is optional, for provider_managed billing
 // (CapSubscriptionManager). Razorpay and Whop implement it.
 type SubscriptionManager interface {

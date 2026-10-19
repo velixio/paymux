@@ -682,11 +682,21 @@ func (v *verifier) Verify(headers http.Header, body []byte) (string, error) {
 	}
 	var eventID string
 	if verr == nil || errors.Is(verr, connector.ErrUnsigned) {
-		if ns, err := v.conn.ParseWebhook(ctx, req); err == nil {
-			for _, n := range ns {
-				if n.EventID != "" {
-					eventID = n.EventID
-					break
+		// A connector that can name the event from the request alone does so:
+		// ParseWebhook may call the provider (to confirm an unsigned notice), and
+		// an inbound delivery must never cost a provider call. The background job
+		// parses the stored event.
+		named := false
+		if ider, ok := v.conn.(connector.WebhookEventIDer); ok {
+			eventID, named = ider.WebhookEventID(req)
+		}
+		if !named {
+			if ns, err := v.conn.ParseWebhook(ctx, req); err == nil {
+				for _, n := range ns {
+					if n.EventID != "" {
+						eventID = n.EventID
+						break
+					}
 				}
 			}
 		}

@@ -612,6 +612,10 @@ type URLs interface {
 	WebhookURL() string
 }
 
+type WebhookEventIDer interface {
+	WebhookEventID(req WebhookRequest) (id string, ok bool)
+}
+
 type WebhookRequest struct {
 	Method     string              `json:"method"`
 	Headers    map[string][]string `json:"headers"`
