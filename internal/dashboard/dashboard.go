@@ -12,7 +12,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -25,6 +24,7 @@ import (
 	"github.com/paymux/paymux/internal/alertcenter"
 	"github.com/paymux/paymux/internal/auth"
 	"github.com/paymux/paymux/internal/authz"
+	"github.com/paymux/paymux/internal/clientip"
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/disputes"
@@ -380,39 +380,8 @@ func (d *Dashboard) trusted(addr netip.Addr) bool {
 	return false
 }
 
-// clientIP is the address of the browser. X-Forwarded-For counts only when
-// the connection comes from a trusted proxy; the list is then read from the
-// right, skipping trusted proxies, so entries the client made up on the left
-// are never believed.
-func (d *Dashboard) clientIP(r *http.Request) string {
-	host := r.RemoteAddr
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
-	}
-	peer, err := netip.ParseAddr(strings.Trim(host, "[]"))
-	if err != nil {
-		return host
-	}
-	peer = peer.Unmap()
-	if !d.trusted(peer) {
-		return peer.String()
-	}
-	hops := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
-	for i := len(hops) - 1; i >= 0; i-- {
-		hop := strings.TrimSpace(hops[i])
-		if hop == "" && len(hops) == 1 {
-			break
-		}
-		a, err := netip.ParseAddr(hop)
-		if err != nil {
-			break // not an address: do not guess
-		}
-		if a = a.Unmap(); !d.trusted(a) {
-			return a.String()
-		}
-	}
-	return peer.String()
-}
+// clientIP is the address of the browser (see package clientip).
+func (d *Dashboard) clientIP(r *http.Request) string { return clientip.From(r, d.o.TrustedProxies) }
 
 // ---- anonymous CSRF (login forms) ----
 

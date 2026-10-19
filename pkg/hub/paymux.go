@@ -21,6 +21,7 @@ import (
 	"github.com/paymux/paymux/internal/alertcenter"
 	"github.com/paymux/paymux/internal/apidocs"
 	"github.com/paymux/paymux/internal/checkout"
+	"github.com/paymux/paymux/internal/clientip"
 	"github.com/paymux/paymux/internal/config"
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
@@ -266,6 +267,9 @@ func (a *App) Start(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := registerProviderEventPurge(q, db, set); err != nil {
+		return err
+	}
 	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv, Subscriptions: subs, PaymentLinks: links, Payouts: payoutSvc})
 	if err != nil {
 		return err
@@ -274,7 +278,8 @@ func (a *App) Start(ctx context.Context) error {
 	if verifiers == nil {
 		verifiers = conns.Verifiers()
 	}
-	hooks := inbound.New(inbound.Options{DB: db, Queue: q, Verifiers: verifiers, Logger: a.log})
+	hooks := inbound.New(inbound.Options{DB: db, Queue: q, Verifiers: verifiers, Logger: a.log,
+		ClientIP: func(r *http.Request) string { return clientip.From(r, a.cfg.TrustedProxies) }})
 
 	overlay, err := web.NewOverlay(web.Embedded(), filepath.Join(a.cfg.DataDir, "custom"))
 	if err != nil {
