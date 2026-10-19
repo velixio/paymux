@@ -7,7 +7,9 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
+	"time"
 )
 
 // Domain statuses.
@@ -89,28 +91,96 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rt.Customer.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, d.AppID)))
 }
 
-// TLSAllowHandler answers Caddy on_demand_tls ask: 200 for the base host and
-// pending/active custom domains, 403 otherwise. Mount on the internal listener only.
+// TLSAllowOptions configures the handler for Caddy's on-demand TLS "ask".
+type TLSAllowOptions struct {
+	BaseHost string
+	Lookup   Lookup
+	// Resolve returns the addresses a host name resolves to; nil uses the
+	// system resolver.
+	Resolve func(ctx context.Context, host string) ([]netip.Addr, error)
+	// Timeout bounds the DNS lookups of one request (default 3 seconds).
+	Timeout time.Duration
+}
+
+// TLSAllow answers Caddy's on_demand_tls ask: 200 when a certificate may be
+// issued for the domain, 403 when not. Mount it on the internal listener only.
+//
+// Certificates are a limited resource (the CA caps how many it issues), and a
+// domain is added in the dashboard by anyone with the right, so the answer is
+// 200 only for
+//
+//   - the base host,
+//   - a domain whose ownership was verified (active), and
+//   - a domain still pending verification only while its A or AAAA records
+//     already lead to the hub, that is, include one of the base host's.
+//
+// Everything else, including a pending domain whose DNS cannot be read, is 403.
+type TLSAllow struct{ o TLSAllowOptions }
+
+// NewTLSAllow builds the handler.
+func NewTLSAllow(o TLSAllowOptions) *TLSAllow {
+	if o.Resolve == nil {
+		o.Resolve = func(ctx context.Context, host string) ([]netip.Addr, error) {
+			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+		}
+	}
+	if o.Timeout <= 0 {
+		o.Timeout = 3 * time.Second
+	}
+	return &TLSAllow{o: o}
+}
+
+// TLSAllowHandler is NewTLSAllow with the system resolver.
 func TLSAllowHandler(baseHost string, lookup Lookup) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		host := Normalize(r.URL.Query().Get("domain"))
-		switch {
-		case host == "":
-			http.Error(w, "domain required", http.StatusBadRequest)
-			return
-		case host == Normalize(baseHost):
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		d, ok, err := lookup.LookupHost(r.Context(), host)
-		if err != nil {
-			http.Error(w, "lookup failed", http.StatusServiceUnavailable)
-			return
-		}
-		if !ok || !servable(d) {
-			http.Error(w, "not allowed", http.StatusForbidden)
-			return
-		}
+	return NewTLSAllow(TLSAllowOptions{BaseHost: baseHost, Lookup: lookup})
+}
+
+func (h *TLSAllow) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	host := Normalize(r.URL.Query().Get("domain"))
+	switch {
+	case host == "":
+		http.Error(w, "domain required", http.StatusBadRequest)
+		return
+	case host == Normalize(h.o.BaseHost):
 		w.WriteHeader(http.StatusOK)
-	})
+		return
+	}
+	d, ok, err := h.o.Lookup.LookupHost(r.Context(), host)
+	if err != nil {
+		http.Error(w, "lookup failed", http.StatusServiceUnavailable)
+		return
+	}
+	switch {
+	case !ok:
+	case d.Status == StatusActive:
+		w.WriteHeader(http.StatusOK)
+		return
+	case d.Status == StatusPending && h.pointsHere(r.Context(), host):
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Error(w, "not allowed", http.StatusForbidden)
+}
+
+// pointsHere reports whether host resolves to at least one address the base
+// host resolves to.
+func (h *TLSAllow) pointsHere(ctx context.Context, host string) bool {
+	ctx, cancel := context.WithTimeout(ctx, h.o.Timeout)
+	defer cancel()
+	hub, err := h.o.Resolve(ctx, Normalize(h.o.BaseHost))
+	if err != nil || len(hub) == 0 {
+		return false
+	}
+	theirs, err := h.o.Resolve(ctx, host)
+	if err != nil {
+		return false
+	}
+	for _, a := range theirs {
+		for _, b := range hub {
+			if a.Unmap() == b.Unmap() {
+				return true
+			}
+		}
+	}
+	return false
 }

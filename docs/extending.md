@@ -201,6 +201,17 @@ ids or connector names, with the same rules as `OnRoute` in Go.
   hook fails. Time spent waiting for `fetch` does not count against the two
   seconds. A few runtimes are pooled, so hooks that run at the same time do not
   share state; do not rely on globals surviving between calls.
+- **Memory and output are limited.** A call may add at most 128 MiB to the
+  live heap; a script that does is interrupted and its runtime thrown away,
+  like one that runs too long. The built-ins that can build a huge value in
+  one step (`repeat`, `padStart`, `padEnd`, `fill`, `join`, `concat`,
+  `Array.from`, `apply` and a few more) throw a `RangeError` beyond 16 million
+  characters or 4 million elements. A console message is cut at 8 KB, a call
+  logs at most 100 console lines, an answer that is an array of more than 1,024
+  entries is refused, and a routing answer keeps at most 64 accounts of 256
+  characters each. The heap figure is the process's, so it is an
+  approximation under heavy load; the hard bound is the memory limit of the
+  container the hub runs in.
 - **Failures are loud but harmless.** A thrown error, a rejected promise or a
   timeout raises a `hook.failed` ops alert and a log line, exactly like a Go
   hook error; the payment is unaffected. A script file that does not parse is

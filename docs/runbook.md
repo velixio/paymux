@@ -64,7 +64,7 @@ curl -fsS http://127.0.0.1:8080/readyz
 
 ### Caddy
 
-Install Caddy, copy `deploy/Caddyfile` to `/etc/caddy/Caddyfile`, replace `pay.example.com` and the e-mail address, and `systemctl reload caddy`. Point DNS for the hub's host at this server. App custom domains (added on the app's *Domains* tab) get certificates on demand, but only for hosts the hub knows: Caddy asks `http://127.0.0.1:9100/internal/tls-allow?domain=...` before it requests one.
+Install Caddy, copy `deploy/Caddyfile` to `/etc/caddy/Caddyfile`, replace `pay.example.com` and the e-mail address, and `systemctl reload caddy`. Point DNS for the hub's host at this server. App custom domains (added on the app's *Domains* tab) get certificates on demand, but only for hosts the hub knows: Caddy asks `http://127.0.0.1:9100/internal/tls-allow?domain=...` before it requests one. The hub says yes for its own host, for a domain whose ownership was verified (active), and for a domain still pending only while its A or AAAA record already points at the hub's address (the same address `PAYMUX_BASE_URL`'s host resolves to). Anything else gets no certificate, so adding names in the dashboard cannot use up the CA's issuance limits.
 
 **nginx on another device instead of Caddy:** [`deploy/nginx/paymux.shimul.me.conf`](../deploy/nginx/paymux.shimul.me.conf) proxies `paymux.shimul.me` to the Paymux host on the LAN (`192.168.0.174:8050`). `PAYMUX_TRUSTED_PROXIES` defaults to the local network, so the nginx device is believed without a setting; set its exact address for a stricter setup. Allow port 8050 only from that device. nginx has no on-demand TLS, so each app custom domain needs its own server block and certificate.
 
@@ -114,7 +114,7 @@ printf '%s\n' "$PASSWORD" | paymux user create --email you@example.com --role ad
 
 Codes cannot be reused, and five wrong sign-in attempts per email and address lock sign-in for 15 minutes.
 
-- Lost authenticator: `paymux user reset-2fa --email you@example.com` (signs the user out everywhere; they enrol again at next sign-in).
+- Lost authenticator: `paymux user reset-2fa --email you@example.com` (signs the user out everywhere and prints a one-time enrolment code; they enter it at the next sign-in to set up a new authenticator). A new user gets such a code when an admin creates them (Users page or `paymux user create`); the Users page can issue another. The code works once, for 7 days, and knowing only the password is not enough to enrol.
 - More users: *Users* in the dashboard (admins create users with an initial password; roles are viewer, operator, admin).
 - `PAYMUX_DEV_SKIP_2FA=true` exists for local development only and is refused in production or on a non-local base URL.
 
@@ -223,7 +223,7 @@ By default an invoice PDF carries the authorised signatory's name and the line "
 
 **Finding things.** Filter by time, level, kind (`app`, `provider`, `http`, `job`), connector, provider account, request id, payment id, any other id (attempt, refund, subscription, mandate, payout, job, the provider's own order or payment id, a webhook event id) and free text (it searches the message, the ids and the bodies). Every id on a row is a link to the rows that share it. A customer or an API caller who quotes a *request id* (it is in the `request_id` of an API error, in the `X-Request-Id` header, and at the end of a plain error page) leads straight to the rows of that request. The payment, attempt, refund and subscription pages have a *Logs for this ...* link for users who may read the logs. *Export JSON lines* downloads the filtered rows (up to 10,000, bodies included, still redacted), for pasting into a bug report.
 
-**Retention and size.** Settings (*Settings*, Delivery and retention): `log_retention_error_days` (default 90), `log_retention_warn_days` (default 7) and `log_max_rows` (default 500,000; when exceeded the oldest go first). An hourly job purges in batches. `audit_retention_days` (default 400, 0 = forever, never below 365) does the same for the audit log.
+**Retention and size.** Settings (*Settings*, Delivery and retention): `log_retention_error_days` (default 90), `log_retention_warn_days` (default 7) and `log_max_rows` (default 500,000) and `log_max_mb` (default 1024; the space the rows' text takes). When either is exceeded the oldest rows go first, checked as rows arrive and not only by the hourly job, which also purges by age in batches. Rejected API and webhook requests (4xx) are rate limited so that a flood cannot fill the log: one row per source, route and status a minute, at most 30 a minute per route and status from all sources together, and the next row carries a `suppressed` count of what was skipped (also exported as the `paymux_logs_suppressed_total` metric). `audit_retention_days` (default 400, 0 = forever, never below 365) does the same for the audit log.
 
 **Where it lives.** With SQLite the rows are in their own file, `<data dir>/logs.db`, so writing them never competes with payments for the database lock. `paymux backup` does not include it. It is always safe to delete (stop Paymux, remove the file, start Paymux); Paymux makes a new one and sets a damaged one aside as `logs.db.corrupt-<time>`. With PostgreSQL it is the `logs` table of the main database; add `--exclude-table-data=logs` to `pg_dump` to leave the rows out of a dump.
 
@@ -294,6 +294,18 @@ Provider menus change; the descriptions above name the settings to look for, not
 | `PAYMUX_DB_LOG_LEVEL` | `warn` | Lowest level of application records kept on the Logs page (see *Logs*). |
 | `PAYMUX_OTLP_LOGS_ENDPOINT`, `PAYMUX_OTLP_LOGS_HEADERS` | unset | Also ship the stored log rows to an OpenTelemetry collector (OTLP/HTTP JSON). |
 | `PAYMUX_ENV_FILE` | `.env` | Extra env file for CLI use. |
+
+## Rotating the master key
+
+Rotate the key when it may have leaked, when a person who had it leaves, or on your own schedule. The master key encrypts provider credentials, webhook signing secrets, authenticator secrets, payout beneficiaries, signing certificates, connector state and stored API responses; the key rotation re-encrypts all of them. Nothing is lost if you follow the order below, and the hub never has to stop for longer than a restart.
+
+1. **Back up the database** and the current key (`paymux backup --to ...`, or `pg_dump`).
+2. **Make the new key**: `head -c 32 /dev/urandom | base64`. Keep it somewhere other than the database's backups.
+3. **Switch**: set `PAYMUX_MASTER_KEY` (or the file) to the new key and `PAYMUX_MASTER_KEY_OLD` (or `PAYMUX_MASTER_KEY_OLD_FILE`) to the old one. Several old keys can be listed, comma separated, if you rotated before and not every value was resealed. Restart the hub. It seals new values under the new key and still opens the old ones. Everyone is signed out once (sessions and form tokens are derived from the key).
+4. **Reseal**: `paymux secrets reseal --dry-run` shows how many values would change; `paymux secrets reseal` rewrites them all under the new key in one transaction and prints the count. It refuses, and changes nothing, if any value cannot be opened (a key is missing from the old list, a row is damaged): it names the table and row, never the value. It is safe to run again, and a second run reports `resealed 0`. On SQLite stop the hub first (the data directory is locked); on PostgreSQL it can run beside the hub, and a value that changes while it runs makes it stop with no change, so run it again.
+5. **Remove the old key** from `PAYMUX_MASTER_KEY_OLD` once the command reports nothing under an old key, and restart. Destroy the old key and any backup that only it can open when your retention allows. A leaked old key still opens old backups.
+
+If the old key is lost before step 4, the values sealed under it cannot be read and have to be entered again (provider credentials, webhook secrets) or reset (authenticators: `paymux user reset-2fa`).
 
 ## Backups and restore
 

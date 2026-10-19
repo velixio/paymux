@@ -179,7 +179,7 @@ def main():
     expect("/dashboard/providers/pa_" in hdr.get("Location", ""), f"the simulator account was not created (Location {hdr.get('Location')!r})")
 
     step("a webhook endpoint for the app")
-    _, _, html = dashboard_post(f"/dashboard/apps/{app_id}/endpoints", {"url": receiver_url}, page=f"/dashboard/apps/{app_id}")
+    _, _, html = dashboard_post(f"/dashboard/apps/{app_id}/endpoints", {"url": receiver_url, "mode": "test"}, page=f"/dashboard/apps/{app_id}")
     m = re.search(r'id="revealed-secret">(whsec_[^<]+)<', html)
     expect(m, "the endpoint's signing secret was not shown")
     secret = html_lib.unescape(m.group(1))  # html/template writes + as &#43;

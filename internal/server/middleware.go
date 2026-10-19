@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"regexp"
 	"runtime/debug"
@@ -25,7 +26,29 @@ type ctxKey int
 const (
 	keyRequestID ctxKey = iota
 	keyRoute
+	keySource
 )
+
+// Source is the client address of the request being served, as the server's
+// ClientIP function names it (the connection's address by default). It is for
+// bounding what one sender can make the hub do or record; it is not stored.
+func Source(ctx context.Context) string {
+	s, _ := ctx.Value(keySource).(string)
+	return s
+}
+
+// sourceOf names the sender: the ClientIP function's answer, or the address of
+// the connection.
+func sourceOf(r *http.Request, clientIP func(*http.Request) string) string {
+	if clientIP != nil {
+		return clientIP(r)
+	}
+	host := r.RemoteAddr
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return host
+}
 
 // ResponseHook is told about every finished request: its method, the matched
 // route pattern ("unmatched" when none), the status and how long it took. The
@@ -71,10 +94,10 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 // chain applies, outermost first: request ID, access log, recover, timeout.
-func chain(h http.Handler, log *slog.Logger, requests *metrics.CounterVec, onResponse ResponseHook) http.Handler {
+func chain(h http.Handler, log *slog.Logger, requests *metrics.CounterVec, onResponse ResponseHook, clientIP func(*http.Request) string) http.Handler {
 	h = http.TimeoutHandler(h, requestTimeout, `{"error":{"type":"timeout"}}`)
 	h = recoverer(h, log)
-	h = accessLog(h, log, requests, onResponse)
+	h = accessLog(h, log, requests, onResponse, clientIP)
 	return requestID(h)
 }
 
@@ -93,9 +116,10 @@ func requestID(next http.Handler) http.Handler {
 	})
 }
 
-func accessLog(next http.Handler, log *slog.Logger, requests *metrics.CounterVec, onResponse ResponseHook) http.Handler {
+func accessLog(next http.Handler, log *slog.Logger, requests *metrics.CounterVec, onResponse ResponseHook, clientIP func(*http.Request) string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		r = r.WithContext(context.WithValue(r.Context(), keySource, sourceOf(r, clientIP)))
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		holder := &routeHolder{}
 		next.ServeHTTP(sw, r.WithContext(context.WithValue(r.Context(), keyRoute, holder)))

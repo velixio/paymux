@@ -12,7 +12,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -25,6 +24,7 @@ import (
 	"github.com/paymux/paymux/internal/alertcenter"
 	"github.com/paymux/paymux/internal/auth"
 	"github.com/paymux/paymux/internal/authz"
+	"github.com/paymux/paymux/internal/clientip"
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/disputes"
@@ -58,6 +58,15 @@ const (
 	ticketTTL     = 5 * time.Minute
 	touchEvery    = time.Minute
 	loginFailures = 5
+	// accountPasswordFailures and accountTOTPFailures are the per-account
+	// ceilings, whatever the address the guesses come from.
+	accountPasswordFailures = 20
+	accountTOTPFailures     = 10
+	// loginAttemptsPerMinute is how many password attempts one address (an IPv6
+	// /64 counts as one) may make a minute.
+	loginAttemptsPerMinute = 30
+	// ticketGuesses is how many wrong codes one login ticket allows.
+	ticketGuesses = 5
 	loginWindow   = 15 * time.Minute
 	issuer        = "Paymux"
 	maxFormBytes  = 64 << 10
@@ -120,6 +129,12 @@ type Dashboard struct {
 	mux   *http.ServeMux
 	users Users
 	lim   *limiter
+	// Guessing limits that do not depend on the client address, which an
+	// attacker behind a trusted proxy chooses (X-Forwarded-For): failures per
+	// account, and a budget per login ticket.
+	acctPw, acctTOTP *limiter
+	attempts         *limiter // login attempts per address and minute, counted before any hashing
+	budgets          *ticketBudgets
 
 	preKey, ticketKey, modeKey, oidcKey []byte
 	secure                              bool
@@ -130,7 +145,7 @@ type Dashboard struct {
 	// roles resolves custom roles from the roles table (short TTL cache).
 	roles *authz.Cache
 
-	dummyOnce sync.Once
+	dummyMu   sync.Mutex
 	dummyHash string
 
 	// first-run setup: the token that opens /setup (see setup.go)
@@ -158,6 +173,7 @@ func New(o Options) (*Dashboard, error) {
 		o.Now = time.Now
 	}
 	d := &Dashboard{o: o, mux: http.NewServeMux(), lim: newLimiter(loginFailures, loginWindow),
+		attempts: newLimiter(loginAttemptsPerMinute, time.Minute), acctPw: newLimiter(accountPasswordFailures, loginWindow), acctTOTP: newLimiter(accountTOTPFailures, loginWindow), budgets: newTicketBudgets(),
 		users:     Users{DB: o.DB, Now: o.Now},
 		preKey:    derive(o.MasterKey, "dashboard-csrf-pre"),
 		ticketKey: derive(o.MasterKey, "dashboard-login-ticket"),
@@ -210,6 +226,8 @@ func (d *Dashboard) routes() {
 	m.HandleFunc("GET "+prefix+"/users", d.authed(authz.SettingsRead, d.usersPage))
 	m.HandleFunc("POST "+prefix+"/users", d.authed(authz.UserManage, d.userCreate))
 	m.HandleFunc("POST "+prefix+"/users/{id}/role", d.authed(authz.UserManage, d.userRole))
+	m.HandleFunc("POST "+prefix+"/users/{id}/enrolment", d.authed(authz.UserManage, d.userEnrolment))
+	m.HandleFunc("POST "+prefix+"/users/{id}/sso-link", d.authed(authz.UserManage, d.userSSOLink))
 	m.HandleFunc("POST "+prefix+"/users/{id}/disable", d.authed(authz.UserManage, d.userDisable))
 
 	// Roles: admin only (role.manage is never grantable to a custom role).
@@ -282,6 +300,9 @@ type view struct {
 	SetupSignedIn                 bool
 	// totp
 	Enrol               bool
+	NeedEnrolCode       bool   // the enrolment page asks for the admin-issued code first
+	EnrolCode           string // a code just issued, shown once
+	EnrolFor            string
 	TOTPSecret, TOTPURI string
 	// users
 	Users     []userRow
@@ -358,49 +379,8 @@ func (d *Dashboard) setCookie(w http.ResponseWriter, name, value string, maxAge 
 
 func (d *Dashboard) clearCookie(w http.ResponseWriter, name string) { d.setCookie(w, name, "", -1) }
 
-// trusted reports whether addr is one of the configured reverse proxies.
-func (d *Dashboard) trusted(addr netip.Addr) bool {
-	for _, p := range d.o.TrustedProxies {
-		if p.Contains(addr) {
-			return true
-		}
-	}
-	return false
-}
-
-// clientIP is the address of the browser. X-Forwarded-For counts only when
-// the connection comes from a trusted proxy; the list is then read from the
-// right, skipping trusted proxies, so entries the client made up on the left
-// are never believed.
-func (d *Dashboard) clientIP(r *http.Request) string {
-	host := r.RemoteAddr
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
-	}
-	peer, err := netip.ParseAddr(strings.Trim(host, "[]"))
-	if err != nil {
-		return host
-	}
-	peer = peer.Unmap()
-	if !d.trusted(peer) {
-		return peer.String()
-	}
-	hops := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
-	for i := len(hops) - 1; i >= 0; i-- {
-		hop := strings.TrimSpace(hops[i])
-		if hop == "" && len(hops) == 1 {
-			break
-		}
-		a, err := netip.ParseAddr(hop)
-		if err != nil {
-			break // not an address: do not guess
-		}
-		if a = a.Unmap(); !d.trusted(a) {
-			return a.String()
-		}
-	}
-	return peer.String()
-}
+// clientIP is the address of the browser (see package clientip).
+func (d *Dashboard) clientIP(r *http.Request) string { return clientip.From(r, d.o.TrustedProxies) }
 
 // ---- anonymous CSRF (login forms) ----
 
@@ -458,39 +438,97 @@ func formCSRF(r *http.Request) string {
 // ---- login tickets (password verified, TOTP pending) ----
 
 func (d *Dashboard) issueTicket(w http.ResponseWriter, userID string) {
-	payload := userID + "|" + strconv.FormatInt(d.o.Now().Add(ticketTTL).Unix(), 10)
+	nonce := make([]byte, 12)
+	_, _ = rand.Read(nonce)
+	payload := userID + "|" + strconv.FormatInt(d.o.Now().Add(ticketTTL).Unix(), 10) + "|" + base64.RawURLEncoding.EncodeToString(nonce)
 	m := hmac.New(sha256.New, d.ticketKey)
 	m.Write([]byte(payload))
 	v := base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + base64.RawURLEncoding.EncodeToString(m.Sum(nil))
-	d.setCookie(w, cookieTicket, v, int(ticketTTL.Seconds()))
+	d.setCookie(w, cookieTicket, v, int(ttlSeconds(ticketTTL)))
 }
 
-// ticketUser returns the user id of a valid, unexpired ticket.
-func (d *Dashboard) ticketUser(r *http.Request) (string, bool) {
+func ttlSeconds(d time.Duration) int64 { return int64(d.Seconds()) }
+
+// ticketUser returns the user id of a valid, unexpired ticket and the ticket's
+// own id (what its guess budget is kept under). A ticket that has used up its
+// guesses is no ticket.
+func (d *Dashboard) ticketUser(r *http.Request) (userID, ticketID string, ok bool) {
 	c, err := r.Cookie(cookieTicket)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
-	p, s, ok := strings.Cut(c.Value, ".")
-	if !ok {
-		return "", false
+	p, s, found := strings.Cut(c.Value, ".")
+	if !found {
+		return "", "", false
 	}
 	payload, err1 := base64.RawURLEncoding.DecodeString(p)
 	sig, err2 := base64.RawURLEncoding.DecodeString(s)
 	if err1 != nil || err2 != nil {
-		return "", false
+		return "", "", false
 	}
 	m := hmac.New(sha256.New, d.ticketKey)
 	m.Write(payload)
 	if !hmac.Equal(sig, m.Sum(nil)) {
-		return "", false
+		return "", "", false
 	}
-	id, exp, ok := strings.Cut(string(payload), "|")
-	n, err := strconv.ParseInt(exp, 10, 64)
-	if !ok || err != nil || d.o.Now().Unix() > n {
-		return "", false
+	parts := strings.Split(string(payload), "|")
+	if len(parts) != 3 {
+		return "", "", false
 	}
-	return id, true
+	n, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || d.o.Now().Unix() > n {
+		return "", "", false
+	}
+	if d.budgets.spent(parts[2], d.o.Now()) {
+		return "", "", false
+	}
+	return parts[0], parts[2], true
+}
+
+// ticketBudgets counts the wrong codes each login ticket has taken, in memory.
+// A ticket with ticketGuesses failures is dead: the password step must be
+// repeated.
+type ticketBudgets struct {
+	mu sync.Mutex
+	m  map[string]ticketState
+}
+
+type ticketState struct {
+	fails int
+	until time.Time
+}
+
+func newTicketBudgets() *ticketBudgets { return &ticketBudgets{m: map[string]ticketState{}} }
+
+func (b *ticketBudgets) spent(id string, now time.Time) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.m[id].fails >= ticketGuesses
+}
+
+// fail records a wrong code and says whether the ticket is now dead.
+func (b *ticketBudgets) fail(id string, now time.Time) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.m) > 10_000 {
+		for k, v := range b.m {
+			if now.After(v.until) {
+				delete(b.m, k)
+			}
+		}
+	}
+	st := b.m[id]
+	st.fails++
+	st.until = now.Add(2 * ticketTTL)
+	b.m[id] = st
+	return st.fails >= ticketGuesses
+}
+
+// kill makes the ticket unusable.
+func (b *ticketBudgets) kill(id string, now time.Time) {
+	b.mu.Lock()
+	b.m[id] = ticketState{fails: ticketGuesses, until: now.Add(2 * ticketTTL)}
+	b.mu.Unlock()
 }
 
 // ---- sessions ----

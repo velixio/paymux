@@ -5,6 +5,10 @@
 <h1>Users</h1>
 {{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+{{if .EnrolCode}}<div class="notice" role="status">
+<p>Enrolment code for {{.EnrolFor}}. It is shown only now; give it to them with the password. They need it to set up two-factor sign-in at their first login, and it works once, for 7 days.</p>
+<p><code id="enrolment-code">{{.EnrolCode}}</code></p>
+</div>{{end}}
 <div class="table-scroll"><table class="grid">
 <thead><tr><th>Email</th><th>Role</th><th>Status</th><th>2FA</th><th>Created</th>{{if .CanManage}}<th>Actions</th>{{end}}</tr></thead>
 <tbody>
@@ -20,7 +24,15 @@
 <select name="role" aria-label="Role for {{.Email}}">{{$row := .}}{{range $.Roles}}<option value="{{.}}"{{if eq . $row.Role}} selected{{end}}>{{.}}</option>{{end}}</select>
 <button class="linkbtn" type="submit">Set role</button>
 </form>
-<form class="inline" method="post" action="/dashboard/users/{{.ID}}/disable">
+{{if not .Enrolled}}<form class="inline" method="post" action="/dashboard/users/{{.ID}}/enrolment">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<button class="linkbtn" type="submit" title="Make a new one-time code for setting up two-factor sign-in">Enrolment code</button>
+</form>
+{{end}}{{if $.SSO}}<form class="inline" method="post" action="/dashboard/users/{{.ID}}/sso-link">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<button class="linkbtn" type="submit" title="Let this account sign in through the identity provider, once">Allow SSO</button>
+</form>
+{{end}}<form class="inline" method="post" action="/dashboard/users/{{.ID}}/disable">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <input type="hidden" name="action" value="{{if .Disabled}}enable{{else}}disable{{end}}">
 <button class="linkbtn" type="submit">{{if .Disabled}}Enable{{else}}Disable{{end}}</button>

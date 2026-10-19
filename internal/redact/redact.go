@@ -3,7 +3,8 @@
 //
 //  1. Known values. The redactor is told the secrets in use (provider keys,
 //     the master key, webhook, SMTP and OIDC secrets, ...) and replaces every
-//     exact occurrence, raw or URL- or JSON-escaped, wherever it appears.
+//     exact occurrence, raw or URL- or JSON-escaped, or encoded as hex or
+//     base64 (alone or inside a longer base64 string), wherever it appears.
 //  2. Field names. JSON, form and query fields whose name is a credential
 //     (password, token, api_key, signature, ...) or personal data (email,
 //     phone, name, address, vpa, gstin, ...) lose their value. Names are matched
@@ -17,6 +18,8 @@ package redact
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -87,13 +90,41 @@ func (r *Redactor) distinct() []string {
 }
 
 func (r *Redactor) rebuild() {
-	vals := r.distinct()
-	if len(vals) == 0 {
+	bases := map[string]bool{}
+	for _, vs := range r.owners {
+		kept := 0
+		for _, v := range vs {
+			if len(v) < MinKnownLen {
+				continue
+			}
+			bases[v] = true
+			for _, e := range encodedForms(v) {
+				bases[e] = true
+			}
+			kept++
+		}
+		// HTTP Basic credentials are base64(id:secret): when an account has
+		// several values, the pairs are covered whole (the secret's own
+		// embedded forms above cover an id that is not known).
+		if kept > 1 {
+			head := vs[:min(len(vs), maxPairValues)]
+			for _, a := range head {
+				for _, b := range head {
+					if a != b && a != "" && len(b) >= MinKnownLen {
+						for _, e := range base64Forms([]byte(a + ":" + b)) {
+							bases[e] = true
+						}
+					}
+				}
+			}
+		}
+	}
+	if len(bases) == 0 {
 		r.repl.Store(nil)
 		return
 	}
 	variants := map[string]bool{}
-	for _, v := range vals {
+	for v := range bases {
 		variants[v] = true
 		variants[url.QueryEscape(v)] = true
 		variants[url.PathEscape(v)] = true
@@ -120,6 +151,53 @@ func (r *Redactor) rebuild() {
 		pairs = append(pairs, v, Secret)
 	}
 	r.repl.Store(strings.NewReplacer(pairs...))
+}
+
+// maxPairValues bounds the id:secret pairs made from one owner's values.
+const maxPairValues = 6
+
+// minEmbedded is the shortest embedded base64 run that is replaced: shorter
+// ones could match ordinary text.
+const minEmbedded = 8
+
+// base64Forms are the four standard encodings of b: standard and URL-safe
+// alphabets, with and without padding.
+func base64Forms(b []byte) []string {
+	return []string{base64.StdEncoding.EncodeToString(b), base64.RawStdEncoding.EncodeToString(b),
+		base64.URLEncoding.EncodeToString(b), base64.RawURLEncoding.EncodeToString(b)}
+}
+
+// encodedForms are the ways a known secret may show up once something has
+// encoded it: hex (either case), base64 on its own, and base64 as a run inside
+// a longer encoded string, where the secret can start at any of three
+// alignments (Basic credentials are base64("id:secret")). For the embedded
+// forms only the characters fully determined by the secret's own bytes are
+// kept: the first character or two depend on what precedes, the last on what
+// follows.
+func encodedForms(v string) []string {
+	b := []byte(v)
+	out := []string{hex.EncodeToString(b), strings.ToUpper(hex.EncodeToString(b))}
+	out = append(out, base64Forms(b)...)
+	for _, enc := range []*base64.Encoding{base64.RawStdEncoding, base64.RawURLEncoding} {
+		for shift := 1; shift <= 2; shift++ {
+			start := [...]int{0, 2, 3}[shift]
+			s := enc.EncodeToString(append(make([]byte, shift), b...))
+			end := len(s)
+			if (shift+len(b))%3 != 0 {
+				end-- // the last character holds bits of what follows
+			}
+			if end-start >= minEmbedded {
+				out = append(out, s[start:end])
+			}
+		}
+		// At alignment 0 but followed by more data: the secret's own encoding
+		// without its last, partial character.
+		s := enc.EncodeToString(b)
+		if len(b)%3 != 0 && len(s)-1 >= minEmbedded {
+			out = append(out, s[:len(s)-1])
+		}
+	}
+	return out
 }
 
 func (r *Redactor) known(s string) string {
@@ -151,6 +229,10 @@ var credPatterns = []pattern{
 	{regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}`), "Bearer " + Secret},
 	{regexp.MustCompile(`\bBasic\s+[A-Za-z0-9+/]{12,}={0,2}`), "Basic " + Secret},
 	{regexp.MustCompile(`(://)[^/\s:@]+:[^/\s@]+@`), "${1}" + Secret + "@"},
+	// Webhook URLs carry their secret in the path.
+	{regexp.MustCompile(`\bbot\d{5,}:[A-Za-z0-9_-]{25,}`), "bot" + Secret},              // Telegram
+	{regexp.MustCompile(`\bT[A-Z0-9]{8,}/B[A-Z0-9]{8,}/[A-Za-z0-9]{20,}`), Secret},      // Slack
+	{regexp.MustCompile(`(/api/webhooks/\d{15,}/)[A-Za-z0-9_-]{40,}`), "${1}" + Secret}, // Discord
 }
 
 var (
@@ -158,10 +240,18 @@ var (
 	rePAN   = regexp.MustCompile(`\b[A-Z]{5}\d{4}[A-Z]\b`)
 	reEmail = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`)
 	reVPA   = regexp.MustCompile(`[A-Za-z0-9._-]{2,64}@[A-Za-z][A-Za-z0-9]{1,31}`)
-	rePhone = regexp.MustCompile(`(?:\+91[\s-]?|\b91[\s-]?|\b0)?\b[6-9]\d{9}\b`)
-	reIntl  = regexp.MustCompile(`\+\d[\d\s-]{8,14}\d`)
-	reCard  = regexp.MustCompile(`\b\d(?:[ -]?\d){12,18}\b`)
-	reKV    = regexp.MustCompile(`\b([A-Za-z][A-Za-z0-9_.-]{0,63})(\\?["']?\s*[:=]\s*\\?["']?)([^\s"',;&}\]\\]+)`)
+	// An Indian mobile number: ten digits starting 6-9, run together or grouped
+	// 5+5 or 3+3+4 with spaces or dashes, with an optional 91 or 0 prefix.
+	rePhone = regexp.MustCompile(`(?:\+91[\s-]?|\b91[\s-]?|\b0)?\b(?:[6-9]\d{4}[\s-]?\d{5}|[6-9]\d{2}[\s-]\d{3}[\s-]\d{4})\b`)
+	// An Aadhaar number: twelve digits starting 2-9, grouped 4+4+4, or run
+	// together when the Verhoeff check digit is right.
+	reAadhaarGrouped = regexp.MustCompile(`\b[2-9]\d{3}[\s-]\d{4}[\s-]\d{4}\b`)
+	reAadhaarPlain   = regexp.MustCompile(`\b[2-9]\d{11}\b`)
+	// A path segment that may be a secret (see tokenSegment).
+	reSegment = regexp.MustCompile(`/([A-Za-z0-9_-]{24,})`)
+	reIntl    = regexp.MustCompile(`\+\d[\d\s-]{8,14}\d`)
+	reCard    = regexp.MustCompile(`\b\d(?:[ .\-/_]?\d){12,18}\b`)
+	reKV      = regexp.MustCompile(`\b([A-Za-z][A-Za-z0-9_.-]{0,63})(\\?["']?\s*[:=]\s*\\?["']?)([^\s"',;&}\]\\]+)`)
 )
 
 func (r *Redactor) patterns(s string) string {
@@ -169,6 +259,19 @@ func (r *Redactor) patterns(s string) string {
 		s = p.re.ReplaceAllString(s, p.with)
 	}
 	s = reCard.ReplaceAllStringFunc(s, maskCard)
+	s = reAadhaarGrouped.ReplaceAllString(s, "[aadhaar]")
+	s = reAadhaarPlain.ReplaceAllStringFunc(s, func(m string) string {
+		if verhoeff(m) {
+			return "[aadhaar]"
+		}
+		return m
+	})
+	s = reSegment.ReplaceAllStringFunc(s, func(m string) string {
+		if tokenSegment(m[1:]) {
+			return "/" + Secret
+		}
+		return m
+	})
 	s = reGSTIN.ReplaceAllString(s, "[gstin]")
 	s = rePAN.ReplaceAllString(s, "[pan]")
 	s = reEmail.ReplaceAllString(s, "[email]")
@@ -218,6 +321,60 @@ func maskCard(m string) string {
 		return m
 	}
 	return "[card ****" + string(digits[len(digits)-4:]) + "]"
+}
+
+// tokenSegment reports whether a URL path segment looks like a secret (a
+// webhook token, say): 24 or more letters and digits that mix the cases and
+// carry either a digit or many case changes, as random text does and words do
+// not. Our own ids (a short lower-case prefix, an underscore, an id), ULIDs and
+// UUIDs are not secrets.
+func tokenSegment(seg string) bool {
+	if len(seg) < 24 {
+		return false
+	}
+	if i := strings.IndexByte(seg, '_'); i >= 2 && i <= 6 && strings.ToLower(seg[:i]) == seg[:i] {
+		return false // pay_..., ref_..., rf_...: an id
+	}
+	var lower, upper, digit bool
+	changes := 0
+	for i := 0; i < len(seg); i++ {
+		c := seg[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+			lower = true
+		case c >= 'A' && c <= 'Z':
+			upper = true
+			if i > 0 && seg[i-1] >= 'a' && seg[i-1] <= 'z' {
+				changes++
+			}
+		case c >= '0' && c <= '9':
+			digit = true
+		}
+	}
+	return lower && upper && (digit || changes >= 5)
+}
+
+var (
+	verhoeffD = [10][10]byte{{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, {1, 2, 3, 4, 0, 6, 7, 8, 9, 5}, {2, 3, 4, 0, 1, 7, 8, 9, 5, 6},
+		{3, 4, 0, 1, 2, 8, 9, 5, 6, 7}, {4, 0, 1, 2, 3, 9, 5, 6, 7, 8}, {5, 9, 8, 7, 6, 0, 4, 3, 2, 1}, {6, 5, 9, 8, 7, 1, 0, 4, 3, 2},
+		{7, 6, 5, 9, 8, 2, 1, 0, 4, 3}, {8, 7, 6, 5, 9, 3, 2, 1, 0, 4}, {9, 8, 7, 6, 5, 4, 3, 2, 1, 0}}
+	verhoeffP = [8][10]byte{{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, {1, 5, 7, 6, 2, 8, 3, 0, 9, 4}, {5, 8, 0, 3, 7, 9, 6, 1, 4, 2},
+		{8, 9, 1, 6, 0, 4, 3, 5, 2, 7}, {9, 4, 5, 3, 1, 2, 6, 8, 7, 0}, {4, 2, 8, 6, 5, 7, 3, 9, 0, 1}, {2, 7, 9, 3, 8, 0, 6, 4, 1, 5},
+		{7, 0, 4, 6, 9, 1, 3, 2, 5, 8}}
+)
+
+// verhoeff reports whether the digit string passes the Verhoeff check (the
+// check digit of an Aadhaar number).
+func verhoeff(digits string) bool {
+	var c byte
+	for i := 0; i < len(digits); i++ {
+		n := digits[len(digits)-1-i] - '0'
+		if n > 9 {
+			return false
+		}
+		c = verhoeffD[c][verhoeffP[i%8][n]]
+	}
+	return c == 0
 }
 
 func luhn(d []byte) bool {

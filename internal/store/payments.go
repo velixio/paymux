@@ -181,3 +181,9 @@ func ListExpirablePayments(ctx context.Context, q Queryer, now time.Time, openSi
 	}
 	return out, rows.Err()
 }
+
+// SetPaymentSecretHash replaces the client secret hash of a payment.
+func SetPaymentSecretHash(ctx context.Context, tx Tx, id, hash string, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `UPDATE payments SET client_secret_hash = ?, updated_at = ? WHERE id = ?`, hash, ms(now), id)
+	return err
+}

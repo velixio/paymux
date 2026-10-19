@@ -49,7 +49,7 @@ If an app issues invoices with tax-exclusive pricing, `amount` is the taxable va
 
 ## Retry writes idempotently
 
-Persist one `Idempotency-Key` per logical write, up to 255 characters. Reuse the same key, HTTP method, path, and body when retrying that write. The stored-response window is 24 hours.
+Persist one `Idempotency-Key` per logical write, up to 255 characters. Reuse the same key, HTTP method, path, and body when retrying that write. The stored-response window is 24 hours. `POST /v1/payouts` requires the header (400 without it), because a retry that sends money twice cannot be undone.
 
 - A completed matching request returns its stored response with `Idempotent-Replay: true`.
 - A changed request using the same key returns `409 idempotency_key_reuse`.

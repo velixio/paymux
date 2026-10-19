@@ -8,6 +8,7 @@ import (
 
 	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/invoice/pades"
+	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/store"
 )
 
@@ -28,7 +29,7 @@ type sealedDSC struct {
 	Password string `json:"password"`
 }
 
-func dscAAD(entityID string) []byte { return []byte("tax_entities.dsc_enc:" + entityID) }
+func dscAAD(entityID string) []byte { return secrets.AADTaxEntityDSC(entityID) }
 
 // SetTaxEntityDSC validates and stores a PKCS#12 certificate for the entity,
 // replacing any earlier one. The file is opened first: a wrong password, an

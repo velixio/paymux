@@ -34,9 +34,28 @@ func (db *DB) Backup(ctx context.Context, dest string) error {
 	if err := os.MkdirAll(filepath.Dir(abs), 0o700); err != nil {
 		return err
 	}
-	if _, err := db.writer.ExecContext(ctx, "VACUUM INTO ?", abs); err != nil {
-		_ = os.Remove(abs)
+	if err := db.vacuumInto(ctx, abs); err != nil {
 		return fmt.Errorf("store: backup to %s: %w", abs, err)
 	}
-	return os.Chmod(abs, 0o600)
+	return nil
+}
+
+// vacuumInto writes a copy of the database to dest, a file that must not exist.
+// The file is created empty with mode 0600 first (SQLite accepts an empty
+// target), so that it is never, even briefly, readable by anyone else; a copy
+// that fails is removed.
+func (db *DB) vacuumInto(ctx context.Context, dest string) error {
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(dest)
+		return err
+	}
+	if _, err := db.writer.ExecContext(ctx, "VACUUM INTO ?", dest); err != nil {
+		_ = os.Remove(dest)
+		return err
+	}
+	return os.Chmod(dest, 0o600) // belt and braces: the file was made 0600 above
 }

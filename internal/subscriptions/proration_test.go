@@ -354,7 +354,7 @@ func TestProrationIsRefusedForProviderManagedSubscriptions(t *testing.T) {
 		e := newEnv(t, db, t0)
 		sub := managed(t, e)
 		for _, n := range rzp(t, "event_subscription_activated") {
-			if err := e.subs.HandleNotification(ctx, "pa_managed", n); err != nil {
+			if err := e.notify("pa_managed", n); err != nil {
 				t.Fatal(err)
 			}
 		}

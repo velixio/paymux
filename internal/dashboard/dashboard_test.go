@@ -434,7 +434,9 @@ func TestTOTPFailuresCountTowardsLockout(t *testing.T) {
 			e.post(e.c, "/dashboard/login/totp", url.Values{"code": {"000000"}, "csrf": {tok}})
 		}
 		r, _ := e.post(e.c, "/dashboard/login/totp", url.Values{"code": {totpFor(secret, e.clk.Now(), 0)}, "csrf": {tok}})
-		if r.StatusCode != 429 || sessionCookie(r) != nil {
+		// Stopped: the ticket is dead after its fifth wrong code (sent back to the
+		// password step), or the address is locked out.
+		if (r.StatusCode != 429 && !(r.StatusCode == 303 && strings.HasSuffix(r.Header.Get("Location"), "/dashboard/login"))) || sessionCookie(r) != nil {
 			t.Fatalf("brute force of the TOTP step not stopped: %d", r.StatusCode)
 		}
 	})
@@ -561,7 +563,7 @@ func TestAdminManagesUsers(t *testing.T) {
 		tok := e.authedCSRF(e.c)
 
 		r, body := e.post(e.c, "/dashboard/users", url.Values{"email": {"New.Person@Example.com"}, "role": {"operator"}, "password": {goodPW}, "csrf": {tok}})
-		if r.StatusCode != 303 {
+		if r.StatusCode != 200 || !enrolCodeRE.MatchString(body) { // the page shows the enrolment code once
 			t.Fatalf("create: %d\n%s", r.StatusCode, body)
 		}
 		u, err := db.UserByEmail(ctx, "new.person@example.com")
@@ -630,6 +632,7 @@ func TestFirstLoginEnrolsTOTP(t *testing.T) {
 		if resp.StatusCode != 303 {
 			t.Fatalf("password step %d", resp.StatusCode)
 		}
+		e.enterEnrolmentCode(e.c, id)
 		_, page := e.get(e.c, "/dashboard/login/totp")
 		uriRE := regexp.MustCompile(`otpauth://totp/[^<"\s]+`)
 		secRE := regexp.MustCompile(`<code id="totp-secret">([A-Z2-7]+)</code>`)
@@ -811,3 +814,17 @@ func (m *recMailer) Send(_ context.Context, msg notify.Message) error {
 }
 
 func (m *recMailer) count() int { m.mu.Lock(); defer m.mu.Unlock(); return len(m.sent) }
+
+// enterEnrolmentCode issues the user an enrolment code and enters it on the
+// pending sign-in of c, which opens the enrolment.
+func (e *env) enterEnrolmentCode(c *http.Client, userID string) {
+	e.t.Helper()
+	code, err := e.users().IssueEnrolmentToken(ctx, userID)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	_, page := e.get(c, "/dashboard/login/totp")
+	if r, body := e.post(c, "/dashboard/login/totp", url.Values{"enrol_code": {code}, "csrf": {csrfOf(e.t, page)}}); r.StatusCode != 200 || !strings.Contains(body, "totp-secret") {
+		e.t.Fatalf("enrolment code: %d\n%s", r.StatusCode, body)
+	}
+}

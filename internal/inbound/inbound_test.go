@@ -170,7 +170,7 @@ func TestUnsignedEventIsFetchOnly(t *testing.T) {
 		if rec := e.post("pa_payu", body); rec.Code != 200 {
 			t.Fatalf("code %d", rec.Code)
 		}
-		row, err := db.GetProviderEvent(ctx, "pa_payu", sum(body))
+		row, err := db.GetProviderEvent(ctx, "pa_payu", "unsigned:"+sum(body))
 		if err != nil || row.Verified {
 			t.Fatalf("row %+v %v", row, err)
 		}

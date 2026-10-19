@@ -213,7 +213,7 @@ func Label(b connector.Beneficiary) string {
 	return "••••"
 }
 
-func aad(payoutID string) []byte { return []byte("payouts.beneficiary:" + payoutID) }
+func aad(payoutID string) []byte { return secrets.AADBeneficiary(payoutID) }
 
 // pickAccount chooses the provider account for a payout.
 func (s *Service) pickAccount(ctx context.Context, in CreateInput) (string, error) {
@@ -308,6 +308,7 @@ func (s *Service) List(ctx context.Context, sc core.Scope, status, after string,
 type View struct {
 	ID            string            `json:"id"`
 	Object        string            `json:"object"`
+	Livemode      bool              `json:"livemode"` // false for a test-mode object
 	Status        string            `json:"status"`
 	Amount        int64             `json:"amount"`
 	Currency      string            `json:"currency"`
@@ -333,7 +334,7 @@ func ViewPayout(p store.Payout) View {
 	if meta == nil {
 		meta = map[string]string{}
 	}
-	v := View{ID: p.ID, Object: "payout", Status: p.Status, Amount: p.Amount, Currency: p.Currency,
+	v := View{ID: p.ID, Object: "payout", Livemode: p.Mode == "live", Status: p.Status, Amount: p.Amount, Currency: p.Currency,
 		Beneficiary: BeneficiaryView{Label: p.BeneficiaryLabel}, Narration: p.Narration, Metadata: meta, FailureCode: p.FailureCode,
 		FailureReason: p.FailureMessage, CreatedAt: p.CreatedAt, Version: p.Version}
 	if !p.CompletedAt.IsZero() {

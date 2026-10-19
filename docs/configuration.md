@@ -20,6 +20,8 @@ Configuration examples below use placeholder domains and credentials. Copy `.env
 | `PAYMUX_DATABASE_URL` | SQLite under the data directory | `sqlite://...` or `postgres://...`. |
 | `PAYMUX_MASTER_KEY` | Exactly one key source required | Base64 encoding of 32 random bytes. |
 | `PAYMUX_MASTER_KEY_FILE` | Exactly one key source required | File containing the same base64 key; alternative to the direct variable. |
+| `PAYMUX_MASTER_KEY_OLD` | none | Earlier master keys, base64, comma separated. Only for a key rotation: values sealed under them can still be read. See the runbook, *Rotating the master key*. |
+| `PAYMUX_MASTER_KEY_OLD_FILE` | none | A file with earlier master keys (separated by commas or new lines); combined with the variable above. |
 | `PAYMUX_TZ` | `Asia/Kolkata` | Date boundaries, scheduling, and date filters. Use an IANA time-zone name. |
 | `PAYMUX_TRUSTED_PROXIES` | Local network | Comma-separated trusted proxy addresses or CIDRs, or `none`. Unset, any address on the local network (loopback, 10/8, 172.16/12, 192.168/16, link-local, fc00::/7) is believed, so a reverse proxy on the LAN needs no setting; a host on those networks can then set the client address Paymux records. A `/0` network is rejected. |
 | `PAYMUX_ENV_FILE` | `.env` | Optional dotenv file loaded by CLI commands. |
@@ -31,7 +33,7 @@ umask 077
 head -c 32 /dev/urandom | base64 > master.key
 ```
 
-Choose either `PAYMUX_MASTER_KEY_FILE` or `PAYMUX_MASTER_KEY`. Regenerating the key while keeping the database makes previously encrypted provider credentials, webhook secrets, and TOTP secrets unreadable. Setting a new variable is not a key-rotation procedure.
+Choose either `PAYMUX_MASTER_KEY_FILE` or `PAYMUX_MASTER_KEY`. Regenerating the key while keeping the database makes previously encrypted provider credentials, webhook secrets, and TOTP secrets unreadable. Setting a new variable is not a key-rotation procedure; [Rotating the master key](runbook.md#rotating-the-master-key) is.
 
 ## Development switches
 

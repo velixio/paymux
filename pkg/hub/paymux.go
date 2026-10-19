@@ -21,6 +21,7 @@ import (
 	"github.com/paymux/paymux/internal/alertcenter"
 	"github.com/paymux/paymux/internal/apidocs"
 	"github.com/paymux/paymux/internal/checkout"
+	"github.com/paymux/paymux/internal/clientip"
 	"github.com/paymux/paymux/internal/config"
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
@@ -63,7 +64,19 @@ const (
 	heartbeatGrace    = 3 * time.Minute // max age of the last run once uptime exceeds it
 	shutdownTimeout   = 10 * time.Second
 	readHeaderTimeout = 10 * time.Second
+	readTimeout       = 30 * time.Second  // the whole request, body included
+	writeTimeout      = 120 * time.Second // the whole response (a log export or an invoice PDF is the longest)
+	idleTimeout       = 120 * time.Second // between requests on a kept-alive connection
+	maxHeaderBytes    = 64 << 10
 )
+
+// newServer is an http.Server with every timeout set, so that a client sending
+// or reading a byte a minute cannot hold a connection (and its goroutine and
+// buffers) for ever.
+func newServer(h http.Handler) *http.Server {
+	return &http.Server{Handler: h, ReadHeaderTimeout: readHeaderTimeout, ReadTimeout: readTimeout,
+		WriteTimeout: writeTimeout, IdleTimeout: idleTimeout, MaxHeaderBytes: maxHeaderBytes}
+}
 
 // App is a Paymux instance.
 type App struct {
@@ -108,6 +121,9 @@ func WithEmitter(e events.Emitter) Option { return func(a *App) { a.emitter = e 
 func New(cfg config.Config, opts ...Option) (*App, error) {
 	if cfg.DatabaseURL == "" {
 		return nil, errors.New("paymux: config has no DatabaseURL")
+	}
+	if cfg.DevSkip2FA && cfg.Env != config.EnvDevelopment {
+		return nil, errors.New("paymux: PAYMUX_DEV_SKIP_2FA is only allowed in development (PAYMUX_ENV=development)")
 	}
 	a := &App{cfg: cfg}
 	for _, o := range opts {
@@ -158,7 +174,7 @@ func (a *App) Start(ctx context.Context) error {
 	if _, err := core.Bootstrap(ctx, db, set); err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
-	box, err := secrets.NewBox(a.cfg.MasterKey)
+	box, err := secrets.NewBox(a.cfg.MasterKey, a.cfg.OldMasterKeys...)
 	if err != nil {
 		return fmt.Errorf("master key: %w", err)
 	}
@@ -266,6 +282,9 @@ func (a *App) Start(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := registerProviderEventPurge(q, db, set); err != nil {
+		return err
+	}
 	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv, Subscriptions: subs, PaymentLinks: links, Payouts: payoutSvc})
 	if err != nil {
 		return err
@@ -274,7 +293,8 @@ func (a *App) Start(ctx context.Context) error {
 	if verifiers == nil {
 		verifiers = conns.Verifiers()
 	}
-	hooks := inbound.New(inbound.Options{DB: db, Queue: q, Verifiers: verifiers, Logger: a.log})
+	hooks := inbound.New(inbound.Options{DB: db, Queue: q, Verifiers: verifiers, Logger: a.log,
+		ClientIP: func(r *http.Request) string { return clientip.From(r, a.cfg.TrustedProxies) }})
 
 	overlay, err := web.NewOverlay(web.Embedded(), filepath.Join(a.cfg.DataDir, "custom"))
 	if err != nil {
@@ -310,6 +330,7 @@ func (a *App) Start(ctx context.Context) error {
 		Logger:     a.log,
 		Metrics:    reg,
 		OnResponse: dbl.responseHook(),
+		ClientIP:   func(r *http.Request) string { return clientip.From(r, a.cfg.TrustedProxies) },
 		Checks: []server.Check{
 			{Name: "db", Fn: db.Ping},
 			{Name: "migrations", Fn: func(ctx context.Context) error {
@@ -418,8 +439,7 @@ func (a *App) Start(ctx context.Context) error {
 	a.addr, a.iaddr = ln.Addr().String(), iln.Addr().String()
 	a.mu.Unlock()
 
-	main := &http.Server{Handler: public, ReadHeaderTimeout: readHeaderTimeout}
-	internal := &http.Server{Handler: internalMux, ReadHeaderTimeout: readHeaderTimeout}
+	main, internal := newServer(public), newServer(internalMux)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

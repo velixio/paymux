@@ -14,6 +14,7 @@ import (
 	"github.com/paymux/paymux/internal/authz"
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector"
 )
@@ -350,7 +351,7 @@ func (d *Dashboard) loadProvider(w http.ResponseWriter, r *http.Request) (store.
 
 // storedConfig decrypts an account's config; ok is false when it cannot be read.
 func (d *Dashboard) storedConfig(pa store.ProviderAccount) map[string]any {
-	raw, err := d.o.Box.Open(pa.ConfigEnc, []byte("provider_accounts.config_enc:"+pa.ID))
+	raw, err := d.o.Box.Open(pa.ConfigEnc, secrets.AADProviderConfig(pa.ID))
 	if err != nil {
 		return nil
 	}

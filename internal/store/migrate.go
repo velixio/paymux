@@ -211,7 +211,7 @@ func (db *DB) snapshot(ctx context.Context, version int64) error {
 		return err
 	}
 	dest := filepath.Join(dir, fmt.Sprintf("pre-%04d-%d.db", version, time.Now().UnixMilli()))
-	if _, err := db.writer.ExecContext(ctx, "VACUUM INTO ?", dest); err != nil {
+	if err := db.vacuumInto(ctx, dest); err != nil {
 		return fmt.Errorf("vacuum into %s: %w", dest, err)
 	}
 	return nil

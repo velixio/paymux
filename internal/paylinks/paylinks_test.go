@@ -28,6 +28,7 @@ type env struct {
 	set    *settings.Service
 	core   *core.Service
 	links  *paylinks.Service
+	emit   events.Emitter
 	mu     sync.Mutex
 	events []events.Event
 	now    time.Time
@@ -70,6 +71,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 		e.events = append(e.events, ev)
 		return nil
 	})
+	e.emit = emitter
 	if _, err := core.Bootstrap(ctx, db, e.set); err != nil {
 		t.Fatal(err)
 	}

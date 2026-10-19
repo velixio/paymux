@@ -17,6 +17,7 @@ func (e *env) failMandate(m store.Mandate, providerID string) {
 	}); err != nil {
 		e.t.Fatal(err)
 	}
+	e.providerSays(providerID, connector.MandateSnapshot{ProviderMandateID: providerID, Status: "failed", RawStatus: "failure"})
 	err := e.subs.HandleNotification(ctx, m.ProviderAccountID, connector.Notification{Kind: connector.NotifyMandate, EventID: "f_" + providerID,
 		Mandate: &connector.MandateSnapshot{ProviderMandateID: providerID, Status: "failed", RawStatus: "failure"}})
 	if err != nil {

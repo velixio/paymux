@@ -255,6 +255,15 @@ func CountLogs(ctx context.Context, q Queryer) (int, error) {
 	return n, err
 }
 
+// LogsBytes estimates the size of the logs table from the length of its text
+// columns plus a fixed amount per row for the other columns and the indexes.
+func LogsBytes(ctx context.Context, q Queryer) (int64, error) {
+	var n int64
+	err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(LENGTH(msg) + COALESCE(LENGTH(attrs), 0) + COALESCE(LENGTH(request), 0)
+		+ COALESCE(LENGTH(response), 0) + COALESCE(LENGTH(ids), 0) + 200), 0) FROM logs`).Scan(&n)
+	return n, err
+}
+
 // PurgeLogs deletes up to limit rows of one level older than before and
 // returns how many it deleted.
 func PurgeLogs(ctx context.Context, tx Tx, level string, before time.Time, limit int) (int, error) {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/outbound/stdwebhooks"
+	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/store"
 )
 
@@ -17,6 +18,7 @@ type Endpoint struct {
 	ID, OrgID, AppID, URL string
 	EventTypes            []string // empty means all event types
 	Enabled               bool
+	Mode                  string // "test" or "live": only that mode's events are sent
 }
 
 // EndpointUpdate carries the fields to change; nil fields are left alone.
@@ -27,14 +29,17 @@ type EndpointUpdate = store.EndpointUpdate
 type CreateEndpointInput struct {
 	OrgID, AppID, URL string
 	EventTypes        []string
+	// Mode is "test" or "live" (default live): the endpoint receives only the
+	// events of that mode.
+	Mode string
 }
 
 func secretAAD(endpointID string) []byte {
-	return []byte("webhook_endpoints.signing_secret:" + endpointID)
+	return secrets.AADEndpointSecret(endpointID)
 }
 
 func toEndpoint(r store.EndpointRow) Endpoint {
-	return Endpoint{ID: r.ID, OrgID: r.OrgID, AppID: r.AppID, URL: r.URL, EventTypes: r.EventTypes, Enabled: r.Enabled}
+	return Endpoint{ID: r.ID, OrgID: r.OrgID, AppID: r.AppID, URL: r.URL, EventTypes: r.EventTypes, Enabled: r.Enabled, Mode: r.Mode}
 }
 
 func validateURL(raw string) error {
@@ -58,6 +63,13 @@ func (s *Service) CreateEndpoint(ctx context.Context, in CreateEndpointInput) (E
 	}
 	if err := validateURL(in.URL); err != nil {
 		return Endpoint{}, "", err
+	}
+	switch in.Mode {
+	case "":
+		in.Mode = "live"
+	case "test", "live":
+	default:
+		return Endpoint{}, "", fmt.Errorf("endpoint mode %q must be test or live", in.Mode)
 	}
 	var app store.App
 	err := s.db.Read(ctx, func(q store.Querier) (err error) {
@@ -85,7 +97,7 @@ func (s *Service) CreateEndpoint(ctx context.Context, in CreateEndpointInput) (E
 	}
 	now := s.now()
 	row := store.EndpointRow{ID: id, OrgID: in.OrgID, AppID: in.AppID, URL: in.URL, SigningSecretEnc: enc,
-		EventTypes: in.EventTypes, Enabled: true, CreatedAt: now, UpdatedAt: now}
+		EventTypes: in.EventTypes, Enabled: true, Mode: in.Mode, CreatedAt: now, UpdatedAt: now}
 	if err := s.db.Write(ctx, func(tx store.Tx) error { return s.db.InsertEndpoint(ctx, tx, row) }); err != nil {
 		return Endpoint{}, "", err
 	}

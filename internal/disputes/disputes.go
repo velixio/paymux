@@ -100,6 +100,7 @@ type Result struct {
 type DisputeView struct {
 	ID        string    `json:"id"`
 	Object    string    `json:"object"`
+	Livemode  bool      `json:"livemode"` // false for a test-mode object
 	PaymentID string    `json:"payment_id"`
 	AttemptID string    `json:"attempt_id"`
 	Amount    int64     `json:"amount"`
@@ -115,7 +116,7 @@ type DisputeView struct {
 
 // ViewDispute renders d.
 func ViewDispute(d store.Dispute) DisputeView {
-	return DisputeView{ID: d.ID, Object: "dispute", PaymentID: d.PaymentID, AttemptID: d.AttemptID, Amount: d.Amount, Currency: d.Currency,
+	return DisputeView{ID: d.ID, Object: "dispute", Livemode: d.Mode == "live", PaymentID: d.PaymentID, AttemptID: d.AttemptID, Amount: d.Amount, Currency: d.Currency,
 		Reason: d.Reason, Status: d.Status, Stage: d.Stage, DueBy: d.DueBy, Source: d.Source, Version: d.Version, CreatedAt: d.CreatedAt}
 }
 

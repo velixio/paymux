@@ -30,6 +30,8 @@ https://your-hub.example/dashboard/login/oidc/callback
 
 The implementation uses authorization code flow with PKCE, state, nonce, and ID-token verification. It requires a verified email claim. Existing enabled users are matched by verified email; new users are created only when their email domain is allowed. The default provisioning role must exist and cannot be admin. An empty allowed-domain list therefore prevents automatic registration of new users; it is not a blanket block on existing users signing in.
 
+A person is matched by the identity provider's issuer and subject, not by e-mail address. The first sign-in of someone who has no account creates one (verified address in `PAYMUX_OIDC_ALLOWED_DOMAINS`, default role) and binds it. An existing account that has a password can be reached by single sign-on only after an admin chooses **Allow SSO** for it on the Users page; the next sign-in with that address binds the account to that identity and the permission is spent. A different identity with the same address is refused, and the allowed domains apply on every sign-in, not only when an account is created.
+
 SSO establishes the dashboard session through the identity provider. Apply the provider's MFA and account lifecycle policies; do not assume the local password/TOTP step is also run during SSO. OIDC login callback and Zoho provider OAuth callback are different URLs.
 
 ## Application secrets and scopes

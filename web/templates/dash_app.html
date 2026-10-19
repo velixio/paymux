@@ -40,15 +40,16 @@
 
 {{if eq .Tab "webhooks"}}
 <div class="table-scroll"><table class="grid">
-<thead><tr><th>Endpoint</th><th>Events</th><th>Status</th><th></th></tr></thead>
-<tbody>{{range .Endpoints}}<tr><td>{{.URL}}</td><td>{{if .Events}}{{.Events}}{{else}}all{{end}}</td><td>{{if .Enabled}}enabled{{else}}disabled{{end}}</td>
+<thead><tr><th>Endpoint</th><th>Mode</th><th>Events</th><th>Status</th><th></th></tr></thead>
+<tbody>{{range .Endpoints}}<tr><td>{{.URL}}</td><td><span class="mode mode-{{.Mode}}">{{.Mode}}</span></td><td>{{if .Events}}{{.Events}}{{else}}all{{end}}</td><td>{{if .Enabled}}enabled{{else}}disabled{{end}}</td>
 <td><a href="/dashboard/apps/{{$.App.ID}}?tab=webhooks&amp;endpoint={{.ID}}">Deliveries</a>
 {{if and .Enabled $.App.CanEndpoints}}<form class="inline" method="post" action="/dashboard/apps/{{$.App.ID}}/endpoints/{{.ID}}/disable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="linkbtn" type="submit">Disable</button></form>{{end}}</td></tr>
-{{else}}<tr><td colspan="4" class="muted">No webhook endpoints.</td></tr>{{end}}</tbody>
+{{else}}<tr><td colspan="5" class="muted">No webhook endpoints.</td></tr>{{end}}</tbody>
 </table></div>
 {{if .CanEndpoints}}<form method="post" action="/dashboard/apps/{{.ID}}/endpoints" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <input class="field" name="url" type="url" placeholder="https://example.com/webhooks" required aria-label="https://example.com/webhooks">
+<select class="field" name="mode" aria-label="Mode: the endpoint receives the events of this mode only"><option value="live">Live events</option><option value="test">Test events</option></select>
 <input class="field" name="events" placeholder="Event types, comma separated (blank = all)" aria-label="Event types, comma separated (blank = all)">
 <button class="btn" type="submit">Add endpoint</button>
 </form>{{end}}

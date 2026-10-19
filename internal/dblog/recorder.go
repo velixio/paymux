@@ -46,6 +46,12 @@ type Options struct {
 	Now         func() time.Time
 	// Write replaces the database insert (tests).
 	Write func(ctx context.Context, rows []store.LogRow) error
+	// Trim, when set, is called by the writer after every TrimEvery rows stored
+	// (and at least every TrimInterval while rows arrive), so the caps on the
+	// table hold between the hourly purges.
+	Trim         func(ctx context.Context) error
+	TrimEvery    int           // default 1000
+	TrimInterval time.Duration // default 30s
 	// Tee, when set, receives every batch the writer takes from the queue, for
 	// shipping the same redacted rows elsewhere. It must not block.
 	Tee func(rows []store.LogRow)
@@ -54,7 +60,10 @@ type Options struct {
 // Stats are the counters of a Recorder.
 type Stats struct {
 	Stored, Dropped, Failed uint64
-	Queued                  int
+	// Suppressed counts rejected-request rows not written because their source
+	// had already had its share in the window.
+	Suppressed uint64
+	Queued     int
 }
 
 // Recorder turns log records, provider calls and HTTP failures into redacted
@@ -74,7 +83,12 @@ type Recorder struct {
 	started sync.Once
 	stopped sync.Once
 
+	throttle                *throttle
 	stored, dropped, failed atomic.Uint64
+	suppressed              atomic.Uint64
+	trim                    atomic.Pointer[func(ctx context.Context) error]
+	sinceTrim               int
+	lastTrim                time.Time
 	lastReport              atomic.Int64 // unix nanos of the last "dropped N" line
 	reported                atomic.Uint64
 	lastFailLog             time.Time
@@ -91,6 +105,12 @@ func New(o Options) *Recorder {
 	if o.FlushEvery <= 0 {
 		o.FlushEvery = time.Second
 	}
+	if o.TrimEvery <= 0 {
+		o.TrimEvery = 1000
+	}
+	if o.TrimInterval <= 0 {
+		o.TrimInterval = 30 * time.Second
+	}
 	if o.ReportEvery <= 0 {
 		o.ReportEvery = time.Minute
 	}
@@ -103,13 +123,16 @@ func New(o Options) *Recorder {
 	if o.Redactor == nil {
 		o.Redactor = redact.New()
 	}
-	r := &Recorder{o: o, red: o.Redactor, queue: make(chan store.LogRow, o.QueueSize), flush: make(chan chan struct{}),
+	r := &Recorder{o: o, red: o.Redactor, throttle: newThrottle(), queue: make(chan store.LogRow, o.QueueSize), flush: make(chan chan struct{}),
 		stop: make(chan struct{}), quit: make(chan struct{}), done: make(chan struct{})}
 	lv := slog.Level(slog.LevelWarn)
 	if o.Level != nil {
 		lv = o.Level.Level()
 	}
 	r.level.Store(int64(lv))
+	if o.Trim != nil {
+		r.SetTrim(o.Trim)
+	}
 	r.lastReport.Store(o.Now().UnixNano())
 	if o.Write == nil {
 		db := o.DB
@@ -118,6 +141,16 @@ func New(o Options) *Recorder {
 		}
 	}
 	return r
+}
+
+// SetTrim sets (or, with nil, removes) the function that applies the caps on the
+// table while rows arrive.
+func (r *Recorder) SetTrim(fn func(ctx context.Context) error) {
+	if fn == nil {
+		r.trim.Store(nil)
+		return
+	}
+	r.trim.Store(&fn)
 }
 
 // Redactor returns the redactor the rows pass through.
@@ -179,7 +212,7 @@ func (r *Recorder) Flush(ctx context.Context) {
 
 // Stats returns the counters.
 func (r *Recorder) Stats() Stats {
-	return Stats{Stored: r.stored.Load(), Dropped: r.dropped.Load(), Failed: r.failed.Load(), Queued: len(r.queue)}
+	return Stats{Stored: r.stored.Load(), Dropped: r.dropped.Load(), Failed: r.failed.Load(), Suppressed: r.suppressed.Load(), Queued: len(r.queue)}
 }
 
 // Emit queues a finished, already redacted row. It never blocks: when the queue
@@ -272,6 +305,28 @@ func (r *Recorder) write(rows []store.LogRow) {
 		return
 	}
 	r.stored.Add(uint64(len(rows)))
+	r.maybeTrim(len(rows))
+}
+
+// maybeTrim applies the table's caps once enough rows have come in (or enough
+// time has passed). It runs on the writer goroutine, so it needs no lock.
+func (r *Recorder) maybeTrim(added int) {
+	fn := r.trim.Load()
+	if fn == nil {
+		return
+	}
+	r.sinceTrim += added
+	now := r.o.Now()
+	if r.sinceTrim < r.o.TrimEvery && now.Sub(r.lastTrim) < r.o.TrimInterval {
+		return
+	}
+	r.sinceTrim, r.lastTrim = 0, now
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	defer func() { _ = recover() }()
+	if err := (*fn)(ctx); err != nil {
+		r.o.Stdout.Error("could not trim the log table", "err", err.Error())
+	}
 }
 
 type panicError struct{ v any }

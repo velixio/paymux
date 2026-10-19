@@ -175,7 +175,10 @@ func (db *DB) SetUserTOTP(ctx context.Context, id string, enc []byte) error {
 
 // ResetUserTOTP clears the secret and the replay step so the user enrols again.
 func (db *DB) ResetUserTOTP(ctx context.Context, id string) error {
-	return db.updateUser(ctx, id, `totp_secret_enc = NULL, totp_last_step = -1`)
+	if err := db.updateUser(ctx, id, `totp_secret_enc = NULL, totp_last_step = -1`); err != nil {
+		return err
+	}
+	return db.ClearEnrolmentToken(ctx, id) // a code issued for the old enrolment is void
 }
 
 // SetUserPassword replaces the password hash.

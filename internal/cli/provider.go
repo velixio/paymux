@@ -41,7 +41,7 @@ func openCLI(ctx context.Context, env func(string) (string, bool), stderr io.Wri
 	if err != nil {
 		return nil, err
 	}
-	box, err := secrets.NewBox(cfg.MasterKey)
+	box, err := secrets.NewBox(cfg.MasterKey, cfg.OldMasterKeys...)
 	if err != nil {
 		return nil, err
 	}

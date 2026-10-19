@@ -40,7 +40,7 @@ func words(key string) []string {
 // credWords are words that make a field a credential wherever they appear.
 var credWords = set("authorization", "cookie", "cookies", "setcookie", "password", "passwords", "passwd", "pwd",
 	"passphrase", "secret", "secrets", "token", "tokens", "salt", "hash", "signature", "signatures", "otp", "cvv", "cvv2",
-	"cvc", "cvc2", "pkcs12", "apikey", "privatekey", "credential", "credentials", "bearer", "pin")
+	"cvc", "cvc2", "ccvv", "cvn", "pkcs12", "apikey", "privatekey", "credential", "credentials", "bearer", "pin")
 
 // credKeyPrev are the words that make "<word> key" a credential.
 var credKeyPrev = set("api", "private", "secret", "access", "signing", "master", "encryption", "auth", "license")
@@ -48,7 +48,7 @@ var credKeyPrev = set("api", "private", "secret", "access", "signing", "master",
 // credSquashed are credential names that are run together in some APIs
 // (clientsecret, refreshtoken): matched inside the key with separators removed.
 var credSquashed = []string{"secret", "password", "passwd", "apikey", "authorization", "signature", "privatekey",
-	"cardnumber", "accesstoken", "refreshtoken", "idtoken", "passphrase", "cookie", "pkcs12"}
+	"cardnumber", "ccnum", "ccexp", "accesstoken", "refreshtoken", "idtoken", "passphrase", "cookie", "pkcs12"}
 
 // piiWords are words that make a field customer personal data.
 var piiWords = set("email", "emails", "phone", "phones", "mobile", "msisdn", "vpa", "gstin", "pan", "address", "addresses",

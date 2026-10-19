@@ -83,7 +83,12 @@ func runUser(ctx context.Context, args []string, env func(string) (string, bool)
 		if err != nil {
 			return fail(err)
 		}
-		fmt.Fprintf(stdout, "created %s %s (%s)\nThey set up two-factor authentication at first login.\n", u.Role, u.Email, u.ID)
+		token, err := users.IssueEnrolmentToken(ctx, u.ID)
+		if err != nil {
+			return fail(err)
+		}
+		fmt.Fprintf(stdout, "created %s %s (%s)\nEnrolment code (shown once; give it to them with the password): %s\n"+
+			"At first login they enter it to set up two-factor authentication. It works once, for 7 days.\n", u.Role, u.Email, u.ID, token)
 		return 0
 	}
 	if err := users.ResetTOTP(ctx, *email); errors.Is(err, store.ErrNotFound) {
@@ -91,8 +96,16 @@ func runUser(ctx context.Context, args []string, env func(string) (string, bool)
 	} else if err != nil {
 		return fail(err)
 	}
-	fmt.Fprintf(stdout, "two-factor authentication reset for %s; they were signed out and will enrol again at next login.\n",
-		strings.ToLower(strings.TrimSpace(*email)))
+	row, err := db.UserByEmail(ctx, *email)
+	if err != nil {
+		return fail(err)
+	}
+	token, err := users.IssueEnrolmentToken(ctx, row.ID)
+	if err != nil {
+		return fail(err)
+	}
+	fmt.Fprintf(stdout, "two-factor authentication reset for %s; they were signed out and will enrol again at next login.\n"+
+		"Enrolment code (shown once; it works once, for 7 days): %s\n", strings.ToLower(strings.TrimSpace(*email)), token)
 	return 0
 }
 

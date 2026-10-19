@@ -2,6 +2,8 @@ package dashboard
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/mail"
@@ -64,6 +66,47 @@ func (u Users) Create(ctx context.Context, email, role, password string) (store.
 		return store.UserRow{}, err
 	}
 	return row, nil
+}
+
+const (
+	enrolmentTTL    = 7 * 24 * time.Hour // how long an issued enrolment code can be used
+	enrolmentWindow = 30 * time.Minute   // how long the secret stays visible after the code was entered
+)
+
+func (u Users) now() time.Time {
+	if u.Now != nil {
+		return u.Now()
+	}
+	return time.Now()
+}
+
+// hashEnrolmentCode is how a code is stored and compared: case and spacing do
+// not matter to the person typing it.
+func hashEnrolmentCode(code string) string {
+	sum := sha256.Sum256([]byte(strings.ToLower(strings.Join(strings.Fields(code), ""))))
+	return hex.EncodeToString(sum[:])
+}
+
+// IssueEnrolmentToken makes a one-time code that lets the user set up
+// two-factor sign-in, replacing any earlier one. The code is returned once;
+// only its hash is kept.
+func (u Users) IssueEnrolmentToken(ctx context.Context, userID string) (string, error) {
+	code := newSetupToken() // 24 random letters in groups, about 112 bits
+	if err := u.DB.SetEnrolmentToken(ctx, userID, hashEnrolmentCode(code), u.now().Add(enrolmentTTL)); err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+// AuthoriseEnrolment issues a code and uses it at once, for a person who has
+// just proved themselves some other way (first-run setup).
+func (u Users) AuthoriseEnrolment(ctx context.Context, userID string) error {
+	code, err := u.IssueEnrolmentToken(ctx, userID)
+	if err != nil {
+		return err
+	}
+	_, err = u.DB.UnlockEnrolment(ctx, userID, hashEnrolmentCode(code), u.now(), enrolmentWindow)
+	return err
 }
 
 // ResetTOTP clears a user's second factor and signs them out everywhere, so

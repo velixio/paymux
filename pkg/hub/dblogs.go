@@ -95,9 +95,11 @@ func (a *App) logStore() (*store.DB, *dblog.Recorder) {
 // password and the OTLP headers.
 func (a *App) registerConfigSecrets(red *redact.Redactor) {
 	var vals []string
-	if k := a.cfg.MasterKey; len(k) > 0 {
-		vals = append(vals, base64.StdEncoding.EncodeToString(k), base64.RawStdEncoding.EncodeToString(k),
-			base64.URLEncoding.EncodeToString(k), base64.RawURLEncoding.EncodeToString(k), hex.EncodeToString(k), string(k))
+	for _, k := range append([][]byte{a.cfg.MasterKey}, a.cfg.OldMasterKeys...) {
+		if len(k) > 0 {
+			vals = append(vals, base64.StdEncoding.EncodeToString(k), base64.RawStdEncoding.EncodeToString(k),
+				base64.URLEncoding.EncodeToString(k), base64.RawURLEncoding.EncodeToString(k), hex.EncodeToString(k), string(k))
+		}
 	}
 	vals = append(vals, a.cfg.SMTPPassword.Reveal(), a.cfg.OIDCClientSecret.Reveal(), a.cfg.OpsWebhookURL)
 	if u, err := url.Parse(a.cfg.OpsWebhookURL); err == nil && u.Path != "" && u.Path != "/" {
@@ -133,6 +135,8 @@ func (l *dbLogs) registerPurge(q *jobs.Queue, main *store.DB, set *settings.Serv
 			}
 			return n, nil
 		}})
+	// The caps on the table also hold between the hourly runs.
+	l.rec.SetTrim(func(ctx context.Context) error { _, err := p.Trim(ctx); return err })
 	q.Register(logPurgeKind, func(ctx context.Context, _ json.RawMessage) error {
 		_, err := p.Run(ctx)
 		return err
@@ -155,6 +159,6 @@ func (l *dbLogs) responseHook() server.ResponseHook {
 		return nil
 	}
 	return func(ctx context.Context, method, route string, status int, d time.Duration) {
-		l.rec.HTTP(ctx, dblog.HTTPEvent{Method: method, Route: route, Status: status, Duration: d})
+		l.rec.HTTP(ctx, dblog.HTTPEvent{Method: method, Route: route, Status: status, Duration: d, Source: server.Source(ctx)})
 	}
 }

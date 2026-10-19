@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"github.com/paymux/paymux/internal/domains"
 	"net/http"
 	"sort"
 
@@ -51,6 +52,11 @@ func (s *Service) OpenCheckout(ctx context.Context, id, token string) (Checkout,
 			return err
 		}
 		if token == "" || subtle.ConstantTimeCompare([]byte(hashToken(token)), []byte(sub.CheckoutTokenHash)) != 1 {
+			return store.ErrNotFound
+		}
+		// A custom domain serves only its own app's checkouts; this runs before
+		// anything is started at the provider.
+		if hostApp, onCustom := domains.AppFrom(ctx); onCustom && hostApp != sub.AppID {
 			return store.ErrNotFound
 		}
 		if app, err := store.GetApp(ctx, q, sub.AppID); err == nil {
@@ -124,7 +130,15 @@ func (s *Service) OpenCheckout(ctx context.Context, id, token string) (Checkout,
 			amount = defaultSetupAmount
 		}
 		if sub.Status == string(state.SubIncomplete) && sub.TrialEnd.IsZero() {
+			// What the first period costs the customer: the price, plus GST when
+			// prices exclude it (the renewal payment it settles has that amount).
 			amount = sub.Amount
+			if err := s.db.Read(ctx, func(q store.Querier) (err error) {
+				amount, err = s.core.ChargeAmount(ctx, q, sub.AppID, sub.CustomerID, sub.Currency, sub.Amount)
+				return
+			}); err != nil {
+				return Checkout{}, err
+			}
 		}
 		req := connector.MandateRequest{MandateID: m.ID, ProviderRef: m.ProviderRef, Amount: amount, MaxAmount: m.MaxAmount,
 			Currency: m.Currency, Method: m.Method, Customer: customer}

@@ -92,7 +92,7 @@ func seedSim(t *testing.T, url, dataDir, endpointURL string) flowSeed {
 		t.Fatal(err)
 	}
 	out := outbound.New(outbound.Options{DB: db, Queue: jobs.New(db, jobs.Options{}), Box: box, AllowPrivate: true})
-	_, secret, err := out.CreateEndpoint(ctx, outbound.CreateEndpointInput{OrgID: org, AppID: app.ID, URL: endpointURL})
+	_, secret, err := out.CreateEndpoint(ctx, outbound.CreateEndpointInput{OrgID: org, AppID: app.ID, URL: endpointURL, Mode: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func TestSimulatorEndToEnd(t *testing.T) {
 				b, _ := json.Marshal(body)
 				rd = bytes.NewReader(b)
 			}
-			code, _, out := do(method, path, rd, map[string]string{"Authorization": "Bearer " + seed.payoutKey, "Content-Type": "application/json"})
+			code, _, out := do(method, path, rd, map[string]string{"Authorization": "Bearer " + seed.payoutKey, "Content-Type": "application/json", "Idempotency-Key": "sim-" + path})
 			var m map[string]any
 			_ = json.Unmarshal([]byte(out), &m)
 			return code, m

@@ -11,6 +11,7 @@ import (
 type PaymentView struct {
 	ID             string            `json:"id"`
 	Object         string            `json:"object"`
+	Livemode       bool              `json:"livemode"` // false for a test-mode object
 	Status         string            `json:"status"`
 	Kind           string            `json:"kind"`
 	Amount         int64             `json:"amount"`
@@ -40,7 +41,7 @@ func ViewPayment(p store.Payment) PaymentView {
 	if flags == nil {
 		flags = []string{}
 	}
-	return PaymentView{ID: p.ID, Object: "payment", Status: p.Status, Kind: p.Kind, Amount: p.Amount, Currency: p.Currency,
+	return PaymentView{ID: p.ID, Object: "payment", Livemode: p.Mode == "live", Status: p.Status, Kind: p.Kind, Amount: p.Amount, Currency: p.Currency,
 		AmountReceived: p.AmountReceived, AmountRefunded: p.AmountRefunded, OrderRef: p.OrderRef,
 		Description: p.Description, CustomerID: p.CustomerID, Metadata: meta, ReturnURL: p.ReturnURL,
 		ExpiresAt: p.ExpiresAt, CreatedAt: p.CreatedAt, Version: p.Version, Flags: flags,
@@ -51,6 +52,7 @@ func ViewPayment(p store.Payment) PaymentView {
 type RefundView struct {
 	ID          string `json:"id"`
 	Object      string `json:"object"`
+	Livemode    bool   `json:"livemode"` // false for a test-mode object
 	PaymentID   string `json:"payment_id"`
 	AttemptID   string `json:"attempt_id"`
 	Amount      int64  `json:"amount"`
@@ -66,7 +68,7 @@ type RefundView struct {
 
 // ViewRefund renders r.
 func ViewRefund(r store.Refund) RefundView {
-	return RefundView{ID: r.ID, Object: "refund", PaymentID: r.PaymentID, AttemptID: r.AttemptID, Amount: r.Amount,
+	return RefundView{ID: r.ID, Object: "refund", Livemode: r.Mode == "live", PaymentID: r.PaymentID, AttemptID: r.AttemptID, Amount: r.Amount,
 		Currency: r.Currency, Status: r.Status, Reason: r.Reason, InitiatedBy: r.InitiatedBy, ProviderRefundID: r.ProviderRefundID, CreatedAt: r.CreatedAt}
 }
 

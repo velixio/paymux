@@ -312,6 +312,7 @@ func TestMandateRevokedByTheCustomer(t *testing.T) {
 		e := newEnv(t, db, t0)
 		sub := active(t, e, nil)
 		m := e.mandate(sub.MandateID)
+		e.providerSays(m.ProviderMandateID, connector.MandateSnapshot{ProviderMandateID: m.ProviderMandateID, Status: "revoked", RawStatus: "cancelled"})
 		err := e.subs.HandleNotification(ctx, "pa_upi", connector.Notification{Kind: connector.NotifyMandate, EventID: "rv1",
 			Mandate: &connector.MandateSnapshot{ProviderMandateID: m.ProviderMandateID, Status: "revoked", RawStatus: "cancelled"}})
 		if err != nil {

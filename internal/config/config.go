@@ -32,9 +32,13 @@ type Config struct {
 	Listen, InternalListen, DataDir string
 	DatabaseURL                     string // normalised; sqlite default resolved against DataDir
 	MasterKey                       []byte // 32 bytes
-	Location                        *time.Location
-	DevSkip2FA                      bool
-	AllowPrivateWebhooks            bool // PAYMUX_ALLOW_PRIVATE_WEBHOOKS: outbound webhooks may target private IPs
+	// OldMasterKeys are earlier master keys, still used to open values sealed
+	// under them while a key rotation is under way (PAYMUX_MASTER_KEY_OLD,
+	// PAYMUX_MASTER_KEY_OLD_FILE).
+	OldMasterKeys        [][]byte
+	Location             *time.Location
+	DevSkip2FA           bool
+	AllowPrivateWebhooks bool // PAYMUX_ALLOW_PRIVATE_WEBHOOKS: outbound webhooks may target private IPs
 
 	// SMTP for customer and ops email. An empty SMTPHost disables email.
 	SMTPHost, SMTPUsername, SMTPFrom string
@@ -125,6 +129,11 @@ func Load(lookupEnv func(string) (string, bool)) (Config, error) {
 		errs = append(errs, err)
 	}
 	c.MasterKey = key
+	old, err := loadOldMasterKeys(lookupEnv, key)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	c.OldMasterKeys = old
 
 	tz := get("PAYMUX_TZ", "Asia/Kolkata")
 	if loc, err := time.LoadLocation(tz); err != nil {
@@ -394,6 +403,43 @@ func loadMasterKey(lookupEnv func(string) (string, bool)) ([]byte, error) {
 		return nil, fmt.Errorf("%s must decode to 32 bytes, got %d", name, len(key))
 	}
 	return key, nil
+}
+
+// loadOldMasterKeys reads the earlier keys of a rotation from
+// PAYMUX_MASTER_KEY_OLD (comma separated) and PAYMUX_MASTER_KEY_OLD_FILE (a
+// file with keys separated by commas, spaces or new lines), both base64. The
+// active key among them is ignored, and so is a key given twice.
+func loadOldMasterKeys(lookupEnv func(string) (string, bool), active []byte) ([][]byte, error) {
+	var parts []string
+	split := func(s string) []string {
+		return strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ';' || r == ' ' || r == '\n' || r == '\r' || r == '\t' })
+	}
+	if v, ok := lookupEnv("PAYMUX_MASTER_KEY_OLD"); ok {
+		parts = append(parts, split(v)...)
+	}
+	if f, ok := lookupEnv("PAYMUX_MASTER_KEY_OLD_FILE"); ok && f != "" {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return nil, fmt.Errorf("PAYMUX_MASTER_KEY_OLD_FILE: cannot read file %q", f)
+		}
+		parts = append(parts, split(string(b))...)
+	}
+	var out [][]byte
+	seen := map[string]bool{string(active): true}
+	for i, p := range parts {
+		key, ok := decodeKey(p)
+		if !ok {
+			return nil, fmt.Errorf("PAYMUX_MASTER_KEY_OLD: key %d is not base64 encoded", i+1)
+		}
+		if len(key) != 32 {
+			return nil, fmt.Errorf("PAYMUX_MASTER_KEY_OLD: key %d must decode to 32 bytes, got %d", i+1, len(key))
+		}
+		if !seen[string(key)] {
+			seen[string(key)] = true
+			out = append(out, key)
+		}
+	}
+	return out, nil
 }
 
 func decodeKey(s string) ([]byte, bool) {

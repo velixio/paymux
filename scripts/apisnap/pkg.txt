@@ -1031,6 +1031,7 @@ const (
 	DefaultMaxBody      = 1 << 20
 	DefaultPollEvery    = 10 * time.Second
 	DefaultPoolSize     = 4
+	DefaultMaxMemory    = 128 << 20
 )
 
 type Options struct {
@@ -1043,6 +1044,7 @@ type Options struct {
 	CallTimeout  time.Duration
 	FetchTimeout time.Duration
 	MaxBody      int64
+	MaxMemory    int64
 	PollEvery    time.Duration
 }
 

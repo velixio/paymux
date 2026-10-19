@@ -135,6 +135,11 @@ Click **Succeed**. The simulator "captures" the payment and your browser
 returns through Paymux to `https://example.com/thanks?...&status=succeeded`
 (that site is not yours; the address bar is all you need).
 
+The `status` in that address is a convenience for the page the customer lands
+on, not proof of anything: it is not signed, and anyone can type it. Your
+server must confirm a payment from the `payment.succeeded` webhook or by
+fetching the payment with `GET /v1/payments/{id}`, never from the return URL.
+
 ## 8. See what happened (2 minutes)
 
 * **Your receiver** printed `payment.succeeded` (and `payment.created`). The

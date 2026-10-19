@@ -136,11 +136,12 @@ var defs = []Def{
 	{"provider_event_retention", `400`, LevelOrg, zeroOrAtLeast(30)}, // days; 0 = forever
 	{"document_retention", `0`, LevelOrg, zeroOrAtLeast(8)},          // years; 0 = forever
 	// The error log in the database: error rows (and failed provider calls with
-	// their bodies) are kept longer than warning rows; log_max_rows caps the table
-	// whatever the age, oldest first.
+	// their bodies) are kept longer than warning rows; log_max_rows and
+	// log_max_mb cap the table whatever the age, oldest first.
 	{"log_retention_error_days", `90`, LevelOrg, intRange(1, 3650)},
 	{"log_retention_warn_days", `7`, LevelOrg, intRange(1, 365)},
 	{"log_max_rows", `500000`, LevelOrg, intRange(1000, 100_000_000)},
+	{"log_max_mb", `1024`, LevelOrg, intRange(16, 1_000_000)},
 	// audit_retention_days: PCI DSS 10.5.1 asks for at least a year of audit
 	// history, so nothing below 365 days is accepted; 0 keeps it forever.
 	{"audit_retention_days", `400`, LevelOrg, zeroOrAtLeast(365)},

@@ -57,10 +57,12 @@ type EndpointRow struct {
 	SigningSecretEnc      []byte
 	EventTypes            []string
 	Enabled               bool
-	CreatedAt, UpdatedAt  time.Time
+	// Mode is "test" or "live": the endpoint receives the events of that mode only.
+	Mode                 string
+	CreatedAt, UpdatedAt time.Time
 }
 
-const endpointCols = `id, org_id, app_id, url, signing_secret_enc, event_types, enabled, created_at, updated_at`
+const endpointCols = `id, org_id, app_id, url, signing_secret_enc, event_types, enabled, mode, created_at, updated_at`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -69,7 +71,7 @@ func scanEndpoint(s scanner) (EndpointRow, error) {
 	var types string
 	var enabled int
 	var created, updated int64
-	if err := s.Scan(&e.ID, &e.OrgID, &e.AppID, &e.URL, &e.SigningSecretEnc, &types, &enabled, &created, &updated); err != nil {
+	if err := s.Scan(&e.ID, &e.OrgID, &e.AppID, &e.URL, &e.SigningSecretEnc, &types, &enabled, &e.Mode, &created, &updated); err != nil {
 		return EndpointRow{}, err
 	}
 	if err := json.Unmarshal([]byte(types), &e.EventTypes); err != nil {
@@ -89,8 +91,11 @@ func (db *DB) InsertEndpoint(ctx context.Context, tx Tx, e EndpointRow) error {
 	if e.EventTypes == nil {
 		types = []byte("[]")
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO webhook_endpoints (`+endpointCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.ID, e.OrgID, e.AppID, e.URL, e.SigningSecretEnc, string(types), b2i(e.Enabled), ms(e.CreatedAt), ms(e.UpdatedAt))
+	if e.Mode == "" {
+		e.Mode = "live"
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO webhook_endpoints (`+endpointCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.ID, e.OrgID, e.AppID, e.URL, e.SigningSecretEnc, string(types), b2i(e.Enabled), e.Mode, ms(e.CreatedAt), ms(e.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("insert webhook endpoint: %w", err)
 	}
@@ -370,4 +375,21 @@ func (db *DB) GetProviderEvent(ctx context.Context, accountID, eventID string) (
 		return ProviderEventRow{}, ErrNotFound
 	}
 	return p, err
+}
+
+// PurgeProviderEvents deletes up to limit events received before the cutoff and
+// returns how many it deleted: those that failed verification (their id starts
+// with "unverified:") when forged is true, all the others when it is false.
+func PurgeProviderEvents(ctx context.Context, tx Tx, forged bool, before time.Time, limit int) (int, error) {
+	cond := "provider_event_id NOT LIKE 'unverified:%'"
+	if forged {
+		cond = "provider_event_id LIKE 'unverified:%'"
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM provider_events WHERE id IN (
+		SELECT id FROM provider_events WHERE received_at < ? AND `+cond+` ORDER BY received_at LIMIT ?)`, ms(before), limit)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
 }

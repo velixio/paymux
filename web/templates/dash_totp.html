@@ -2,6 +2,15 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "content"}}{{template "dash_open" .}}
 <h3>Two-factor authentication</h3>
+{{if .NeedEnrolCode}}
+<p class="muted">Two-factor sign-in has not been set up for {{.Email}}. An admin gives you a one-time enrolment code; enter it to see the key for your authenticator app.</p>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<form method="post" action="/dashboard/login/totp">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<input class="field" name="enrol_code" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="abcdef-ghijkl-mnopqr-stuvwx" required autofocus aria-label="Enrolment code">
+<button class="btn" type="submit">Continue</button>
+</form>
+{{else}}
 {{if .Enrol}}
 <p class="muted">Set up an authenticator app (Google Authenticator, Authy, 1Password and similar) for {{.Email}}.
 Add this key by hand, or open the link on your phone, then enter the 6-digit code it shows.</p>
@@ -16,4 +25,5 @@ Add this key by hand, or open the link on your phone, then enter the 6-digit cod
 <input class="field" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="8" placeholder="123456" required autofocus aria-label="123456">
 <button class="btn" type="submit">{{if .Enrol}}Confirm and sign in{{else}}Sign in{{end}}</button>
 </form>
+{{end}}
 {{template "dash_close" .}}{{end}}

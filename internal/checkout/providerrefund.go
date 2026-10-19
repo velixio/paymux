@@ -34,6 +34,16 @@ func ImportRefund(ctx context.Context, db *store.DB, c *core.Service, accountID 
 	})
 	switch {
 	case err == nil:
+		// The same check as when a refund is polled: what the provider returned has
+		// to be this refund (its payment, receipt, amount and currency), or it is
+		// not applied.
+		var ka store.Attempt
+		if err := db.Read(ctx, func(q store.Querier) (err error) { ka, err = store.GetAttempt(ctx, q, known.AttemptID); return }); err != nil {
+			return false, err
+		}
+		if err := refundIsOurs(known, ka, snap); err != nil {
+			return false, err
+		}
 		_, err = c.ApplyRefundSnapshot(ctx, known.ID, toRefundSnapshot(snap))
 		return err == nil, err
 	case !errors.Is(err, store.ErrNotFound):
@@ -86,7 +96,7 @@ func (s *Service) importProviderRefund(ctx context.Context, ev store.ProviderEve
 	}
 	imported, err := ImportRefund(ctx, s.o.DB, s.o.Core, ev.ProviderAccountID, snap)
 	switch {
-	case errors.Is(err, core.ErrInvalid), errors.Is(err, core.ErrNotRefundable):
+	case errors.Is(err, core.ErrInvalid), errors.Is(err, core.ErrNotRefundable), errors.Is(err, ErrNotOurs):
 		s.o.Logger.Warn("checkout: a provider refund cannot be booked", "account", ev.ProviderAccountID, "refund", snap.ProviderRefundID, "err", err)
 		return unknown()
 	case err != nil:

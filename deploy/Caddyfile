@@ -16,7 +16,8 @@
 
 	on_demand_tls {
 		# The internal listener (PAYMUX_INTERNAL_LISTEN, default 127.0.0.1:9100)
-		# answers 200 for the base host and for known app domains, 404 otherwise.
+		# answers 200 for the base host, for verified app domains and for pending ones
+		# whose DNS already points at the hub, 403 otherwise.
 		ask http://127.0.0.1:9100/internal/tls-allow
 	}
 }

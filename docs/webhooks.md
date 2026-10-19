@@ -18,6 +18,7 @@ An app webhook is JSON with an event type, event timestamp, and object snapshot:
 {
   "type": "payment.succeeded",
   "timestamp": "2026-10-18T09:00:00Z",
+  "livemode": true,
   "data": {
     "object": {
       "id": "pay_EXAMPLE",
@@ -31,6 +32,8 @@ An app webhook is JSON with an event type, event timestamp, and object snapshot:
   }
 }
 ```
+
+`livemode` is `false` for events of test-mode payments and `true` for live ones; the same flag is on every object (`livemode` next to `object`). **An endpoint belongs to one mode**: a test endpoint receives test events only, a live endpoint live events only, so a test payment never reaches a production receiver. Choose the mode when you add the endpoint (the dashboard form, or `paymux endpoint add --mode test|live`; the default is live). Endpoints that existed before modes were introduced became test endpoints if their app has never had a live API key or a live payment, and live endpoints otherwise; add a second endpoint if you want both.
 
 This is an abbreviated illustrative payload, not a complete schema. The event ID is in the **`webhook-id` header**, not a guaranteed top-level JSON `id`. Payment snapshots expose a version; use object versions or retrieve current state to avoid applying an older snapshot after a newer one.
 

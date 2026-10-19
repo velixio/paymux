@@ -173,6 +173,33 @@ var AllScopes = []string{ScopePaymentsRead, ScopePaymentsWrite, ScopeRefundsRead
 // before payouts existed, and keys made without a scope list, cannot pay out.
 var explicitScopes = []string{ScopePayoutsRead, ScopePayoutsWrite}
 
+// ActionsForScopes lists the actions a person must hold to issue an API key
+// with these scopes: a key is a delegation, so it may not carry power its issuer
+// lacks. nil scopes (a full-access key) need what every non-payout scope needs.
+// Read scopes need nothing beyond the right to issue keys.
+func ActionsForScopes(scopes []string) []Action {
+	if scopes == nil {
+		return []Action{PaymentCreate, RefundCreate}
+	}
+	var out []Action
+	add := func(a Action) {
+		if !slices.Contains(out, a) {
+			out = append(out, a)
+		}
+	}
+	for _, sc := range scopes {
+		switch sc {
+		case ScopePaymentsWrite, ScopeSubscriptionsWrite:
+			add(PaymentCreate)
+		case ScopeRefundsWrite:
+			add(RefundCreate)
+		case ScopePayoutsRead, ScopePayoutsWrite:
+			add(PayoutCreate)
+		}
+	}
+	return out
+}
+
 // ValidScope reports whether s is a known scope.
 func ValidScope(s string) bool { return slices.Contains(AllScopes, s) }
 

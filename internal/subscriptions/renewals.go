@@ -263,7 +263,11 @@ func (s *Service) settleSetup(ctx context.Context, mandateID string, setup *conn
 		if cy.State != "awaiting" || att.ID == "" || att.Status != string(state.AttemptCreated) || sub.MandateID != mandateID {
 			continue
 		}
-		if _, err := s.core.ApplyAttemptSnapshot(ctx, att.ID, toSnapshot(*setup, cy.Amount, sub.Currency)); err != nil {
+		var charge int64
+		if err := s.db.Read(ctx, func(q store.Querier) error { charge = paymentAmount(ctx, q, att.PaymentID, cy.Amount); return nil }); err != nil {
+			return err
+		}
+		if _, err := s.core.ApplyAttemptSnapshot(ctx, att.ID, toSnapshot(*setup, charge, sub.Currency)); err != nil {
 			return err
 		}
 		if err := s.reconcile(ctx, sub.ID, cy.ID); err != nil {
@@ -319,6 +323,20 @@ func (s *Service) ensureOpenAttempt(ctx context.Context, tx store.Tx, sub *store
 
 // ---- pre-debit notice ---------------------------------------------------
 
+// paymentAmount is what the renewal payment asks of the customer: the cycle's
+// price plus GST when prices exclude tax. The notice, the debit and the
+// mandate limit all use it; cy.Amount is the price before tax.
+func paymentAmount(ctx context.Context, q store.Queryer, paymentID string, fallback int64) int64 {
+	if paymentID == "" {
+		return fallback
+	}
+	p, err := store.GetPayment(ctx, q, paymentID)
+	if err != nil {
+		return fallback
+	}
+	return p.Amount
+}
+
 // noteWork tells the log scope of the job which subscription, mandate, attempt
 // and payment a provider call is about, so a failed call in the error log can
 // be traced back to them.
@@ -371,13 +389,17 @@ func (s *Service) handleNotify(ctx context.Context, raw json.RawMessage) error {
 		return err
 	}
 	noteWork(ctx, sub, m, att)
+	var charge int64
+	if err := s.db.Read(ctx, func(q store.Querier) error { charge = paymentAmount(ctx, q, att.PaymentID, cy.Amount); return nil }); err != nil {
+		return err
+	}
 	conn, err := s.connectors.Get(ctx, sub.ProviderAccountID)
 	if err != nil {
 		return err
 	}
 	if mm, ok := conn.(connector.MandateManager); ok {
 		err = mm.NotifyPreDebit(ctx, connector.PreDebitRequest{Mandate: connector.MandateRef{ProviderMandateID: m.ProviderMandateID},
-			ProviderRef: att.ProviderRef, Amount: cy.Amount, Currency: sub.Currency, DebitDate: chargeT.UnixMilli()})
+			ProviderRef: att.ProviderRef, Amount: charge, Currency: sub.Currency, DebitDate: chargeT.UnixMilli()})
 		if err != nil && !errors.Is(err, connector.ErrUnsupported) {
 			return err // retried by the queue
 		}
@@ -399,13 +421,13 @@ func (s *Service) handleNotify(ctx context.Context, raw json.RawMessage) error {
 			return err
 		}
 		ca := chargeT
-		return s.emitSub(ctx, tx, EvRenewalUpcoming, sub, eventData{ChargeAt: &ca, RenewalAmount: cy.Amount})
+		return s.emitSub(ctx, tx, EvRenewalUpcoming, sub, eventData{ChargeAt: &ca, RenewalAmount: charge})
 	})
 	if err != nil {
 		return err
 	}
 	if sent {
-		s.sendPredebitEmail(ctx, pl.SubscriptionID, cy.Amount, chargeT)
+		s.sendPredebitEmail(ctx, pl.SubscriptionID, charge, chargeT)
 	}
 	return nil
 }
@@ -533,7 +555,7 @@ func (s *Service) prepareCharge(ctx context.Context, tx store.Tx, sub *store.Sub
 	if *att, err = s.ensureOpenAttempt(ctx, tx, sub, cy); err != nil {
 		return true, err
 	}
-	if cy.Amount > m.MaxAmount {
+	if paymentAmount(ctx, tx, att.PaymentID, cy.Amount) > m.MaxAmount {
 		return true, s.failCycle(ctx, tx, sub, cy, pol, *m, "amount_exceeds_mandate_max", true)
 	}
 	cy.State, cy.LeaseUntil = "charging", now.Add(chargeLease)
@@ -582,8 +604,12 @@ func (s *Service) executeCharge(ctx context.Context, sub store.Subscription, cy 
 	if !ok {
 		return jobs.Permanent(fmt.Errorf("subscriptions: connector of account %s cannot charge mandates", sub.ProviderAccountID))
 	}
+	var charge int64
+	if err := s.db.Read(ctx, func(q store.Querier) error { charge = paymentAmount(ctx, q, att.PaymentID, cy.Amount); return nil }); err != nil {
+		return s.releaseLease(ctx, sub.ID, cy.PeriodIndex, err)
+	}
 	ps, err := mm.ChargeMandate(ctx, connector.ChargeRequest{Mandate: connector.MandateRef{ProviderMandateID: m.ProviderMandateID},
-		ProviderRef: att.ProviderRef, Amount: cy.Amount, Currency: sub.Currency})
+		ProviderRef: att.ProviderRef, Amount: charge, Currency: sub.Currency})
 	var rl connector.ErrRateLimited
 	switch {
 	case err == nil:
@@ -594,7 +620,7 @@ func (s *Service) executeCharge(ctx context.Context, sub store.Subscription, cy 
 	default:
 		ps = connector.PaymentSnapshot{Status: connector.PaymentFailed, ErrorCode: "charge_error", ErrorMessage: err.Error()}
 	}
-	if _, err := s.core.ApplyAttemptSnapshot(ctx, att.ID, toSnapshot(ps, cy.Amount, sub.Currency)); err != nil {
+	if _, err := s.core.ApplyAttemptSnapshot(ctx, att.ID, toSnapshot(ps, charge, sub.Currency)); err != nil {
 		return s.releaseLease(ctx, sub.ID, cy.PeriodIndex, err)
 	}
 	return s.reconcile(ctx, sub.ID, cy.ID)
@@ -893,7 +919,9 @@ func (s *Service) handlePoll(ctx context.Context, raw json.RawMessage) error {
 	case err != nil:
 		return err
 	}
-	snap := toSnapshot(ps, cy.Amount, sub.Currency)
+	var charge int64
+	_ = s.db.Read(ctx, func(q store.Querier) error { charge = paymentAmount(ctx, q, att.PaymentID, cy.Amount); return nil })
+	snap := toSnapshot(ps, charge, sub.Currency)
 	if snap.Status == state.AttemptPending && cy.JobSeq >= maxPolls {
 		snap = core.Snapshot{Status: state.AttemptFailed, FailureCode: "timeout", FailureMessage: "no result from the provider"}
 	}

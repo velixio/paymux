@@ -66,7 +66,15 @@ func TestRazorpayProviderManagedRenewalViaWebhook(t *testing.T) {
 		note := func(name string) {
 			t.Helper()
 			for _, n := range rzp(t, name) {
-				if err := e.subs.HandleNotification(ctx, "pa_managed", n); err != nil {
+				if n.Subscription != nil { // the provider's API agrees with its webhook
+					e.r.mu.Lock()
+					if e.r.subTruth == nil {
+						e.r.subTruth = map[string]connector.SubscriptionSnapshot{}
+					}
+					e.r.subTruth[n.Subscription.ProviderSubscriptionID] = *n.Subscription
+					e.r.mu.Unlock()
+				}
+				if err := e.notify("pa_managed", n); err != nil {
 					t.Fatalf("%s: %v", name, err)
 				}
 			}
@@ -132,7 +140,7 @@ func TestRazorpayChargeBeforeActivationActivates(t *testing.T) {
 		e := newEnv(t, db, t0)
 		sub := managed(t, e)
 		for _, n := range rzp(t, "event_subscription_charged") { // arrives before "activated"
-			if err := e.subs.HandleNotification(ctx, "pa_managed", n); err != nil {
+			if err := e.notify("pa_managed", n); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -148,7 +156,7 @@ func TestRazorpayCancelledAndPending(t *testing.T) {
 		sub := managed(t, e)
 		for _, name := range []string{"event_subscription_activated", "event_subscription_pending"} {
 			for _, n := range rzp(t, name) {
-				if err := e.subs.HandleNotification(ctx, "pa_managed", n); err != nil {
+				if err := e.notify("pa_managed", n); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -157,7 +165,7 @@ func TestRazorpayCancelledAndPending(t *testing.T) {
 			t.Fatalf("pending: %s", got.Status)
 		}
 		for _, n := range rzp(t, "event_subscription_cancelled") {
-			if err := e.subs.HandleNotification(ctx, "pa_managed", n); err != nil {
+			if err := e.notify("pa_managed", n); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -167,7 +175,7 @@ func TestRazorpayCancelledAndPending(t *testing.T) {
 		// Unknown provider subscription: not found, so the inbound job retries.
 		n := rzp(t, "event_subscription_activated")[0]
 		n.Subscription.ProviderSubscriptionID = "sub_unknown"
-		if err := e.subs.HandleNotification(ctx, "pa_managed", n); err == nil {
+		if err := e.notify("pa_managed", n); err == nil {
 			t.Error("unknown subscription accepted")
 		}
 	})
@@ -178,7 +186,7 @@ func TestProviderManagedCancelAndAmountGoThroughTheProvider(t *testing.T) {
 		e := newEnv(t, db, t0)
 		sub := managed(t, e)
 		for _, n := range rzp(t, "event_subscription_activated") {
-			if err := e.subs.HandleNotification(ctx, "pa_managed", n); err != nil {
+			if err := e.notify("pa_managed", n); err != nil {
 				t.Fatal(err)
 			}
 		}

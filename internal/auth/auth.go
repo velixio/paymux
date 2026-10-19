@@ -14,7 +14,9 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/argon2"
@@ -39,6 +41,49 @@ var ErrMalformedHash = errors.New("auth: malformed password hash")
 
 var b64 = base64.RawStdEncoding
 
+// ErrBusy is returned when too many password hashes are already running. Each
+// one takes 64 MiB, and a caller who can open connections can ask for as many as
+// it likes, so the surplus is refused (HTTP 503) instead of queued.
+var ErrBusy = errors.New("auth: too many password checks are running; try again in a moment")
+
+var hashSlots atomic.Pointer[chan struct{}]
+
+// observe, when set by a test, hears of each hash starting (+1) and ending (-1).
+var observe func(delta int)
+
+func defaultSlots() int { return 2 * runtime.GOMAXPROCS(0) }
+
+func init() { SetConcurrency(0) }
+
+// SetConcurrency sets how many password hashes may run at once; 0 means twice
+// GOMAXPROCS.
+func SetConcurrency(n int) {
+	if n <= 0 {
+		n = defaultSlots()
+	}
+	c := make(chan struct{}, n)
+	hashSlots.Store(&c)
+}
+
+// acquire takes a hashing slot without waiting.
+func acquire() (release func(), ok bool) {
+	c := *hashSlots.Load()
+	select {
+	case c <- struct{}{}:
+		if observe != nil {
+			observe(1)
+		}
+		return func() {
+			if observe != nil {
+				observe(-1)
+			}
+			<-c
+		}, true
+	default:
+		return nil, false
+	}
+}
+
 // HashPassword returns a PHC-format argon2id hash.
 func HashPassword(pw string) (string, error) {
 	if len([]rune(pw)) < MinPasswordLen {
@@ -48,6 +93,11 @@ func HashPassword(pw string) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
+	release, ok := acquire()
+	if !ok {
+		return "", ErrBusy
+	}
+	defer release()
 	key := argon2.IDKey([]byte(pw), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, argonMemory, argonTime, argonThreads,
 		b64.EncodeToString(salt), b64.EncodeToString(key)), nil
@@ -74,6 +124,11 @@ func VerifyPassword(hash, pw string) (bool, error) {
 	if err1 != nil || err2 != nil || len(want) == 0 {
 		return false, ErrMalformedHash
 	}
+	release, ok := acquire()
+	if !ok {
+		return false, ErrBusy
+	}
+	defer release()
 	got := argon2.IDKey([]byte(pw), salt, t, m, p, uint32(len(want)))
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }
