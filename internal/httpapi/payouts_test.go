@@ -159,7 +159,7 @@ func TestPayoutRequestErrors(t *testing.T) {
 			"not json":                             {"{", 400, "invalid_request"},
 			"unsupported currency for the account": {map[string]any{"amount": 100, "currency": "USD", "beneficiary": payoutBody["beneficiary"]}, 422, "no_route"},
 		} {
-			if r := f.do("POST", "/v1/payouts", w, tc.body); r.status != tc.status || r.errType(t) != tc.typ {
+			if r := f.do("POST", "/v1/payouts", w, tc.body, "Idempotency-Key", "k-"+strings.ReplaceAll(name, " ", "-")); r.status != tc.status || r.errType(t) != tc.typ {
 				t.Errorf("%s: %d %s", name, r.status, r.raw)
 			}
 		}
@@ -168,7 +168,7 @@ func TestPayoutRequestErrors(t *testing.T) {
 		// The account never opted in to payouts.
 		f := newPayoutFixture(t, db, `["one_time"]`)
 		w := f.scopedKey("test", authz.ScopePayoutsWrite)
-		if r := f.do("POST", "/v1/payouts", w, payoutBody); r.status != 422 || r.errType(t) != "no_route" {
+		if r := f.do("POST", "/v1/payouts", w, payoutBody, "Idempotency-Key", "k-nopurpose"); r.status != 422 || r.errType(t) != "no_route" {
 			t.Errorf("account without the payout purpose: %d %s", r.status, r.raw)
 		}
 	})
@@ -176,8 +176,26 @@ func TestPayoutRequestErrors(t *testing.T) {
 		// Payouts not enabled at all.
 		f := newFixture(t, db)
 		w := f.scopedKey("test", authz.ScopePayoutsWrite)
-		if r := f.do("POST", "/v1/payouts", w, payoutBody); r.status != 404 {
+		if r := f.do("POST", "/v1/payouts", w, payoutBody, "Idempotency-Key", "k-nosvc"); r.status != 404 {
 			t.Errorf("without a payouts service: %d", r.status)
+		}
+	})
+}
+
+// Money leaves the account on a payout, and a client that retries after a
+// timeout must not pay twice, so the key is not optional.
+func TestPayoutsRequireAnIdempotencyKey(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		f := newPayoutFixture(t, db, `["payout"]`)
+		w := f.scopedKey("test", authz.ScopePayoutsWrite)
+		if r := f.do("POST", "/v1/payouts", w, payoutBody); r.status != 400 || r.errType(t) != "invalid_request" || !strings.Contains(string(r.raw), "Idempotency-Key") {
+			t.Errorf("no key: %d %s", r.status, r.raw)
+		}
+		if r := f.do("POST", "/v1/payouts", w, payoutBody, "Idempotency-Key", ""); r.status != 400 {
+			t.Errorf("empty key: %d %s", r.status, r.raw)
+		}
+		if r := f.do("POST", "/v1/payouts", w, payoutBody, "Idempotency-Key", "po-required-1"); r.status != 201 {
+			t.Errorf("with a key: %d %s", r.status, r.raw)
 		}
 	})
 }

@@ -53,11 +53,11 @@ func populate(t *testing.T, db *store.DB) {
 			Name: "n", Status: "active", ConfigEnc: binary, CreatedAt: t0}); err != nil {
 			return err
 		}
-		_, err := store.ReserveIdempotencyKey(ctx, tx, "app_1", "live", "k1", "hash", t0, 24*time.Hour, time.Minute)
+		_, err := store.ReserveIdempotencyKey(ctx, tx, "app_1", "live", "k1", "own", "hash", t0, 24*time.Hour, time.Minute)
 		if err != nil {
 			return err
 		}
-		return store.CompleteIdempotencyKey(ctx, tx, "app_1", "live", "k1", 201, binary)
+		return store.CompleteIdempotencyKey(ctx, tx, "app_1", "live", "k1", "own", 201, binary)
 	})
 	if err != nil {
 		t.Fatal(err)

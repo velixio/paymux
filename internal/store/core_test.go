@@ -126,7 +126,7 @@ func TestIdempotencyReserveFlow(t *testing.T) {
 		reserve := func(hash string, now time.Time) *store.IdempotencyRecord {
 			var rec *store.IdempotencyRecord
 			err := db.Write(ctx, func(tx store.Tx) (err error) {
-				rec, err = store.ReserveIdempotencyKey(ctx, tx, "app_1", "test", "k1", hash, now, 24*time.Hour, time.Minute)
+				rec, err = store.ReserveIdempotencyKey(ctx, tx, "app_1", "test", "k1", "own1", hash, now, 24*time.Hour, time.Minute)
 				return
 			})
 			if err != nil {
@@ -141,7 +141,7 @@ func TestIdempotencyReserveFlow(t *testing.T) {
 			t.Fatalf("in-progress record expected: %+v", rec)
 		}
 		_ = db.Write(ctx, func(tx store.Tx) error {
-			return store.CompleteIdempotencyKey(ctx, tx, "app_1", "test", "k1", 201, []byte("resp"))
+			return store.CompleteIdempotencyKey(ctx, tx, "app_1", "test", "k1", "own1", 201, []byte("resp"))
 		})
 		if rec := reserve("h1", t0.Add(time.Hour)); rec == nil || rec.Status != 201 || string(rec.ResponseEnc) != "resp" || rec.RequestHash != "h1" {
 			t.Fatalf("stored record expected: %+v", rec)
@@ -202,5 +202,57 @@ func TestSettingsAndAuditStore(t *testing.T) {
 			}
 			return nil
 		})
+	})
+}
+
+// A request that was taken over as stale may still finish later. It must not
+// store its response over, or release, the reservation of the request that
+// took over.
+func TestIdempotencyOnlyTheOwnerCompletesOrReleases(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		reserve := func(owner string, now time.Time) *store.IdempotencyRecord {
+			var rec *store.IdempotencyRecord
+			err := db.Write(ctx, func(tx store.Tx) (err error) {
+				rec, err = store.ReserveIdempotencyKey(ctx, tx, "app_1", "test", "k1", owner, "h1", now, 24*time.Hour, time.Minute)
+				return
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return rec
+		}
+		complete := func(owner string) error {
+			return db.Write(ctx, func(tx store.Tx) error {
+				return store.CompleteIdempotencyKey(ctx, tx, "app_1", "test", "k1", owner, 201, []byte("resp-"+owner))
+			})
+		}
+		release := func(owner string) {
+			if err := db.Write(ctx, func(tx store.Tx) error { return store.ReleaseIdempotencyKey(ctx, tx, "app_1", "test", "k1", owner) }); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if reserve("A", t0) != nil {
+			t.Fatal("A should own the key")
+		}
+		if reserve("B", t0.Add(2*time.Minute)) != nil { // A is stale, B takes over
+			t.Fatal("B should have taken the key over")
+		}
+		if err := complete("A"); !errors.Is(err, store.ErrIdempotencyNotOwner) {
+			t.Errorf("the old owner completed the key: %v", err)
+		}
+		release("A")
+		if rec := reserve("C", t0.Add(2*time.Minute+time.Second)); rec == nil || rec.Status != 0 {
+			t.Errorf("A's release or completion disturbed B's reservation: %+v", rec)
+		}
+		if err := complete("B"); err != nil {
+			t.Fatalf("the owner could not complete: %v", err)
+		}
+		if rec := reserve("C", t0.Add(3*time.Minute)); rec == nil || string(rec.ResponseEnc) != "resp-B" {
+			t.Errorf("stored response: %+v", rec)
+		}
+		release("B")
+		if rec := reserve("D", t0.Add(4*time.Minute)); rec != nil {
+			t.Errorf("the owner's release did not free the key: %+v", rec)
+		}
 	})
 }
