@@ -4,8 +4,8 @@
 // build against, and the hub package is the framework-mode hooks API).
 //
 //	go run ./scripts/apisnap            # print the snapshot
-//	go run ./scripts/apisnap -w         # rewrite api/pkg.txt
-//	go run ./scripts/apisnap -check     # exit 1 when api/pkg.txt is out of date
+//	go run ./scripts/apisnap -w         # rewrite scripts/apisnap/pkg.txt
+//	go run ./scripts/apisnap -check     # exit 1 when scripts/apisnap/pkg.txt is out of date
 //
 // The snapshot holds exported declarations only: constants, variables, types
 // (exported struct fields, interface methods, the exported methods) and
@@ -34,7 +34,7 @@ const header = "# Exported API of the hub package (framework hooks) and of pkg/.
 
 func main() {
 	root := flag.String("root", ".", "repository root")
-	file := flag.String("file", "api/pkg.txt", "snapshot file, relative to the root")
+	file := flag.String("file", "scripts/apisnap/pkg.txt", "snapshot file, relative to the root")
 	write := flag.Bool("w", false, "write the snapshot file")
 	check := flag.Bool("check", false, "fail when the snapshot file differs from the current API")
 	flag.Parse()

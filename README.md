@@ -16,7 +16,7 @@ app C ─┘ ◄─ signed webhooks ─┘          ├─ Zoho Payments
                                         └─ your own (Go package or HTTP service)
 ```
 
-> **Status:** under active development. Everything listed under "What is built" below works and is tested on both databases; see `docs/superpowers/plans/2026-10-17-paymux-roadmap.md` for what is next. The public SDK (`pkg/...`) and the framework hooks API are guarded by a snapshot in CI (`api/pkg.txt`), so they do not change by accident.
+> **Status:** under active development. Everything listed under "What is built" below works and is tested on both databases; see `docs/superpowers/plans/2026-10-17-paymux-roadmap.md` for what is next. The public SDK (`pkg/...`) and the framework hooks API are guarded by a snapshot in CI (`scripts/apisnap/pkg.txt`), so they do not change by accident.
 
 ## What is built
 

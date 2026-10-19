@@ -35,7 +35,7 @@ step "go vet"
 go vet ./...
 go vet -tags loadtest ./...
 
-step "API snapshot (pkg/... exported API == api/pkg.txt)"
+step "API snapshot (pkg/... exported API == scripts/apisnap/pkg.txt)"
 go run ./scripts/apisnap -check
 
 step "Connector capability matrix (docs/capabilities.md == what the connectors declare)"

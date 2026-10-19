@@ -134,7 +134,7 @@ func New() *App                     { return nil }
 func TestCheck(t *testing.T) {
 	root := tree(t, map[string]string{"pkg/a/a.go": base})
 	s := snap(t, root)
-	file := filepath.Join(root, "api", "pkg.txt")
+	file := filepath.Join(root, "scripts", "apisnap", "pkg.txt")
 
 	if err := Check(s, file); err == nil || !strings.Contains(err.Error(), "-w") {
 		t.Errorf("missing file: %v", err)
@@ -165,7 +165,7 @@ func TestCommittedSnapshotIsCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Check(s, filepath.Join(root, "api", "pkg.txt")); err != nil {
+	if err := Check(s, filepath.Join(root, "scripts", "apisnap", "pkg.txt")); err != nil {
 		t.Fatal(err)
 	}
 }
