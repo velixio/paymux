@@ -282,6 +282,7 @@ func (p policy) methodLimit(method string) int64 {
 type View struct {
 	ID                      string            `json:"id"`
 	Object                  string            `json:"object"`
+	Livemode                bool              `json:"livemode"` // false for a test-mode object
 	Status                  string            `json:"status"`
 	BillingMode             string            `json:"billing_mode"`
 	CustomerID              string            `json:"customer_id"`
@@ -321,7 +322,7 @@ func ViewSubscription(sub store.Subscription) View {
 	if meta == nil {
 		meta = map[string]string{}
 	}
-	return View{ID: sub.ID, Object: "subscription", Status: sub.Status, BillingMode: sub.BillingMode, CustomerID: sub.CustomerID,
+	return View{ID: sub.ID, Object: "subscription", Livemode: sub.Mode == "live", Status: sub.Status, BillingMode: sub.BillingMode, CustomerID: sub.CustomerID,
 		Amount: sub.Amount, Currency: sub.Currency, Interval: sub.Interval, IntervalCount: sub.IntervalCount,
 		CurrentPeriodStart: sub.CurrentPeriodStart, CurrentPeriodEnd: sub.CurrentPeriodEnd, TrialEnd: tp(sub.TrialEnd),
 		TotalCount: sub.TotalCount, RenewalsDone: sub.RenewalsDone, CancelAtPeriodEnd: sub.CancelAtPeriodEnd,
@@ -334,6 +335,7 @@ func ViewSubscription(sub store.Subscription) View {
 type MandateView struct {
 	ID         string     `json:"id"`
 	Object     string     `json:"object"`
+	Livemode   bool       `json:"livemode"` // false for a test-mode object
 	Status     string     `json:"status"`
 	Method     string     `json:"method"`
 	MaxAmount  int64      `json:"max_amount"`
@@ -343,7 +345,7 @@ type MandateView struct {
 }
 
 func viewMandate(m store.Mandate) MandateView {
-	return MandateView{ID: m.ID, Object: "mandate", Status: m.Status, Method: m.Method, MaxAmount: m.MaxAmount,
+	return MandateView{ID: m.ID, Object: "mandate", Livemode: m.Mode == "live", Status: m.Status, Method: m.Method, MaxAmount: m.MaxAmount,
 		Currency: m.Currency, ValidUntil: tp(m.ValidUntil), CustomerID: m.CustomerID}
 }
 

@@ -141,6 +141,7 @@ func (s *Service) URL(l store.PaymentLink) string { return s.baseURL + "/l/" + l
 type View struct {
 	ID                string            `json:"id"`
 	Object            string            `json:"object"`
+	Livemode          bool              `json:"livemode"` // false for a test-mode object
 	URL               string            `json:"url"`
 	Slug              string            `json:"slug"`
 	AppID             string            `json:"app_id"`
@@ -162,7 +163,7 @@ type View struct {
 
 // ViewLink renders l; url is its public address.
 func ViewLink(l store.PaymentLink, url string) View {
-	v := View{ID: l.ID, Object: "payment_link", URL: url, Slug: l.Slug, AppID: l.AppID, Currency: l.Currency, Description: l.Description,
+	v := View{ID: l.ID, Object: "payment_link", Livemode: l.Mode == "live", URL: url, Slug: l.Slug, AppID: l.AppID, Currency: l.Currency, Description: l.Description,
 		ReturnURL: l.ReturnURL, SingleUse: l.SingleUse, Active: l.Active, Metadata: l.Metadata, DeactivatedReason: l.DeactivatedReason,
 		CreatedAt: l.CreatedAt, Version: l.Version}
 	if v.Metadata == nil {
