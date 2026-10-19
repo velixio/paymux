@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/paymux/paymux/pkg/connector"
 )
 
 func TestIsBlockedIP(t *testing.T) {
@@ -25,6 +27,28 @@ func TestIsBlockedIP(t *testing.T) {
 		if isBlockedIP(net.ParseIP(s)) {
 			t.Errorf("%s should be allowed", s)
 		}
+	}
+}
+
+// The delivery guard and the connectors' HTTP guard are one function
+// (connector.IsPrivateIP); the ranges the old copy missed are refused here too:
+// the rest of 0/8, TEST-NETs, 198.18/15, reserved 240/4, NAT64, 6to4, and the
+// IPv4-mapped form of each.
+func TestIsBlockedIPIsTheSharedGuard(t *testing.T) {
+	for _, s := range []string{"0.1.2.3", "192.0.0.9", "192.0.2.1", "192.88.99.1", "198.18.0.1", "198.19.255.254", "198.51.100.7", "203.0.113.200",
+		"240.0.0.1", "255.255.255.255", "::ffff:198.18.0.1", "::ffff:203.0.113.5", "::ffff:240.0.0.1", "::ffff:0.1.2.3",
+		"64:ff9b::7f00:1", "64:ff9b::a00:1", "64:ff9b:1::1", "2002:7f00:1::1", "2002:c0a8:101::1", "2001:db8::1", "2001:0:4136:e378::1", "100::1", "::7f00:1"} {
+		if !isBlockedIP(net.ParseIP(s)) {
+			t.Errorf("%s should be blocked", s)
+		}
+	}
+	for _, s := range []string{"8.8.8.8", "::ffff:8.8.8.8", "2606:4700:4700::1111", "198.20.0.1", "100.128.0.1"} {
+		if isBlockedIP(net.ParseIP(s)) != connector.IsPrivateIP(net.ParseIP(s)) || isBlockedIP(net.ParseIP(s)) {
+			t.Errorf("%s should be allowed by both guards", s)
+		}
+	}
+	if !isBlockedIP(nil) {
+		t.Error("a nil address must be blocked")
 	}
 }
 
