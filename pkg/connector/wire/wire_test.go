@@ -297,26 +297,79 @@ func TestWireRejectsReplay(t *testing.T) {
 	}
 }
 
-func TestReplayCacheIsBoundedBySizeAndTime(t *testing.T) {
+// The cache never forgets an id that is still inside its window: when it is
+// full it refuses new ids (the caller answers 503) instead of evicting the
+// oldest, so a replay inside the window is always refused. Expired ids free
+// their place.
+func TestReplayCacheNeverEvictsAnIdInsideTheWindow(t *testing.T) {
 	c := newReplayCache(3, time.Minute)
 	for _, id := range []string{"a", "b", "c"} {
-		if !c.firstSeen(id, now0) {
-			t.Fatalf("%s seen before", id)
+		if fresh, full := c.firstSeen(id, now0); !fresh || full {
+			t.Fatalf("%s: fresh=%v full=%v", id, fresh, full)
 		}
 	}
-	if c.firstSeen("b", now0) {
-		t.Error("b not remembered")
+	if fresh, full := c.firstSeen("d", now0.Add(30*time.Second)); fresh || !full {
+		t.Fatalf("a full cache must refuse a new id, not evict: fresh=%v full=%v", fresh, full)
 	}
-	if !c.firstSeen("d", now0) { // evicts the oldest, a
-		t.Fatal("d seen before")
+	for _, id := range []string{"a", "b", "c"} {
+		if fresh, full := c.firstSeen(id, now0.Add(59*time.Second)); fresh || full {
+			t.Errorf("%s was forgotten inside its window: fresh=%v full=%v", id, fresh, full)
+		}
 	}
 	if c.order.Len() != 3 || len(c.ids) != 3 {
-		t.Errorf("cache grew: %d %d", c.order.Len(), len(c.ids))
+		t.Errorf("cache changed size: %d %d", c.order.Len(), len(c.ids))
 	}
-	if !c.firstSeen("a", now0) {
-		t.Error("the oldest id was not evicted")
+	if fresh, full := c.firstSeen("d", now0.Add(2*time.Minute)); !fresh || full || c.order.Len() != 1 {
+		t.Errorf("expired ids are not forgotten: fresh=%v full=%v len=%d", fresh, full, c.order.Len())
 	}
-	if !c.firstSeen("b", now0.Add(2*time.Minute)) || c.order.Len() != 1 {
-		t.Errorf("expired ids are not forgotten: %d", c.order.Len())
+}
+
+// At the wire: with a full cache a new request gets 503 (temporary, so the
+// caller retries with a new id) and every request that was served stays
+// refused as a replay for the whole window, however many others arrive.
+func TestWireFullReplayCacheAnswers503AndStillRefusesReplays(t *testing.T) {
+	now := now0
+	f := &stub{}
+	h, _ := NewHandler(f, secret, func() time.Time { return now }, WithReplayCacheSize(4))
+	signer, _ := NewSigner(secret)
+	send := func(hdr http.Header) int {
+		req := httptest.NewRequest("POST", "/create_checkout", strings.NewReader(`{"provider_ref":"R"}`))
+		req.Header = hdr.Clone()
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	sign := func() http.Header {
+		hdr := http.Header{}
+		signer.SignRequest(hdr, "POST", MethodCreateCheckout, []byte(`{"provider_ref":"R"}`), now)
+		return hdr
+	}
+	var served []http.Header
+	for i := 0; i < 4; i++ {
+		hdr := sign()
+		if code := send(hdr); code != 200 {
+			t.Fatalf("request %d: %d", i, code)
+		}
+		served = append(served, hdr)
+		now = now.Add(time.Second)
+	}
+	if code := send(sign()); code != 503 {
+		t.Fatalf("a full cache answered %d, want 503", code)
+	}
+	for round := 0; round < 3; round++ {
+		now = now.Add(time.Minute)
+		for i, hdr := range served {
+			if code := send(hdr); code != 401 {
+				t.Fatalf("round %d: replay of request %d answered %d", round, i, code)
+			}
+		}
+	}
+	if len(f.calls) != 4 {
+		t.Errorf("connector saw %d calls, want 4", len(f.calls))
+	}
+	// Once the window has passed the places are free again.
+	now = now.Add(2*Tolerance + time.Minute)
+	if code := send(sign()); code != 200 {
+		t.Errorf("after the window: %d", code)
 	}
 }

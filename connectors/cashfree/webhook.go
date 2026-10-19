@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/paymux/paymux/pkg/connector"
 )
@@ -16,10 +18,12 @@ import (
 // x-webhook-timestamp header followed by the raw body, under the webhook
 // secret. A missing or wrong signature is ErrInvalidSignature.
 //
-// Decision: the timestamp is covered by the MAC, but no tolerance is applied.
-// Cashfree's documentation does not say how old a retried delivery may be, and
-// refusing one would lose its event. A replayed delivery only repeats an event
-// that the payment fetch (the source of truth) has already confirmed.
+// The timestamp is covered by the MAC, so it bounds a replay: it must be a
+// number (epoch milliseconds, or seconds) within webhookWindow of the time of
+// receipt, either way, or the delivery is refused as a stale signature.
+// Cashfree's documentation does not say how long it retries; the window is 48
+// hours, longer than any retry schedule we know of. x-idempotency-key is not
+// covered by the MAC and is not used (see ParseWebhook).
 func (c *cashfree) VerifyWebhook(_ context.Context, req connector.WebhookRequest) error {
 	sig, ts := req.Header("x-webhook-signature"), req.Header("x-webhook-timestamp")
 	if sig == "" || ts == "" {
@@ -35,8 +39,24 @@ func (c *cashfree) VerifyWebhook(_ context.Context, req connector.WebhookRequest
 	if !hmac.Equal(m.Sum(nil), got) {
 		return connector.ErrInvalidSignature
 	}
+	if req.ReceivedAt != 0 {
+		n, err := strconv.ParseInt(ts, 10, 64)
+		if err != nil || n <= 0 {
+			return connector.ErrInvalidSignature
+		}
+		if n < 100_000_000_000 { // seconds, not milliseconds
+			n *= 1000
+		}
+		age := time.Duration(req.ReceivedAt-n) * time.Millisecond
+		if age > webhookWindow || age < -webhookWindow {
+			return connector.ErrInvalidSignature
+		}
+	}
 	return nil
 }
+
+// webhookWindow is how far the signed timestamp may be from the time of receipt.
+const webhookWindow = 48 * time.Hour
 
 type event struct {
 	Type      string `json:"type"`
@@ -56,18 +76,19 @@ type event struct {
 }
 
 // ParseWebhook turns an event into Notifications. It makes no requests. Cashfree
-// events carry no id, so one is derived from the body: a retried delivery is
-// byte-identical and dedupes, a later event about the same payment differs.
+// events carry no id the signature covers, so one is derived from
+// the body: a retried delivery is byte-identical and dedupes, a later event about the
+// same payment differs.
 func (c *cashfree) ParseWebhook(_ context.Context, req connector.WebhookRequest) ([]connector.Notification, error) {
 	var ev event
 	if err := json.Unmarshal(req.Body, &ev); err != nil {
 		return nil, fmt.Errorf("cashfree: bad webhook body: %w", err)
 	}
+	// The id comes from the body, which the signature covers. The x-idempotency-key
+	// header (sent by webhook versions from 2025-01-01) is not signed: a captured
+	// delivery replayed with another key would have been applied again.
 	sum := sha256.Sum256(req.Body)
 	eventID := "cf-" + hex.EncodeToString(sum[:16])
-	if k := req.Header("x-idempotency-key"); k != "" && len(k) <= 128 {
-		eventID = "cf-" + k // webhook versions from 2025-01-01 send one, unique per payload
-	}
 	n := connector.Notification{EventID: eventID, EventType: ev.Type, OccurredAt: parseTime(ev.EventTime)}
 	switch ev.Type {
 	case "PAYMENT_SUCCESS_WEBHOOK", "PAYMENT_FAILED_WEBHOOK", "PAYMENT_USER_DROPPED_WEBHOOK":

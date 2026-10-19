@@ -612,6 +612,10 @@ type URLs interface {
 	WebhookURL() string
 }
 
+type WebhookEventIDer interface {
+	WebhookEventID(req WebhookRequest) (id string, ok bool)
+}
+
 type WebhookRequest struct {
 	Method     string              `json:"method"`
 	Headers    map[string][]string `json:"headers"`
@@ -754,7 +758,7 @@ const (
 	CodeBadRequest         = "bad_request"
 )
 
-const DefaultReplayCacheSize = 10000
+const DefaultReplayCacheSize = 100000
 
 var ErrBadSignature = errors.New("wire: missing, wrong or stale signature")
 

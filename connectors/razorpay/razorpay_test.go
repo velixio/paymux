@@ -249,7 +249,7 @@ func TestParseWebhookEvents(t *testing.T) {
 				t.Fatalf("ns=%v err=%v", ns, err)
 			}
 			n := ns[0]
-			if n.Kind != tc.kind || n.EventType != tc.raw || n.EventID != "evt_42" || n.OccurredAt != 1760000100000 {
+			if n.Kind != tc.kind || n.EventType != tc.raw || !strings.HasPrefix(n.EventID, "body-") || n.OccurredAt != 1760000100000 {
 				t.Fatalf("notification = %+v", n)
 			}
 			tc.chk(t, n)

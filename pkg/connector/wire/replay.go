@@ -6,12 +6,18 @@ import (
 	"time"
 )
 
-// DefaultReplayCacheSize is the number of message ids a handler remembers.
-const DefaultReplayCacheSize = 10000
+// DefaultReplayCacheSize is the number of message ids a handler remembers. An
+// id is kept for twice Tolerance (10 minutes), so this serves about 166 signed
+// requests a second; above that the handler answers 503 rather than forget an id
+// early (see replayCache).
+const DefaultReplayCacheSize = 100000
 
 // replayCache remembers message ids for as long as a signed message could
 // still pass the timestamp check (the tolerance applies either way, so twice
-// Tolerance), bounded by size: when full the oldest id is forgotten first.
+// Tolerance), bounded by size. It never evicts an id that is still inside its
+// window: when it is full a new id is refused (firstSeen reports full) and the
+// caller answers 503, so a replay inside the window is always refused and the
+// memory stays bounded.
 //
 // It is per process. A remote service running several instances behind a load
 // balancer needs a shared store (or sticky routing) to reject a replay sent to
@@ -36,9 +42,10 @@ func newReplayCache(max int, ttl time.Duration) *replayCache {
 	return &replayCache{max: max, ttl: ttl, order: list.New(), ids: map[string]*list.Element{}}
 }
 
-// firstSeen records id and reports true, or reports false when it has been seen
-// within the window.
-func (c *replayCache) firstSeen(id string, now time.Time) bool {
+// firstSeen records id and reports fresh=true. It reports fresh=false when id
+// has been seen within the window, and full=true (nothing recorded) when the
+// cache holds its maximum of ids that are all still inside their window.
+func (c *replayCache) firstSeen(id string, now time.Time) (fresh, full bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for e := c.order.Front(); e != nil; e = c.order.Front() {
@@ -49,13 +56,11 @@ func (c *replayCache) firstSeen(id string, now time.Time) bool {
 		c.order.Remove(e)
 	}
 	if _, dup := c.ids[id]; dup {
-		return false
+		return false, false
 	}
 	if c.order.Len() >= c.max {
-		oldest := c.order.Front()
-		delete(c.ids, oldest.Value.(entry).id)
-		c.order.Remove(oldest)
+		return false, true
 	}
 	c.ids[id] = c.order.PushBack(entry{id, now.Add(c.ttl)})
-	return true
+	return true, false
 }

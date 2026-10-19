@@ -38,6 +38,11 @@ run its `sandbox_test.go` (skipped without credentials; see
   Confirm both are always present on authorized and captured payments.
 - [ ] **Order lookup by receipt** (`GET /v1/orders?receipt=`): confirm the filter
   is honoured. Paymux checks each order's `receipt` anyway.
+- [ ] **Webhook replay window** (`webhook.go`): subscription events are refused
+  when their signed `created_at` is more than 48 hours from receipt (Razorpay
+  retries for about a day; the exact schedule was read, not observed), and the
+  event id is the body hash, not the unsigned `X-Razorpay-Event-Id`. Confirm a
+  late retry still arrives within the window.
 - [x] **Dispute evidence** (`disputes_respond.go`), from Razorpay's Contest a
   Dispute documentation (no secret in the last session, no test dispute): the
   named fields take lists of document id **strings** (the connector sent
@@ -229,7 +234,7 @@ reports it as a payment still waiting for the customer (`requires_action`), not
   (`MANDATE_PAUSE`, `MANDATE_UNPAUSE`, `MANDATE_REVOKE`) signed with
   `status|action|authpayuid|dateTime|amount|endDate|salt`; net-banking e-NACH
   cancellations come as JSON with no hash and are only a hint, so the connector
-  reads the mandate back with `NB_mandate_status` and reports that. PayU's
+  reads the mandate back with `NB_mandate_status` and reports that (in the background job: the inbound request names the event from the body alone, with no PayU call) PayU's
   integration team switches these on (UPI form, cards JSON, e-NACH through the
   merchant parameter `notifyMandateRevoke`); the UPI webhook has no retries. A
   debit's result is an ordinary payment notice keyed by the txnid Paymux sent.
@@ -436,8 +441,12 @@ Written entirely from documentation (`cashfree.go`).
   the API (`WebhookSecret` defaults to the client secret)?
 - [ ] **Customer phone:** the order API requires `customer_phone`; a placeholder
   is sent when there is none. How does the live API treat it?
-- [ ] **Webhook timestamp tolerance:** how old may a retried delivery be? (No
-  tolerance is applied today, by design; see `webhook.go`.)
+- [ ] **Webhook timestamp tolerance:** how old may a retried delivery be? The
+  signed `x-webhook-timestamp` must be within 48 hours of receipt (milliseconds
+  or seconds; `webhook.go`) because the signature covers it and nothing else
+  bounds a replay; the retry schedule is not documented, so the window is a
+  guess. The event id is the body hash: `x-idempotency-key` is not signed and is
+  ignored.
 - [ ] **Settlements** (`settlements.go`): request filters (`start_date`,
   `end_date`, `cf_settlement_ids`), cursor pagination, field names
   (`amount_settled`, `service_charge`, `event_type`, `event_service_charge`,

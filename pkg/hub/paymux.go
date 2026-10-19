@@ -462,14 +462,26 @@ func (a *App) Start(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 	case firstErr = <-errc:
-		// a worker ended on its own: stop the rest
-		if firstErr == nil {
-			firstErr = errors.New("paymux: component stopped unexpectedly")
-		}
+		// a worker ended: stop the rest
+		firstErr = unexpectedStop(ctx, firstErr)
 		cancel()
 		return a.stop(main, internal, errc, workers-1, firstErr)
 	}
 	return a.stop(main, internal, errc, workers, nil)
+}
+
+// unexpectedStop turns a worker's exit into the supervisor's result. A worker
+// that returns nil after the shutdown signal cancelled ctx is a normal stop:
+// without this check the select in Run could pick the worker's exit over
+// ctx.Done() and report a clean shutdown as an error (exit code 1).
+func unexpectedStop(ctx context.Context, err error) error {
+	if err != nil {
+		return err
+	}
+	if ctx.Err() != nil {
+		return nil
+	}
+	return errors.New("paymux: component stopped unexpectedly")
 }
 
 // hostRouter sends requests by Host: the base host and custom domains go

@@ -430,6 +430,51 @@ paragraph under the same headings; the numbers continue from F28.
 - On SQLite `paymux secrets reseal` needs the hub stopped (the data directory is locked); on PostgreSQL it can run
   beside the hub and stops without changes if a value changes under it.
 
+## Connector-side findings from the 2026-10 audit
+
+Found by an independent auditor; the numbering of the core and dashboard findings
+is kept elsewhere. Each has a failing test that was written first.
+
+- **L3, an unsigned PayU mandate notice made Paymux call PayU while answering the
+  webhook** (Low): the inbound handler asked `ParseWebhook` for the event id, and
+  for an unsigned e-NACH notice that read the mandate back from PayU, so a flood of
+  forged notices used up the account's PayU rate limit. Fixed: new optional
+  `connector.WebhookEventIDer`; the PayU connector names a mandate notice from the
+  body with no call, and the confirming fetch stays in the background job. The
+  unsigned notice is still only a hint. The id is deterministic from the body.
+- **L2, webhook event ids from unsigned headers, and no replay window**
+  (Low/Medium): Razorpay's `X-Razorpay-Event-Id` and Cashfree's `x-idempotency-key`
+  are not covered by the signatures, so a captured signed delivery replayed with a
+  different value had a new event id and was applied again. Fixed: both ids are
+  hashes of the signed body (retries and resends still dedupe, a replay with another
+  header does not apply twice). The signed Cashfree timestamp and the signed
+  `created_at` of Razorpay subscription events (which are applied from their
+  payload) must be within 48 hours of receipt. Payment, refund and dispute events
+  are applied from a fresh fetch and are not time-checked. The id derivation for
+  the inbound store (`unsigned:` prefix) is the core's.
+- **L11, the remote-connector replay cache evicted early** (Low): it held 10,000
+  ids for a 10 minute window, so above about 16 requests a second an id left before
+  its window ended and its replay was accepted. Fixed: a full cache never evicts; it
+  answers `503` (temporary) and every served request stays refused as a replay for
+  the whole window. The default is 100,000 ids (about 166 requests a second);
+  `wire.WithReplayCacheSize` sizes it.
+- **Two SSRF guards that disagreed** (info): `internal/outbound` missed the rest of
+  0/8, the documentation ranges, 198.18/15, 240/4, NAT64 and 6to4. Both now use
+  `connector.IsPrivateIP`, which covers every special-purpose range (table test),
+  including IPv4-mapped IPv6. `PAYMUX_ALLOW_PRIVATE_WEBHOOKS` still skips the guard
+  for deliveries.
+- **`allow_insecure` on a live remote account** (info): it switched off the
+  private-address guard. Now refused for live accounts on create and update, and
+  ignored (both by the host and by the connector) for a live account that already
+  stored it.
+- **A changed endpoint reused the stored secret** (info): editing the remote
+  connector's `base_url` kept the stored secret and sent it to the new host.
+  Chosen: the simpler guard that blocks rather than records: a config that changes
+  an `x-endpoint` field while a secret field still holds its stored value is
+  refused ("enter the secret again"). The dashboard form that keeps a blank secret
+  field will therefore show that error when the URL is edited without re-entering
+  the secret (the dashboard is the core builder's).
+
 ## What remains
 
 Every `TODO(spec)` left in the code needs a provider sandbox, a provider

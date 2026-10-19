@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -234,7 +235,7 @@ func TestParseSubscriptionWebhooks(t *testing.T) {
 				t.Fatalf("ns=%v err=%v", ns, err)
 			}
 			n := ns[0]
-			if n.Kind != connector.NotifySubscription || n.EventType != tc.event || n.EventID != "evt_s" {
+			if n.Kind != connector.NotifySubscription || n.EventType != tc.event || !strings.HasPrefix(n.EventID, "body-") {
 				t.Fatalf("n = %+v", n)
 			}
 			s := n.Subscription

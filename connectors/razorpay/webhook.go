@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/paymux/paymux/pkg/connector"
 )
@@ -122,13 +123,38 @@ func (d disputeEntity) snapshot() connector.DisputeSnapshot {
 
 // VerifyWebhook checks X-Razorpay-Signature, the hex HMAC-SHA256 of the raw
 // body under the webhook secret, in constant time.
+//
+// A subscription event is applied from its own payload, so a captured delivery
+// must not stay replayable for ever: its signed created_at has to be within
+// subscriptionEventWindow of the time of receipt (Razorpay retries for about a
+// day; the window is 48 hours either way), or it is refused as a stale signature.
+// Payment, refund and dispute events are applied from a fresh fetch and need no
+// such check. The X-Razorpay-Event-Id header is not covered by the signature and
+// is not used (see ParseWebhook).
 func (r *razorpay) VerifyWebhook(_ context.Context, req connector.WebhookRequest) error {
 	sig := req.Header("X-Razorpay-Signature")
 	if sig == "" || !validHMAC(r.cfg.WebhookSecret, req.Body, sig) {
 		return connector.ErrInvalidSignature
 	}
+	var head struct {
+		Event     string `json:"event"`
+		CreatedAt int64  `json:"created_at"`
+	}
+	if json.Unmarshal(req.Body, &head) == nil && strings.HasPrefix(head.Event, "subscription.") && req.ReceivedAt != 0 {
+		if head.CreatedAt <= 0 {
+			return connector.ErrInvalidSignature
+		}
+		age := time.UnixMilli(req.ReceivedAt).Sub(time.Unix(head.CreatedAt, 0))
+		if age > subscriptionEventWindow || age < -subscriptionEventWindow {
+			return connector.ErrInvalidSignature
+		}
+	}
 	return nil
 }
+
+// subscriptionEventWindow is how far a subscription event's signed created_at
+// may be from the time it is received.
+const subscriptionEventWindow = 48 * time.Hour
 
 type event struct {
 	Event     string `json:"event"`
@@ -158,12 +184,12 @@ func (r *razorpay) ParseWebhook(ctx context.Context, req connector.WebhookReques
 	if err := json.Unmarshal(req.Body, &ev); err != nil {
 		return nil, fmt.Errorf("razorpay: bad webhook body: %w", err)
 	}
-	id := req.Header("X-Razorpay-Event-Id")
-	if id == "" {
-		// Retries of the same delivery are byte-identical, so a body hash dedupes.
-		sum := sha256.Sum256(req.Body)
-		id = "body-" + hex.EncodeToString(sum[:16])
-	}
+	// The id comes from the signed body alone. X-Razorpay-Event-Id is a header the
+	// signature does not cover: a captured signed body replayed with another value
+	// would have been applied again. Retries and dashboard resends of a delivery are
+	// byte-identical, so the body hash dedupes them.
+	sum := sha256.Sum256(req.Body)
+	id := "body-" + hex.EncodeToString(sum[:16])
 	n := connector.Notification{EventID: id, EventType: ev.Event, OccurredAt: ms(ev.CreatedAt)}
 	if strings.HasPrefix(ev.Event, "subscription.") && ev.Payload.Subscription != nil {
 		s, err := r.subSnapshot(ctx, ev.Payload.Subscription.Entity, false)
