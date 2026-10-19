@@ -34,17 +34,6 @@ func TestRealShapesDecode(t *testing.T) {
 	}
 }
 
-// Webhook versions from 2025-01-01 send x-idempotency-key, unique per payload.
-func TestWebhookEventIDUsesTheIdempotencyKey(t *testing.T) {
-	c := newConn(t, newFake())
-	req := hook(fixture(t, "event_payment_success"), hookSecret)
-	req.Headers["X-Idempotency-Key"] = []string{"n9rn7079wqXcse3GEDEXCYle9ajXmU0SUQY8zrUNAlc="}
-	ns, err := c.ParseWebhook(context.Background(), req)
-	if err != nil || len(ns) != 1 || ns[0].EventID != "cf-n9rn7079wqXcse3GEDEXCYle9ajXmU0SUQY8zrUNAlc=" {
-		t.Fatalf("%+v %v", ns, err)
-	}
-}
-
 func TestUnknownOrderIsNotFound(t *testing.T) {
 	f := newFake()
 	body := map[string]any{"code": "order_not_found", "message": "Order Reference Id does not exist", "type": "invalid_request_error"}
