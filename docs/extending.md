@@ -23,7 +23,7 @@ package main
 import (
 	"context"
 
-	"github.com/paymux/paymux/framework"
+	"github.com/paymux/paymux/pkg/framework"
 	"github.com/paymux/paymux/pkg/hub"
 
 	_ "example.com/acmepay" // an extra connector: importing it registers it

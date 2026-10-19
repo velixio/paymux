@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/framework"
 	"github.com/paymux/paymux/pkg/connector"
+	"github.com/paymux/paymux/pkg/framework"
 	"github.com/paymux/paymux/pkg/hub"
 )
 
