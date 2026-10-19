@@ -2,6 +2,8 @@ package domains
 
 import (
 	"context"
+	"errors"
+	"net/netip"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -82,11 +84,12 @@ func TestHostCaseAndPort(t *testing.T) {
 }
 
 func TestTLSAllow(t *testing.T) {
-	h := TLSAllowHandler("pay.example.com", newRouter().Lookup)
+	nowhere := func(context.Context, string) ([]netip.Addr, error) { return nil, errors.New("no such host") }
+	h := NewTLSAllow(TLSAllowOptions{BaseHost: "pay.example.com", Lookup: newRouter().Lookup, Resolve: nowhere})
 	cases := map[string]int{
 		"pay.example.com":         200,
 		"pay.voicestudio.example": 200,
-		"pay.pending.example":     200,
+		"pay.pending.example":     403, // pending and not pointed at the hub (see tlsask_test.go)
 		"evil.example":            403,
 		"":                        400,
 	}
