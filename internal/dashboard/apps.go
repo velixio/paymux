@@ -300,15 +300,34 @@ func (d *Dashboard) keyCreate(w http.ResponseWriter, r *http.Request, s *session
 		return
 	}
 	// No scope ticked means a full-access key.
-	opts := core.KeyOptions{Scopes: r.PostForm["scope"]}
+	opts := core.KeyOptions{Scopes: r.PostForm["scope"], Authorize: keyAuthorizer(s)}
 	token, _, err := d.o.Core.CreateAPIKeyWith(r.Context(), s.auditActor(), core.OrgScope{OrgID: app.OrgID}, app.ID, r.PostForm.Get("mode"), opts)
 	switch {
 	case err == nil:
 		d.renderApp(w, r, s, app, http.StatusOK, "keys", "", &secretReveal{Kind: "key", Label: "API key (" + r.PostForm.Get("mode") + ")", Value: token})
+	case errors.Is(err, errKeyPower):
+		d.renderApp(w, r, s, app, http.StatusForbidden, "keys", err.Error(), nil)
 	case errors.Is(err, core.ErrInvalid):
 		d.renderApp(w, r, s, app, http.StatusBadRequest, "keys", err.Error(), nil)
 	default:
 		d.fail(w, err)
+	}
+}
+
+// errKeyPower: the key would carry power the person issuing it does not have.
+var errKeyPower = errors.New("an API key cannot carry power your role does not have")
+
+// keyAuthorizer refuses a key whose scopes need an action the session lacks:
+// payouts need payout.create, refunds refund.create, payments payment.create. A
+// full-access key (no scope ticked) needs the payment and refund actions.
+func keyAuthorizer(s *session) func([]string) error {
+	return func(scopes []string) error {
+		for _, a := range authz.ActionsForScopes(scopes) {
+			if !s.can(a) {
+				return fmt.Errorf("%w (%s)", errKeyPower, a)
+			}
+		}
+		return nil
 	}
 }
 
@@ -330,8 +349,10 @@ func (d *Dashboard) keyRotate(w http.ResponseWriter, r *http.Request, s *session
 	}
 	// With no scope ticked the new key takes the scopes of the one it replaces.
 	token, _, expiring, err := d.o.Core.RotateAPIKey(r.Context(), s.auditActor(), core.OrgScope{OrgID: app.OrgID}, app.ID,
-		r.PostForm.Get("mode"), time.Duration(hours)*time.Hour, core.KeyOptions{Scopes: r.PostForm["scope"]})
+		r.PostForm.Get("mode"), time.Duration(hours)*time.Hour, core.KeyOptions{Scopes: r.PostForm["scope"], Authorize: keyAuthorizer(s)})
 	switch {
+	case errors.Is(err, errKeyPower):
+		d.renderApp(w, r, s, app, http.StatusForbidden, "keys", err.Error(), nil)
 	case err == nil:
 		label := "New API key (" + r.PostForm.Get("mode") + "); " + strconv.Itoa(len(expiring)) + " previous key(s) stop working in " + strconv.Itoa(hours) + " h"
 		d.renderApp(w, r, s, app, http.StatusOK, "keys", "", &secretReveal{Kind: "key", Label: label, Value: token})

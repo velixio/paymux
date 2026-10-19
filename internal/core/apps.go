@@ -154,6 +154,11 @@ func (s *Service) CreateAPIKey(ctx context.Context, actor audit.Actor, sc OrgSco
 type KeyOptions struct {
 	// Scopes limits the key (see authz.AllScopes). Nil means every scope.
 	Scopes []string
+	// Authorize, when set, is asked about the scopes the new key will really
+	// have (those inherited on a rotation included) before it is made; an error
+	// refuses the key. The dashboard uses it to stop a role handing out power it
+	// does not hold.
+	Authorize func(scopes []string) error
 }
 
 // ValidateScopes checks a scope list: nil is fine (all scopes); otherwise it
@@ -201,6 +206,11 @@ func (s *Service) CreateAPIKeyWith(ctx context.Context, actor audit.Actor, sc Or
 		}
 		key = store.APIKey{ID: ids.New("key"), OrgID: app.OrgID, AppID: app.ID, Mode: mode, Prefix: keyPrefix(token),
 			Hash: keyHash(token), CreatedAt: s.nowUTC(), Scopes: scopes}
+		if opts.Authorize != nil {
+			if err := opts.Authorize(key.Scopes); err != nil {
+				return err
+			}
+		}
 		if err := store.InsertAPIKey(ctx, tx, key); err != nil {
 			return err
 		}
@@ -256,6 +266,11 @@ func (s *Service) RotateAPIKey(ctx context.Context, actor audit.Actor, sc OrgSco
 		}
 		if opts.Scopes == nil && len(expired) > 0 {
 			key.Scopes = expired[len(expired)-1].Scopes // the newest old key
+		}
+		if opts.Authorize != nil {
+			if err := opts.Authorize(key.Scopes); err != nil {
+				return err // the transaction rolls back: no key, no expiry
+			}
 		}
 		if err := store.InsertAPIKey(ctx, tx, key); err != nil {
 			return err
