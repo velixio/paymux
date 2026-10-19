@@ -47,7 +47,7 @@ var info = connector.Info{
 	// base_url is operator-supplied, so the host guards the client (SSRF).
 	DenyPrivateNetwork: true,
 	ConfigSchema: json.RawMessage(`{"type":"object","required":["base_url","secret"],"properties":{
-		"base_url":{"type":"string","title":"Base URL of the connector service"},
+		"base_url":{"type":"string","title":"Base URL of the connector service","x-endpoint":true},
 		"secret":{"type":"string","title":"Signing secret (whsec_...)","x-secret":true}}}`),
 }
 

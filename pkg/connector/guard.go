@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"syscall"
 	"time"
 )
@@ -15,20 +16,47 @@ import (
 // address (see HTTPOptions.DenyPrivate).
 var ErrPrivateAddress = errors.New("connector: target is a private or special-use address")
 
-// IsPrivateIP reports whether ip is one a server-side request must not reach:
-// loopback, RFC 1918 and ULA private ranges, carrier-grade NAT (100.64/10),
-// link-local (169.254/16 including cloud metadata, fe80::/10), multicast,
-// the unspecified address and 0.0.0.0/8.
+// IsPrivateIP reports whether ip is one a server-side request must not reach.
+// It is the one guard of the whole hub: this package's HTTP client, and the
+// webhook and hook deliveries (internal/outbound), use it. It refuses every
+// special-purpose range of IANA's registries (an IPv4-mapped IPv6 address is
+// judged as the IPv4 address it carries; nil is refused):
+//
+//	IPv4  0.0.0.0/8, 10/8, 100.64/10 (carrier-grade NAT), 127/8, 169.254/16 (link
+//	      local, cloud metadata), 172.16/12, 192.0.0.0/24, 192.0.2.0/24,
+//	      192.88.99.0/24, 192.168/16, 198.18/15, 198.51.100.0/24, 203.0.113.0/24,
+//	      224/4 (multicast), 240/4 (reserved, broadcast)
+//	IPv6  ::/128, ::1, ::/96 (IPv4-compatible), 64:ff9b::/96 and 64:ff9b:1::/48
+//	      (NAT64, which can reach private IPv4 behind a gateway), 100::/64,
+//	      2001::/32 (Teredo), 2001:db8::/32, 2002::/16 (6to4), fc00::/7,
+//	      fe80::/10, ff00::/8
 func IsPrivateIP(ip net.IP) bool {
-	if v4 := ip.To4(); v4 != nil {
-		ip = v4
-		if v4[0] == 0 || (v4[0] == 100 && v4[1]&0xc0 == 64) {
+	a, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return true
+	}
+	a = a.Unmap().WithZone("")
+	for _, p := range specialPurpose {
+		if p.Contains(a) {
 			return true
 		}
 	}
-	return ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsInterfaceLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified()
+	return false
 }
+
+var specialPurpose = func() []netip.Prefix {
+	var out []netip.Prefix
+	for _, s := range []string{
+		"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12",
+		"192.0.0.0/24", "192.0.2.0/24", "192.88.99.0/24", "192.168.0.0/16", "198.18.0.0/15",
+		"198.51.100.0/24", "203.0.113.0/24", "224.0.0.0/4", "240.0.0.0/4",
+		"::/96", "64:ff9b::/96", "64:ff9b:1::/48", "100::/64", "2001::/32", "2001:db8::/32",
+		"2002::/16", "fc00::/7", "fe80::/10", "ff00::/8",
+	} {
+		out = append(out, netip.MustParsePrefix(s))
+	}
+	return out
+}()
 
 // guardedTransport dials only public addresses. The host is resolved here and
 // every resulting address must be public (a name with one private address is

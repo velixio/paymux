@@ -6,26 +6,20 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/netip"
 	"time"
+
+	"github.com/paymux/paymux/pkg/connector"
 )
 
 // DeliveryTimeout bounds one delivery attempt.
 const DeliveryTimeout = 10 * time.Second
 
-var cgnat = netip.MustParsePrefix("100.64.0.0/10")
-
-// isBlockedIP reports whether ip is loopback, private, link-local, multicast,
-// unspecified or carrier-grade NAT (IPv4-mapped IPv6 is unmapped first).
-func isBlockedIP(ip net.IP) bool {
-	a, ok := netip.AddrFromSlice(ip)
-	if !ok {
-		return true
-	}
-	a = a.Unmap()
-	return a.IsLoopback() || a.IsPrivate() || a.IsLinkLocalUnicast() || a.IsLinkLocalMulticast() ||
-		a.IsInterfaceLocalMulticast() || a.IsMulticast() || a.IsUnspecified() || cgnat.Contains(a)
-}
+// isBlockedIP reports whether ip must not be dialled by a delivery: the one
+// guard of the hub, connector.IsPrivateIP (loopback, private, link-local,
+// carrier-grade NAT, multicast, reserved, documentation, NAT64, 6to4 and every
+// other special-purpose range; IPv4-mapped IPv6 is judged as the IPv4 address).
+// PAYMUX_ALLOW_PRIVATE_WEBHOOKS skips it (allowPrivate), nothing else does.
+func isBlockedIP(ip net.IP) bool { return connector.IsPrivateIP(ip) }
 
 // ErrPrivateAddress means the target resolved to a forbidden address.
 var ErrPrivateAddress = errors.New("webhook target resolves to a private address")

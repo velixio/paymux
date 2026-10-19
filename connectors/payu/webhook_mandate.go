@@ -154,9 +154,29 @@ func (p *payu) mandateNotification(ctx context.Context, n mandateNotice) ([]conn
 	}
 	return []connector.Notification{{
 		Kind:       connector.NotifyMandate,
-		EventID:    "payu:mandate:" + n.id + ":" + n.kind + ":" + n.status + ":" + n.eventDate,
+		EventID:    n.eventID(),
 		EventType:  "mandate." + strings.ToLower(n.kind),
 		OccurredAt: parseAddedOn(n.eventDate),
 		Mandate:    &snap,
 	}}, nil
 }
+
+// eventID is the notification id of a mandate notice, derived from its body.
+func (n mandateNotice) eventID() string {
+	return "payu:mandate:" + n.id + ":" + n.kind + ":" + n.status + ":" + n.eventDate
+}
+
+// WebhookEventID names a mandate notice from the request alone, with no call to
+// PayU (connector.WebhookEventIDer): an unsigned e-NACH notice is confirmed with
+// the status command only when ParseWebhook runs in the background job, never
+// while the inbound request is being answered. Anything that is not a mandate
+// notice is left to ParseWebhook.
+func (p *payu) WebhookEventID(req connector.WebhookRequest) (string, bool) {
+	n, ok := parseMandateNotice(req.Body)
+	if !ok {
+		return "", false
+	}
+	return n.eventID(), true
+}
+
+var _ connector.WebhookEventIDer = (*payu)(nil)

@@ -334,6 +334,19 @@ fixtures. Their invariants are the contract of the two methods:
 * `VerifyWebhook` returns only nil, `ErrInvalidSignature` or `ErrUnsigned`, and
   never nil for a body that differs from the signed one (a provider that signs
   only some fields, like PayU, can only be held to those fields: say so in the test);
+* the event id of a notification comes from what the signature covers (the body,
+  or a signed header), never from an unsigned header: Razorpay's
+  `X-Razorpay-Event-Id` and Cashfree's `x-idempotency-key` are not signed, so a
+  captured delivery replayed with another value would have been applied again;
+  both connectors hash the body instead. A provider that signs a timestamp has it
+  checked against the time of receipt (Cashfree, 48 hours; Razorpay checks the
+  signed `created_at` of subscription events, which are applied from their
+  payload, over the same window);
+* a connector whose `ParseWebhook` can call the provider (PayU reads an unsigned
+  mandate notice back from its status command) also implements
+  `connector.WebhookEventIDer`, so the inbound handler can name the event from the
+  request alone: a delivery never costs a provider call, and the confirming fetch
+  runs in the background job;
 * `ParseWebhook` results pass `connectortest.CheckNotifications` (the same check
   as `Notification.Validate`): event id and type present, the snapshot of the
   notification's kind present, and a provider id in it.
@@ -454,8 +467,12 @@ is bound to the message's purpose, so a captured message cannot be reused:
   `GET.info` with an empty body;
 * the server accepts each `webhook-id` once: a replay of a signed request within
   the tolerance window is refused with `401`. The ids are kept in an in-memory
-  cache bounded by size (`wire.DefaultReplayCacheSize`, oldest forgotten first,
-  `wire.WithReplayCacheSize`) and time (twice the tolerance). The cache is per
+  cache bounded by size (`wire.DefaultReplayCacheSize`, 100,000 ids, about 166
+  signed requests a second; `wire.WithReplayCacheSize`) and time (twice the
+  tolerance). An id is never forgotten inside its window: when the cache is full
+  the server answers `503` (code `temporary`, so the client retries with a new
+  id) instead of evicting the oldest, so a replay inside the window is always
+  refused. The cache is per
   process: a service running several instances needs a shared store, or sticky
   routing, to reject a replay sent to another instance;
 * a response signs `id.timestamp.response.<request webhook-id>.body`, so the
@@ -464,24 +481,35 @@ is bound to the message's purpose, so a captured message cannot be reused:
 
 `connectors/remote` also refuses a plain-http `base_url` unless its host is
 loopback (`localhost`, `127.0.0.1`, `::1`) or the account config sets
-`"allow_insecure": true` (tests only): the signature authenticates messages but
-does not encrypt them, and customer data travels in the bodies.
+`"allow_insecure": true` (tests and local development only; a **live** account
+is refused it, on create and on update, and an account that already stored it
+ignores it): the signature authenticates messages but does not encrypt them, and
+customer data travels in the bodies.
 
 **Network guard (SSRF).** `base_url` is supplied by whoever configures the
 account, so it must not reach internal services. The remote connector declares
 `Info.DenyPrivateNetwork`; the host then builds its HTTP client with
 `connector.HTTPOptions{DenyPrivate: true}`, which
 
-* resolves the host name and refuses it if *any* resolved address is loopback,
-  RFC 1918 or ULA private, carrier-grade NAT (100.64/10), link-local
-  (169.254/16 including the cloud metadata address, fe80::/10), multicast or
-  unspecified (`connector.IsPrivateIP`);
+* resolves the host name and refuses it if *any* resolved address is in a
+  special-purpose range (`connector.IsPrivateIP`, the one guard the webhook and
+  hook deliveries use too): loopback, RFC 1918 and ULA private, carrier-grade NAT
+  (100.64/10), link-local (169.254/16 including the cloud metadata address,
+  fe80::/10), the rest of 0/8, 192.0.0/24, the documentation ranges, 198.18/15,
+  multicast, reserved 240/4, NAT64, 6to4, Teredo and the unspecified address; an
+  IPv4-mapped IPv6 address is judged as the IPv4 address it carries;
 * checks the address again at connect time in the dialer's `Control` function,
   which defeats DNS rebinding (a second answer that differs from the first);
 * ignores proxy environment variables and never follows a redirect (the remote
   connector refuses redirects even if the host's client would follow them);
-* is lifted only by `"allow_insecure": true` in the account config, for tests
-  and local development (`http://127.0.0.1:8090`).
+* is lifted only by `"allow_insecure": true` in the config of a test-mode
+  account, for tests and local development (`http://127.0.0.1:8090`).
+
+A config property annotated `"x-endpoint": true` in the schema (the remote
+connector's `base_url`) is the address the account's secrets are sent to.
+Changing it while a secret field still holds its stored value is refused
+("enter the secret again"): the dashboard keeps a stored secret when its field is
+left blank, so otherwise a new address would silently receive the old secret.
 
 Literal private addresses in `base_url` are also refused when the account is
 built, so a bad config fails early with `ErrPrivateAddress`. Any other connector
