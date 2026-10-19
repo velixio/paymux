@@ -358,6 +358,78 @@ lives in its own file, `<data>/logs.db`, so a log write never takes the main
 database's write lock (tested with a long main write transaction); the file can
 be deleted at any time and is left out of `paymux backup`.
 
+## Fifth batch: the external audit of October 2026
+
+An outside review of the hub (dashboard sign-in, API keys, outbound and inbound webhooks, refunds, mandates,
+single sign-on, logging, JS hooks, deployment) produced the findings below. Each was fixed test first: a test that
+fails on the old behaviour, then the change, on SQLite and PostgreSQL. To add a finding, append a row and a
+paragraph under the same headings; the numbers continue from F28.
+
+| # | Finding | Severity | Status |
+|---|---|---|---|
+| F28 | Dashboard sign-in: the second factor could be brute-forced. The failure counter was per address and cleared by a correct password, the login ticket allowed unlimited guesses, and the address came from `X-Forwarded-For` (attacker-controlled when the peer is on the trusted local network) | High | Fixed: a login ticket carries a nonce and allows 5 guesses; per-account ceilings (20 wrong passwords, 10 wrong codes per 15 minutes) hold whatever address is claimed; a correct password no longer resets the code counter |
+| F29 | Creating or rotating an API key handed out payout and refund power to a dashboard user who did not have it | High | Fixed: a key's scopes are mapped to dashboard actions (`authz.ActionsForScopes`) and a user can create or rotate a key only within their own authority, checked on the final (inherited) scopes inside the transaction |
+| F30 | A webhook endpoint received the events of both modes, and event bodies did not say which mode they were from | Medium | Fixed: endpoints have a `mode` (migration 0022); delivery is filtered by it; every event body, API object and view carries `livemode` |
+| F31 | A duplicate refund of an attempt the provider had already refunded could be booked against a different, real sale | Medium | Fixed: the duplicate is recognised on the attempt, flagged (`duplicate_refunded`), alerted and kept out of the sale's balance |
+| F32 | Tax-exclusive subscriptions: renewals through a mandate charged the taxable price only, so the invoice total exceeded what was received | Medium | Fixed: renewals charge taxable + GST like a first payment. The mandate's AFA limit and headroom are still computed on the taxable price (see deferred) |
+| F33 | A single-use payment link could be paid twice (two visitors, or one visitor twice) | Medium | Fixed: the link remembers the payment its holder is paying and the payment that spent it (migration 0023); the same visitor gets the same payment back; a second success is flagged (`link_already_used`), the other open payments of the order are cancelled and an alert is raised |
+| F34 | `/hooks`: forged events were stored in full without bound (disk), unsigned-provider events shared a key space with signed ones, and a webhook body was applied as if it were the truth (stale or forged snapshots, L1 and L2) | Medium | Fixed: an event that fails verification keeps only its hash (windows and budgets per source and per account, the client address through `internal/clientip`), `unverified:` and `unsigned:` key spaces, an hourly purge job (`provider_events.purge`, `provider_event_retention` was declared but never enforced), and a webhook is a hint: mandate and subscription state is fetched from the provider before it is applied |
+| F35 | Password hashing (argon2id, 64 MiB each) was unbounded: a caller who opens many connections can exhaust memory | Medium | Fixed: at most 2 x GOMAXPROCS hashes run at once, the surplus gets 503 instead of queueing, and login attempts per address are limited (30 a minute) before any hashing |
+| F36 | Single sign-on matched an account by e-mail address alone, so a verified address at the identity provider took over a local account that had a password and a second factor; allowed domains applied only to new users | Medium | Fixed (migration 0024): accounts are bound to the provider's (issuer, subject); a password account can be reached by single sign-on only after an admin allows it (audited); a different subject with the same address is refused; the allowed domains apply on every sign-in |
+| F37 | An idempotency reservation taken over as stale could be completed or released by the request that lost it | Low | Fixed (migration 0025): each reservation carries its owner's token |
+| F38 | `POST /v1/payouts` without an `Idempotency-Key` could pay twice on a client retry | Low | Fixed: the header is required (400 without it) |
+| F39 | The HTTP servers set only a read-header timeout | Low | Fixed: read, write, idle timeouts and a header size limit on both listeners |
+| F40 | A hand-built `Config` with `DevSkip2FA` in production started with the second factor off | Low | Fixed: `hub.New` refuses it (the environment loader already did) |
+| F41 | Whoever first signed in with the password of a user who had not set up two-factor authentication was shown the secret and enrolled their own authenticator | Low | Fixed (migration 0026): enrolment needs a one-time code an admin issues (shown once when creating the user or resetting 2FA; stored as a hash, 7 days); first-run setup is authorised by the setup code |
+| F42 | `/i/{id}` and `/s/{id}` were served on any custom domain, whatever the app | Low | Fixed: a custom domain serves only its own app's invoices and subscription checkouts (404 otherwise, before anything is started at the provider) |
+| F43 | `ImportRefund` applied a refund it already knew without checking it against the refund fetched from the provider | Low | Fixed: the same `refundIsOurs` check as the poll path |
+| F44 | Information: database copies were created with the process umask and tightened afterwards; JSON request bodies could repeat a key; the API echoed the Go decoder's error text; the return URL's `status` looks like proof of payment | Info | Fixed: copies are created 0600 (the pre-migration snapshot too); a repeated key is a 400; errors name the field in the API's terms; the OpenAPI description and the quickstart say the return URL is unsigned and must not be trusted |
+| F45 | Redaction replaced a known secret only in its plain form, so the same secret hex- or base64-encoded (a rebuilt `Authorization` header, HTTP Basic `base64(id:secret)`) went to the log table | Medium | Fixed: hex (both cases), base64 in all four alphabets (padded or not), the secret at any of the three alignments inside a longer base64 string, and `id:secret` pairs of an account |
+| F46 | Redaction missed spaced or dashed Indian phone numbers, Aadhaar numbers, dot- or slash-separated card numbers, `ccvv` / `cvn` / `ccnum` field names and secrets in webhook URL paths (Telegram, Slack, Discord, long random segments) | Low | Fixed, with guards: our ids (`pay_...`, `ref_...`), ULIDs and UUIDs stay readable; plain 12-digit runs are Aadhaar numbers only when the Verhoeff check digit is right |
+| F47 | Log flooding: every rejected `/v1` or `/hooks` request became a row, so one source could fill the table and the disk, and the caps were applied only by the hourly job | Medium | Fixed: one row per source, route and status a minute (30 per route and status from all sources), the next row carries a `suppressed` count; caps on rows and size (`log_max_mb`) are applied as rows arrive |
+| F48 | JavaScript hooks had a time limit but no memory or output limit: `'x'.repeat(1 << 30)` or a growing array took gigabytes | Medium | Fixed: a per-call memory ceiling (128 MiB of live heap, checked every millisecond), one-step allocators (`repeat`, `padStart`, `padEnd`, `fill`, `join`, `concat`, `Array.from`, `apply`) refuse huge sizes, console and routing output are capped; fails closed |
+| F49 | The on-demand TLS "ask" approved every domain the hub knew, including pending ones, so adding names in the dashboard could use up the certificate authority's rate limits | Low | Fixed: verified domains, and pending ones only while their A or AAAA record already points at the hub |
+| F50 | There was no way to rotate the master key | Design | Added: `PAYMUX_MASTER_KEY_OLD` / `_FILE`, `paymux secrets reseal` (one transaction, idempotent, refuses if any value cannot be opened) and a runbook procedure; every sealed column is listed in one place and a test fails if the schema gets one that is not |
+| F51 | Third-party GitHub Actions were referenced by tag, which their owners can move | Low | Fixed: pinned to commit SHAs with the tag in a comment; a test fails on an unpinned `uses:` |
+
+### Notes on the fixes
+
+- **F28.** The per-account ceilings can lock a legitimate user out for up to 15 minutes if someone keeps guessing;
+  that is the price of a limit that does not depend on a claimed address. The counters are in memory, per process
+  (a second instance behind a load balancer has its own); the dashboard is not meant to be scaled out. The default
+  trusted-proxy setting (the local network) was left as the operator chose it; the fix holds when
+  `X-Forwarded-For` is attacker-controlled because it does not rely on the address.
+- **F29.** A key can be created or rotated with the scopes the user's role allows; an admin can still issue a key
+  with payout scopes. What changed is that a user without refund or payout power cannot mint it.
+- **F34.** Forged events are not stored; only a hash and counts. Verified events are kept for
+  `provider_event_retention` days (default 400); unverified ones for at most 30 days regardless.
+- **F36.** Users that single sign-on created before identities were recorded (no password) are bound on their next
+  sign-in. After an admin allows a password account, the next sign-in with that address binds it and the permission
+  is spent.
+- **F41.** An upgrade leaves users who have not enrolled without a code; an admin issues one from the Users page or
+  with `paymux user reset-2fa`.
+- **F45 to F47.** Redaction is a backstop, not a guarantee: a secret in a format nothing knows, in a field with no
+  secret-like name and not configured anywhere, would stay (see the fourth batch).
+- **F48.** The memory figure is the process's heap, not the script's, so it is an approximation under heavy load.
+  Hooks are code the operator wrote; a container memory limit remains the hard bound.
+
+### Reviewed, not issues (fifth batch)
+
+- An automated review said the dashboard's per-account limiter keys used the raw e-mail. They do not: the login
+  form and the second-factor step both normalise the address (trim, lower case) before it is used as a key, the same
+  way the store does. Regression tests were added for the spellings `Alice@Example.com`, ` alice@example.com ` and
+  the like.
+
+### Deferred
+
+- Mandate AFA limit and headroom for tax-exclusive subscriptions are still computed on the taxable price (F32); the
+  charge itself is right.
+- The duplicate-refund ledger entry keeps the kind `refund` (a new kind would need a table rebuild for the CHECK
+  constraint); the duplicate is tracked by the flag, the event and the refund row.
+- Per-account sign-in counters, the single-use link hold and the log throttle are in memory per process.
+- On SQLite `paymux secrets reseal` needs the hub stopped (the data directory is locked); on PostgreSQL it can run
+  beside the hub and stops without changes if a value changes under it.
+
 ## What remains
 
 Every `TODO(spec)` left in the code needs a provider sandbox, a provider
