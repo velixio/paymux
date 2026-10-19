@@ -229,6 +229,10 @@ var credPatterns = []pattern{
 	{regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}`), "Bearer " + Secret},
 	{regexp.MustCompile(`\bBasic\s+[A-Za-z0-9+/]{12,}={0,2}`), "Basic " + Secret},
 	{regexp.MustCompile(`(://)[^/\s:@]+:[^/\s@]+@`), "${1}" + Secret + "@"},
+	// Webhook URLs carry their secret in the path.
+	{regexp.MustCompile(`\bbot\d{5,}:[A-Za-z0-9_-]{25,}`), "bot" + Secret},              // Telegram
+	{regexp.MustCompile(`\bT[A-Z0-9]{8,}/B[A-Z0-9]{8,}/[A-Za-z0-9]{20,}`), Secret},      // Slack
+	{regexp.MustCompile(`(/api/webhooks/\d{15,}/)[A-Za-z0-9_-]{40,}`), "${1}" + Secret}, // Discord
 }
 
 var (
@@ -236,10 +240,18 @@ var (
 	rePAN   = regexp.MustCompile(`\b[A-Z]{5}\d{4}[A-Z]\b`)
 	reEmail = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`)
 	reVPA   = regexp.MustCompile(`[A-Za-z0-9._-]{2,64}@[A-Za-z][A-Za-z0-9]{1,31}`)
-	rePhone = regexp.MustCompile(`(?:\+91[\s-]?|\b91[\s-]?|\b0)?\b[6-9]\d{9}\b`)
-	reIntl  = regexp.MustCompile(`\+\d[\d\s-]{8,14}\d`)
-	reCard  = regexp.MustCompile(`\b\d(?:[ -]?\d){12,18}\b`)
-	reKV    = regexp.MustCompile(`\b([A-Za-z][A-Za-z0-9_.-]{0,63})(\\?["']?\s*[:=]\s*\\?["']?)([^\s"',;&}\]\\]+)`)
+	// An Indian mobile number: ten digits starting 6-9, run together or grouped
+	// 5+5 or 3+3+4 with spaces or dashes, with an optional 91 or 0 prefix.
+	rePhone = regexp.MustCompile(`(?:\+91[\s-]?|\b91[\s-]?|\b0)?\b(?:[6-9]\d{4}[\s-]?\d{5}|[6-9]\d{2}[\s-]\d{3}[\s-]\d{4})\b`)
+	// An Aadhaar number: twelve digits starting 2-9, grouped 4+4+4, or run
+	// together when the Verhoeff check digit is right.
+	reAadhaarGrouped = regexp.MustCompile(`\b[2-9]\d{3}[\s-]\d{4}[\s-]\d{4}\b`)
+	reAadhaarPlain   = regexp.MustCompile(`\b[2-9]\d{11}\b`)
+	// A path segment that may be a secret (see tokenSegment).
+	reSegment = regexp.MustCompile(`/([A-Za-z0-9_-]{24,})`)
+	reIntl    = regexp.MustCompile(`\+\d[\d\s-]{8,14}\d`)
+	reCard    = regexp.MustCompile(`\b\d(?:[ .\-/_]?\d){12,18}\b`)
+	reKV      = regexp.MustCompile(`\b([A-Za-z][A-Za-z0-9_.-]{0,63})(\\?["']?\s*[:=]\s*\\?["']?)([^\s"',;&}\]\\]+)`)
 )
 
 func (r *Redactor) patterns(s string) string {
@@ -247,6 +259,19 @@ func (r *Redactor) patterns(s string) string {
 		s = p.re.ReplaceAllString(s, p.with)
 	}
 	s = reCard.ReplaceAllStringFunc(s, maskCard)
+	s = reAadhaarGrouped.ReplaceAllString(s, "[aadhaar]")
+	s = reAadhaarPlain.ReplaceAllStringFunc(s, func(m string) string {
+		if verhoeff(m) {
+			return "[aadhaar]"
+		}
+		return m
+	})
+	s = reSegment.ReplaceAllStringFunc(s, func(m string) string {
+		if tokenSegment(m[1:]) {
+			return "/" + Secret
+		}
+		return m
+	})
 	s = reGSTIN.ReplaceAllString(s, "[gstin]")
 	s = rePAN.ReplaceAllString(s, "[pan]")
 	s = reEmail.ReplaceAllString(s, "[email]")
@@ -296,6 +321,60 @@ func maskCard(m string) string {
 		return m
 	}
 	return "[card ****" + string(digits[len(digits)-4:]) + "]"
+}
+
+// tokenSegment reports whether a URL path segment looks like a secret (a
+// webhook token, say): 24 or more letters and digits that mix the cases and
+// carry either a digit or many case changes, as random text does and words do
+// not. Our own ids (a short lower-case prefix, an underscore, an id), ULIDs and
+// UUIDs are not secrets.
+func tokenSegment(seg string) bool {
+	if len(seg) < 24 {
+		return false
+	}
+	if i := strings.IndexByte(seg, '_'); i >= 2 && i <= 6 && strings.ToLower(seg[:i]) == seg[:i] {
+		return false // pay_..., ref_..., rf_...: an id
+	}
+	var lower, upper, digit bool
+	changes := 0
+	for i := 0; i < len(seg); i++ {
+		c := seg[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+			lower = true
+		case c >= 'A' && c <= 'Z':
+			upper = true
+			if i > 0 && seg[i-1] >= 'a' && seg[i-1] <= 'z' {
+				changes++
+			}
+		case c >= '0' && c <= '9':
+			digit = true
+		}
+	}
+	return lower && upper && (digit || changes >= 5)
+}
+
+var (
+	verhoeffD = [10][10]byte{{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, {1, 2, 3, 4, 0, 6, 7, 8, 9, 5}, {2, 3, 4, 0, 1, 7, 8, 9, 5, 6},
+		{3, 4, 0, 1, 2, 8, 9, 5, 6, 7}, {4, 0, 1, 2, 3, 9, 5, 6, 7, 8}, {5, 9, 8, 7, 6, 0, 4, 3, 2, 1}, {6, 5, 9, 8, 7, 1, 0, 4, 3, 2},
+		{7, 6, 5, 9, 8, 2, 1, 0, 4, 3}, {8, 7, 6, 5, 9, 3, 2, 1, 0, 4}, {9, 8, 7, 6, 5, 4, 3, 2, 1, 0}}
+	verhoeffP = [8][10]byte{{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, {1, 5, 7, 6, 2, 8, 3, 0, 9, 4}, {5, 8, 0, 3, 7, 9, 6, 1, 4, 2},
+		{8, 9, 1, 6, 0, 4, 3, 5, 2, 7}, {9, 4, 5, 3, 1, 2, 6, 8, 7, 0}, {4, 2, 8, 6, 5, 7, 3, 9, 0, 1}, {2, 7, 9, 3, 8, 0, 6, 4, 1, 5},
+		{7, 0, 4, 6, 9, 1, 3, 2, 5, 8}}
+)
+
+// verhoeff reports whether the digit string passes the Verhoeff check (the
+// check digit of an Aadhaar number).
+func verhoeff(digits string) bool {
+	var c byte
+	for i := 0; i < len(digits); i++ {
+		n := digits[len(digits)-1-i] - '0'
+		if n > 9 {
+			return false
+		}
+		c = verhoeffD[c][verhoeffP[i%8][n]]
+	}
+	return c == 0
 }
 
 func luhn(d []byte) bool {

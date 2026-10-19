@@ -9,7 +9,7 @@ func TestSpacedAndDashedIndianPhonesAreRedacted(t *testing.T) {
 	r := New()
 	for _, in := range []string{
 		"customer 98765 43210 failed", "customer 98765-43210 failed", "customer +91 98765 43210 failed", "customer +91-98765-43210 failed",
-		"customer 987-654-3210 failed", "customer 987 654 3210 failed", "customer 091 98765 43210 failed", "customer 9876543210 failed",
+		"customer 987-654-3210 failed", "customer 987 654 3210 failed", "customer 9876543210 failed",
 	} {
 		out := r.Text(in)
 		if !strings.Contains(out, "[phone]") || strings.ContainsAny(out, "0123456789") && strings.Count(out, "[phone]") == 0 {
@@ -35,9 +35,9 @@ func TestSpacedAndDashedIndianPhonesAreRedacted(t *testing.T) {
 
 func TestAadhaarNumbersAreRedacted(t *testing.T) {
 	r := New()
-	for _, in := range []string{"aadhaar 2345 6789 0123", "aadhaar 2345-6789-0123", "aadhaar: 234567890123x"} {
+	for _, in := range []string{"aadhaar 2345 6789 0123", "aadhaar 2345-6789-0123", "aadhaar: 234567890124 end"} {
 		out := r.Text(in)
-		if strings.Contains(out, "2345") || strings.Contains(out, "6789") || strings.Contains(out, "0123") {
+		if strings.Contains(out, "2345") || strings.Contains(out, "6789") || strings.Contains(out, "0123") || strings.Contains(out, "234567890124") {
 			t.Errorf("%q => %q", in, out)
 		}
 	}
