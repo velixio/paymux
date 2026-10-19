@@ -929,6 +929,7 @@ components:
       properties:
         id: { type: string, pattern: "^pay_[0-9a-z]{26}$" }
         object: { type: string, const: payment }
+        livemode: { type: boolean, description: "false for an object of test mode, true for a live one" }
         status: { $ref: "#/components/schemas/PaymentStatus" }
         kind: { type: string, enum: [one_time, renewal, mandate_setup] }
         amount: { type: integer }
@@ -1009,6 +1010,7 @@ components:
       properties:
         id: { type: string, pattern: "^ref_[0-9a-z]{26}$" }
         object: { type: string, const: refund }
+        livemode: { type: boolean, description: "false for an object of test mode, true for a live one" }
         payment_id: { type: string }
         attempt_id: { type: string }
         amount: { type: integer }
@@ -1047,6 +1049,7 @@ components:
       properties:
         id: { type: string, pattern: "^sub_[0-9a-z]{26}$" }
         object: { type: string, const: subscription }
+        livemode: { type: boolean, description: "false for an object of test mode, true for a live one" }
         status: { $ref: "#/components/schemas/SubscriptionStatus" }
         billing_mode: { type: string, enum: [provider_managed, merchant_triggered] }
         customer_id: { type: string }
@@ -1141,6 +1144,7 @@ components:
       properties:
         id: { type: string, pattern: "^plink_[0-9a-z]{26}$" }
         object: { type: string, const: payment_link }
+        livemode: { type: boolean, description: "false for an object of test mode, true for a live one" }
         url: { type: string, format: uri, description: "`<PAYMUX_BASE_URL>/l/<slug>`; share this." }
         slug: { type: string, pattern: "^[a-z0-9]{12}$" }
         app_id: { type: string }
@@ -1179,6 +1183,7 @@ components:
       properties:
         id: { type: string, pattern: "^inv_[0-9a-z]{26}$" }
         object: { type: string, const: invoice }
+        livemode: { type: boolean, description: "false for an object of test mode, true for a live one" }
         number: { type: string, examples: ["INV/2627/000123"] }
         payment_id: { type: string }
         subscription_id: { type: string }
@@ -1221,6 +1226,7 @@ components:
       properties:
         id: { type: string, pattern: "^crn_[0-9a-z]{26}$" }
         object: { type: string, const: credit_note }
+        livemode: { type: boolean, description: "false for an object of test mode, true for a live one" }
         number: { type: string, examples: ["CN/2627/000045"] }
         invoice_id: { type: string }
         payment_id: { type: string }
@@ -1279,6 +1285,7 @@ components:
       properties:
         id: { type: string, pattern: "^po_[0-9a-z]{26}$" }
         object: { type: string, const: payout }
+        livemode: { type: boolean, description: "false for an object of test mode, true for a live one" }
         status: { $ref: "#/components/schemas/PayoutStatus" }
         amount: { type: integer }
         currency: { type: string }
