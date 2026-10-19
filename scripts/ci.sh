@@ -50,6 +50,9 @@ go run "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" ./...
 step "make test (SQLite)"
 make test
 
+step "redaction stays linear (timing test: must run without the race detector)"
+go test ./internal/redact -run 'TestHostileInputIsLinear' -count=1
+
 step "make test-pg (Postgres required)"
 PAYMUX_REQUIRE_PG=1 make test-pg
 

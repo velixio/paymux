@@ -1,4 +1,4 @@
-//go:build unix
+//go:build unix && !race
 
 package redact
 
@@ -20,7 +20,10 @@ func cpuTime() time.Duration {
 	return time.Duration(ru.Utime.Nano() + ru.Stime.Nano())
 }
 
-// Redaction stays linear on hostile input: four times the input may take at
+// Redaction stays linear on hostile input. This runs WITHOUT the race detector
+// (see scripts/ci.sh): -race distorts memory and GC behaviour so much that its
+// timings say nothing about the code (measured: x2.0 per doubling without it,
+// erratic with it). Four times the input may take at
 // most about four times the CPU (a quadratic path would take sixteen), so a
 // ceiling of ten catches a super-linear path without flaking on noise.
 func TestHostileInputIsLinear(t *testing.T) {
