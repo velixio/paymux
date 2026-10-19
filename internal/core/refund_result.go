@@ -21,6 +21,9 @@ const (
 	FlagRefundedFull    = "refunded_full"
 	// FlagRefundExceeds: the provider reports more refunded than was received.
 	FlagRefundExceeds = "refund_exceeds_balance"
+	// FlagDuplicateRefunded: the extra payment of a double payment was paid back.
+	// It says nothing about the sale, which stays as paid.
+	FlagDuplicateRefunded = "duplicate_refunded"
 )
 
 // RefundSnapshot is the authoritative provider state of a refund.
@@ -100,6 +103,27 @@ func (s *Service) applyRefundTx(ctx context.Context, tx store.Tx, refundID strin
 		typ := "refund.failed"
 		exceeds := false
 		if snap.Status == state.RefundSucceeded {
+			// The refund of the extra attempt of a double payment gives the customer
+			// their second payment back. The sale itself was paid once and stays
+			// as it is: no amount_refunded, no refunded flags, no credit note, and
+			// no refund.succeeded for the app to mistake for a refund of the sale.
+			att, aerr := store.GetAttempt(ctx, tx, r.AttemptID)
+			if aerr != nil {
+				return res, mapStoreErr(aerr, "attempt")
+			}
+			if att.Duplicate {
+				addFlag(&p, FlagDuplicateRefunded)
+				if err := store.UpdatePayment(ctx, tx, &p, now); err != nil {
+					return res, err
+				}
+				// Same ledger kind, linked to the refund row, so the extra charge nets out.
+				if err := store.InsertLedgerEntry(ctx, tx, store.LedgerEntry{ID: ids.New("led"), OrgID: r.OrgID, Mode: r.Mode,
+					Kind: "refund", Amount: -r.Amount, Currency: r.Currency, PaymentID: p.ID, RefundID: r.ID, OccurredAt: now}); err != nil {
+					return res, err
+				}
+				res.Refund, res.Payment, res.Changed = r, p, true
+				return res, s.emitPayment(ctx, tx, "payment.duplicate_refunded", p, "duplicate_payment", r.AttemptID)
+			}
 			typ = "refund.succeeded"
 			p.AmountRefunded += r.Amount
 			p.Flags = slices.DeleteFunc(p.Flags, func(f string) bool { return f == FlagRefundedPartial || f == FlagRefundedFull })
