@@ -449,7 +449,12 @@ func (e *env) confirmMandate(m store.Mandate, providerID string, withSetup bool)
 			}
 			amount := int64(100) // the verification debit: nothing is due yet
 			if sub.Status == "incomplete" && sub.TrialEnd.IsZero() {
-				amount = sub.Amount // the registration pays the first period
+				amount = sub.Amount // the registration pays the first period...
+				for _, req := range e.r.mandateReqs {
+					if req.ProviderRef == m.ProviderRef {
+						amount = req.Amount // ...for the amount the hub asked the provider to debit
+					}
+				}
 			}
 			snap.SetupPayment = &connector.PaymentSnapshot{Status: connector.PaymentSucceeded, Amount: amount, Currency: "INR",
 				ProviderPaymentID: "setup_" + providerID, ProviderRef: m.ProviderRef, Method: m.Method, RawStatus: "success"}
