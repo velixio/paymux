@@ -501,8 +501,13 @@ func newBudget(vm *goja.Runtime, limit time.Duration, memory int64) *budget {
 }
 
 // heapObjects is the bytes held by heap objects, live or not yet swept.
-func heapObjects() uint64 {
-	s := []metrics.Sample{{Name: "/memory/classes/heap/objects:bytes"}}
+func heapObjects() uint64 { return readHeap("/memory/classes/heap/objects:bytes") }
+
+// heapLive is the heap the last garbage collection found live.
+func heapLive() uint64 { return readHeap("/gc/heap/live:bytes") }
+
+func readHeap(name string) uint64 {
+	s := []metrics.Sample{{Name: name}}
 	metrics.Read(s)
 	if s[0].Value.Kind() == metrics.KindUint64 {
 		return s[0].Value.Uint64()
@@ -510,15 +515,31 @@ func heapObjects() uint64 {
 	return 0
 }
 
+// gcBaselineAt is the heap size from which a call starts with a collection, so
+// that the baseline is the live heap and not the live heap of some earlier moment.
+const gcBaselineAt = 32 << 20
+
+// baselineHeap is the live heap now. A small heap needs no collection to know
+// it (the live heap cannot be larger than all heap objects); a bigger one is
+// collected first, since the last collection may have seen the memory of an
+// earlier script that is garbage by now.
+func baselineHeap() uint64 {
+	if heapObjects() >= gcBaselineAt {
+		runtime.GC()
+	}
+	return min(heapLive(), heapObjects())
+}
+
 // watchMemory interrupts the VM when the call has added more than limit bytes
-// to the live heap. The count of objects includes garbage not yet collected,
-// so when it passes the limit a collection is forced and the live heap is
-// measured again: only memory that survives counts.
+// to the live heap. The baseline is the live heap when the call starts (the
+// process may hold plenty of garbage then, and that must not count). The cheap count of heap objects includes garbage, so only when it
+// passes the baseline plus the limit is a collection forced and the live heap
+// measured again: memory that survives it is what the script holds.
 func (b *budget) watchMemory(limit int64) {
 	if limit <= 0 {
 		return
 	}
-	base := heapObjects()
+	base := baselineHeap()
 	b.memStop, b.memDone = make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(b.memDone)
@@ -534,14 +555,14 @@ func (b *budget) watchMemory(limit int64) {
 					continue
 				}
 				runtime.GC()
-				live := heapObjects()
-				if live > base+uint64(limit) {
+				if heapLive() > base+uint64(limit) {
 					b.memory.Store(true)
 					b.fired.Store(true)
 					b.vm.Interrupt("memory limit")
 					return
 				}
-				next = max(base+uint64(limit), live+uint64(limit)/2)
+				// Mostly garbage: look again after another half limit of growth.
+				next = heapObjects() + uint64(limit)/2
 			}
 		}
 	}()
