@@ -10,10 +10,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/paymux/paymux/internal/ids"
@@ -25,6 +28,8 @@ import (
 const (
 	// MaxBody is the largest accepted request body.
 	MaxBody = 1 << 20
+	// forgedPrefix is how much of an event that failed verification is kept.
+	forgedPrefix = 128
 
 	JobProcess   = "provider_event.process"
 	JobFetchOnly = "provider_event.fetch_only"
@@ -56,10 +61,46 @@ type Options struct {
 	Verifiers VerifierFunc
 	Logger    *slog.Logger
 	Now       func() time.Time
+	// ClientIP names the client of a request (the hub passes its trusted-proxy
+	// aware function); the default is the connection's address.
+	ClientIP func(*http.Request) string
+	// Limits per minute. RequestsPerIP caps every request from one address
+	// (default 1200). FailuresPerIP and FailuresPerAccount cap how many events
+	// that fail verification are stored (defaults 20 and 100): past them a forged
+	// event is answered 401 and not kept. Genuine events are never held back by
+	// the failure budgets.
+	RequestsPerIP, FailuresPerIP, FailuresPerAccount int
 }
 
 // Handler serves POST /hooks/{provider_account_id}.
-type Handler struct{ o Options }
+type Handler struct {
+	o                       Options
+	reqIP, failIP, failAcct *window
+}
+
+// window counts events per key in fixed one-minute windows, in memory.
+type window struct {
+	mu    sync.Mutex
+	limit int
+	slot  int64
+	n     map[string]int
+}
+
+func newWindow(limit int) *window { return &window{limit: limit, n: map[string]int{}} }
+
+// allow counts one event for key and reports whether it is within the limit.
+func (w *window) allow(key string, now time.Time) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if slot := now.Unix() / 60; slot != w.slot {
+		w.slot, w.n = slot, map[string]int{}
+	}
+	if len(w.n) > 100_000 { // a flood of distinct keys: start over rather than grow
+		w.n = map[string]int{}
+	}
+	w.n[key]++
+	return w.n[key] <= w.limit
+}
 
 // New builds a Handler.
 func New(o Options) *Handler {
@@ -69,7 +110,25 @@ func New(o Options) *Handler {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	return &Handler{o: o}
+	if o.RequestsPerIP <= 0 {
+		o.RequestsPerIP = 1200
+	}
+	if o.FailuresPerIP <= 0 {
+		o.FailuresPerIP = 20
+	}
+	if o.FailuresPerAccount <= 0 {
+		o.FailuresPerAccount = 100
+	}
+	if o.ClientIP == nil {
+		o.ClientIP = func(r *http.Request) string {
+			host, _, err := net.SplitHostPort(r.RemoteAddr)
+			if err != nil {
+				return r.RemoteAddr
+			}
+			return host
+		}
+	}
+	return &Handler{o: o, reqIP: newWindow(o.RequestsPerIP), failIP: newWindow(o.FailuresPerIP), failAcct: newWindow(o.FailuresPerAccount)}
 }
 
 // JobPayload is the payload of both provider_event jobs.
@@ -111,6 +170,11 @@ func bodyHash(b []byte) string {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	ip := h.o.ClientIP(r)
+	if !h.reqIP.allow(ip, h.o.Now()) {
+		http.Error(w, "too many requests", http.StatusTooManyRequests)
+		return
+	}
 	account := r.PathValue("provider_account_id")
 	logctx.Note(ctx, "provider_account_id", account)
 	v, err := h.o.Verifiers(ctx, account)
@@ -149,17 +213,31 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case errors.Is(verr, ErrUnsigned):
 		job = JobFetchOnly
-		row.ProviderEventID = eventID
-		if eventID == "" {
-			row.ProviderEventID = bodyHash(body)
+		// Its own key space: the id comes from a header nobody signed, so it must
+		// not take the place of a signed event with the same id, and the body is
+		// part of the key so a replayed id with another body is another event.
+		row.ProviderEventID = "unsigned:" + bodyHash(body)
+		if eventID != "" {
+			row.ProviderEventID = "unsigned:" + eventID + ":" + bodyHash(body)
 		}
 	default:
 		// Never change state. The id is namespaced so a forged event cannot
 		// shadow the genuine one that carries the same provider event id.
-		row.ProviderEventID = "unverified:" + bodyHash(body)
-		row.Error = "verification failed: " + verr.Error()
+		//
+		// A forged event is evidence, not data: keep its hash, size and a short
+		// prefix, not the (up to 1 MiB) body, and only while the budgets allow.
+		sum := bodyHash(body)
+		row.ProviderEventID = "unverified:" + sum
+		row.Body = body[:min(len(body), forgedPrefix)]
+		row.Error = fmt.Sprintf("verification failed: %s; size=%d sha256=%s", verr.Error(), len(body), sum)
 		status = http.StatusUnauthorized
 		h.o.Logger.Warn("inbound: webhook failed verification", "account", account, "err", verr)
+		now := h.o.Now()
+		keepIP, keepAcct := h.failIP.allow(ip, now), h.failAcct.allow(account, now)
+		if !keepIP || !keepAcct {
+			http.Error(w, "invalid signature", status) // answered, not kept
+			return
+		}
 	}
 
 	err = h.o.DB.Write(ctx, func(tx store.Tx) error {

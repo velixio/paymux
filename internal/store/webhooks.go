@@ -376,3 +376,20 @@ func (db *DB) GetProviderEvent(ctx context.Context, accountID, eventID string) (
 	}
 	return p, err
 }
+
+// PurgeProviderEvents deletes up to limit events received before the cutoff and
+// returns how many it deleted: those that failed verification (their id starts
+// with "unverified:") when forged is true, all the others when it is false.
+func PurgeProviderEvents(ctx context.Context, tx Tx, forged bool, before time.Time, limit int) (int, error) {
+	cond := "provider_event_id NOT LIKE 'unverified:%'"
+	if forged {
+		cond = "provider_event_id LIKE 'unverified:%'"
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM provider_events WHERE id IN (
+		SELECT id FROM provider_events WHERE received_at < ? AND `+cond+` ORDER BY received_at LIMIT ?)`, ms(before), limit)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
+}
