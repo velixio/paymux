@@ -17,7 +17,7 @@ import (
 // Fifty logins at once do not start fifty 64 MiB hashes: the surplus is told to
 // come back later (503), and the ones that ran answer normally.
 func TestConcurrentLoginsAreBoundedAndTheSurplusGets503(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		auth.UseProductionCost(t) // the bound exists because real hashes are slow and large
 		e := bfEnv(t, db)
 		e.seedUser("alice@example.com", "admin", true)
@@ -58,7 +58,7 @@ func TestConcurrentLoginsAreBoundedAndTheSurplusGets503(t *testing.T) {
 
 // A client that keeps trying is stopped before it costs a hash.
 func TestLoginAttemptsPerAddressAreRateLimitedBeforeHashing(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := bfEnv(t, db)
 		e.seedUser("alice@example.com", "admin", true)
 		c := e.client()

@@ -10,7 +10,7 @@ import (
 )
 
 func TestCreditNotePageOffersItsEInvoiceForB2BOnly(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app, _ := e.taxApp("alpha", supplierGSTIN)
 		pB2B := e.pay(app, 118000, "INR", b2bBuyer(t))

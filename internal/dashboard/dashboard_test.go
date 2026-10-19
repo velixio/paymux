@@ -250,7 +250,7 @@ func (e *env) authedCSRF(c *http.Client) string {
 }
 
 func TestLoginWithPasswordAndTOTP(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		_, secret := e.seedUser("alice@example.com", "admin", true)
 		resp := e.login(e.c, "alice@example.com", secret)
@@ -292,7 +292,7 @@ func TestLoginWithPasswordAndTOTP(t *testing.T) {
 }
 
 func TestSecureCookieFollowsBaseURL(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		https, _ := url.Parse("https://pay.example.com")
 		e := newEnv(t, db, func(o *Options) { o.BaseURL = https })
 		_, secret := e.seedUser("alice@example.com", "admin", true)
@@ -305,7 +305,7 @@ func TestSecureCookieFollowsBaseURL(t *testing.T) {
 }
 
 func TestUnauthenticatedRequestsRedirectToLogin(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		for _, p := range []string{"/dashboard/", "/dashboard/payments", "/dashboard/users", "/dashboard/settings"} {
 			r, _ := e.get(e.c, p)
@@ -321,7 +321,7 @@ func TestUnauthenticatedRequestsRedirectToLogin(t *testing.T) {
 }
 
 func TestWrongPasswordIsGenericAndCreatesNoSession(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.seedUser("alice@example.com", "admin", true)
 		r1, b1 := e.passwordStep(e.c, "alice@example.com", "wrong password here")
@@ -350,7 +350,7 @@ func TestWrongPasswordIsGenericAndCreatesNoSession(t *testing.T) {
 }
 
 func TestWrongTOTPRejected(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		_, secret := e.seedUser("alice@example.com", "admin", true)
 		e.passwordStep(e.c, "alice@example.com", goodPW)
@@ -364,7 +364,7 @@ func TestWrongTOTPRejected(t *testing.T) {
 }
 
 func TestTOTPReplayRejected(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		_, secret := e.seedUser("alice@example.com", "admin", true)
 		first := e.login(e.c, "alice@example.com", secret)
@@ -395,7 +395,7 @@ func TestTOTPReplayRejected(t *testing.T) {
 }
 
 func TestLockoutAfterFiveFailures(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		_, secret := e.seedUser("alice@example.com", "admin", true)
 		e.seedUser("bob@example.com", "viewer", true)
@@ -424,7 +424,7 @@ func TestLockoutAfterFiveFailures(t *testing.T) {
 }
 
 func TestTOTPFailuresCountTowardsLockout(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		_, secret := e.seedUser("alice@example.com", "admin", true)
 		e.passwordStep(e.c, "alice@example.com", goodPW)
@@ -465,7 +465,7 @@ func TestRateLimiter(t *testing.T) {
 }
 
 func TestCSRFRequiredOnEveryPost(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.seedUser("alice@example.com", "admin", true)
 		// login form
@@ -519,7 +519,7 @@ func TestCSRFRequiredOnEveryPost(t *testing.T) {
 }
 
 func TestViewerAndOperatorCannotManageUsers(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.seedUser("root@example.com", "admin", true)
 		for _, role := range []string{"viewer", "operator"} {
@@ -556,7 +556,7 @@ func csrfOfPage(t *testing.T, e *env, c *http.Client) string {
 }
 
 func TestAdminManagesUsers(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		_, secret := e.seedUser("root@example.com", "admin", true)
 		e.login(e.c, "root@example.com", secret)
@@ -625,7 +625,7 @@ func TestAdminManagesUsers(t *testing.T) {
 }
 
 func TestFirstLoginEnrolsTOTP(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		id, _ := e.seedUser("newbie@example.com", "viewer", false)
 		resp, _ := e.passwordStep(e.c, "newbie@example.com", goodPW)
@@ -672,7 +672,7 @@ func TestFirstLoginEnrolsTOTP(t *testing.T) {
 }
 
 func TestSessionIdleTimeoutAndAbsoluteLimit(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		_, secret := e.seedUser("alice@example.com", "admin", true)
 		e.login(e.c, "alice@example.com", secret)
@@ -720,7 +720,7 @@ func countSessions(t *testing.T, db *store.DB) int {
 }
 
 func TestDisabledUserSessionIsRejected(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		id, secret := e.seedUser("alice@example.com", "admin", true)
 		e.login(e.c, "alice@example.com", secret)
@@ -734,7 +734,7 @@ func TestDisabledUserSessionIsRejected(t *testing.T) {
 }
 
 func TestDevSkip2FA(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, func(o *Options) { o.DevSkip2FA = true })
 		e.seedUser("alice@example.com", "admin", false) // never enrolled
 		_, loginPage := e.get(e.c, "/dashboard/login")
@@ -758,7 +758,7 @@ func TestDevSkip2FA(t *testing.T) {
 }
 
 func TestLogout(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		_, secret := e.seedUser("alice@example.com", "admin", true)
 		resp := e.login(e.c, "alice@example.com", secret)
@@ -785,7 +785,7 @@ func TestLogout(t *testing.T) {
 }
 
 func TestEveryLoginIssuesAFreshToken(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		_, secret := e.seedUser("alice@example.com", "admin", true)
 		a := sessionCookie(e.login(e.c, "alice@example.com", secret)).Value

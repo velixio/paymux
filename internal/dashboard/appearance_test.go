@@ -64,7 +64,7 @@ func (e themedEnv) setOrg(key, raw string) {
 }
 
 func TestDashboardWearsTheOrgTheme(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newThemedEnv(t, db)
 		admin := e.roleClient("admin")
 		has(t, e.pageOK(admin, "/dashboard/overview"), `href="/theme/default/theme.css`)
@@ -87,7 +87,7 @@ func TestDashboardWearsTheOrgTheme(t *testing.T) {
 }
 
 func TestAppearancePageListsThemesAndTheirProblems(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newThemedEnv(t, db)
 		e.writeTheme("pink", pinkTheme, nil)
 		e.writeTheme("oops", `{"name":"oops","version":"1","tokens":{"--x":"red; } body{display:none"}}`, nil)
@@ -112,7 +112,7 @@ func TestAppearancePageListsThemesAndTheirProblems(t *testing.T) {
 }
 
 func TestAdminChoosesTheDashboardTheme(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newThemedEnv(t, db)
 		e.writeTheme("pink", pinkTheme, nil)
 		e.writeTheme("oops", `{"name":"oops"}`, nil)
@@ -154,7 +154,7 @@ func TestAdminChoosesTheDashboardTheme(t *testing.T) {
 }
 
 func TestAdminChoosesAnAppsThemeAndLanguage(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newThemedEnv(t, db)
 		e.writeTheme("pink", pinkTheme, nil)
 		alpha := e.seedApp("alpha")
@@ -201,7 +201,7 @@ func TestAdminChoosesAnAppsThemeAndLanguage(t *testing.T) {
 }
 
 func TestThemePreviewRendersASampleInThatTheme(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newThemedEnv(t, db)
 		e.writeTheme("pink", pinkTheme, nil)
 		e.writeTheme("broken", pinkTheme[:30], nil)

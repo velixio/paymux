@@ -47,7 +47,7 @@ func seedLogs(t *testing.T, l *store.DB) {
 }
 
 func TestLogsPageIsForLogsReadOnly(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		l := logsOf(t, db)
 		e := newEnv(t, db, func(o *Options) { o.LogDB = l })
 		seedLogs(t, l)
@@ -78,7 +78,7 @@ func TestLogsPageIsForLogsReadOnly(t *testing.T) {
 }
 
 func TestACustomRoleCanBeGrantedLogsRead(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		l := logsOf(t, db)
 		e := newEnv(t, db, func(o *Options) { o.LogDB = l })
 		seedLogs(t, l)
@@ -118,7 +118,7 @@ func logIDs(body string) []string {
 }
 
 func TestLogsPageFiltersAndPages(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		l := logsOf(t, db)
 		e := newEnv(t, db, func(o *Options) { o.LogDB = l })
 		seedLogs(t, l)
@@ -168,7 +168,7 @@ func TestLogsPageFiltersAndPages(t *testing.T) {
 }
 
 func TestLogDetailShowsIDsAttrsAndBodies(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		l := logsOf(t, db)
 		e := newEnv(t, db, func(o *Options) { o.LogDB = l })
 		seedLogs(t, l)
@@ -184,7 +184,7 @@ func TestLogDetailShowsIDsAttrsAndBodies(t *testing.T) {
 }
 
 func TestLogsExportIsJSONLinesOfTheFilteredRows(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		l := logsOf(t, db)
 		e := newEnv(t, db, func(o *Options) { o.LogDB = l })
 		seedLogs(t, l)
@@ -231,7 +231,7 @@ func TestLogsExportIsJSONLinesOfTheFilteredRows(t *testing.T) {
 // A secret that became known after a row was stored is still hidden when the
 // row is shown or exported.
 func TestLogsAreRedactedAgainOnTheWayOut(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		l := logsOf(t, db)
 		e := newEnv(t, db, func(o *Options) {
 			o.LogDB = l
@@ -253,7 +253,7 @@ func TestLogsAreRedactedAgainOnTheWayOut(t *testing.T) {
 }
 
 func TestLogLinksOnPaymentPage(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		l := logsOf(t, db)
 		e := newEnv(t, db, func(o *Options) { o.LogDB = l })
 		a := e.seedApp("alpha")
@@ -273,7 +273,7 @@ var _ = http.StatusOK
 // absent from the list and the export and its detail page is a 404; rows with
 // no org (process-wide errors) stay visible.
 func TestLogsAreScopedToTheOrganisation(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		l := logsOf(t, db)
 		e := newEnv(t, db, func(o *Options) { o.LogDB = l })
 		if err := l.Write(ctx, func(tx store.Tx) error {

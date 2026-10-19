@@ -83,13 +83,17 @@ func Each(t *testing.T, fn func(t *testing.T, db *store.DB)) {
 	t.Run("postgres", func(t *testing.T) { fn(t, Postgres(t)) })
 }
 
-// EachMigrated is Each with every migration already applied.
+// EachMigrated is Each with every migration already applied. The databases are
+// copies of a template that was migrated once (see template.go); the Migrate
+// call stays, and finds nothing left to do.
 func EachMigrated(t *testing.T, fn func(t *testing.T, db *store.DB)) {
 	t.Helper()
-	Each(t, func(t *testing.T, db *store.DB) {
+	run := func(t *testing.T, db *store.DB) {
 		if err := db.Migrate(context.Background(), migrations.FS); err != nil {
 			t.Fatal(err)
 		}
 		fn(t, db)
-	})
+	}
+	t.Run("sqlite", func(t *testing.T) { run(t, SQLiteMigrated(t)) })
+	t.Run("postgres", func(t *testing.T) { run(t, PostgresMigrated(t)) })
 }

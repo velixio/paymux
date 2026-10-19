@@ -175,7 +175,7 @@ func authURLOf(t *testing.T, r *http.Response) *url.URL {
 }
 
 func eachOAuth(t *testing.T, fn func(t *testing.T, e *oauthEnv, admin *http.Client)) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newOAuthEnv(t, db)
 		admin := e.roleClient("admin")
 		e.admin = admin

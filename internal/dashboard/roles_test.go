@@ -22,7 +22,7 @@ func auditCount(t *testing.T, db *store.DB, action string) int {
 }
 
 func TestAdminCreatesAndAssignsCustomRoles(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		_, secret := e.seedUser("root@example.com", "admin", true)
 		e.login(e.c, "root@example.com", secret)
@@ -156,7 +156,7 @@ func TestAdminCreatesAndAssignsCustomRoles(t *testing.T) {
 }
 
 func TestNonAdminsCannotManageRoles(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.seedUser("root@example.com", "admin", true)
 		for _, role := range []string{"viewer", "operator"} {

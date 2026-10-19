@@ -48,7 +48,7 @@ func connectorsInputCfg(name, cfg string) connectors.CreateAccountInput {
 }
 
 func TestProviderCreateRendersTheSchemaForm(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		st := fakeconn.RegisterSchema("dashfake", providerSchema)
 		app := e.seedApp("alpha")
@@ -152,7 +152,7 @@ func countAccounts(t *testing.T, e *env) int {
 }
 
 func TestProviderSecretsAreWriteOnly(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		st := fakeconn.RegisterSchema("dashfake", providerSchema)
 		pa := e.createProvider(st, `{"key_id":"key_123","key_secret":"s3cr3t-value","region":"in","test_mode":true,"retries":2}`)
@@ -264,7 +264,7 @@ func (e *env) createProvider(st *fakeconn.State, cfg string) store.ProviderAccou
 }
 
 func TestProviderDetailWebhookURLAndAppLinking(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		st := fakeconn.RegisterSchema("dashfake", providerSchema)
 		pa := e.createProvider(st, `{"key_id":"k","key_secret":"s"}`)
@@ -322,7 +322,7 @@ func TestProviderDetailWebhookURLAndAppLinking(t *testing.T) {
 }
 
 func TestProviderTestConnection(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		st := fakeconn.RegisterSchema("dashfake", providerSchema)
 		pa := e.createProvider(st, `{"key_id":"k","key_secret":"s"}`)

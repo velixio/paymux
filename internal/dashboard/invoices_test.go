@@ -140,7 +140,7 @@ func (e *env) refundSucceeded(p store.Payment, amount int64) store.Refund {
 }
 
 func TestInvoiceListFilters(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		alpha, ent1 := e.taxApp("alpha", supplierGSTIN)
 		beta, ent2 := e.taxApp("beta", gstin(t, "29AAPFU0939F1Z"))
@@ -225,7 +225,7 @@ func TestInvoiceListFilters(t *testing.T) {
 }
 
 func TestInvoiceDetailAndPDF(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app, _ := e.taxApp("alpha", supplierGSTIN)
 		p := e.pay(app, 118000, "INR", intraB2C)
@@ -274,7 +274,7 @@ func TestInvoiceDetailAndPDF(t *testing.T) {
 }
 
 func TestResendFromDashboard(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app, _ := e.taxApp("alpha", supplierGSTIN)
 		p := e.pay(app, 118000, "INR", intraB2C)
@@ -339,7 +339,7 @@ func TestResendFromDashboard(t *testing.T) {
 }
 
 func TestReissueFromDashboard(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app, _ := e.taxApp("alpha", supplierGSTIN)
 		p := e.pay(app, 118000, "INR", intraB2C)

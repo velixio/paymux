@@ -11,7 +11,7 @@ import (
 // An endpoint is added for one mode (live unless the form says test), and the
 // page says which.
 func TestWebhookEndpointModeFromDashboard(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app := e.seedApp("alpha")
 		admin := e.roleClient("admin")

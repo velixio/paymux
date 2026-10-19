@@ -11,7 +11,7 @@ import (
 // api_key.create is not a back door to payout and refund power: a key may only
 // carry what the person issuing it could do themselves.
 func TestAPIKeyCreateCannotHandOutPowerTheRoleLacks(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		_, secret := e.seedUser("root@example.com", "admin", true)
 		e.login(e.c, "root@example.com", secret)

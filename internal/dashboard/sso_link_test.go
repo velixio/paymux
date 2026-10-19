@@ -27,7 +27,7 @@ func (s *sso) allowLink(admin *http.Client, userID string) int {
 // A verified e-mail alone does not hand over an account that has a password and
 // two-factor sign-in: an admin has to say the person may use single sign-on.
 func TestSSORefusesAPasswordAccountUnlessAnAdminLinkedIt(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		s := newSSO(t, db, nil)
 		id, _ := s.seedUser("alice@example.com", "operator", true)
 		if r := s.signIn("alice@example.com", "sub-alice"); r.StatusCode == 303 && sessionCookie(r) != nil {
@@ -57,7 +57,7 @@ func TestSSORefusesAPasswordAccountUnlessAnAdminLinkedIt(t *testing.T) {
 // After the first sign-in the account is tied to the identity provider's
 // (issuer, subject), not to an e-mail address.
 func TestSSOMatchesOnIssuerAndSubjectAfterTheFirstSignIn(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		s := newSSO(t, db, nil)
 		id, _ := s.seedUser("alice@example.com", "operator", true)
 		admin := s.roleClient("admin")
@@ -85,7 +85,7 @@ func TestSSOMatchesOnIssuerAndSubjectAfterTheFirstSignIn(t *testing.T) {
 
 // The allowed domains apply to every single sign-in, not only to creation.
 func TestSSOAppliesAllowedDomainsOnEverySignIn(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		s := newSSO(t, db, nil)
 		id, _ := s.seedUser("alice@example.com", "operator", true)
 		s.allowLink(s.roleClient("admin"), id)
@@ -102,7 +102,7 @@ func TestSSOAppliesAllowedDomainsOnEverySignIn(t *testing.T) {
 // Users that single sign-on created before identities were recorded (no
 // password, no identity) are bound on their next sign-in.
 func TestSSOCreatedUsersAreBoundAtTheirNextSignIn(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		s := newSSO(t, db, nil)
 		legacy := store.UserRow{ID: "usr_legacy", Email: "new.hire@example.com", PasswordHash: ssoPasswordHash, TOTPLastStep: -1, Role: "viewer", CreatedAt: time.Now()}
 		if err := db.InsertUser(ctx, legacy); err != nil {
@@ -119,7 +119,7 @@ func TestSSOCreatedUsersAreBoundAtTheirNextSignIn(t *testing.T) {
 
 // A user created by single sign-on is bound from the start.
 func TestSSOCreatedUserIsBoundAtCreation(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		s := newSSO(t, db, nil)
 		if r := s.signIn("new.hire@example.com", "sub-new"); r.StatusCode != 303 {
 			t.Fatalf("provisioning: %d", r.StatusCode)

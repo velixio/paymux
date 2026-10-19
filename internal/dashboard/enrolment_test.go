@@ -22,7 +22,7 @@ func (e *env) users() Users { return Users{DB: e.db, Now: e.clk.Now} }
 // two-factor authentication used to be shown the secret and could enrol their
 // own authenticator. Now an admin-issued one-time code is needed first.
 func TestEnrolmentNeedsTheAdminIssuedCode(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		id, _ := e.seedUser("newbie@example.com", "viewer", false)
 		if r, _ := e.passwordStep(e.c, "newbie@example.com", goodPW); r.StatusCode != 303 {
@@ -60,7 +60,7 @@ func TestEnrolmentNeedsTheAdminIssuedCode(t *testing.T) {
 }
 
 func TestEnrolmentCodeExpiresAndAResetNeedsANewOne(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		id, _ := e.seedUser("newbie@example.com", "viewer", false)
 		token, _ := e.users().IssueEnrolmentToken(ctx, id)
@@ -88,7 +88,7 @@ func TestEnrolmentCodeExpiresAndAResetNeedsANewOne(t *testing.T) {
 
 // An admin creating a user is shown the code once; only users.manage may issue one.
 func TestAdminsGetTheEnrolmentCodeWhenCreatingOrResetting(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		admin := e.roleClient("admin")
 		tok := csrfOf(t, e.pageOK(admin, "/dashboard/users"))

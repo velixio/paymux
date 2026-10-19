@@ -17,7 +17,7 @@ import (
 // request and the answer), without the client secret, the grant code or any
 // token.
 func TestOAuthFailuresLeaveNoSecretInTheDatabaseLog(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		l := logsOf(t, db)
 		red := redact.New()
 		rec := dblog.New(dblog.Options{DB: l, Redactor: red})

@@ -51,7 +51,7 @@ func (e *env) codeStep(c *http.Client, code, xff string) (*http.Response, string
 func (e *env) goodCode(secret string) string { return totpFor(secret, e.clk.Now(), 0) }
 
 func TestTicketDiesAfterFiveBadCodes(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := bfEnv(t, db)
 		_, secret := e.seedUser("alice@example.com", "admin", true)
 		c := e.client()
@@ -81,7 +81,7 @@ func TestTicketDiesAfterFiveBadCodes(t *testing.T) {
 }
 
 func TestTOTPFailuresAreCountedPerAccountWhateverTheAddress(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := bfEnv(t, db)
 		_, secret := e.seedUser("alice@example.com", "admin", true)
 		attempt := 0
@@ -113,7 +113,7 @@ func TestTOTPFailuresAreCountedPerAccountWhateverTheAddress(t *testing.T) {
 }
 
 func TestPasswordFailuresAreCountedPerAccountWhateverTheAddress(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := bfEnv(t, db)
 		e.seedUser("alice@example.com", "admin", true)
 		c := e.client()
@@ -138,7 +138,7 @@ func TestPasswordFailuresAreCountedPerAccountWhateverTheAddress(t *testing.T) {
 }
 
 func TestIPv6AddressesShareTheirSlash64(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := bfEnv(t, db)
 		e.seedUser("alice@example.com", "admin", true)
 		c := e.client()

@@ -100,7 +100,7 @@ func lacks(t *testing.T, body string, nope ...string) {
 }
 
 func TestPaymentListFiltersModeAndPaging(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		a, b := e.seedApp("alpha"), e.seedApp("beta")
 		day := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
@@ -163,7 +163,7 @@ func regexpFind(t *testing.T, pattern, s string) string {
 }
 
 func TestModeToggleIsPerSessionAndUnforgeable(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		a := e.seedApp("alpha")
 		e.seedPayment("pay_t", a.ID, "test", "succeeded", "T", 1, e.clk.Now())
@@ -286,7 +286,7 @@ func (e *env) runJobs() {
 func (s *sink) count() int { s.mu.Lock(); defer s.mu.Unlock(); return s.hits }
 
 func TestPaymentDetailShowsTimeline(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		f := e.detailFixture()
 		c := e.roleClient("viewer")
@@ -318,7 +318,7 @@ func TestPaymentDetailShowsTimeline(t *testing.T) {
 }
 
 func TestRefundFromDashboard(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		f := e.detailFixture()
 		path := "/dashboard/payments/" + f.pay.ID + "/refund"
@@ -398,7 +398,7 @@ func TestRefundFromDashboard(t *testing.T) {
 }
 
 func TestReplayDeliveryFromDashboard(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		f := e.detailFixture()
 		if f.sink.count() != 1 {

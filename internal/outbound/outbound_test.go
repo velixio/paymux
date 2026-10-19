@@ -168,7 +168,7 @@ func (s *sink) hits() []recorded {
 func (s *sink) setCode(c int) { s.mu.Lock(); s.code = c; s.mu.Unlock() }
 
 func TestEmitFansOutToMatchingEnabledEndpoints(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
 		all, listed, other, off, otherApp := newSink(t, 200), newSink(t, 200), newSink(t, 200), newSink(t, 200), newSink(t, 200)
 		e.endpoint("app_1", all.srv.URL)
@@ -205,7 +205,7 @@ func TestEmitFansOutToMatchingEnabledEndpoints(t *testing.T) {
 }
 
 func TestEmitIsTransactional(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
 		s := newSink(t, 200)
 		e.endpoint("app_1", s.srv.URL)
@@ -223,7 +223,7 @@ func TestEmitIsTransactional(t *testing.T) {
 }
 
 func TestDeliverSignedStandardWebhook(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
 		s := newSink(t, 204)
 		_, secret := e.endpoint("app_1", s.srv.URL)
@@ -273,7 +273,7 @@ func TestDeliverSignedStandardWebhook(t *testing.T) {
 }
 
 func TestRetriesFollowDefaultScheduleThenFail(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
 		s := newSink(t, 500)
 		e.endpoint("app_1", s.srv.URL)
@@ -318,7 +318,7 @@ func TestRetriesFollowDefaultScheduleThenFail(t *testing.T) {
 }
 
 func TestRetryScheduleIsConfigurableAndRecovers(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
 		e.svc.RetrySchedule = func() []time.Duration { return []time.Duration{0, 10 * time.Second} }
 		s := newSink(t, 503)
@@ -341,7 +341,7 @@ func TestRetryScheduleIsConfigurableAndRecovers(t *testing.T) {
 }
 
 func TestRedirectsAreFailures(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
 		e.svc.RetrySchedule = func() []time.Duration { return []time.Duration{0} }
 		s := newSink(t, 302)
@@ -355,7 +355,7 @@ func TestRedirectsAreFailures(t *testing.T) {
 }
 
 func TestSSRFBlocksPrivateTargetUnlessAllowed(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, false)
 		e.svc.RetrySchedule = func() []time.Duration { return []time.Duration{0} }
 		s := newSink(t, 200) // listens on 127.0.0.1
@@ -375,7 +375,7 @@ func TestSSRFBlocksPrivateTargetUnlessAllowed(t *testing.T) {
 }
 
 func TestDisabledEndpointAtDeliveryTimeFailsWithoutRequest(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
 		s := newSink(t, 200)
 		id, _ := e.endpoint("app_1", s.srv.URL)
@@ -394,7 +394,7 @@ func TestDisabledEndpointAtDeliveryTimeFailsWithoutRequest(t *testing.T) {
 }
 
 func TestReplayDeliveryKeepsWebhookID(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
 		e.svc.RetrySchedule = func() []time.Duration { return []time.Duration{0} }
 		s := newSink(t, 500)
@@ -436,7 +436,7 @@ func TestReplayDeliveryKeepsWebhookID(t *testing.T) {
 }
 
 func TestReplayFailedSince(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
 		e.svc.RetrySchedule = func() []time.Duration { return []time.Duration{0} }
 		s := newSink(t, 500)

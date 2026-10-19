@@ -35,7 +35,7 @@ func (e *env) openAlertID(kind string) string {
 }
 
 func TestNavShowsTheCountOfOpenAlerts(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		viewer := e.roleClient("viewer")
 		body := e.pageOK(viewer, "/dashboard/overview")
@@ -65,7 +65,7 @@ func TestNavShowsTheCountOfOpenAlerts(t *testing.T) {
 }
 
 func TestAlertsPageListsFiltersAndExplains(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.raise(notify.SeverityWarning, "domain.failed", "pay.shop.example.org failed its checks", map[string]string{"domain": "d1"})
 		e.raise(notify.SeverityCritical, "recon.failed", "Reconciliation of razorpay failed", map[string]string{"provider_account": "pa_1", "run": "rcr_1"})
@@ -121,7 +121,7 @@ func newEnvOnlyViewer(t *testing.T, e *env) string {
 }
 
 func TestOperatorAcknowledgesAnAlert(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.raise(notify.SeverityCritical, "recon.failed", "Reconciliation failed", map[string]string{"provider_account": "pa_1"})
 		id := e.openAlertID("recon.failed")
@@ -176,7 +176,7 @@ func TestOperatorAcknowledgesAnAlert(t *testing.T) {
 }
 
 func TestEveryRaiseThroughNotifyShowsUp(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		raiser := notify.NewAlerts(notify.AlertsOptions{Emails: []string{"ops@example.com"}, Mailer: e.mail, Now: e.clk.Now, Recorder: e.alerts})
 		if err := raiser.Raise(ctx, notify.Alert{Severity: notify.SeverityCritical, Kind: "provider.silent", Message: "No verified webhooks from pa_1 in 6h",

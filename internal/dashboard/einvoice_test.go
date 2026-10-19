@@ -31,7 +31,7 @@ func b2bBuyer(t *testing.T) *core.CustomerInput {
 }
 
 func TestInvoicePageOffersTheEInvoiceForB2BOnly(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app, _ := e.taxApp("alpha", supplierGSTIN)
 		b2b := e.invoicesOf(e.pay(app, 118000, "INR", b2bBuyer(t)).ID)[0]
@@ -50,7 +50,7 @@ func TestInvoicePageOffersTheEInvoiceForB2BOnly(t *testing.T) {
 }
 
 func TestDownloadEInvoiceJSON(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app, _ := e.taxApp("alpha", supplierGSTIN)
 		inv := e.invoicesOf(e.pay(app, 118000, "INR", b2bBuyer(t)).ID)[0]
@@ -90,7 +90,7 @@ func TestDownloadEInvoiceJSON(t *testing.T) {
 }
 
 func TestEInvoiceProblemsAreExplainedOnThePage(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app, _ := e.taxApp("alpha", supplierGSTIN)
 		// A supplier address without a PIN code cannot be an e-invoice seller.
@@ -112,7 +112,7 @@ func TestEInvoiceProblemsAreExplainedOnThePage(t *testing.T) {
 }
 
 func TestOperatorRecordsThePortalsAnswer(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app, _ := e.taxApp("alpha", supplierGSTIN)
 		inv := e.invoicesOf(e.pay(app, 118000, "INR", b2bBuyer(t)).ID)[0]
@@ -167,7 +167,7 @@ func TestOperatorRecordsThePortalsAnswer(t *testing.T) {
 }
 
 func TestReportsPageExportsAMonthOfEInvoices(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app, ent := e.taxApp("alpha", supplierGSTIN)
 		ready := e.invoicesOf(e.pay(app, 118000, "INR", b2bBuyer(t)).ID)[0]

@@ -20,7 +20,7 @@ func dscFile(t *testing.T, name string) []byte {
 }
 
 func TestTaxEntityPageManagesTheDSC(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		_, ent := e.taxApp("alpha", supplierGSTIN)
 		page := "/dashboard/tax-entities/" + ent.ID

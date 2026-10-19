@@ -16,7 +16,7 @@ func settingRowHTML(t *testing.T, body, key string) string {
 }
 
 func TestSettingsRenderTypedControls(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app := e.seedApp("alpha")
 		admin := e.roleClient("admin")
@@ -73,7 +73,7 @@ func TestSettingsRenderTypedControls(t *testing.T) {
 }
 
 func TestTypedFormValuesBecomeTheRightJSON(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app := e.seedApp("alpha")
 		admin := e.roleClient("admin")
