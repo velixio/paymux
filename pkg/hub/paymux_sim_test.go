@@ -311,7 +311,7 @@ func TestSimulatorEndToEnd(t *testing.T) {
 				b, _ := json.Marshal(body)
 				rd = bytes.NewReader(b)
 			}
-			code, _, out := do(method, path, rd, map[string]string{"Authorization": "Bearer " + seed.payoutKey, "Content-Type": "application/json"})
+			code, _, out := do(method, path, rd, map[string]string{"Authorization": "Bearer " + seed.payoutKey, "Content-Type": "application/json", "Idempotency-Key": "sim-" + path})
 			var m map[string]any
 			_ = json.Unmarshal([]byte(out), &m)
 			return code, m
