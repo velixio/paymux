@@ -15,6 +15,7 @@ var notices = map[string]string{
 	"role":     "Role updated.",
 	"disabled": "User disabled and signed out.",
 	"enabled":  "User enabled.",
+	"sso":      "Single sign-on allowed. Their next sign-in through the identity provider with this e-mail is linked to the account.",
 }
 
 func (d *Dashboard) usersPage(w http.ResponseWriter, r *http.Request, s *session) {
@@ -30,6 +31,7 @@ func (d *Dashboard) renderUsers(w http.ResponseWriter, r *http.Request, s *sessi
 	v := d.shell(r, s, "users", "Users")
 	v.Error, v.Notice = errMsg, notices[r.URL.Query().Get("n")]
 	v.CanManage = s.can(authz.UserManage)
+	v.SSO = d.ssoEnabled()
 	if v.Roles, err = d.roleNames(r.Context()); err != nil {
 		d.fail(w, err)
 		return
@@ -100,6 +102,28 @@ func (d *Dashboard) userRole(w http.ResponseWriter, r *http.Request, s *session)
 		return
 	}
 	http.Redirect(w, r, prefix+"/users?n=role", http.StatusSeeOther)
+}
+
+// userSSOLink lets an account that has a password be reached by single sign-on:
+// the next sign-in through the identity provider with that e-mail binds to it.
+func (d *Dashboard) userSSOLink(w http.ResponseWriter, r *http.Request, s *session) {
+	u, ok := d.target(w, r)
+	if !ok {
+		return
+	}
+	if !d.ssoEnabled() {
+		d.renderUsers(w, r, s, http.StatusBadRequest, "Single sign-on is not set up.")
+		return
+	}
+	if err := d.o.DB.AllowSSOLink(r.Context(), u.ID, s.User.ID, d.o.Now()); err != nil {
+		d.fail(w, err)
+		return
+	}
+	if err := d.record(r.Context(), r, s, "user.sso_link_allow", u.ID, nil, nil); err != nil {
+		d.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, prefix+"/users?n=sso", http.StatusSeeOther)
 }
 
 func (d *Dashboard) userDisable(w http.ResponseWriter, r *http.Request, s *session) {

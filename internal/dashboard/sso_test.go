@@ -57,6 +57,7 @@ func TestSSOSignsInAnExistingUserWithoutTOTP(t *testing.T) {
 	storetest.Each(t, func(t *testing.T, db *store.DB) {
 		s := newSSO(t, db, nil)
 		id, _ := s.seedUser("alice@example.com", "operator", true) // enrolled in TOTP, which SSO does not ask for
+		s.allowLink(s.roleClient("admin"), id)                     // an admin lets the password account use SSO
 		c := s.client()
 		resp, body := s.get(c, s.begin(c, ok("Alice@Example.com")))
 		if resp.StatusCode != 303 || resp.Header.Get("Location") != "/dashboard/" || sessionCookie(resp) == nil {
@@ -172,7 +173,8 @@ func TestSSODefaultRoleAndDisabledUsers(t *testing.T) {
 func TestSSORejectsForgedAndReplayedCallbacks(t *testing.T) {
 	storetest.Each(t, func(t *testing.T, db *store.DB) {
 		s := newSSO(t, db, nil)
-		s.seedUser("alice@example.com", "viewer", true)
+		id, _ := s.seedUser("alice@example.com", "viewer", true)
+		s.allowLink(s.roleClient("admin"), id)
 		fails := func(name string, c *http.Client, path string, want int) {
 			t.Helper()
 			resp, _ := s.get(c, path)

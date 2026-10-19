@@ -238,6 +238,7 @@ func (c *Client) Exchange(ctx context.Context, code, verifier string) (string, e
 
 // Claims are the id_token claims Paymux uses.
 type Claims struct {
+	Issuer        string // the configured issuer the id_token was verified against
 	Subject       string
 	Email         string
 	EmailVerified bool
@@ -313,7 +314,7 @@ func (c *Client) Verify(ctx context.Context, raw, nonce string) (Claims, error) 
 	case string:
 		verified = v == "true"
 	}
-	return Claims{Subject: cl.Sub, Email: strings.ToLower(strings.TrimSpace(cl.Email)), EmailVerified: verified, Name: cl.Name}, nil
+	return Claims{Issuer: c.cfg.Issuer, Subject: cl.Sub, Email: strings.ToLower(strings.TrimSpace(cl.Email)), EmailVerified: verified, Name: cl.Name}, nil
 }
 
 func audienceOK(raw json.RawMessage, clientID, azp string) bool {

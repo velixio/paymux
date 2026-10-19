@@ -226,6 +226,7 @@ func (d *Dashboard) routes() {
 	m.HandleFunc("GET "+prefix+"/users", d.authed(authz.SettingsRead, d.usersPage))
 	m.HandleFunc("POST "+prefix+"/users", d.authed(authz.UserManage, d.userCreate))
 	m.HandleFunc("POST "+prefix+"/users/{id}/role", d.authed(authz.UserManage, d.userRole))
+	m.HandleFunc("POST "+prefix+"/users/{id}/sso-link", d.authed(authz.UserManage, d.userSSOLink))
 	m.HandleFunc("POST "+prefix+"/users/{id}/disable", d.authed(authz.UserManage, d.userDisable))
 
 	// Roles: admin only (role.manage is never grantable to a custom role).

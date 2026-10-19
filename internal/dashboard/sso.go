@@ -22,9 +22,10 @@ import (
 
 // Single sign-on (OpenID Connect). A sign-in through the identity provider
 // replaces the password and TOTP steps: the IdP authenticated the person, so
-// Paymux asks nothing more. Users are matched by e-mail; someone not yet known
-// is created only when the e-mail is verified and in an allowed domain, with
-// the default role. Password logins still need TOTP.
+// Paymux asks nothing more. Users are matched by the provider's (issuer, subject);
+// a password account is first linked by an admin. Someone not yet known is
+// created only when the e-mail is verified and in an allowed domain, with the
+// default role. Password logins still need TOTP.
 
 const (
 	cookieOIDC = "pm_oidc" // state, nonce and PKCE verifier of a sign-in in progress
@@ -139,8 +140,13 @@ func (d *Dashboard) ssoCallback(w http.ResponseWriter, r *http.Request) {
 
 var errSSORefused = errors.New("not allowed to sign in")
 
-// ssoUser finds the user for the verified claims, or creates one when the
-// e-mail's domain is allowed. Anything else is refused.
+// ssoUser finds the user for the verified claims. An identity already bound to
+// a user (issuer and subject) wins over the e-mail. An unbound identity may take
+// over an existing account only when that account has no password (an older
+// single sign-on user) or an admin has allowed it; otherwise a verified e-mail
+// would be enough to enter an account protected by a password and TOTP. A person
+// not yet known is created when the domain is allowed. The allowed domains apply
+// to every sign-in.
 func (d *Dashboard) ssoUser(ctx context.Context, r *http.Request, c oidc.Claims) (store.UserRow, error) {
 	a, err := mail.ParseAddress(c.Email)
 	if err != nil || a.Address != c.Email {
@@ -149,19 +155,56 @@ func (d *Dashboard) ssoUser(ctx context.Context, r *http.Request, c oidc.Claims)
 	if !c.EmailVerified { // an unverified address proves nothing about who owns it
 		return store.UserRow{}, errors.New("the e-mail is not verified by the identity provider")
 	}
-	u, err := d.o.DB.UserByEmail(ctx, c.Email)
+	domain := c.Email[strings.LastIndex(c.Email, "@")+1:]
+	if !slices.Contains(d.o.OIDCAllowedDomains, domain) {
+		return store.UserRow{}, errors.New("the domain " + domain + " is not allowed to sign in")
+	}
+	login := func(u store.UserRow) (store.UserRow, error) {
+		if u.Disabled {
+			return store.UserRow{}, errors.New("the account is disabled")
+		}
+		return u, d.recordSSO(ctx, r, u.ID, "user.sso_login", map[string]string{"email": u.Email, "subject": c.Subject})
+	}
+	u, err := d.o.DB.UserByIdentity(ctx, c.Issuer, c.Subject)
+	switch {
+	case err == nil:
+		return login(u)
+	case !errors.Is(err, store.ErrNotFound):
+		return store.UserRow{}, err
+	}
+	u, err = d.o.DB.UserByEmail(ctx, c.Email)
 	switch {
 	case err == nil:
 		if u.Disabled {
 			return store.UserRow{}, errors.New("the account is disabled")
 		}
-		return u, d.recordSSO(ctx, r, u.ID, "user.sso_login", map[string]string{"email": u.Email, "subject": c.Subject})
+		bound, err := d.o.DB.UserHasIdentity(ctx, u.ID)
+		if err != nil {
+			return store.UserRow{}, err
+		}
+		if bound {
+			return store.UserRow{}, errors.New("the account belongs to a different identity at the provider")
+		}
+		linked := u.PasswordHash == ssoPasswordHash
+		if !linked {
+			if linked, err = d.o.DB.SSOLinkAllowed(ctx, u.ID); err != nil {
+				return store.UserRow{}, err
+			}
+		}
+		if !linked {
+			return store.UserRow{}, errors.New("the account has a password; an admin has to allow single sign-on for it first")
+		}
+		if err := d.o.DB.BindIdentity(ctx, c.Issuer, c.Subject, u.ID, d.o.Now()); err != nil {
+			return store.UserRow{}, errSSORefused
+		}
+		if u.PasswordHash != ssoPasswordHash {
+			if err := d.recordSSO(ctx, r, u.ID, "user.sso_link", map[string]string{"email": u.Email, "subject": c.Subject}); err != nil {
+				return store.UserRow{}, err
+			}
+		}
+		return login(u)
 	case !errors.Is(err, store.ErrNotFound):
 		return store.UserRow{}, err
-	}
-	domain := c.Email[strings.LastIndex(c.Email, "@")+1:]
-	if !slices.Contains(d.o.OIDCAllowedDomains, domain) {
-		return store.UserRow{}, errors.New("no such user, and the domain " + domain + " is not allowed to sign up")
 	}
 	role := d.o.OIDCDefaultRole
 	if role == "" {
@@ -174,11 +217,11 @@ func (d *Dashboard) ssoUser(ctx context.Context, r *http.Request, c oidc.Claims)
 	}
 	u = store.UserRow{ID: ids.New("usr"), Email: c.Email, PasswordHash: ssoPasswordHash, TOTPLastStep: -1, Role: role, CreatedAt: d.o.Now()}
 	if err := d.o.DB.InsertUser(ctx, u); errors.Is(err, store.ErrDuplicate) { // two first sign-ins at once
-		if u, err = d.o.DB.UserByEmail(ctx, c.Email); err != nil || u.Disabled {
-			return store.UserRow{}, errSSORefused
-		}
-		return u, nil
+		return store.UserRow{}, errSSORefused
 	} else if err != nil {
+		return store.UserRow{}, err
+	}
+	if err := d.o.DB.BindIdentity(ctx, c.Issuer, c.Subject, u.ID, d.o.Now()); err != nil {
 		return store.UserRow{}, err
 	}
 	return u, d.recordSSO(ctx, r, u.ID, "user.create", map[string]string{"email": u.Email, "role": role, "source": "sso", "subject": c.Subject})
