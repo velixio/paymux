@@ -11,6 +11,7 @@ import (
 // many hashes as it can open connections, so the number running at once is
 // bounded and the surplus is refused instead of queued.
 func TestHashingIsBoundedAndRefusesWhenFull(t *testing.T) {
+	UseProductionCost(t) // the bound exists because a real hash holds 64 MiB for a while
 	SetConcurrency(2)
 	t.Cleanup(func() { SetConcurrency(defaultSlots()); observe = nil })
 	var inFlight, peak atomic.Int32
@@ -30,7 +31,7 @@ func TestHashingIsBoundedAndRefusesWhenFull(t *testing.T) {
 	peak.Store(0)
 	var wg sync.WaitGroup
 	var busy, done atomic.Int32
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 16; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -49,7 +50,7 @@ func TestHashingIsBoundedAndRefusesWhenFull(t *testing.T) {
 	if peak.Load() > 2 {
 		t.Errorf("%d hashes ran at once, limit 2", peak.Load())
 	}
-	if busy.Load() == 0 || done.Load() == 0 || busy.Load()+done.Load() != 50 {
+	if busy.Load() == 0 || done.Load() == 0 || busy.Load()+done.Load() != 16 {
 		t.Errorf("busy=%d done=%d", busy.Load(), done.Load())
 	}
 	// Hashing a new password is bounded the same way.

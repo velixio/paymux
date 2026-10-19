@@ -27,7 +27,7 @@ func (e *env) seedLink(app store.App, mode string, mut func(*paylinks.CreateInpu
 }
 
 func TestPaymentLinksPageListsTheSessionModesLinksOfThisOrg(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		alpha, beta := e.seedApp("alpha"), e.seedApp("beta")
 		e.otherOrg()
@@ -86,7 +86,7 @@ func TestPaymentLinksPageListsTheSessionModesLinksOfThisOrg(t *testing.T) {
 }
 
 func TestOperatorCreatesPaymentLinks(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		alpha := e.seedApp("alpha")
 		e.otherOrg()
@@ -156,7 +156,7 @@ func TestOperatorCreatesPaymentLinks(t *testing.T) {
 }
 
 func TestCreatePaymentLinkRejectsBadInputAndKeepsTheForm(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		alpha := e.seedApp("alpha")
 		e.otherOrg()
@@ -205,7 +205,7 @@ func TestCreatePaymentLinkRejectsBadInputAndKeepsTheForm(t *testing.T) {
 }
 
 func TestOperatorDeactivatesAPaymentLink(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		alpha := e.seedApp("alpha")
 		e.otherOrg()

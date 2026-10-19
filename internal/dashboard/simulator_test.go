@@ -48,7 +48,7 @@ func (e *env) simPayment() (store.Payment, store.Attempt, simulator.Controller) 
 }
 
 func TestSimulateDisputeFromTheDashboard(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		p, att, ctl := e.simPayment()
 		page := "/dashboard/payments/" + p.ID
@@ -88,7 +88,7 @@ func TestSimulateDisputeFromTheDashboard(t *testing.T) {
 }
 
 func TestSimulatorBoxIsOnlyForSimulatorPayments(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		f := e.detailFixture() // a live Razorpay payment
 		op := e.roleClient("operator")
@@ -102,7 +102,7 @@ func TestSimulatorBoxIsOnlyForSimulatorPayments(t *testing.T) {
 }
 
 func TestSimulateRenewalFromTheDashboard(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.enableSubscriptions()
 		app := e.seedApp("simsub")
@@ -169,7 +169,7 @@ func TestSimulateRenewalFromTheDashboard(t *testing.T) {
 }
 
 func TestSimulateAProviderDashboardRefund(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		p, att, ctl := e.simPayment()
 		page := "/dashboard/payments/" + p.ID

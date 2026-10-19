@@ -98,8 +98,9 @@ func HashPassword(pw string) (string, error) {
 		return "", ErrBusy
 	}
 	defer release()
-	key := argon2.IDKey([]byte(pw), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
-	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, argonMemory, argonTime, argonThreads,
+	c := hashCost()
+	key := argon2.IDKey([]byte(pw), salt, c.time, c.memory, c.threads, argonKeyLen)
+	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, c.memory, c.time, c.threads,
 		b64.EncodeToString(salt), b64.EncodeToString(key)), nil
 }
 

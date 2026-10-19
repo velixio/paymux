@@ -69,7 +69,7 @@ func pngBytes(t *testing.T, w, h int, noisy bool) []byte {
 }
 
 func TestAppListAndCreate(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.seedApp("alpha")
 		viewer := e.roleClient("viewer")
@@ -129,7 +129,7 @@ func TestAppListAndCreate(t *testing.T) {
 }
 
 func TestAPIKeysShownOnceAndRevocable(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app := e.seedApp("alpha")
 		admin := e.roleClient("admin")
@@ -197,7 +197,7 @@ func TestAPIKeysShownOnceAndRevocable(t *testing.T) {
 }
 
 func TestWebhookEndpointsFromDashboard(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app, other := e.seedApp("alpha"), e.seedApp("beta")
 		admin := e.roleClient("admin")
@@ -269,7 +269,7 @@ func TestWebhookEndpointsFromDashboard(t *testing.T) {
 }
 
 func TestBrandingAndLogoUpload(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app := e.seedApp("alpha")
 		admin := e.roleClient("admin")
@@ -373,7 +373,7 @@ func TestBrandingAndLogoUpload(t *testing.T) {
 }
 
 func TestAllowedProviderAccounts(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app := e.seedApp("alpha")
 		err := db.Write(ctx, func(tx store.Tx) error {
@@ -420,7 +420,7 @@ func TestAllowedProviderAccounts(t *testing.T) {
 }
 
 func TestAppSettingsTab(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app := e.seedApp("alpha")
 		admin := e.roleClient("admin")

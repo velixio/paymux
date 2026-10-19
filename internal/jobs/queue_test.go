@@ -123,7 +123,7 @@ func runOnce(t *testing.T, q *jobs.Queue) int {
 }
 
 func TestJobRuns(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		q, _ := fixture(t, db)
 		var got json.RawMessage
 		q.Register("a.b", func(_ context.Context, p json.RawMessage) error { got = p; return nil })
@@ -141,7 +141,7 @@ func TestJobRuns(t *testing.T) {
 }
 
 func TestRolledBackEnqueueNeverRuns(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		q, _ := fixture(t, db)
 		var ran atomic.Int32
 		q.Register("rb", func(context.Context, json.RawMessage) error { ran.Add(1); return nil })
@@ -165,7 +165,7 @@ func TestRolledBackEnqueueNeverRuns(t *testing.T) {
 }
 
 func TestRetryThenDead(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		q, c := fixture(t, db)
 		q.Register("flaky", func(context.Context, json.RawMessage) error { return errors.New("nope") })
 		enqueue(t, db, q, jobs.Job{Kind: "flaky", Payload: 1, MaxAttempts: 3})
@@ -205,7 +205,7 @@ func TestRetryThenDead(t *testing.T) {
 }
 
 func TestPermanentError(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		q, _ := fixture(t, db)
 		q.Register("perm", func(context.Context, json.RawMessage) error {
 			return jobs.Permanent(errors.New("bad input"))
@@ -220,7 +220,7 @@ func TestPermanentError(t *testing.T) {
 }
 
 func TestDedupe(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		q, _ := fixture(t, db)
 		q.Register("d", func(context.Context, json.RawMessage) error { return nil })
 		j := jobs.Job{Kind: "d", Payload: 1, DedupeKey: "k1"}
@@ -238,7 +238,7 @@ func TestDedupe(t *testing.T) {
 }
 
 func TestExpiredLeaseIsReclaimed(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		q, c := fixture(t, db)
 		var ran atomic.Int32
 		q.Register("lease", func(context.Context, json.RawMessage) error { ran.Add(1); return nil })
@@ -263,7 +263,7 @@ func TestExpiredLeaseIsReclaimed(t *testing.T) {
 }
 
 func TestUnknownKindIsDead(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		q, _ := fixture(t, db)
 		enqueue(t, db, q, jobs.Job{Kind: "x.y", Payload: 1})
 		runOnce(t, q)
@@ -275,7 +275,7 @@ func TestUnknownKindIsDead(t *testing.T) {
 }
 
 func TestHandlerPanicIsRetried(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		q, c := fixture(t, db)
 		var calls atomic.Int32
 		q.Register("pan", func(context.Context, json.RawMessage) error {
@@ -299,7 +299,7 @@ func TestHandlerPanicIsRetried(t *testing.T) {
 }
 
 func TestRegisterDuplicatePanics(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		q, _ := fixture(t, db)
 		h := func(context.Context, json.RawMessage) error { return nil }
 		q.Register("dup", h)
@@ -313,7 +313,7 @@ func TestRegisterDuplicatePanics(t *testing.T) {
 }
 
 func TestJobStats(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		q, c := fixture(t, db)
 		enqueue(t, db, q, jobs.Job{Kind: "s", Payload: 1})
 		c.Add(30 * time.Second)
@@ -325,7 +325,7 @@ func TestJobStats(t *testing.T) {
 }
 
 func TestStartStopsOnCancel(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		q, _ := fixture(t, db)
 		cctx, cancel := context.WithCancel(ctx)
 		done := make(chan error, 1)
@@ -417,7 +417,7 @@ func TestConcurrentClaimersRunEachJobOnce(t *testing.T) {
 }
 
 func TestExpiredLeaseBeyondMaxAttemptsIsDead(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		q, c := fixture(t, db)
 		var ran atomic.Int32
 		q.Register("over", func(context.Context, json.RawMessage) error { ran.Add(1); return nil })
@@ -435,7 +435,7 @@ func TestExpiredLeaseBeyondMaxAttemptsIsDead(t *testing.T) {
 }
 
 func TestStaleWorkerCannotCompleteReclaimedJob(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		q, c := fixture(t, db)
 		enqueue(t, db, q, jobs.Job{Kind: "stale", Payload: 1})
 		first, err := db.ClaimJobs(ctx, c.Now(), 5*time.Minute, 10)
@@ -469,7 +469,7 @@ func TestStaleWorkerCannotCompleteReclaimedJob(t *testing.T) {
 }
 
 func TestQueueLogsWarningForStaleCompletion(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		if err := db.Migrate(ctx, migrations.FS); err != nil {
 			t.Fatal(err)
 		}
@@ -500,7 +500,7 @@ func TestQueueLogsWarningForStaleCompletion(t *testing.T) {
 }
 
 func TestInsertJobDuplicateIDStillErrors(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		fixture(t, db)
 		j := store.JobRow{ID: "job_dupid", Kind: "k", Payload: json.RawMessage(`1`), RunAt: t0, MaxAttempts: 3}
 		insert := func(j store.JobRow) error {

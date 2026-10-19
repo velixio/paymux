@@ -80,7 +80,7 @@ func (e *env) count(query string, args ...any) int {
 func sum(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
 
 func TestVerifiedEventStoredAndQueued(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.acc["pa_1"] = fakeVerifier(func(h http.Header, b []byte) (string, error) { return "ev_1", nil })
 		body := []byte(`{"event":"payment.captured"}`)
@@ -114,7 +114,7 @@ func TestVerifiedEventStoredAndQueued(t *testing.T) {
 }
 
 func TestEventIDFallsBackToBodyHash(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.acc["pa_1"] = fakeVerifier(func(http.Header, []byte) (string, error) { return "", nil })
 		body := []byte(`{"n":1}`)
@@ -128,7 +128,7 @@ func TestEventIDFallsBackToBodyHash(t *testing.T) {
 }
 
 func TestVerificationFailureStoresUnverifiedAndReturns401(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		good := false
 		e.acc["pa_1"] = fakeVerifier(func(http.Header, []byte) (string, error) {
@@ -163,7 +163,7 @@ func TestVerificationFailureStoresUnverifiedAndReturns401(t *testing.T) {
 }
 
 func TestUnsignedEventIsFetchOnly(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.acc["pa_payu"] = fakeVerifier(func(http.Header, []byte) (string, error) { return "", inbound.ErrUnsigned })
 		body := []byte(`status=refunded`)
@@ -186,7 +186,7 @@ func TestUnsignedEventIsFetchOnly(t *testing.T) {
 }
 
 func TestErrorPaths(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.acc["pa_1"] = fakeVerifier(func(http.Header, []byte) (string, error) { return "ev", nil })
 		if rec := e.post("pa_nope", []byte("x")); rec.Code != 404 {

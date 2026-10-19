@@ -60,7 +60,7 @@ func (e *env) reconWorld() reconWorld {
 }
 
 func TestReconciliationPageSummaryRunsAndItems(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		w := e.reconWorld()
 		e.otherOrg()
@@ -116,7 +116,7 @@ func TestReconciliationPageSummaryRunsAndItems(t *testing.T) {
 }
 
 func TestResolveReconItemWithNote(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		w := e.reconWorld()
 		e.otherOrg()
@@ -167,7 +167,7 @@ func TestResolveReconItemWithNote(t *testing.T) {
 }
 
 func TestRunReconciliationNow(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		w := e.reconWorld()
 		e.otherOrg()

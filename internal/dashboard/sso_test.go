@@ -54,7 +54,7 @@ func ok(email string) map[string]any {
 }
 
 func TestSSOSignsInAnExistingUserWithoutTOTP(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		s := newSSO(t, db, nil)
 		id, _ := s.seedUser("alice@example.com", "operator", true) // enrolled in TOTP, which SSO does not ask for
 		s.allowLink(s.roleClient("admin"), id)                     // an admin lets the password account use SSO
@@ -84,7 +84,7 @@ func TestSSOSignsInAnExistingUserWithoutTOTP(t *testing.T) {
 }
 
 func TestSSOCreatesUsersOnlyForAllowedDomains(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		s := newSSO(t, db, nil)
 		c := s.client()
 		resp, _ := s.get(c, s.begin(c, ok("new.hire@example.com")))
@@ -134,7 +134,7 @@ func TestSSOCreatesUsersOnlyForAllowedDomains(t *testing.T) {
 }
 
 func TestSSODefaultRoleAndDisabledUsers(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		s := newSSO(t, db, func(o *Options) { o.OIDCDefaultRole = "auditor" })
 		_, _ = db.SaveRole(ctx, "auditor", []string{"payment.read", "audit.read"}, s.clk.Now())
 		c := s.client()
@@ -157,7 +157,7 @@ func TestSSODefaultRoleAndDisabledUsers(t *testing.T) {
 		}
 	})
 	for name, role := range map[string]string{"admin": "admin", "missing": "nonesuch"} {
-		storetest.Each(t, func(t *testing.T, db *store.DB) {
+		storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 			s := newSSO(t, db, func(o *Options) { o.OIDCDefaultRole = role })
 			c := s.client()
 			if resp, _ := s.get(c, s.begin(c, ok("x@example.com"))); resp.StatusCode == 303 {
@@ -171,7 +171,7 @@ func TestSSODefaultRoleAndDisabledUsers(t *testing.T) {
 }
 
 func TestSSORejectsForgedAndReplayedCallbacks(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		s := newSSO(t, db, nil)
 		id, _ := s.seedUser("alice@example.com", "viewer", true)
 		s.allowLink(s.roleClient("admin"), id)
@@ -248,7 +248,7 @@ func stateOf(path string) string {
 }
 
 func TestSSOOffByDefault(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		for _, p := range []string{"/dashboard/login/oidc", "/dashboard/login/oidc/callback?code=x&state=y"} {
 			if r, _ := e.get(e.client(), p); r.StatusCode != 404 {

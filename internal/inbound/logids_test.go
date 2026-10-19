@@ -17,7 +17,7 @@ import (
 // of the provider_events row that holds it, so the log row of a rejected
 // webhook links to the stored event instead of repeating it.
 func TestWebhookNotesAccountAndEventIDs(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.acc["pa_1"] = fakeVerifier(func(http.Header, []byte) (string, error) { return "evt_prov_7", nil })
 		e.acc["pa_bad"] = fakeVerifier(func(http.Header, []byte) (string, error) { return "", errors.New("signature mismatch") })

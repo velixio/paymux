@@ -12,7 +12,7 @@ import (
 )
 
 func TestEndpointLifecycle(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
 		ep, secret, err := e.svc.CreateEndpoint(ctx, outbound.CreateEndpointInput{
 			OrgID: "org_1", AppID: "app_1", URL: "https://example.com/hook", EventTypes: []string{"payment.succeeded"}})
@@ -69,7 +69,7 @@ func TestEndpointLifecycle(t *testing.T) {
 }
 
 func TestCreateEndpointValidation(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
 		for _, bad := range []string{"", "not a url", "ftp://example.com/x", "https://", "/relative", "javascript:alert(1)"} {
 			if _, _, err := e.svc.CreateEndpoint(ctx, outbound.CreateEndpointInput{OrgID: "org_1", AppID: "app_1", URL: bad}); err == nil {
@@ -85,7 +85,7 @@ func TestCreateEndpointValidation(t *testing.T) {
 // An endpoint belongs to an app that exists, in the org the caller names; with
 // no org named, the app's own org is used.
 func TestCreateEndpointChecksTheApp(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
 		if _, _, err := e.svc.CreateEndpoint(ctx, outbound.CreateEndpointInput{OrgID: "org_1", AppID: "app_nosuch", URL: "https://example.com/h"}); err == nil {
 			t.Error("an endpoint for an app that does not exist was created")

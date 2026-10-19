@@ -25,7 +25,7 @@ func logQueue(db *store.DB, c *clock, buf *bytes.Buffer) *jobs.Queue {
 // A failed job is logged with its id and kind: a warning while it will be
 // retried, an error when it is dead.
 func TestFailedJobsAreLoggedWithTheirIDs(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		if err := db.Migrate(ctx, migrations.FS); err != nil {
 			t.Fatal(err)
 		}

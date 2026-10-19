@@ -70,7 +70,7 @@ func TestProviderEventsArePurgedByRetention(t *testing.T) {
 		{"forever", 0, []string{"pev_v500", "pev_v100", "pev_v10", "pev_u100", "pev_f3"}}, // forged evidence still goes after 30 days
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			storetest.Each(t, func(t *testing.T, db *store.DB) {
+			storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 				e := newEnv(t, db)
 				seedEvents(t, db)
 				p := inbound.NewPurger(inbound.PurgeOptions{DB: db, Batch: 2, Now: func() time.Time { return purgeNow },

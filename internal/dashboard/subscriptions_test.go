@@ -74,7 +74,7 @@ func (e *env) seedCycle(subID string, period int, state, paymentID string, retri
 }
 
 func TestSubscriptionListFiltersModeAndPaging(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.enableSubscriptions()
 		a, b := e.seedApp("alpha"), e.seedApp("beta")
@@ -134,7 +134,7 @@ func TestSubscriptionListFiltersModeAndPaging(t *testing.T) {
 }
 
 func TestSubscriptionDetailShowsPeriodsMandateAndDunning(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.enableSubscriptions()
 		a := e.seedApp("alpha")
@@ -207,7 +207,7 @@ func (e *env) subOf(id string) store.Subscription {
 }
 
 func TestSubscriptionCancelNeedsAnOperatorAndIsAudited(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.enableSubscriptions()
 		a := e.seedApp("alpha")
@@ -269,7 +269,7 @@ func TestSubscriptionCancelNeedsAnOperatorAndIsAudited(t *testing.T) {
 }
 
 func TestSubscriptionCheckoutLinkIsShownOnceAndAudited(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.enableSubscriptions()
 		a := e.seedApp("alpha")
@@ -320,7 +320,7 @@ func TestSubscriptionCheckoutLinkIsShownOnceAndAudited(t *testing.T) {
 }
 
 func TestSubscriptionPagesAre404WhenNotEnabled(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		c := e.roleClient("operator")
 		if r, _ := e.get(c, "/dashboard/subscriptions"); r.StatusCode != 404 {

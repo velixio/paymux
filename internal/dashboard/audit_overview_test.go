@@ -11,7 +11,7 @@ import (
 )
 
 func TestAuditPage(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		day := func(d, h int) time.Time { return time.Date(2026, 10, d, h, 0, 0, 0, time.UTC) }
 		err := db.Write(ctx, func(tx store.Tx) error {
@@ -85,7 +85,7 @@ func period(t *testing.T, body, id string) string {
 }
 
 func TestOverviewTotalsFromLedger(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		alpha, beta := e.seedApp("alpha"), e.seedApp("beta")
 		now := e.clk.Now()
@@ -143,7 +143,7 @@ func TestOverviewTotalsFromLedger(t *testing.T) {
 }
 
 func TestOverviewEmpty(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		body := e.pageOK(e.roleClient("viewer"), "/dashboard/overview")
 		for _, id := range []string{"today", "7d", "30d"} {
@@ -153,7 +153,7 @@ func TestOverviewEmpty(t *testing.T) {
 }
 
 func TestUserManagementIsAudited(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		admin := e.roleClient("admin")
 		tok := csrfOf(t, e.pageOK(admin, "/dashboard/users"))
@@ -199,7 +199,7 @@ func (e *env) otherOrg() {
 }
 
 func TestOverviewIgnoresOtherOrgLedger(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		alpha := e.seedApp("alpha")
 		now := e.clk.Now()
@@ -219,7 +219,7 @@ func TestOverviewIgnoresOtherOrgLedger(t *testing.T) {
 }
 
 func TestDashboardNeverShowsAnotherOrgsRows(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.seedApp("alpha")
 		e.otherOrg()

@@ -72,7 +72,7 @@ func (e *env) openDispute(st *fakeconn.State, pa store.ProviderAccount, p store.
 }
 
 func TestDisputeInboxListsByDeadlineWithFilters(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		alpha, _ := e.taxApp("alpha", supplierGSTIN)
 		beta, _ := e.taxApp("beta", supplierGSTIN)
@@ -143,7 +143,7 @@ func TestDisputeInboxListsByDeadlineWithFilters(t *testing.T) {
 }
 
 func TestDisputeDetailAndActions(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app, _ := e.taxApp("alpha", supplierGSTIN)
 		pa, st := e.disputeAccount(app, true)
@@ -238,7 +238,7 @@ func TestDisputeDetailAndActions(t *testing.T) {
 }
 
 func TestDisputeWithoutResponderShowsPortalNoteAndManualStatus(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app, _ := e.taxApp("alpha", supplierGSTIN)
 		pa, st := e.disputeAccount(app, false)
@@ -324,7 +324,7 @@ func TestDisputeWithoutResponderShowsPortalNoteAndManualStatus(t *testing.T) {
 }
 
 func TestDisputeCreditNoteWithReasonCode(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app, _ := e.taxApp("alpha", supplierGSTIN)
 		pa, st := e.disputeAccount(app, true)
@@ -378,7 +378,7 @@ func TestDisputeCreditNoteWithReasonCode(t *testing.T) {
 }
 
 func TestDisputesOfAnotherOrgAreInvisible(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.otherOrg()
 		err := db.Write(ctx, func(tx store.Tx) error {

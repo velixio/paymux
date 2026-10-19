@@ -12,7 +12,7 @@ import (
 // Spellings of one address share one budget: the key is the canonical form the
 // user lookup uses (lower case, trimmed).
 func TestAddressSpellingsShareTheLockoutBudget(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := bfEnv(t, db)
 		_, secret := e.seedUser("alice@example.com", "admin", true)
 		c := e.client()
@@ -32,7 +32,7 @@ func TestAddressSpellingsShareTheLockoutBudget(t *testing.T) {
 // The same holds for wrong codes: every spelling of the account is one counter,
 // and the per-address key is built from the same canonical form.
 func TestTOTPBudgetIsNotForkedBySpelling(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := bfEnv(t, db)
 		e.seedUser("alice@example.com", "admin", true)
 		spellings := []string{"alice@example.com", "Alice@Example.com", " ALICE@example.com "}

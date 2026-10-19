@@ -40,7 +40,7 @@ func (e *env) userCount() int {
 }
 
 func TestSetupIsOnlyOpenWhileThereAreNoUsers(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		if e.d.SetupToken() == "" {
 			t.Fatal("a hub without users should have a setup token")
@@ -76,7 +76,7 @@ func TestSetupIsOnlyOpenWhileThereAreNoUsers(t *testing.T) {
 }
 
 func TestSetupCreatesAdminOrgAppAndKeysThenEnrolsTwoFactor(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		c := e.client()
 		r, body := e.setupForm(c, func(f url.Values) { f.Set("app_name", "Acme Shop") })
@@ -153,7 +153,7 @@ func TestSetupCreatesAdminOrgAppAndKeysThenEnrolsTwoFactor(t *testing.T) {
 }
 
 func TestSetupWithoutAnAppShowsNoKeys(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		r, body := e.setupForm(e.client(), nil)
 		if r.StatusCode != 200 || len(apiKeyRE.FindAllString(body, -1)) != 0 {
@@ -168,7 +168,7 @@ func TestSetupWithoutAnAppShowsNoKeys(t *testing.T) {
 }
 
 func TestSetupRejectsBadInputWithoutCreatingAnything(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		c := e.client()
 		cases := map[string]struct {
@@ -215,7 +215,7 @@ func TestSetupRejectsBadInputWithoutCreatingAnything(t *testing.T) {
 }
 
 func TestSetupGuessesAreRateLimited(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		c := e.client()
 		for i := 0; i < 5; i++ {
@@ -234,7 +234,7 @@ func TestSetupGuessesAreRateLimited(t *testing.T) {
 }
 
 func TestTwoSimultaneousSetupsCreateOneAdmin(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		var wg sync.WaitGroup
 		codes := make([]int, 4)

@@ -25,7 +25,7 @@ func nextRunAt(t *testing.T, db *store.DB, name string) time.Time {
 }
 
 func TestScheduleEnqueuesOncePerDue(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		q, c := fixture(t, db)
 		q.Register("tick", func(context.Context, json.RawMessage) error { return nil })
 		if err := q.AddSchedule(jobs.Schedule{Name: "every-min", Kind: "tick", Every: time.Minute}); err != nil {
@@ -56,7 +56,7 @@ func TestScheduleEnqueuesOncePerDue(t *testing.T) {
 }
 
 func TestScheduleCatchUpDoesNotBurst(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		q, c := fixture(t, db)
 		q.Register("tick", func(context.Context, json.RawMessage) error { return nil })
 		if err := q.AddSchedule(jobs.Schedule{Name: "m", Kind: "tick", Every: time.Minute}); err != nil {

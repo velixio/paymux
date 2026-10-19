@@ -16,7 +16,7 @@ import (
 )
 
 func TestReportsPageDownloadsAndZip(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app, ent := e.taxApp("alpha", supplierGSTIN)
 		e.pay(app, 118000, "INR", intraB2C)
@@ -97,7 +97,7 @@ func (e *env) createEntityForm(tok string, over map[string]string) map[string]st
 }
 
 func TestTaxEntityCreateEditAndLogo(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		viewer := e.roleClient("viewer")
 		vb := e.pageOK(viewer, "/dashboard/tax-entities")
@@ -205,7 +205,7 @@ func firstOr(s, def string) string {
 var taxIST = time.FixedZone("IST", 5*3600+1800)
 
 func TestLUTExpiryBanner(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db) // the clock is 2027-01-15
 		mk := func(gst, lutTo string) store.TaxEntity {
 			to, _ := time.ParseInLocation("2006-01-02", lutTo, taxIST)
@@ -241,7 +241,7 @@ func TestLUTExpiryBanner(t *testing.T) {
 }
 
 func TestAppTaxProfileTab(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app := e.seedApp("alpha")
 		ent, err := e.inv.AddTaxEntity(ctx, audit.System, invoice.TaxEntityInput{LegalName: "Voice Studio", GSTIN: supplierGSTIN})
@@ -317,7 +317,7 @@ func TestAppTaxProfileTab(t *testing.T) {
 }
 
 func TestFXRatesPage(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		app, _ := e.taxApp("alpha", supplierGSTIN)
 		p := e.pay(app, 1200, "USD", usBuyer) // no rate yet: fx_pending

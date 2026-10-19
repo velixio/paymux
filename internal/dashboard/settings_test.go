@@ -32,7 +32,7 @@ func (e *env) seedAccounts() {
 }
 
 func TestOrgSettingsPage(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		viewer := e.roleClient("viewer")
 		body := e.pageOK(viewer, "/dashboard/settings")
@@ -122,7 +122,7 @@ func normJSON(t *testing.T, raw string) any {
 }
 
 func TestRoutingEditorReadsAndWritesCanonicalFormat(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		admin := e.roleClient("admin")
 		body := e.pageOK(admin, "/dashboard/settings")
@@ -209,7 +209,7 @@ func TestRoutingEditorReadsAndWritesCanonicalFormat(t *testing.T) {
 }
 
 func TestRoutingTestBox(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		e.seedAccounts()
 		app := e.seedApp("alpha")
@@ -275,7 +275,7 @@ func TestRoutingTestBox(t *testing.T) {
 }
 
 func TestRoutingEditorRulesAreCardsWithOrderNumbers(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		admin := e.roleClient("admin")
 		body := e.pageOK(admin, "/dashboard/settings")

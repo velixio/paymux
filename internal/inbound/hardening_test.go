@@ -42,7 +42,7 @@ func badAndGood(e *env, account string) *bool {
 // An event that fails verification is evidence, not data: only its hash, size
 // and a short prefix are kept, not up to a mebibyte of attacker-chosen bytes.
 func TestFailedVerificationKeepsOnlyAHashSizeAndPrefix(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		badAndGood(e, "pa_1")
 		body := append([]byte(`{"hello":"world"}`), bytes.Repeat([]byte("x"), 1<<20-20)...)
@@ -69,7 +69,7 @@ func TestFailedVerificationKeepsOnlyAHashSizeAndPrefix(t *testing.T) {
 // never take the place of a signed event with the same id; the key includes the
 // body, so a replayed id with another body is another event.
 func TestUnsignedEventsHaveTheirOwnKeys(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		signed := false
 		e.acc["pa_1"] = fakeVerifier(func(h http.Header, b []byte) (string, error) {
@@ -129,7 +129,7 @@ func newLimited(t *testing.T, db *store.DB, mut func(*inbound.Options)) *env {
 // A flood of forged events from one address stores a bounded number of rows and
 // does not stop genuine events, from that address or any other.
 func TestForgedEventFloodIsBounded(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newLimited(t, db, func(o *inbound.Options) { o.FailuresPerIP, o.FailuresPerAccount, o.RequestsPerIP = 20, 100, 100000 })
 		good := badAndGood(e, "pa_1")
 		for i := 0; i < 2000; i++ {
@@ -164,7 +164,7 @@ func TestForgedEventFloodIsBounded(t *testing.T) {
 // Whatever a request is, one address cannot make more than a set number of
 // them a minute.
 func TestRequestCapPerAddress(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newLimited(t, db, func(o *inbound.Options) { o.RequestsPerIP = 50 })
 		good := badAndGood(e, "pa_1")
 		*good = true

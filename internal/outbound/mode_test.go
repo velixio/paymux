@@ -36,7 +36,7 @@ func (e *env) endpointMode(app, url, mode string) string {
 // A test-mode event goes only to test-mode endpoints, a live one only to live
 // ones: a test payment never reaches a production receiver.
 func TestDeliveryIsFilteredByMode(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
 		testSink, liveSink := newSink(t, 200), newSink(t, 200)
 		testEP := e.endpointMode("app_1", testSink.srv.URL, "test")
@@ -69,7 +69,7 @@ func TestDeliveryIsFilteredByMode(t *testing.T) {
 }
 
 func TestEndpointModeDefaultsToLiveAndIsChecked(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
 		if id := e.endpointMode("app_1", "https://hooks.example.com/a", ""); id == "" {
 			t.Fatal("no endpoint")

@@ -73,7 +73,7 @@ func (e *env) loginAttempt(c *http.Client, email, xff string) int {
 }
 
 func TestLoginLimitIgnoresSpoofedForwardedFor(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db) // no trusted proxies
 		e.seedUser("alice@example.com", "admin", true)
 		for i := 0; i < 5; i++ {
@@ -86,7 +86,7 @@ func TestLoginLimitIgnoresSpoofedForwardedFor(t *testing.T) {
 }
 
 func TestLoginLimitAndAuditUseTheForwardedClientBehindATrustedProxy(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, func(o *Options) { o.TrustedProxies = prefixes(t, "127.0.0.1/32") }) // the test client connects from loopback
 		e.seedUser("alice@example.com", "admin", true)
 		for i := 0; i < 5; i++ {
@@ -103,7 +103,7 @@ func TestLoginLimitAndAuditUseTheForwardedClientBehindATrustedProxy(t *testing.T
 }
 
 func TestSessionAndAuditRowsRecordTheForwardedClient(t *testing.T) {
-	storetest.Each(t, func(t *testing.T, db *store.DB) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, func(o *Options) { o.TrustedProxies = prefixes(t, "127.0.0.1/32") })
 		_, secret := e.seedUser("bob@example.com", "admin", true)
 		c := e.client()
