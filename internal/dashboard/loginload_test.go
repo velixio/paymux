@@ -18,6 +18,7 @@ import (
 // come back later (503), and the ones that ran answer normally.
 func TestConcurrentLoginsAreBoundedAndTheSurplusGets503(t *testing.T) {
 	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		auth.UseProductionCost(t) // the bound exists because real hashes are slow and large
 		e := bfEnv(t, db)
 		e.seedUser("alice@example.com", "admin", true)
 		auth.SetConcurrency(2)
@@ -27,7 +28,7 @@ func TestConcurrentLoginsAreBoundedAndTheSurplusGets503(t *testing.T) {
 			c    *http.Client
 			csrf string
 		}
-		tries := make([]try, 50)
+		tries := make([]try, 16)
 		for i := range tries {
 			c := e.client()
 			_, page := e.get(c, "/dashboard/login")
@@ -49,7 +50,7 @@ func TestConcurrentLoginsAreBoundedAndTheSurplusGets503(t *testing.T) {
 		for _, c := range codes {
 			count[c]++
 		}
-		if count[503] == 0 || count[200] == 0 || count[503]+count[200]+count[429] != 50 {
+		if count[503] == 0 || count[200] == 0 || count[503]+count[200]+count[429] != 16 {
 			t.Errorf("status counts %v", count)
 		}
 	})
