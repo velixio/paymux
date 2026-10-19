@@ -47,7 +47,7 @@ func TestWhopMembershipLinksByRefAndRenews(t *testing.T) {
 		note := func(name string) {
 			t.Helper()
 			for _, n := range whopNotes(t, name, sub.ProviderRef) {
-				if err := e.subs.HandleNotification(ctx, "pa_whop", n); err != nil {
+				if err := e.notify("pa_whop", n); err != nil {
 					t.Fatalf("%s: %v", name, err)
 				}
 			}

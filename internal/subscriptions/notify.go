@@ -418,7 +418,11 @@ func (s *Service) HandleNotification(ctx context.Context, providerAccountID stri
 func (s *Service) handleNotification(ctx context.Context, providerAccountID string, n connector.Notification) error {
 	switch {
 	case n.Subscription != nil:
-		return s.onSubscription(ctx, providerAccountID, *n.Subscription, n.Payment)
+		snap, err := s.subscriptionTruth(ctx, providerAccountID, *n.Subscription)
+		if err != nil {
+			return err
+		}
+		return s.onSubscription(ctx, providerAccountID, snap, n.Payment)
 	case n.Mandate != nil:
 		var m store.Mandate
 		err := s.db.Read(ctx, func(q store.Querier) (err error) {
@@ -428,9 +432,70 @@ func (s *Service) handleNotification(ctx context.Context, providerAccountID stri
 		if err != nil {
 			return mapNotFound(err, "mandate")
 		}
-		return s.applyMandateSnapshot(ctx, m.ID, *n.Mandate)
+		snap, err := s.mandateTruth(ctx, providerAccountID, m, *n.Mandate)
+		if err != nil {
+			return err
+		}
+		return s.applyMandateSnapshot(ctx, m.ID, snap)
 	}
 	return nil
+}
+
+// mandateTruth is the provider's own view of the mandate an event is about. A
+// webhook is a hint: a delayed, replayed or forged one must not put a mandate
+// back to a state it has left, so what the provider answers wins over what the
+// event says. When the provider cannot be asked (it does not support it, or has
+// no such mandate yet) the event's snapshot stands; any other error is returned
+// so the job is retried.
+func (s *Service) mandateTruth(ctx context.Context, accountID string, m store.Mandate, claimed connector.MandateSnapshot) (connector.MandateSnapshot, error) {
+	conn, err := s.connectors.Get(ctx, accountID)
+	if err != nil {
+		return claimed, err
+	}
+	mm, ok := conn.(connector.MandateManager)
+	if !ok {
+		return claimed, nil
+	}
+	truth, err := mm.FetchMandate(ctx, connector.MandateRef{ProviderMandateID: firstNonEmpty(m.ProviderMandateID, claimed.ProviderMandateID)})
+	switch {
+	case errors.Is(err, connector.ErrNotFound), errors.Is(err, connector.ErrUnsupported):
+		return claimed, nil
+	case err != nil:
+		return claimed, err
+	}
+	if truth.ProviderMandateID == "" {
+		truth.ProviderMandateID = claimed.ProviderMandateID
+	}
+	if truth.SetupPayment == nil {
+		truth.SetupPayment = claimed.SetupPayment // the registration debit as the event reported it
+	}
+	return truth, nil
+}
+
+// subscriptionTruth is mandateTruth for a provider-managed subscription.
+func (s *Service) subscriptionTruth(ctx context.Context, accountID string, claimed connector.SubscriptionSnapshot) (connector.SubscriptionSnapshot, error) {
+	if claimed.ProviderSubscriptionID == "" {
+		return claimed, nil
+	}
+	conn, err := s.connectors.Get(ctx, accountID)
+	if err != nil {
+		return claimed, err
+	}
+	mgr, ok := conn.(connector.SubscriptionManager)
+	if !ok {
+		return claimed, nil
+	}
+	truth, err := mgr.FetchSubscription(ctx, connector.SubscriptionRef{ProviderSubscriptionID: claimed.ProviderSubscriptionID})
+	switch {
+	case errors.Is(err, connector.ErrNotFound), errors.Is(err, connector.ErrUnsupported):
+		return claimed, nil
+	case err != nil:
+		return claimed, err
+	}
+	if truth.ProviderRef == "" {
+		truth.ProviderRef = claimed.ProviderRef // how a Whop-style provider names ours
+	}
+	return truth, nil
 }
 
 func (s *Service) onSubscription(ctx context.Context, accountID string, snap connector.SubscriptionSnapshot, pay *connector.PaymentSnapshot) error {

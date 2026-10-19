@@ -46,11 +46,12 @@ type rec struct {
 	payFn       func(connector.PaymentRef) (connector.PaymentSnapshot, error)
 	perAttempt  bool
 	nsub        int
-	fetchCalls  []string         // ids FetchMandate was asked for
-	noReverse   bool             // the provider does not reverse the verification debit itself
-	minCharge   map[string]int64 // Info.MinChargeMinor of the test connectors
-	noticeHours int              // Info.PreDebitMinHours of the test connectors
-	callIDs     []callIDs        // the log scope ids each provider call ran under
+	fetchCalls  []string                                  // ids FetchMandate was asked for
+	noReverse   bool                                      // the provider does not reverse the verification debit itself
+	minCharge   map[string]int64                          // Info.MinChargeMinor of the test connectors
+	noticeHours int                                       // Info.PreDebitMinHours of the test connectors
+	callIDs     []callIDs                                 // the log scope ids each provider call ran under
+	subTruth    map[string]connector.SubscriptionSnapshot // what the provider's API says of a subscription (default: active)
 }
 
 // callIDs are the identifiers (package logctx) a provider call ran under.
@@ -155,6 +156,12 @@ func (c managedConn) CreateSubscriptionCheckout(_ context.Context, req connector
 			Options: map[string]any{"subscription_id": fmt.Sprintf("sub_prov_%d", c.r.nsub)}}}, nil
 }
 func (c managedConn) FetchSubscription(_ context.Context, ref connector.SubscriptionRef) (connector.SubscriptionSnapshot, error) {
+	c.r.mu.Lock()
+	truth, ok := c.r.subTruth[ref.ProviderSubscriptionID]
+	c.r.mu.Unlock()
+	if ok {
+		return truth, nil
+	}
 	return connector.SubscriptionSnapshot{ProviderSubscriptionID: ref.ProviderSubscriptionID, Status: "active", RawStatus: "active"}, nil
 }
 func (c managedConn) CancelSubscription(_ context.Context, ref connector.SubscriptionRef, atEnd bool) error {
