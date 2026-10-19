@@ -205,6 +205,10 @@ func (a *API) wrap(h handler, idempotent bool, scope string) http.HandlerFunc {
 				return
 			}
 		}
+		if scope == authz.ScopePayoutsWrite && r.Method == http.MethodPost && r.Header.Get("Idempotency-Key") == "" {
+			a.fail(w, r, http.StatusBadRequest, "invalid_request", "an Idempotency-Key header is required to create a payout, so that a retry cannot pay twice")
+			return
+		}
 		if idempotent && r.Header.Get("Idempotency-Key") != "" {
 			a.idempotent(w, r, pr, body, h)
 			return

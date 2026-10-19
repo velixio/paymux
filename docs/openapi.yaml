@@ -670,14 +670,15 @@ paths:
       description: |
         Records the payout (`pending`) and submits it to the provider in the background; follow it with
         `payout.processing`, `payout.succeeded`, `payout.failed` and `payout.reversed` events or `GET`. The
-        provider is sent the payout's own reference as an idempotency token, so a retry never pays twice; use an
-        `Idempotency-Key` for your own retries as well.
+        provider is sent the payout's own reference as an idempotency token, so a retry never pays twice. The
+        `Idempotency-Key` header is required (400 `invalid_request` without it): a client that retries after a
+        timeout must not send the money twice.
 
         This is the only operation an ordinary key cannot do: the key must list `payouts:write` explicitly (keys
         with no scope list do not have it), and a provider account of the app must have the `payout` purpose and a
         connector that can pay out. The beneficiary is stored encrypted and shown masked.
       parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/IdempotencyKeyRequired"
       requestBody:
         required: true
         content:
@@ -775,6 +776,11 @@ components:
       in: header
       required: false
       schema: { type: string, maxLength: 255 }
+    IdempotencyKeyRequired:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 255 }
     SubscriptionId:
       name: id
       in: path

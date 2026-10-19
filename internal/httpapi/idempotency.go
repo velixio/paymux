@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/store"
 )
 
@@ -44,9 +45,10 @@ func (a *API) idempotent(w http.ResponseWriter, r *http.Request, pr core.Princip
 	hash := hex.EncodeToString(sum[:])
 	aad := []byte(pr.AppID + "/" + pr.Mode + "/" + key)
 
+	owner := ids.New("idk")
 	var existing *store.IdempotencyRecord
 	err := a.db.Write(r.Context(), func(tx store.Tx) (err error) {
-		existing, err = store.ReserveIdempotencyKey(r.Context(), tx, pr.AppID, pr.Mode, key, hash, time.Now(), idempotencyTTL, idempotencyStale)
+		existing, err = store.ReserveIdempotencyKey(r.Context(), tx, pr.AppID, pr.Mode, key, owner, hash, time.Now(), idempotencyTTL, idempotencyStale)
 		return
 	})
 	if err != nil {
@@ -68,7 +70,7 @@ func (a *API) idempotent(w http.ResponseWriter, r *http.Request, pr core.Princip
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
 		defer cancel()
 		_ = a.db.Write(ctx, func(tx store.Tx) error {
-			return store.ReleaseIdempotencyKey(ctx, tx, pr.AppID, pr.Mode, key)
+			return store.ReleaseIdempotencyKey(ctx, tx, pr.AppID, pr.Mode, key, owner)
 		})
 	}()
 	h(rec, r, pr, body)
@@ -77,7 +79,7 @@ func (a *API) idempotent(w http.ResponseWriter, r *http.Request, pr core.Princip
 		sealed, err := a.box.Seal(rec.buf.Bytes(), aad)
 		if err == nil {
 			err = a.db.Write(r.Context(), func(tx store.Tx) error {
-				return store.CompleteIdempotencyKey(r.Context(), tx, pr.AppID, pr.Mode, key, rec.status, sealed)
+				return store.CompleteIdempotencyKey(r.Context(), tx, pr.AppID, pr.Mode, key, owner, rec.status, sealed)
 			})
 		}
 		if err != nil {
