@@ -3,7 +3,8 @@
 //
 //  1. Known values. The redactor is told the secrets in use (provider keys,
 //     the master key, webhook, SMTP and OIDC secrets, ...) and replaces every
-//     exact occurrence, raw or URL- or JSON-escaped, wherever it appears.
+//     exact occurrence, raw or URL- or JSON-escaped, or encoded as hex or
+//     base64 (alone or inside a longer base64 string), wherever it appears.
 //  2. Field names. JSON, form and query fields whose name is a credential
 //     (password, token, api_key, signature, ...) or personal data (email,
 //     phone, name, address, vpa, gstin, ...) lose their value. Names are matched
@@ -17,6 +18,8 @@ package redact
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -87,13 +90,41 @@ func (r *Redactor) distinct() []string {
 }
 
 func (r *Redactor) rebuild() {
-	vals := r.distinct()
-	if len(vals) == 0 {
+	bases := map[string]bool{}
+	for _, vs := range r.owners {
+		kept := 0
+		for _, v := range vs {
+			if len(v) < MinKnownLen {
+				continue
+			}
+			bases[v] = true
+			for _, e := range encodedForms(v) {
+				bases[e] = true
+			}
+			kept++
+		}
+		// HTTP Basic credentials are base64(id:secret): when an account has
+		// several values, the pairs are covered whole (the secret's own
+		// embedded forms above cover an id that is not known).
+		if kept > 1 {
+			head := vs[:min(len(vs), maxPairValues)]
+			for _, a := range head {
+				for _, b := range head {
+					if a != b && a != "" && len(b) >= MinKnownLen {
+						for _, e := range base64Forms([]byte(a + ":" + b)) {
+							bases[e] = true
+						}
+					}
+				}
+			}
+		}
+	}
+	if len(bases) == 0 {
 		r.repl.Store(nil)
 		return
 	}
 	variants := map[string]bool{}
-	for _, v := range vals {
+	for v := range bases {
 		variants[v] = true
 		variants[url.QueryEscape(v)] = true
 		variants[url.PathEscape(v)] = true
@@ -120,6 +151,53 @@ func (r *Redactor) rebuild() {
 		pairs = append(pairs, v, Secret)
 	}
 	r.repl.Store(strings.NewReplacer(pairs...))
+}
+
+// maxPairValues bounds the id:secret pairs made from one owner's values.
+const maxPairValues = 6
+
+// minEmbedded is the shortest embedded base64 run that is replaced: shorter
+// ones could match ordinary text.
+const minEmbedded = 8
+
+// base64Forms are the four standard encodings of b: standard and URL-safe
+// alphabets, with and without padding.
+func base64Forms(b []byte) []string {
+	return []string{base64.StdEncoding.EncodeToString(b), base64.RawStdEncoding.EncodeToString(b),
+		base64.URLEncoding.EncodeToString(b), base64.RawURLEncoding.EncodeToString(b)}
+}
+
+// encodedForms are the ways a known secret may show up once something has
+// encoded it: hex (either case), base64 on its own, and base64 as a run inside
+// a longer encoded string, where the secret can start at any of three
+// alignments (Basic credentials are base64("id:secret")). For the embedded
+// forms only the characters fully determined by the secret's own bytes are
+// kept: the first character or two depend on what precedes, the last on what
+// follows.
+func encodedForms(v string) []string {
+	b := []byte(v)
+	out := []string{hex.EncodeToString(b), strings.ToUpper(hex.EncodeToString(b))}
+	out = append(out, base64Forms(b)...)
+	for _, enc := range []*base64.Encoding{base64.RawStdEncoding, base64.RawURLEncoding} {
+		for shift := 1; shift <= 2; shift++ {
+			start := [...]int{0, 2, 3}[shift]
+			s := enc.EncodeToString(append(make([]byte, shift), b...))
+			end := len(s)
+			if (shift+len(b))%3 != 0 {
+				end-- // the last character holds bits of what follows
+			}
+			if end-start >= minEmbedded {
+				out = append(out, s[start:end])
+			}
+		}
+		// At alignment 0 but followed by more data: the secret's own encoding
+		// without its last, partial character.
+		s := enc.EncodeToString(b)
+		if len(b)%3 != 0 && len(s)-1 >= minEmbedded {
+			out = append(out, s[:len(s)-1])
+		}
+	}
+	return out
 }
 
 func (r *Redactor) known(s string) string {
