@@ -27,6 +27,11 @@ info:
     returns 409 `idempotency_in_progress`. Responses with status 5xx are not
     stored, so those requests can be retried.
 
+    **Return URLs are not proof of payment.** After paying, the customer is sent to the
+    payment's `return_url` with `status` (and the payment id) in the query string. That
+    query string is not signed: anyone can edit it or open the address by hand. Confirm a
+    payment only from the `payment.succeeded` event or by `GET`ting the payment.
+
     **Rate limit.** 20 requests per second per API key (token bucket). Over the
     limit the API answers 429 `rate_limited` with a `Retry-After` header in
     seconds; the request is not processed.
