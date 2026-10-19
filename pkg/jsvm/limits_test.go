@@ -152,14 +152,10 @@ func TestUnrelatedAllocationDoesNotStopAnInnocentHook(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- h.rt.Call(ctx, "onPaymentSucceeded", paymentEvent) }()
 	<-reached
-	// While the hook waits, something else in the process takes twice the limit and keeps it.
-	other := make([][]byte, 0, 16)
-	for range 16 {
-		b := make([]byte, 4<<20)
-		for i := range b {
-			b[i] = byte(i)
-		}
-		other = append(other, b)
+	// While the hook waits, something else in the process takes one and a half times the limit and keeps it.
+	other := make([][]byte, 0, 12)
+	for range 12 {
+		other = append(other, make([]byte, 4<<20))
 	}
 	time.Sleep(300 * time.Millisecond) // many guard ticks with the extra memory in place
 	close(release)

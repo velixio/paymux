@@ -541,28 +541,80 @@ func (b *budget) watchMemory(limit int64) {
 	}
 	base := baselineHeap()
 	b.memStop, b.memDone = make(chan struct{}), make(chan struct{})
+	kill := func() {
+		b.memory.Store(true)
+		b.fired.Store(true)
+		b.vm.Interrupt("memory limit")
+	}
 	go func() {
 		defer close(b.memDone)
 		t := time.NewTicker(time.Millisecond)
 		defer t.Stop()
-		next := base + uint64(limit)
+		lim := uint64(limit)
+		next := base + lim
+		// The heap is the process's, so growth over the limit may not be the
+		// script's (another goroutine took memory meanwhile). Over the limit, a
+		// script is stopped when the heap keeps growing while it runs (a runaway
+		// does; memory taken once by something else does not), or at once when it
+		// is far over (three times the limit).
+		var suspect, settled bool
+		var seenLive, seenObjects uint64
+		var since time.Time
 		for {
 			select {
 			case <-b.memStop:
 				return
 			case <-t.C:
-				if heapObjects() <= next {
+			}
+			if suspect {
+				// Far over: no waiting to see whether it keeps growing, and no collection
+				// either (a collection cannot start while the script is inside a long
+				// built-in call, so this would come too late). Garbage the collector has
+				// not freed yet is allowed for by adding the last live size.
+				if heapObjects() > base+3*lim+max(heapLive(), base) {
+					kill()
+					return
+				}
+				if time.Since(since) > 5*time.Second {
+					suspect, next = false, heapObjects()+lim/2
+					continue
+				}
+				// Growth in the first moments may be a burst of somebody else's. After
+				// them the heap is measured again, and only growth beyond that counts: a
+				// runaway is still growing, a burst is over.
+				if !settled {
+					if time.Since(since) < 150*time.Millisecond {
+						continue
+					}
+					runtime.GC()
+					seenLive, seenObjects, settled = heapLive(), heapObjects(), true
+					continue
+				}
+				if heapObjects() < seenObjects+lim/16 {
 					continue
 				}
 				runtime.GC()
-				if heapLive() > base+uint64(limit) {
-					b.memory.Store(true)
-					b.fired.Store(true)
-					b.vm.Interrupt("memory limit")
+				live := heapLive()
+				if live >= seenLive+lim/16 && live > base+lim {
+					kill()
 					return
 				}
-				// Mostly garbage: look again after another half limit of growth.
-				next = heapObjects() + uint64(limit)/2
+				suspect, next = false, heapObjects()+lim/2
+				continue
+			}
+			if heapObjects() <= next {
+				continue
+			}
+			runtime.GC()
+			live := heapLive()
+			switch {
+			case live > base+3*lim:
+				kill()
+				return
+			case live > base+lim:
+				suspect, settled, seenLive, seenObjects, since = true, false, live, heapObjects(), time.Now()
+			default: // mostly garbage: look again after another half limit of growth
+				next = heapObjects() + lim/2
 			}
 		}
 	}()

@@ -49,6 +49,7 @@ Under the race detector, three costs dominated, and each has one remedy:
 - **Migrating a database for every test.** `storetest.EachMigrated` (and `SQLiteMigrated`, `PostgresMigrated`) hand out copies of a template migrated once per migration set: a file copy on SQLite (kept under the system temp directory, named after a hash of the migration files), `CREATE DATABASE ... TEMPLATE` on PostgreSQL (a `paymux_tpl_<hash>` database; the test user needs the right to create databases, or the helper migrates a fresh schema per test as before). A test that has to see an empty database, or its own migrations, uses `storetest.Each`.
 - **Password hashing.** In a test binary only (`testing.Testing()`), new argon2id hashes use a tiny cost; the hub, the CLI and custom builds always use 64 MiB and 3 passes, which `internal/auth` tests assert. A test about the cost or the concurrency bound calls `auth.UseProductionCost(t)`.
 - **Sizes.** Tests of limits use the smallest size at which the property holds.
+- **Wall clocks.** A test about one limit (memory, say) gives every other limit (the script time limit) a generous value, and asserts the property (stopped, failed closed, process alive) with a hang guard of a minute or more rather than how quickly it happened; on a busy shared runner speed is not a property of the code.
 
 On four cores with `-race`, `make test` takes about two minutes and `make test-pg` about three.
 
