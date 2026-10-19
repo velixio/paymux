@@ -62,6 +62,9 @@ const (
 	// ceilings, whatever the address the guesses come from.
 	accountPasswordFailures = 20
 	accountTOTPFailures     = 10
+	// loginAttemptsPerMinute is how many password attempts one address (an IPv6
+	// /64 counts as one) may make a minute.
+	loginAttemptsPerMinute = 30
 	// ticketGuesses is how many wrong codes one login ticket allows.
 	ticketGuesses = 5
 	loginWindow   = 15 * time.Minute
@@ -130,6 +133,7 @@ type Dashboard struct {
 	// attacker behind a trusted proxy chooses (X-Forwarded-For): failures per
 	// account, and a budget per login ticket.
 	acctPw, acctTOTP *limiter
+	attempts         *limiter // login attempts per address and minute, counted before any hashing
 	budgets          *ticketBudgets
 
 	preKey, ticketKey, modeKey, oidcKey []byte
@@ -141,7 +145,7 @@ type Dashboard struct {
 	// roles resolves custom roles from the roles table (short TTL cache).
 	roles *authz.Cache
 
-	dummyOnce sync.Once
+	dummyMu   sync.Mutex
 	dummyHash string
 
 	// first-run setup: the token that opens /setup (see setup.go)
@@ -169,7 +173,7 @@ func New(o Options) (*Dashboard, error) {
 		o.Now = time.Now
 	}
 	d := &Dashboard{o: o, mux: http.NewServeMux(), lim: newLimiter(loginFailures, loginWindow),
-		acctPw: newLimiter(accountPasswordFailures, loginWindow), acctTOTP: newLimiter(accountTOTPFailures, loginWindow), budgets: newTicketBudgets(),
+		attempts: newLimiter(loginAttemptsPerMinute, time.Minute), acctPw: newLimiter(accountPasswordFailures, loginWindow), acctTOTP: newLimiter(accountTOTPFailures, loginWindow), budgets: newTicketBudgets(),
 		users:     Users{DB: o.DB, Now: o.Now},
 		preKey:    derive(o.MasterKey, "dashboard-csrf-pre"),
 		ticketKey: derive(o.MasterKey, "dashboard-login-ticket"),

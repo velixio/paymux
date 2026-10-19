@@ -256,7 +256,7 @@ func (e *env) detailFixture() detailFixture {
 		w.WriteHeader(200)
 	}))
 	e.t.Cleanup(s.srv.Close)
-	if _, _, err := e.out.CreateEndpoint(ctx, outbound.CreateEndpointInput{AppID: app.ID, URL: s.srv.URL, Mode: "test"}); err != nil {
+	if _, _, err := e.out.CreateEndpoint(ctx, outbound.CreateEndpointInput{AppID: app.ID, URL: s.srv.URL}); err != nil {
 		e.t.Fatal(err)
 	}
 	err = e.db.Write(ctx, func(tx store.Tx) error {

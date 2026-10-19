@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"errors"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -38,11 +39,19 @@ func clientGroup(ip string) string {
 }
 
 // dummyPasswordHash lets an unknown or disabled account cost the same time as
-// a real one, so response timing does not reveal which emails exist.
+// a real one, so response timing does not reveal which emails exist. It is made
+// on first use (a hash is a 64 MiB affair); when the server is too busy to make
+// it, "" is returned and the caller answers 503.
 func (d *Dashboard) dummyPasswordHash() string {
-	d.dummyOnce.Do(func() { d.dummyHash, _ = auth.HashPassword("dummy password for timing") })
+	d.dummyMu.Lock()
+	defer d.dummyMu.Unlock()
+	if d.dummyHash == "" {
+		d.dummyHash, _ = auth.HashPassword("dummy password for timing")
+	}
 	return d.dummyHash
 }
+
+const msgBusy = "The server is busy. Try again in a moment."
 
 func (d *Dashboard) loginPage(w http.ResponseWriter, r *http.Request) {
 	if _, ok := d.currentSession(r); ok {
@@ -64,6 +73,13 @@ func (d *Dashboard) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	key := d.limitKey(email, r)
 	now := d.o.Now()
+	// Before any hashing: one address may only try so often, success or not.
+	ipKey := clientGroup(d.clientIP(r))
+	if d.attempts.locked(ipKey, now) {
+		again(http.StatusTooManyRequests, msgLockedOut)
+		return
+	}
+	d.attempts.fail(ipKey, now)
 	// The per-address key is not enough: the address behind a proxy is the
 	// client's to choose. The account has its own ceilings.
 	if d.lim.locked(key, now) || d.acctPw.locked(email, now) || d.acctTOTP.locked(email, now) {
@@ -80,7 +96,15 @@ func (d *Dashboard) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		d.fail(w, err)
 		return
 	}
-	ok, _ := auth.VerifyPassword(hash, password)
+	if hash == "" {
+		again(http.StatusServiceUnavailable, msgBusy)
+		return
+	}
+	ok, verr := auth.VerifyPassword(hash, password)
+	if errors.Is(verr, auth.ErrBusy) {
+		again(http.StatusServiceUnavailable, msgBusy)
+		return
+	}
 	if !found || !ok || u.Disabled {
 		d.lim.fail(key, now)
 		d.acctPw.fail(email, now)
