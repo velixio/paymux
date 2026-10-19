@@ -53,3 +53,18 @@ func (s *Service) chargeAmount(ctx context.Context, q store.Queryer, appID, curr
 	}
 	return amts.Total, nil
 }
+
+// ChargeAmount is what the customer pays for a price of amount under the app's
+// tax profile: the amount itself, or taxable + GST when prices exclude tax. The
+// buyer's details are those of the customer (customerID may be empty).
+func (s *Service) ChargeAmount(ctx context.Context, q store.Queryer, appID, customerID, currency string, amount int64) (int64, error) {
+	var buyer store.Billing
+	if customerID != "" {
+		c, err := store.GetCustomer(ctx, q, customerID)
+		if err != nil {
+			return 0, mapStoreErr(err, "customer")
+		}
+		buyer = c.Billing
+	}
+	return s.chargeAmount(ctx, q, appID, currency, amount, buyer)
+}

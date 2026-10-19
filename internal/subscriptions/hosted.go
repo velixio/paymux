@@ -124,7 +124,15 @@ func (s *Service) OpenCheckout(ctx context.Context, id, token string) (Checkout,
 			amount = defaultSetupAmount
 		}
 		if sub.Status == string(state.SubIncomplete) && sub.TrialEnd.IsZero() {
+			// What the first period costs the customer: the price, plus GST when
+			// prices exclude it (the renewal payment it settles has that amount).
 			amount = sub.Amount
+			if err := s.db.Read(ctx, func(q store.Querier) (err error) {
+				amount, err = s.core.ChargeAmount(ctx, q, sub.AppID, sub.CustomerID, sub.Currency, sub.Amount)
+				return
+			}); err != nil {
+				return Checkout{}, err
+			}
 		}
 		req := connector.MandateRequest{MandateID: m.ID, ProviderRef: m.ProviderRef, Amount: amount, MaxAmount: m.MaxAmount,
 			Currency: m.Currency, Method: m.Method, Customer: customer}
