@@ -51,6 +51,14 @@ func (l *limiter) fail(key string, now time.Time) {
 			l.recent(k, now)
 		}
 	}
+	// Still huge after the sweep: an attack with endless distinct keys. Forget an
+	// arbitrary key rather than grow without bound.
+	if len(l.fails) > 100_000 {
+		for k := range l.fails {
+			delete(l.fails, k)
+			break
+		}
+	}
 	l.fails[key] = append(l.recent(key, now), now)
 }
 

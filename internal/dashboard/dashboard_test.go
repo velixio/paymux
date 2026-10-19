@@ -434,7 +434,9 @@ func TestTOTPFailuresCountTowardsLockout(t *testing.T) {
 			e.post(e.c, "/dashboard/login/totp", url.Values{"code": {"000000"}, "csrf": {tok}})
 		}
 		r, _ := e.post(e.c, "/dashboard/login/totp", url.Values{"code": {totpFor(secret, e.clk.Now(), 0)}, "csrf": {tok}})
-		if r.StatusCode != 429 || sessionCookie(r) != nil {
+		// Stopped: the ticket is dead after its fifth wrong code (sent back to the
+		// password step), or the address is locked out.
+		if (r.StatusCode != 429 && !(r.StatusCode == 303 && strings.HasSuffix(r.Header.Get("Location"), "/dashboard/login"))) || sessionCookie(r) != nil {
 			t.Fatalf("brute force of the TOTP step not stopped: %d", r.StatusCode)
 		}
 	})

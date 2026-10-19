@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 
@@ -17,8 +18,23 @@ const (
 
 func totpAAD(userID string) []byte { return []byte("users.totp_secret:" + userID) }
 
+// limitKey is the per-address sign-in key. IPv6 clients are grouped by /64: a
+// single customer has billions of addresses in theirs.
 func (d *Dashboard) limitKey(email string, r *http.Request) string {
-	return strings.ToLower(strings.TrimSpace(email)) + "|" + d.clientIP(r)
+	return strings.ToLower(strings.TrimSpace(email)) + "|" + clientGroup(d.clientIP(r))
+}
+
+// clientGroup is the address, or for IPv6 its /64 prefix.
+func clientGroup(ip string) string {
+	a, err := netip.ParseAddr(ip)
+	if err != nil || !a.Is6() || a.Is4In6() {
+		return ip
+	}
+	p, err := a.Prefix(64)
+	if err != nil {
+		return ip
+	}
+	return p.String()
 }
 
 // dummyPasswordHash lets an unknown or disabled account cost the same time as
@@ -48,7 +64,9 @@ func (d *Dashboard) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	key := d.limitKey(email, r)
 	now := d.o.Now()
-	if d.lim.locked(key, now) {
+	// The per-address key is not enough: the address behind a proxy is the
+	// client's to choose. The account has its own ceilings.
+	if d.lim.locked(key, now) || d.acctPw.locked(email, now) || d.acctTOTP.locked(email, now) {
 		again(http.StatusTooManyRequests, msgLockedOut)
 		return
 	}
@@ -65,6 +83,7 @@ func (d *Dashboard) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	ok, _ := auth.VerifyPassword(hash, password)
 	if !found || !ok || u.Disabled {
 		d.lim.fail(key, now)
+		d.acctPw.fail(email, now)
 		again(http.StatusOK, msgBadLogin)
 		return
 	}
@@ -123,7 +142,7 @@ func provisioningURI(secret, email string) string {
 }
 
 func (d *Dashboard) pendingUser(w http.ResponseWriter, r *http.Request) (store.UserRow, bool) {
-	id, ok := d.ticketUser(r)
+	id, _, ok := d.ticketUser(r)
 	if ok {
 		u, err := d.o.DB.UserByID(r.Context(), id)
 		if err == nil && !u.Disabled {
@@ -164,8 +183,18 @@ func (d *Dashboard) totpSubmit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	_, ticket, _ := d.ticketUser(r)
 	key := d.limitKey(u.Email, r)
 	now := d.o.Now()
+	email := strings.ToLower(strings.TrimSpace(u.Email))
+	if d.acctTOTP.locked(email, now) {
+		// Too many wrong codes for this account, from anywhere: the ticket is
+		// dead and the password step has to be repeated (once the window passes).
+		d.budgets.kill(ticket, now)
+		d.clearCookie(w, cookieTicket)
+		http.Redirect(w, r, prefix+"/login", http.StatusSeeOther)
+		return
+	}
 	if d.lim.locked(key, now) {
 		d.totpView(w, r, u, http.StatusTooManyRequests, msgLockedOut)
 		return
@@ -188,10 +217,17 @@ func (d *Dashboard) totpSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	if !valid {
 		d.lim.fail(key, now)
+		d.acctTOTP.fail(email, now)
+		if d.budgets.fail(ticket, now) {
+			d.clearCookie(w, cookieTicket)
+			http.Redirect(w, r, prefix+"/login", http.StatusSeeOther)
+			return
+		}
 		d.totpView(w, r, u, http.StatusOK, msgBadCode)
 		return
 	}
 	d.lim.reset(key)
+	d.budgets.kill(ticket, now)
 	if err := d.createSession(r.Context(), w, r, u); err != nil {
 		d.fail(w, err)
 		return

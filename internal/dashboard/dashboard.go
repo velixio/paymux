@@ -58,6 +58,12 @@ const (
 	ticketTTL     = 5 * time.Minute
 	touchEvery    = time.Minute
 	loginFailures = 5
+	// accountPasswordFailures and accountTOTPFailures are the per-account
+	// ceilings, whatever the address the guesses come from.
+	accountPasswordFailures = 20
+	accountTOTPFailures     = 10
+	// ticketGuesses is how many wrong codes one login ticket allows.
+	ticketGuesses = 5
 	loginWindow   = 15 * time.Minute
 	issuer        = "Paymux"
 	maxFormBytes  = 64 << 10
@@ -120,6 +126,11 @@ type Dashboard struct {
 	mux   *http.ServeMux
 	users Users
 	lim   *limiter
+	// Guessing limits that do not depend on the client address, which an
+	// attacker behind a trusted proxy chooses (X-Forwarded-For): failures per
+	// account, and a budget per login ticket.
+	acctPw, acctTOTP *limiter
+	budgets          *ticketBudgets
 
 	preKey, ticketKey, modeKey, oidcKey []byte
 	secure                              bool
@@ -158,6 +169,7 @@ func New(o Options) (*Dashboard, error) {
 		o.Now = time.Now
 	}
 	d := &Dashboard{o: o, mux: http.NewServeMux(), lim: newLimiter(loginFailures, loginWindow),
+		acctPw: newLimiter(accountPasswordFailures, loginWindow), acctTOTP: newLimiter(accountTOTPFailures, loginWindow), budgets: newTicketBudgets(),
 		users:     Users{DB: o.DB, Now: o.Now},
 		preKey:    derive(o.MasterKey, "dashboard-csrf-pre"),
 		ticketKey: derive(o.MasterKey, "dashboard-login-ticket"),
@@ -458,39 +470,97 @@ func formCSRF(r *http.Request) string {
 // ---- login tickets (password verified, TOTP pending) ----
 
 func (d *Dashboard) issueTicket(w http.ResponseWriter, userID string) {
-	payload := userID + "|" + strconv.FormatInt(d.o.Now().Add(ticketTTL).Unix(), 10)
+	nonce := make([]byte, 12)
+	_, _ = rand.Read(nonce)
+	payload := userID + "|" + strconv.FormatInt(d.o.Now().Add(ticketTTL).Unix(), 10) + "|" + base64.RawURLEncoding.EncodeToString(nonce)
 	m := hmac.New(sha256.New, d.ticketKey)
 	m.Write([]byte(payload))
 	v := base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + base64.RawURLEncoding.EncodeToString(m.Sum(nil))
-	d.setCookie(w, cookieTicket, v, int(ticketTTL.Seconds()))
+	d.setCookie(w, cookieTicket, v, int(ttlSeconds(ticketTTL)))
 }
 
-// ticketUser returns the user id of a valid, unexpired ticket.
-func (d *Dashboard) ticketUser(r *http.Request) (string, bool) {
+func ttlSeconds(d time.Duration) int64 { return int64(d.Seconds()) }
+
+// ticketUser returns the user id of a valid, unexpired ticket and the ticket's
+// own id (what its guess budget is kept under). A ticket that has used up its
+// guesses is no ticket.
+func (d *Dashboard) ticketUser(r *http.Request) (userID, ticketID string, ok bool) {
 	c, err := r.Cookie(cookieTicket)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
-	p, s, ok := strings.Cut(c.Value, ".")
-	if !ok {
-		return "", false
+	p, s, found := strings.Cut(c.Value, ".")
+	if !found {
+		return "", "", false
 	}
 	payload, err1 := base64.RawURLEncoding.DecodeString(p)
 	sig, err2 := base64.RawURLEncoding.DecodeString(s)
 	if err1 != nil || err2 != nil {
-		return "", false
+		return "", "", false
 	}
 	m := hmac.New(sha256.New, d.ticketKey)
 	m.Write(payload)
 	if !hmac.Equal(sig, m.Sum(nil)) {
-		return "", false
+		return "", "", false
 	}
-	id, exp, ok := strings.Cut(string(payload), "|")
-	n, err := strconv.ParseInt(exp, 10, 64)
-	if !ok || err != nil || d.o.Now().Unix() > n {
-		return "", false
+	parts := strings.Split(string(payload), "|")
+	if len(parts) != 3 {
+		return "", "", false
 	}
-	return id, true
+	n, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || d.o.Now().Unix() > n {
+		return "", "", false
+	}
+	if d.budgets.spent(parts[2], d.o.Now()) {
+		return "", "", false
+	}
+	return parts[0], parts[2], true
+}
+
+// ticketBudgets counts the wrong codes each login ticket has taken, in memory.
+// A ticket with ticketGuesses failures is dead: the password step must be
+// repeated.
+type ticketBudgets struct {
+	mu sync.Mutex
+	m  map[string]ticketState
+}
+
+type ticketState struct {
+	fails int
+	until time.Time
+}
+
+func newTicketBudgets() *ticketBudgets { return &ticketBudgets{m: map[string]ticketState{}} }
+
+func (b *ticketBudgets) spent(id string, now time.Time) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.m[id].fails >= ticketGuesses
+}
+
+// fail records a wrong code and says whether the ticket is now dead.
+func (b *ticketBudgets) fail(id string, now time.Time) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.m) > 10_000 {
+		for k, v := range b.m {
+			if now.After(v.until) {
+				delete(b.m, k)
+			}
+		}
+	}
+	st := b.m[id]
+	st.fails++
+	st.until = now.Add(2 * ticketTTL)
+	b.m[id] = st
+	return st.fails >= ticketGuesses
+}
+
+// kill makes the ticket unusable.
+func (b *ticketBudgets) kill(id string, now time.Time) {
+	b.mu.Lock()
+	b.m[id] = ticketState{fails: ticketGuesses, until: now.Add(2 * ticketTTL)}
+	b.mu.Unlock()
 }
 
 // ---- sessions ----

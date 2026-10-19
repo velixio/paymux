@@ -60,12 +60,17 @@ func TestTicketDiesAfterFiveBadCodes(t *testing.T) {
 		}
 		for i := 0; i < 5; i++ {
 			// Every guess comes from a new address: a per-address counter never trips.
-			if r, body := e.codeStep(c, fmt.Sprintf("00000%d", i), fmt.Sprintf("198.51.100.%d", 10+i)); r.StatusCode != 200 || !strings.Contains(body, "Invalid code") {
+			r, body := e.codeStep(c, fmt.Sprintf("00000%d", i), fmt.Sprintf("198.51.100.%d", 10+i))
+			if i < 4 && (r.StatusCode != 200 || !strings.Contains(body, "Invalid code")) {
 				t.Fatalf("bad code %d: %d", i, r.StatusCode)
+			}
+			if i == 4 && r.StatusCode != 303 {
+				t.Fatalf("the fifth wrong code kills the ticket: %d", r.StatusCode)
 			}
 		}
 		// The ticket is spent: even the right code does not complete the sign-in.
-		r, _ := e.codeStep(c, e.goodCode(secret), "198.51.100.99")
+		_, loginPage := e.get(c, "/dashboard/login")
+		r, _ := e.postXFF(c, "/dashboard/login/totp", url.Values{"code": {e.goodCode(secret)}, "csrf": {csrfOf(t, loginPage)}}, "198.51.100.99")
 		if r.StatusCode != 303 || !strings.HasSuffix(r.Header.Get("Location"), "/dashboard/login") {
 			t.Errorf("a ticket with five failures still works: %d %s", r.StatusCode, r.Header.Get("Location"))
 		}
