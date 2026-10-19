@@ -174,7 +174,7 @@ func (a *App) Start(ctx context.Context) error {
 	if _, err := core.Bootstrap(ctx, db, set); err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
-	box, err := secrets.NewBox(a.cfg.MasterKey)
+	box, err := secrets.NewBox(a.cfg.MasterKey, a.cfg.OldMasterKeys...)
 	if err != nil {
 		return fmt.Errorf("master key: %w", err)
 	}

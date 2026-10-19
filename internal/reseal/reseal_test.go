@@ -72,7 +72,7 @@ func seedSealed(t *testing.T, db *store.DB, box *secrets.Box) {
 			Subject: "s", Fingerprint: "f", NotAfter: t0.Add(time.Hour), UploadedAt: t0}, t0); err != nil {
 			return err
 		}
-		if err := store.ConnectorKVSet(ctx, tx, "pa_1", "token", seal(t, box, "tok", secrets.AADConnectorKV("pa_1", "token")), time.Time{}); err != nil {
+		if err := store.ConnectorKVSet(ctx, tx, "pa_1", "token", seal(t, box, "kvsecret99", secrets.AADConnectorKV("pa_1", "token")), time.Time{}); err != nil {
 			return err
 		}
 		if _, err := store.ReserveIdempotencyKey(ctx, tx, "app_1", "live", "k1", "own", "h", t0, 24*time.Hour, time.Minute); err != nil {
@@ -161,7 +161,7 @@ func TestResealRefusesWhenAnyValueCannotBeOpened(t *testing.T) {
 		seedSealed(t, db, mustBox(t, keyA))
 		// One value was sealed under a key nobody has any more.
 		if err := db.Write(ctx, func(tx store.Tx) error {
-			return store.ConnectorKVSet(ctx, tx, "pa_1", "token", seal(t, mustBox(t, keyC), "tok", secrets.AADConnectorKV("pa_1", "token")), time.Time{})
+			return store.ConnectorKVSet(ctx, tx, "pa_1", "token", seal(t, mustBox(t, keyC), "kvsecret99", secrets.AADConnectorKV("pa_1", "token")), time.Time{})
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -170,7 +170,7 @@ func TestResealRefusesWhenAnyValueCannotBeOpened(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "connector_kv") || !strings.Contains(err.Error(), "pa_1") {
 			t.Fatalf("err = %v", err)
 		}
-		for _, secret := range []string{"tok", "whsec_x", "JBSWY3DP"} {
+		for _, secret := range []string{"kvsecret99", "whsec_x", "JBSWY3DP"} {
 			if strings.Contains(err.Error(), secret) {
 				t.Errorf("the error leaks %q", secret)
 			}
@@ -182,7 +182,7 @@ func TestResealRefusesWhenAnyValueCannotBeOpened(t *testing.T) {
 		}
 		// A value sealed for another row (the wrong additional data) is refused as well.
 		if err := db.Write(ctx, func(tx store.Tx) error {
-			return store.ConnectorKVSet(ctx, tx, "pa_1", "token", seal(t, mustBox(t, keyA), "tok", secrets.AADConnectorKV("pa_1", "other")), time.Time{})
+			return store.ConnectorKVSet(ctx, tx, "pa_1", "token", seal(t, mustBox(t, keyA), "kvsecret99", secrets.AADConnectorKV("pa_1", "other")), time.Time{})
 		}); err != nil {
 			t.Fatal(err)
 		}

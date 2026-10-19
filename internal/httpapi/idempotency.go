@@ -10,6 +10,7 @@ import (
 
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/ids"
+	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/store"
 )
 
@@ -43,7 +44,7 @@ func (a *API) idempotent(w http.ResponseWriter, r *http.Request, pr core.Princip
 	}
 	sum := sha256.Sum256(append([]byte(r.Method+"\n"+r.URL.Path+"\n"), body...))
 	hash := hex.EncodeToString(sum[:])
-	aad := []byte(pr.AppID + "/" + pr.Mode + "/" + key)
+	aad := secrets.AADIdempotency(pr.AppID, pr.Mode, key)
 
 	owner := ids.New("idk")
 	var existing *store.IdempotencyRecord

@@ -295,6 +295,18 @@ Provider menus change; the descriptions above name the settings to look for, not
 | `PAYMUX_OTLP_LOGS_ENDPOINT`, `PAYMUX_OTLP_LOGS_HEADERS` | unset | Also ship the stored log rows to an OpenTelemetry collector (OTLP/HTTP JSON). |
 | `PAYMUX_ENV_FILE` | `.env` | Extra env file for CLI use. |
 
+## Rotating the master key
+
+Rotate the key when it may have leaked, when a person who had it leaves, or on your own schedule. The master key encrypts provider credentials, webhook signing secrets, authenticator secrets, payout beneficiaries, signing certificates, connector state and stored API responses; the key rotation re-encrypts all of them. Nothing is lost if you follow the order below, and the hub never has to stop for longer than a restart.
+
+1. **Back up the database** and the current key (`paymux backup --to ...`, or `pg_dump`).
+2. **Make the new key**: `head -c 32 /dev/urandom | base64`. Keep it somewhere other than the database's backups.
+3. **Switch**: set `PAYMUX_MASTER_KEY` (or the file) to the new key and `PAYMUX_MASTER_KEY_OLD` (or `PAYMUX_MASTER_KEY_OLD_FILE`) to the old one. Several old keys can be listed, comma separated, if you rotated before and not every value was resealed. Restart the hub. It seals new values under the new key and still opens the old ones. Everyone is signed out once (sessions and form tokens are derived from the key).
+4. **Reseal**: `paymux secrets reseal --dry-run` shows how many values would change; `paymux secrets reseal` rewrites them all under the new key in one transaction and prints the count. It refuses, and changes nothing, if any value cannot be opened (a key is missing from the old list, a row is damaged): it names the table and row, never the value. It is safe to run again, and a second run reports `resealed 0`. On SQLite stop the hub first (the data directory is locked); on PostgreSQL it can run beside the hub, and a value that changes while it runs makes it stop with no change, so run it again.
+5. **Remove the old key** from `PAYMUX_MASTER_KEY_OLD` once the command reports nothing under an old key, and restart. Destroy the old key and any backup that only it can open when your retention allows. A leaked old key still opens old backups.
+
+If the old key is lost before step 4, the values sealed under it cannot be read and have to be entered again (provider credentials, webhook secrets) or reset (authenticators: `paymux user reset-2fa`).
+
 ## Backups and restore
 
 Back up **three things**: the database, the master key, and `paymux.env`. Test a restore before you need one.

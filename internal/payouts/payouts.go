@@ -213,7 +213,7 @@ func Label(b connector.Beneficiary) string {
 	return "••••"
 }
 
-func aad(payoutID string) []byte { return []byte("payouts.beneficiary:" + payoutID) }
+func aad(payoutID string) []byte { return secrets.AADBeneficiary(payoutID) }
 
 // pickAccount chooses the provider account for a payout.
 func (s *Service) pickAccount(ctx context.Context, in CreateInput) (string, error) {

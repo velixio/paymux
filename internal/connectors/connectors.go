@@ -80,7 +80,7 @@ func New(o Options) *Service {
 	return &Service{o: o, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), cache: map[string]*cached{}}
 }
 
-func configAAD(id string) []byte { return []byte("provider_accounts.config_enc:" + id) }
+func configAAD(id string) []byte { return secrets.AADProviderConfig(id) }
 
 // WebhookURL is the inbound webhook URL of an account.
 func (s *Service) WebhookURL(accountID string) string { return s.baseURL + "/hooks/" + accountID }
@@ -523,7 +523,7 @@ type kvStore struct {
 	account string
 }
 
-func (k *kvStore) aad(key string) []byte { return []byte("connector_kv:" + k.account + ":" + key) }
+func (k *kvStore) aad(key string) []byte { return secrets.AADConnectorKV(k.account, key) }
 
 func (k *kvStore) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	var enc []byte

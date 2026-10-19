@@ -50,7 +50,7 @@ func runEndpoint(ctx context.Context, args []string, env func(string) (string, b
 		fmt.Fprintf(stderr, "paymux endpoint add: %v\n", err)
 		return 1
 	}
-	box, err := secrets.NewBox(cfg.MasterKey)
+	box, err := secrets.NewBox(cfg.MasterKey, cfg.OldMasterKeys...)
 	if err != nil {
 		fmt.Fprintf(stderr, "paymux endpoint add: %v\n", err)
 		return 1

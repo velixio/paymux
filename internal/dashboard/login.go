@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/paymux/paymux/internal/auth"
+	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/store"
 )
 
@@ -20,7 +21,7 @@ const (
 	msgLockedOut     = "Too many failed attempts. Try again in 15 minutes."
 )
 
-func totpAAD(userID string) []byte { return []byte("users.totp_secret:" + userID) }
+func totpAAD(userID string) []byte { return secrets.AADTOTP(userID) }
 
 // limitKey is the per-address sign-in key. IPv6 clients are grouped by /64: a
 // single customer has billions of addresses in theirs.

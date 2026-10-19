@@ -9,6 +9,7 @@ import (
 
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/outbound/stdwebhooks"
+	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/store"
 )
 
@@ -34,7 +35,7 @@ type CreateEndpointInput struct {
 }
 
 func secretAAD(endpointID string) []byte {
-	return []byte("webhook_endpoints.signing_secret:" + endpointID)
+	return secrets.AADEndpointSecret(endpointID)
 }
 
 func toEndpoint(r store.EndpointRow) Endpoint {

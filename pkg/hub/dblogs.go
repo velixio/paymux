@@ -95,9 +95,11 @@ func (a *App) logStore() (*store.DB, *dblog.Recorder) {
 // password and the OTLP headers.
 func (a *App) registerConfigSecrets(red *redact.Redactor) {
 	var vals []string
-	if k := a.cfg.MasterKey; len(k) > 0 {
-		vals = append(vals, base64.StdEncoding.EncodeToString(k), base64.RawStdEncoding.EncodeToString(k),
-			base64.URLEncoding.EncodeToString(k), base64.RawURLEncoding.EncodeToString(k), hex.EncodeToString(k), string(k))
+	for _, k := range append([][]byte{a.cfg.MasterKey}, a.cfg.OldMasterKeys...) {
+		if len(k) > 0 {
+			vals = append(vals, base64.StdEncoding.EncodeToString(k), base64.RawStdEncoding.EncodeToString(k),
+				base64.URLEncoding.EncodeToString(k), base64.RawURLEncoding.EncodeToString(k), hex.EncodeToString(k), string(k))
+		}
 	}
 	vals = append(vals, a.cfg.SMTPPassword.Reveal(), a.cfg.OIDCClientSecret.Reveal(), a.cfg.OpsWebhookURL)
 	if u, err := url.Parse(a.cfg.OpsWebhookURL); err == nil && u.Path != "" && u.Path != "/" {

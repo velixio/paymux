@@ -31,6 +31,7 @@ Commands:
   domain       manage app custom domains
   user         manage dashboard users
   endpoint     manage outbound webhook endpoints
+  secrets      re-encrypt stored secrets under the current master key
   tax-entity   manage the GST tax entity
   report       export ledger and tax reports
   fx           record exchange rates
@@ -73,6 +74,13 @@ func RunWith(ctx context.Context, args []string, lookupEnv func(string) (string,
 			return 1
 		}
 		return runUser(ctx, args[1:], env, stdout, stderr)
+	case "secrets":
+		env, err := envWithDotEnv(lookupEnv)
+		if err != nil {
+			fmt.Fprintf(stderr, "paymux secrets: %v\n", err)
+			return 1
+		}
+		return runSecrets(ctx, args[1:], env, stdout, stderr)
 	case "endpoint":
 		env, err := envWithDotEnv(lookupEnv)
 		if err != nil {
