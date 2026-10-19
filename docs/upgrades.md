@@ -140,26 +140,40 @@ data files to cover tables added since.
 The database guarantee above does not cover Go source. These changes break code
 that imports Paymux as a library:
 
-- **The root package moved to `hub`.** `github.com/paymux/paymux` (package
-  `paymux`) is now `github.com/paymux/paymux/pkg/hub` (package `hub`), so the
-  repository root holds no Go code. In a framework-mode `main` or a plugin
-  module, change the import and the qualifier:
+- **Go packages moved under `pkg/`.** The repository root holds no Go code any
+  more, and everything a framework-mode `main` or a plugin module imports now
+  lives in `pkg/`:
+
+  | Before | After |
+  |---|---|
+  | `github.com/paymux/paymux` (package `paymux`) | `github.com/paymux/paymux/pkg/hub` (package `hub`) |
+  | `github.com/paymux/paymux/framework` | `github.com/paymux/paymux/pkg/framework` |
+  | `github.com/paymux/paymux/plugins/jsvm` | `github.com/paymux/paymux/pkg/jsvm` |
+
+  Change the imports and the qualifier; nothing else in the packages changed, so
+  a find-and-replace is the whole migration:
 
   ```go
   // before
-  import "github.com/paymux/paymux"
+  import (
+  	"github.com/paymux/paymux"
+  	"github.com/paymux/paymux/framework"
+  )
   func(app *paymux.App) { ... paymux.PaymentEvent ... }
 
   // after
-  import "github.com/paymux/paymux/pkg/hub"
+  import (
+  	"github.com/paymux/paymux/pkg/framework"
+  	"github.com/paymux/paymux/pkg/hub"
+  )
   func(app *hub.App) { ... hub.PaymentEvent ... }
   ```
 
   The module path (`github.com/paymux/paymux`, used in `go.mod` and in
   `paymux build --with`) did not change. The build-version flag is now
-  `-X github.com/paymux/paymux/pkg/hub.Version=...`. Nothing else in the package
-  changed, so a find-and-replace is the whole migration. This was done before
-  there were framework-mode users.
+  `-X github.com/paymux/paymux/pkg/hub.Version=...`. `pkg/hub`, `pkg/framework`
+  and `pkg/jsvm` are part of the API snapshot (`scripts/apisnap/pkg.txt`). These
+  moves were made before there were framework-mode users.
 
 ## Writing migrations that keep the promise
 

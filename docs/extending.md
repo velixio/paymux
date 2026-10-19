@@ -247,7 +247,7 @@ secret. Pin versions and read the code.
 
 ## Public API
 
-The `hub` package (`github.com/paymux/paymux/pkg/hub`) and `pkg/...` are the public
+`pkg/...` (including `pkg/hub`, `pkg/framework` and `pkg/jsvm`) is the public
 API. `scripts/apisnap/pkg.txt` is a snapshot of their exported declarations, and CI fails
 when it is out of date (`go run ./scripts/apisnap -w` regenerates it after an
 intended change). Everything under `internal/` can change at any time.
