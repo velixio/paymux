@@ -80,7 +80,7 @@ func newEnv(t *testing.T, db *store.DB, allowPrivate bool) *env {
 
 func (e *env) endpoint(app, url string, types ...string) (id, secret string) {
 	e.t.Helper()
-	ep, secret, err := e.svc.CreateEndpoint(ctx, outbound.CreateEndpointInput{OrgID: "org_1", AppID: app, URL: url, EventTypes: types})
+	ep, secret, err := e.svc.CreateEndpoint(ctx, outbound.CreateEndpointInput{OrgID: "org_1", AppID: app, URL: url, EventTypes: types, Mode: "test"})
 	if err != nil {
 		e.t.Fatal(err)
 	}

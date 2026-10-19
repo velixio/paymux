@@ -120,8 +120,8 @@ func (s *Service) Emit(ctx context.Context, tx store.Tx, e events.Event) error {
 	}
 	first := now.Add(s.schedule()[0])
 	for _, ep := range eps {
-		if !matches(ep.EventTypes, e.Type) {
-			continue
+		if !matches(ep.EventTypes, e.Type) || ep.Mode != e.Mode {
+			continue // a test event never reaches a live endpoint, nor the reverse
 		}
 		d := store.DeliveryRow{ID: ids.New("whd"), EventID: row.ID, EndpointID: ep.ID, Status: "pending",
 			NextAttemptAt: first, CreatedAt: now, UpdatedAt: now}
@@ -136,9 +136,11 @@ func (s *Service) Emit(ctx context.Context, tx store.Tx, e events.Event) error {
 }
 
 type body struct {
-	Type      string   `json:"type"`
-	Timestamp string   `json:"timestamp"`
-	Data      bodyData `json:"data"`
+	Type      string `json:"type"`
+	Timestamp string `json:"timestamp"`
+	// Livemode is false for events of test payments, true for live ones.
+	Livemode bool     `json:"livemode"`
+	Data     bodyData `json:"data"`
 }
 
 type bodyData struct {
@@ -150,7 +152,7 @@ func buildBody(ev store.EventRow) ([]byte, error) {
 	if len(obj) == 0 {
 		obj = json.RawMessage("null")
 	}
-	return json.Marshal(body{Type: ev.Type, Timestamp: ev.CreatedAt.UTC().Format(time.RFC3339), Data: bodyData{Object: obj}})
+	return json.Marshal(body{Type: ev.Type, Timestamp: ev.CreatedAt.UTC().Format(time.RFC3339), Livemode: ev.Mode == "live", Data: bodyData{Object: obj}})
 }
 
 func (s *Service) handleDeliver(ctx context.Context, payload json.RawMessage) error {

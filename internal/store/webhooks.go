@@ -57,10 +57,12 @@ type EndpointRow struct {
 	SigningSecretEnc      []byte
 	EventTypes            []string
 	Enabled               bool
-	CreatedAt, UpdatedAt  time.Time
+	// Mode is "test" or "live": the endpoint receives the events of that mode only.
+	Mode                 string
+	CreatedAt, UpdatedAt time.Time
 }
 
-const endpointCols = `id, org_id, app_id, url, signing_secret_enc, event_types, enabled, created_at, updated_at`
+const endpointCols = `id, org_id, app_id, url, signing_secret_enc, event_types, enabled, mode, created_at, updated_at`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -69,7 +71,7 @@ func scanEndpoint(s scanner) (EndpointRow, error) {
 	var types string
 	var enabled int
 	var created, updated int64
-	if err := s.Scan(&e.ID, &e.OrgID, &e.AppID, &e.URL, &e.SigningSecretEnc, &types, &enabled, &created, &updated); err != nil {
+	if err := s.Scan(&e.ID, &e.OrgID, &e.AppID, &e.URL, &e.SigningSecretEnc, &types, &enabled, &e.Mode, &created, &updated); err != nil {
 		return EndpointRow{}, err
 	}
 	if err := json.Unmarshal([]byte(types), &e.EventTypes); err != nil {
@@ -89,8 +91,11 @@ func (db *DB) InsertEndpoint(ctx context.Context, tx Tx, e EndpointRow) error {
 	if e.EventTypes == nil {
 		types = []byte("[]")
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO webhook_endpoints (`+endpointCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.ID, e.OrgID, e.AppID, e.URL, e.SigningSecretEnc, string(types), b2i(e.Enabled), ms(e.CreatedAt), ms(e.UpdatedAt))
+	if e.Mode == "" {
+		e.Mode = "live"
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO webhook_endpoints (`+endpointCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.ID, e.OrgID, e.AppID, e.URL, e.SigningSecretEnc, string(types), b2i(e.Enabled), e.Mode, ms(e.CreatedAt), ms(e.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("insert webhook endpoint: %w", err)
 	}

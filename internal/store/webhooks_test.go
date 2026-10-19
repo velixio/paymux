@@ -24,7 +24,7 @@ func TestWebhookEndpointCRUD(t *testing.T) {
 		migrated(t, db)
 		now := time.UnixMilli(1_700_000_000_000).UTC()
 		ep := store.EndpointRow{ID: "whe_1", OrgID: "org_1", AppID: "app_1", URL: "https://example.com/h",
-			SigningSecretEnc: []byte{1, 2, 3}, EventTypes: []string{"payment.succeeded"}, Enabled: true, CreatedAt: now, UpdatedAt: now}
+			SigningSecretEnc: []byte{1, 2, 3}, EventTypes: []string{"payment.succeeded"}, Enabled: true, Mode: "live", CreatedAt: now, UpdatedAt: now}
 		off := ep
 		off.ID, off.Enabled, off.EventTypes = "whe_2", false, nil
 		other := ep

@@ -92,7 +92,7 @@ func seedSim(t *testing.T, url, dataDir, endpointURL string) flowSeed {
 		t.Fatal(err)
 	}
 	out := outbound.New(outbound.Options{DB: db, Queue: jobs.New(db, jobs.Options{}), Box: box, AllowPrivate: true})
-	_, secret, err := out.CreateEndpoint(ctx, outbound.CreateEndpointInput{OrgID: org, AppID: app.ID, URL: endpointURL})
+	_, secret, err := out.CreateEndpoint(ctx, outbound.CreateEndpointInput{OrgID: org, AppID: app.ID, URL: endpointURL, Mode: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
