@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/paymux/paymux/internal/domains"
 	"net/http"
 	"net/url"
 	"strings"
@@ -118,6 +119,11 @@ func (s *Service) ServeHosted(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	case subtle.ConstantTimeCompare([]byte(got), []byte(hash)) != 1:
+		http.NotFound(w, r)
+		return
+	}
+	// A custom domain serves only its own app's documents.
+	if hostApp, onCustom := domains.AppFrom(r.Context()); onCustom && hostApp != appID {
 		http.NotFound(w, r)
 		return
 	}

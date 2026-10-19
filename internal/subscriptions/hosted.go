@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"github.com/paymux/paymux/internal/domains"
 	"net/http"
 	"sort"
 
@@ -51,6 +52,11 @@ func (s *Service) OpenCheckout(ctx context.Context, id, token string) (Checkout,
 			return err
 		}
 		if token == "" || subtle.ConstantTimeCompare([]byte(hashToken(token)), []byte(sub.CheckoutTokenHash)) != 1 {
+			return store.ErrNotFound
+		}
+		// A custom domain serves only its own app's checkouts; this runs before
+		// anything is started at the provider.
+		if hostApp, onCustom := domains.AppFrom(ctx); onCustom && hostApp != sub.AppID {
 			return store.ErrNotFound
 		}
 		if app, err := store.GetApp(ctx, q, sub.AppID); err == nil {
