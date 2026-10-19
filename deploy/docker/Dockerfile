@@ -13,8 +13,8 @@ COPY frontend/package.json frontend/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY frontend ./
 # The website's guide catalog is shared with its Go server; its output goes to
-# /src/web-home/dist and the dashboard's to /src/web/static/dashboard.
-COPY web-home/docs-catalog.json /src/web-home/docs-catalog.json
+# /src/cmd/paymux-home/dist and the dashboard's to /src/web/static/dashboard.
+COPY cmd/paymux-home/docs-catalog.json /src/cmd/paymux-home/docs-catalog.json
 RUN bun run typecheck && bun run build
 
 # ---- build -------------------------------------------------------------------
@@ -27,7 +27,7 @@ RUN go mod download
 
 COPY . .
 COPY --from=frontend /src/web/static/dashboard ./web/static/dashboard
-COPY --from=frontend /src/web-home/dist ./web-home/dist
+COPY --from=frontend /src/cmd/paymux-home/dist ./cmd/paymux-home/dist
 ARG VERSION=dev
 # Static, CGO-free, no debug info or build paths in the binary.
 RUN CGO_ENABLED=0 go build -trimpath \

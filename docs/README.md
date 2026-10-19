@@ -41,4 +41,4 @@ Use [OpenAPI](openapi.yaml) for request and response fields. The [Go payment cli
 
 ## Documentation maintenance
 
-Guide Markdown in `docs/` is also rendered by `web-home/`; edit the source once. The website catalog explicitly selects public guides. Keep code links and examples tied to the checked-in API contract, and run `bun run check:docs`, `bun run typecheck`, and `bun run test:home` after changing content or navigation. Internal planning documents are not part of the public catalog.
+Guide Markdown in `docs/` is also rendered by `cmd/paymux-home/`; edit the source once. The website catalog explicitly selects public guides. Keep code links and examples tied to the checked-in API contract, and run `bun run check:docs`, `bun run typecheck`, and `bun run test:home` after changing content or navigation. Internal planning documents are not part of the public catalog.

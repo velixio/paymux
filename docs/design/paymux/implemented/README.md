@@ -8,7 +8,7 @@ These screenshots show the implemented dashboard and separate React public websi
 - Settings categories, readable policy names, effective values and sources, app overrides and reset, collapsible routing configuration, unsaved-change warning and change-review dialog.
 - Refund and other high-impact action review; refund labels, page headings, keyboard focus, skip link and form accessible names.
 - Explicit dark-theme palette independent of operating-system preference.
-- Independent `web-home/` application: homepage, architecture diagram, provider capability matrix, developer guide and self-hosting guide. No CDN or runtime payment-hub dependency.
+- Independent `cmd/paymux-home/` application: homepage, architecture diagram, provider capability matrix, developer guide and self-hosting guide. No CDN or runtime payment-hub dependency.
 
 ## Run
 
@@ -28,7 +28,7 @@ The public site now supports light and dark themes, with system preference as th
 
 The hero introduces the boundary between application, payment hub, and provider accounts. The interactive workbench then demonstrates three distinct outcomes: captured payment, declined payment without capture entries, and captured payment with failed webhook delivery. A manual retry illustrates why delivery state is independent of payment state. Every record is explicitly sample data and the demo makes no provider or payment API requests.
 
-Updated captures: `website-desktop.png`, `website-mobile.png`, `website-dark-desktop.png`, and `website-dark-mobile.png`. Chromium checked both themes at 1440, 1024, 768, 390, and 360px; system preference and saved override; keyboard tab navigation; success/decline/retry and reset; native selectors; mobile navigation; code copying; and all public routes. No JavaScript or CSP errors were observed. Repeatable checks live in `web-home/tests/home.spec.ts` and run against the Go static server with its production CSP via `bun run test:home`.
+Updated captures: `website-desktop.png`, `website-mobile.png`, `website-dark-desktop.png`, and `website-dark-mobile.png`. Chromium checked both themes at 1440, 1024, 768, 390, and 360px; system preference and saved override; keyboard tab navigation; success/decline/retry and reset; native selectors; mobile navigation; code copying; and all public routes. No JavaScript or CSP errors were observed. Repeatable checks live in `cmd/paymux-home/tests/home.spec.ts` and run against the Go static server with its production CSP via `bun run test:home`.
 
 ## Documentation library
 

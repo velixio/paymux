@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import catalog from "../../../web-home/docs-catalog.json" with { type: "json" };
+import catalog from "../../../cmd/paymux-home/docs-catalog.json" with { type: "json" };
 
 test("every published guide renders with working anchors in both themes", async ({
   page,

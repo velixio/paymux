@@ -26,7 +26,7 @@ make build-home
 ./bin/paymux-home -listen 127.0.0.1:8051
 ```
 
-Its only runtime responsibilities are serving static pages and `/healthz`. It requires no hub environment file or database. Alternatively, deploy `web-home/dist/` on a static host with SPA fallback for documentation routes.
+Its only runtime responsibilities are serving static pages and `/healthz`. It requires no hub environment file or database. Alternatively, deploy `cmd/paymux-home/dist/` on a static host with SPA fallback for documentation routes.
 
 ## Use a release binary
 

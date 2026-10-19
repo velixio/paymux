@@ -12,5 +12,5 @@ docs/*
 !docs/openapi.yaml
 
 **/node_modules
-web-home/dist
+cmd/paymux-home/dist
 web/static/dashboard
