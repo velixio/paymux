@@ -43,9 +43,9 @@ type keyRow struct {
 }
 
 type endpointRow struct {
-	ID, URL, Events string
-	Enabled         bool
-	Created         string
+	ID, URL, Events, Mode string
+	Enabled               bool
+	Created               string
 }
 
 type brandView struct {
@@ -237,7 +237,7 @@ func (d *Dashboard) renderApp(w http.ResponseWriter, r *http.Request, s *session
 		var eps []outbound.Endpoint
 		eps, err = d.o.Outbound.ListEndpoints(ctx, app.ID)
 		for _, ep := range eps {
-			av.Endpoints = append(av.Endpoints, endpointRow{ID: ep.ID, URL: ep.URL, Events: strings.Join(ep.EventTypes, ", "), Enabled: ep.Enabled})
+			av.Endpoints = append(av.Endpoints, endpointRow{ID: ep.ID, URL: ep.URL, Events: strings.Join(ep.EventTypes, ", "), Enabled: ep.Enabled, Mode: ep.Mode})
 			if ep.ID == r.URL.Query().Get("endpoint") {
 				av.EndpointID = ep.ID
 			}
@@ -410,12 +410,17 @@ func (d *Dashboard) endpointCreate(w http.ResponseWriter, r *http.Request, s *se
 			types = append(types, t)
 		}
 	}
-	ep, secret, err := d.o.Outbound.CreateEndpoint(r.Context(), outbound.CreateEndpointInput{OrgID: app.OrgID, AppID: app.ID, URL: raw, EventTypes: types})
+	mode := strings.TrimSpace(r.PostForm.Get("mode"))
+	if mode != "" && mode != "test" && mode != "live" {
+		d.renderApp(w, r, s, app, http.StatusBadRequest, "webhooks", "The endpoint mode must be test or live.", nil)
+		return
+	}
+	ep, secret, err := d.o.Outbound.CreateEndpoint(r.Context(), outbound.CreateEndpointInput{OrgID: app.OrgID, AppID: app.ID, URL: raw, EventTypes: types, Mode: mode})
 	if err != nil {
 		d.fail(w, err)
 		return
 	}
-	if err := d.record(r.Context(), r, s, "webhook_endpoint.create", ep.ID, nil, map[string]any{"app_id": app.ID, "url": ep.URL, "event_types": ep.EventTypes}); err != nil {
+	if err := d.record(r.Context(), r, s, "webhook_endpoint.create", ep.ID, nil, map[string]any{"app_id": app.ID, "url": ep.URL, "event_types": ep.EventTypes, "mode": ep.Mode}); err != nil {
 		d.fail(w, err)
 		return
 	}
