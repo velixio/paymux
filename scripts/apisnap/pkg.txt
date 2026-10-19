@@ -754,7 +754,7 @@ const (
 	CodeBadRequest         = "bad_request"
 )
 
-const DefaultReplayCacheSize = 10000
+const DefaultReplayCacheSize = 100000
 
 var ErrBadSignature = errors.New("wire: missing, wrong or stale signature")
 

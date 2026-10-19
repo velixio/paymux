@@ -92,7 +92,14 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Only a correctly signed id is remembered, so unsigned junk cannot fill the cache.
-	if !h.seen.firstSeen(r.Header.Get(HeaderID), h.now()) {
+	fresh, full := h.seen.firstSeen(r.Header.Get(HeaderID), h.now())
+	if full {
+		// Never forget an id early (that would let a replay through): refuse
+		// the request instead; the caller retries with a new id.
+		h.reply(w, r, http.StatusServiceUnavailable, Envelope{Error{Code: CodeTemporary, Message: "too many requests in flight: the replay cache is full, retry shortly"}})
+		return
+	}
+	if !fresh {
 		h.reply(w, r, http.StatusUnauthorized, Envelope{Error{Code: CodeInvalidCredentials, Message: "message id already used (replayed request)"}})
 		return
 	}
