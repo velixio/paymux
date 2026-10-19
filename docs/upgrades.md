@@ -163,7 +163,7 @@ that imports Paymux as a library:
 
 ## Writing migrations that keep the promise
 
-- Forward only, in lockstep for `migrations/sqlite` and `migrations/postgres`;
+- Forward only, in lockstep for `internal/migrations/sqlite` and `internal/migrations/postgres`;
   never edit a released migration.
 - Prefer adding (columns with defaults or nullable, tables, indexes). A change
   that rewrites existing data must be correct for rows of every earlier shape,

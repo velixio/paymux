@@ -14,10 +14,10 @@ import (
 	"github.com/paymux/paymux/internal/config"
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/migrations"
 )
 
 const (

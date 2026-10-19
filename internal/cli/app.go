@@ -13,9 +13,9 @@ import (
 	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/config"
 	"github.com/paymux/paymux/internal/core"
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/migrations"
 )
 
 const appUsage = `usage: paymux app create --name NAME --slug SLUG [--mode test|live] [--return-url URL]

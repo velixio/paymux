@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/migrations"
 )
 
 func migrated(t *testing.T, db *store.DB) {

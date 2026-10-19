@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/migrations"
 )
 
 func migrateDir(t *testing.T, dir string) func(string) (string, bool) {

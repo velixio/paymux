@@ -8,8 +8,8 @@ import (
 	"log/slog"
 
 	"github.com/paymux/paymux/internal/config"
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/migrations"
 	"github.com/paymux/paymux/pkg/hub"
 )
 

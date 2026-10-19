@@ -36,6 +36,7 @@ import (
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/logging"
 	"github.com/paymux/paymux/internal/metrics"
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/oidc"
 	"github.com/paymux/paymux/internal/outbound"
@@ -50,7 +51,6 @@ import (
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/subscriptions"
 	"github.com/paymux/paymux/internal/web"
-	"github.com/paymux/paymux/migrations"
 	"github.com/paymux/paymux/pkg/connector"
 )
 

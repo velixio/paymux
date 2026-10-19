@@ -9,10 +9,10 @@ import (
 	"strings"
 
 	"github.com/paymux/paymux/internal/config"
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/migrations"
 )
 
 const endpointUsage = "usage: paymux endpoint add --app <app_id> --url <url> [--events a,b]"

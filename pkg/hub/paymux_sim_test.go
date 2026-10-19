@@ -21,13 +21,13 @@ import (
 	"github.com/paymux/paymux/internal/invoice"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/logging"
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/outbound/stdwebhooks"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/migrations"
 )
 
 // seedSim prepares a database for the simulator: an app with an API key, a

@@ -14,10 +14,10 @@ import (
 
 	"github.com/paymux/paymux/internal/dblog"
 	"github.com/paymux/paymux/internal/logctx"
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/redact"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/migrations"
 	"github.com/paymux/paymux/pkg/connector"
 )
 

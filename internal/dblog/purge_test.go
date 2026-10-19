@@ -8,9 +8,9 @@ import (
 
 	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/dblog"
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/migrations"
 )
 
 var now = time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
