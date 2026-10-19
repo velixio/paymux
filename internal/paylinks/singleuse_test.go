@@ -3,12 +3,14 @@ package paylinks_test
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/core/state"
+	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/paylinks"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
@@ -26,7 +28,7 @@ func su(t *testing.T, db *store.DB) *env {
 		t.Fatal(err)
 	}
 	var links *paylinks.Service
-	e.core = core.NewService(core.Options{DB: db, Settings: e.set, Emitter: e.emit, Now: e.clock,
+	e.core = core.NewService(core.Options{DB: db, Settings: e.set, Emitter: e.emit, Now: e.clock, Jobs: jobs.New(db, jobs.Options{Logger: slog.New(slog.DiscardHandler)}),
 		OnPaymentSucceeded: func(ctx context.Context, tx store.Tx, p store.Payment, a store.Attempt) error {
 			return links.OnPaymentSucceeded(ctx, tx, p, a)
 		}})

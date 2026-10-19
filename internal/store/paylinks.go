@@ -22,8 +22,11 @@ type PaymentLink struct {
 	Metadata                     map[string]string
 	DeactivatedAt                time.Time
 	DeactivatedReason            string // manual | used
-	Version                      int64
-	CreatedAt, UpdatedAt         time.Time
+	// ClaimPaymentID is the payment the holder of a single-use link is paying;
+	// UsedByPaymentID is the payment that spent it.
+	ClaimPaymentID, UsedByPaymentID string
+	Version                         int64
+	CreatedAt, UpdatedAt            time.Time
 }
 
 // InsertPaymentLink stores l; a taken slug is ErrConflict.
@@ -44,7 +47,7 @@ func InsertPaymentLink(ctx context.Context, tx Tx, l PaymentLink) error {
 }
 
 const paymentLinkCols = `id, org_id, mode, app_id, slug, amount, min_amount, max_amount, currency, description, return_url, single_use,
-	COALESCE(expires_at, 0), metadata, active, COALESCE(deactivated_at, 0), deactivated_reason, version, created_at, updated_at`
+	COALESCE(expires_at, 0), metadata, active, COALESCE(deactivated_at, 0), deactivated_reason, claim_payment_id, used_by_payment_id, version, created_at, updated_at`
 
 func scanPaymentLink(row interface{ Scan(...any) error }) (PaymentLink, error) {
 	var l PaymentLink
@@ -52,7 +55,7 @@ func scanPaymentLink(row interface{ Scan(...any) error }) (PaymentLink, error) {
 	var expires, deactivated, created, updated int64
 	var meta string
 	if err := row.Scan(&l.ID, &l.OrgID, &l.Mode, &l.AppID, &l.Slug, &l.Amount, &l.MinAmount, &l.MaxAmount, &l.Currency, &l.Description,
-		&l.ReturnURL, &single, &expires, &meta, &active, &deactivated, &l.DeactivatedReason, &l.Version, &created, &updated); err != nil {
+		&l.ReturnURL, &single, &expires, &meta, &active, &deactivated, &l.DeactivatedReason, &l.ClaimPaymentID, &l.UsedByPaymentID, &l.Version, &created, &updated); err != nil {
 		return PaymentLink{}, notFound(err)
 	}
 	l.SingleUse, l.Active = single != 0, active != 0
@@ -149,8 +152,10 @@ func claimHash(holder string) string {
 // claim is free.
 func ClaimPaymentLink(ctx context.Context, tx Tx, id, holder string, until, now time.Time) (bool, error) {
 	h := claimHash(holder)
-	res, err := tx.ExecContext(ctx, `UPDATE payment_links SET claim_hash = ?, claim_until = ?, updated_at = ?
-		WHERE id = ? AND active = 1 AND (claim_until <= ? OR claim_hash = ?)`, h, ms(until), ms(now), id, ms(now), h)
+	// A new holder starts with no payment; the holder who comes back keeps theirs.
+	res, err := tx.ExecContext(ctx, `UPDATE payment_links SET claim_payment_id = CASE WHEN claim_hash = ? THEN claim_payment_id ELSE '' END,
+		claim_hash = ?, claim_until = ?, updated_at = ?
+		WHERE id = ? AND active = 1 AND (claim_until <= ? OR claim_hash = ?)`, h, h, ms(until), ms(now), id, ms(now), h)
 	if err != nil {
 		return false, err
 	}
@@ -164,4 +169,50 @@ func ReleasePaymentLink(ctx context.Context, tx Tx, id, holder string, now time.
 	_, err := tx.ExecContext(ctx, `UPDATE payment_links SET claim_hash = '', claim_until = 0, updated_at = ?
 		WHERE id = ? AND claim_hash = ?`, ms(now), id, claimHash(holder))
 	return err
+}
+
+// SetPaymentLinkClaimPayment records the payment holder is paying on the link.
+func SetPaymentLinkClaimPayment(ctx context.Context, tx Tx, id, holder, paymentID string, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `UPDATE payment_links SET claim_payment_id = ?, updated_at = ? WHERE id = ? AND claim_hash = ?`,
+		paymentID, ms(now), id, claimHash(holder))
+	return err
+}
+
+// SpendPaymentLink switches a single-use link off because paymentID was paid. It
+// is ErrConflict when the link was already inactive, so exactly one payment
+// spends it.
+func SpendPaymentLink(ctx context.Context, tx Tx, id, paymentID string, now time.Time) (PaymentLink, error) {
+	res, err := tx.ExecContext(ctx, `UPDATE payment_links SET active = 0, deactivated_at = ?, deactivated_reason = 'used', used_by_payment_id = ?,
+		claim_hash = '', claim_until = 0, claim_payment_id = '', version = version + 1, updated_at = ? WHERE id = ? AND active = 1`,
+		ms(now), paymentID, ms(now), id)
+	if err != nil {
+		return PaymentLink{}, err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		if _, err := GetPaymentLink(ctx, tx, id); err != nil {
+			return PaymentLink{}, err
+		}
+		return PaymentLink{}, ErrConflict
+	}
+	return GetPaymentLink(ctx, tx, id)
+}
+
+// OpenPaymentsOfOrder returns the payments of an app and mode with this order
+// reference that can still be paid (created, requires_action, processing).
+func OpenPaymentsOfOrder(ctx context.Context, q Queryer, appID, mode, orderRef string) ([]string, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id FROM payments WHERE app_id = ? AND mode = ? AND order_ref = ?
+		AND status IN ('created','requires_action','processing') ORDER BY id`, appID, mode, orderRef)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }

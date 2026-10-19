@@ -198,7 +198,7 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 		}
 		if s.onPaymentSucceeded != nil && prevStatus != string(state.PaymentSucceeded) &&
 			p.Status == string(state.PaymentSucceeded) && !a.Duplicate {
-			if err := s.onPaymentSucceeded(ctx, tx, p, a); err != nil {
+			if err := s.onPaymentSucceeded(context.WithValue(ctx, alertSinkKey{}, &alerts), tx, p, a); err != nil {
 				return err
 			}
 		}

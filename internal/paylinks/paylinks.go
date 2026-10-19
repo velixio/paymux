@@ -433,7 +433,7 @@ func (s *Service) deactivate(ctx context.Context, actor audit.Actor, id string, 
 
 // OnPaymentSucceeded is the core.PaymentHook that spends single-use links: it
 // runs in the transaction in which a payment became succeeded.
-func (s *Service) OnPaymentSucceeded(ctx context.Context, tx store.Tx, p store.Payment, _ store.Attempt) error {
+func (s *Service) OnPaymentSucceeded(ctx context.Context, tx store.Tx, p store.Payment, a store.Attempt) error {
 	id := p.Metadata[MetadataKey]
 	if id == "" {
 		return nil
@@ -446,21 +446,38 @@ func (s *Service) OnPaymentSucceeded(ctx context.Context, tx store.Tx, p store.P
 		return err
 	}
 	// Only a link of the same org, app and mode can be spent by this payment.
-	if !l.SingleUse || !l.Active || l.OrgID != p.OrgID || l.AppID != p.AppID || l.Mode != p.Mode {
+	if !l.SingleUse || l.OrgID != p.OrgID || l.AppID != p.AppID || l.Mode != p.Mode {
 		return nil
 	}
-	out, err := store.DeactivatePaymentLink(ctx, tx, l.ID, ReasonUsed, s.now())
-	if errors.Is(err, store.ErrConflict) {
-		return nil
+	if l.Active {
+		out, err := store.SpendPaymentLink(ctx, tx, l.ID, p.ID, s.now())
+		if err == nil {
+			if err := s.emit(ctx, tx, EventDeactivated, out, p.ID); err != nil {
+				return err
+			}
+			if err := audit.Record(ctx, tx, audit.Entry{OrgID: out.OrgID, Actor: audit.System, Action: "payment_link.deactivate", Target: out.ID,
+				After: map[string]string{"reason": ReasonUsed, "payment_id": p.ID}}); err != nil {
+				return err
+			}
+			// The link is sold: its other open payments must not be paid as well.
+			_, err = s.core.CancelOpenOrderPayments(ctx, tx, l.AppID, l.Mode, l.ID, p.ID)
+			return err
+		}
+		if !errors.Is(err, store.ErrConflict) {
+			return err
+		}
+		// Spent by another payment a moment ago: this one is the second sale.
+		if l, err = store.GetPaymentLink(ctx, tx, l.ID); err != nil {
+			return err
+		}
 	}
-	if err != nil {
-		return err
+	// Spent already, by another payment: the item was sold once and paid twice.
+	// (A link switched off by hand while this payment was open is not that: the
+	// customer was entitled to finish.)
+	if l.DeactivatedReason == ReasonUsed && l.UsedByPaymentID != "" && l.UsedByPaymentID != p.ID {
+		return s.core.MarkExtraSale(ctx, tx, p, a, "payment_link_already_used")
 	}
-	if err := s.emit(ctx, tx, EventDeactivated, out, p.ID); err != nil {
-		return err
-	}
-	return audit.Record(ctx, tx, audit.Entry{OrgID: out.OrgID, Actor: audit.System, Action: "payment_link.deactivate", Target: out.ID,
-		After: map[string]string{"reason": ReasonUsed, "payment_id": p.ID}})
+	return nil
 }
 
 // checkState reports why a link cannot take payments, or nil.
@@ -592,13 +609,28 @@ func (s *Service) Start(ctx context.Context, slug string, in StartInput) (Starte
 			holder = randomHolder()
 		}
 		var ok bool
+		var claimed string
 		now := s.now()
 		err := s.db.Write(ctx, func(tx store.Tx) (err error) {
 			ok, err = store.ClaimPaymentLink(ctx, tx, l.ID, holder, now.Add(s.holdFor(ctx, l.AppID)), now)
+			if ok && err == nil {
+				var cur store.PaymentLink
+				if cur, err = store.GetPaymentLink(ctx, tx, l.ID); err == nil {
+					claimed = cur.ClaimPaymentID
+				}
+			}
 			return
 		})
 		if err != nil {
 			return Started{}, err
+		}
+		if ok && claimed != "" {
+			// The visitor already has a payment on this link (a reload, the back button,
+			// a double click): hand it back instead of making a second one that could
+			// be paid as well. Only if it can still be paid and asks for this amount.
+			if st, reused := s.reuseOpenPayment(ctx, l, claimed, amount); reused {
+				return st, nil
+			}
 		}
 		if !ok {
 			// Either someone else holds it, or it was just spent or switched off.
@@ -631,7 +663,39 @@ func (s *Service) Start(ctx context.Context, slug string, in StartInput) (Starte
 		}
 		return Started{}, err
 	}
+	if l.SingleUse {
+		_ = s.db.Write(ctx, func(tx store.Tx) error {
+			return store.SetPaymentLinkClaimPayment(ctx, tx, l.ID, holder, res.Payment.ID, s.now())
+		})
+	}
 	return Started{PaymentID: res.Payment.ID, ClientSecret: res.ClientSecret}, nil
+}
+
+// reuseOpenPayment returns the holder's earlier payment when it is still open
+// and for the same amount, with a fresh client secret (only the hash is kept). An
+// open payment for another amount is canceled first, so only one stays payable.
+func (s *Service) reuseOpenPayment(ctx context.Context, l store.PaymentLink, paymentID string, amount int64) (Started, bool) {
+	p, err := s.core.GetPaymentByID(ctx, paymentID)
+	if err != nil {
+		return Started{}, false
+	}
+	switch p.Status {
+	case "created", "requires_action", "processing":
+	default:
+		return Started{}, false
+	}
+	if !p.ExpiresAt.After(s.now()) {
+		return Started{}, false
+	}
+	if p.Amount != amount {
+		_, _ = s.core.CancelPayment(ctx, core.Scope{AppID: l.AppID, Mode: l.Mode}, audit.System, p.ID)
+		return Started{}, false
+	}
+	secret, err := s.core.ReissueClientSecret(ctx, p.ID)
+	if err != nil {
+		return Started{}, false
+	}
+	return Started{PaymentID: p.ID, ClientSecret: secret}, true
 }
 
 func randomHolder() string {
