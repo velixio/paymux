@@ -23,8 +23,8 @@ package main
 import (
 	"context"
 
-	"github.com/paymux/paymux/framework"
-	"github.com/paymux/paymux/hub"
+	"github.com/paymux/paymux/pkg/framework"
+	"github.com/paymux/paymux/pkg/hub"
 
 	_ "example.com/acmepay" // an extra connector: importing it registers it
 )
@@ -247,8 +247,8 @@ secret. Pin versions and read the code.
 
 ## Public API
 
-The `hub` package (`github.com/paymux/paymux/hub`) and `pkg/...` are the public
-API. `api/pkg.txt` is a snapshot of their exported declarations, and CI fails
+`pkg/...` (including `pkg/hub`, `pkg/framework` and `pkg/jsvm`) is the public
+API. `scripts/apisnap/pkg.txt` is a snapshot of their exported declarations, and CI fails
 when it is out of date (`go run ./scripts/apisnap -w` regenerates it after an
 intended change). Everything under `internal/` can change at any time.
 

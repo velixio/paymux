@@ -6,8 +6,8 @@
 /.playwright-mcp/
 /node_modules/
 /frontend/node_modules/
-/web-home/dist/*
-!/web-home/dist/.keep
+/cmd/paymux-home/dist/*
+!/cmd/paymux-home/dist/.keep
 /web/static/dashboard/
 test-results/
 playwright-report/

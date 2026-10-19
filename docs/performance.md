@@ -17,14 +17,14 @@ runs it (CI only vets it: `go vet -tags loadtest ./...`).
 
 ```sh
 # SQLite only
-go test -tags loadtest -run 'TestLoad/sqlite' -v -timeout 30m ./hub
+go test -tags loadtest -run 'TestLoad/sqlite' -v -timeout 30m ./pkg/hub
 
 # both, with a PostgreSQL to hand
 PAYMUX_TEST_POSTGRES_URL='postgres://user:pass@127.0.0.1:5432/paymux?sslmode=disable' \
-  go test -tags loadtest -run TestLoad -v -timeout 30m ./hub
+  go test -tags loadtest -run TestLoad -v -timeout 30m ./pkg/hub
 
 # profile
-go test -tags loadtest -run 'TestLoad/postgres' -cpuprofile cpu.pprof -memprofile mem.pprof ./hub
+go test -tags loadtest -run 'TestLoad/postgres' -cpuprofile cpu.pprof -memprofile mem.pprof ./pkg/hub
 go tool pprof -top -cum hub.test cpu.pprof
 ```
 

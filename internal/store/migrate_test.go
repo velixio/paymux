@@ -9,9 +9,9 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/migrations"
 )
 
 func mapFS(files map[string]string) fs.FS {

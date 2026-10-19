@@ -11,7 +11,7 @@ export default defineConfig({
       : {},
   },
   webServer: {
-    command: "bun run build:home && cd .. && go run ./web-home -listen 127.0.0.1:8092",
+    command: "bun run build:home && cd .. && go run ./cmd/paymux-home -listen 127.0.0.1:8092",
     url: "http://127.0.0.1:8092/healthz",
     timeout: 60_000,
   },

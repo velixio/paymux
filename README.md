@@ -16,7 +16,7 @@ app C ─┘ ◄─ signed webhooks ─┘          ├─ Zoho Payments
                                         └─ your own (Go package or HTTP service)
 ```
 
-> **Status:** under active development. Everything listed under "What is built" below works and is tested on both databases; see `docs/superpowers/plans/2026-10-17-paymux-roadmap.md` for what is next. The public SDK (`pkg/...`) and the framework hooks API are guarded by a snapshot in CI (`api/pkg.txt`), so they do not change by accident.
+> **Status:** under active development. Everything listed under "What is built" below works and is tested on both databases; see `docs/superpowers/plans/2026-10-17-paymux-roadmap.md` for what is next. The public SDK (`pkg/...`) and the framework hooks API are guarded by a snapshot in CI (`scripts/apisnap/pkg.txt`), so they do not change by accident.
 
 ## What is built
 
@@ -198,7 +198,7 @@ scripts/release.sh v1.2.3   # release archives with checksums (and a cosign sign
 
 ## Public website
 
-The React marketing and developer-entry website (sources in [`frontend/home/`](frontend/home), Go server in [`web-home/`](web-home)) runs independently of the payment hub. Both frontends use TanStack Router and shadcn/ui; the dashboard also uses TanStack Query. They use Vite client builds, without TanStack Start, SSR or new APIs. The home site can deploy directly to a static host or use its separate Go serving binary.
+The React marketing and developer-entry website (sources in [`frontend/home/`](frontend/home), Go server in [`cmd/paymux-home/`](cmd/paymux-home)) runs independently of the payment hub. Both frontends use TanStack Router and shadcn/ui; the dashboard also uses TanStack Query. They use Vite client builds, without TanStack Start, SSR or new APIs. The home site can deploy directly to a static host or use its separate Go serving binary.
 
 ```bash
 bun install --cwd frontend --frozen-lockfile

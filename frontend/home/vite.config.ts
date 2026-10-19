@@ -13,7 +13,7 @@ export default defineConfig({
       name: "go-embed-placeholder",
       apply: "build",
       writeBundle() {
-        writeFileSync(new URL("../../web-home/dist/.keep", import.meta.url), "");
+        writeFileSync(new URL("../../cmd/paymux-home/dist/.keep", import.meta.url), "");
       },
     },
   ],
@@ -25,6 +25,6 @@ export default defineConfig({
     // The guides are rendered from the repository's Markdown (docs/*.md).
     fs: { allow: [fileURLToPath(new URL("../..", import.meta.url))] },
   },
-  // The Go website server embeds web-home/dist.
-  build: { outDir: "../../web-home/dist", assetsInlineLimit: 0, emptyOutDir: true },
+  // The Go website server embeds cmd/paymux-home/dist.
+  build: { outDir: "../../cmd/paymux-home/dist", assetsInlineLimit: 0, emptyOutDir: true },
 });

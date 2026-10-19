@@ -15,8 +15,8 @@ import (
 
 	"github.com/paymux/paymux/internal/config"
 	"github.com/paymux/paymux/internal/dashboard"
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/migrations"
 )
 
 // Stdin is where passwords are read from; tests replace it.

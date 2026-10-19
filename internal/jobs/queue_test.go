@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/migrations"
 )
 
 var ctx = context.Background()

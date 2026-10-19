@@ -112,10 +112,10 @@ func (a *App) OnThing(f func(string)) {}
 func (a *App) internal()            {}
 func New() *App                     { return nil }
 `
-	files := map[string]string{"pkg/a/a.go": base, "hub/m.go": root, "hub/m_test.go": "package m\nfunc TestRootOnly() {}\n",
+	files := map[string]string{"pkg/a/a.go": base, "pkg/hub/m.go": root, "pkg/hub/m_test.go": "package m\nfunc TestRootOnly() {}\n",
 		"internal/x/x.go": "package x\nfunc Inner() {}\n"}
 	ref := snap(t, tree(t, files))
-	for _, want := range []string{`package m // import "example.com/m/hub"`, "func New() *App", "func (a *App) OnThing(f func(string))", `package a // import "example.com/m/pkg/a"`} {
+	for _, want := range []string{`package m // import "example.com/m/pkg/hub"`, "func New() *App", "func (a *App) OnThing(f func(string))", `package a // import "example.com/m/pkg/a"`} {
 		if !strings.Contains(ref, want) {
 			t.Errorf("missing %q in\n%s", want, ref)
 		}
@@ -125,7 +125,7 @@ func New() *App                     { return nil }
 			t.Errorf("unexpected %q in\n%s", not, ref)
 		}
 	}
-	files["hub/m.go"] = root + "\nfunc (a *App) OnOther() {}\n"
+	files["pkg/hub/m.go"] = root + "\nfunc (a *App) OnOther() {}\n"
 	if got := snap(t, tree(t, files)); got == ref {
 		t.Error("a new method on the hub package did not change the snapshot")
 	}
@@ -134,7 +134,7 @@ func New() *App                     { return nil }
 func TestCheck(t *testing.T) {
 	root := tree(t, map[string]string{"pkg/a/a.go": base})
 	s := snap(t, root)
-	file := filepath.Join(root, "api", "pkg.txt")
+	file := filepath.Join(root, "scripts", "apisnap", "pkg.txt")
 
 	if err := Check(s, file); err == nil || !strings.Contains(err.Error(), "-w") {
 		t.Errorf("missing file: %v", err)
@@ -165,7 +165,7 @@ func TestCommittedSnapshotIsCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Check(s, filepath.Join(root, "api", "pkg.txt")); err != nil {
+	if err := Check(s, filepath.Join(root, "scripts", "apisnap", "pkg.txt")); err != nil {
 		t.Fatal(err)
 	}
 }

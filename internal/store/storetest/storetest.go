@@ -13,8 +13,8 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/migrations"
 )
 
 // SQLite opens a fresh SQLite store in a temp dir.

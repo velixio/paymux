@@ -8,11 +8,11 @@ import (
 
 	"github.com/paymux/paymux/internal/dblog"
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/redact"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/migrations"
 )
 
 // The purge job reads the retention settings, trims the logs by level and age,

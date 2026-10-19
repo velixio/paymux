@@ -14,12 +14,12 @@ import (
 
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/outbound"
 	"github.com/paymux/paymux/internal/outbound/stdwebhooks"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/migrations"
 )
 
 var ctx = context.Background()

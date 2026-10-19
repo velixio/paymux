@@ -17,10 +17,10 @@ import (
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/core/state"
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/migrations"
 )
 
 // The upgrade guarantee (docs/upgrades.md): a database left by release N-1

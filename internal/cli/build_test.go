@@ -36,7 +36,7 @@ func TestParseWith(t *testing.T) {
 
 func TestBuildMainImportsTheFrameworkAndEveryModule(t *testing.T) {
 	src := buildMain([]withSpec{{Module: "example.com/one", Version: "latest"}, {Module: "example.com/two/v2", Version: "v2.0.0"}})
-	for _, want := range []string{"package main", `"github.com/paymux/paymux/framework"`, `_ "example.com/one"`, `_ "example.com/two/v2"`, "framework.Main()"} {
+	for _, want := range []string{"package main", `"github.com/paymux/paymux/pkg/framework"`, `_ "example.com/one"`, `_ "example.com/two/v2"`, "framework.Main()"} {
 		if !strings.Contains(src, want) {
 			t.Errorf("generated main.go lacks %q:\n%s", want, src)
 		}
@@ -86,8 +86,8 @@ func TestBuildLinksAnExtraModule(t *testing.T) {
 	write("hookmod.go", `package hookmod
 
 import (
-	"github.com/paymux/paymux/hub"
-	"github.com/paymux/paymux/framework"
+	"github.com/paymux/paymux/pkg/hub"
+	"github.com/paymux/paymux/pkg/framework"
 )
 
 // Marker is a string the test looks for in the built binary; it is used at

@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/migrations"
 )
 
 func TestScheduleUpdatedAt(t *testing.T) {

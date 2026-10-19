@@ -18,11 +18,11 @@ import (
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/fakeconn"
 	"github.com/paymux/paymux/internal/logging"
+	"github.com/paymux/paymux/internal/migrations"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/migrations"
 )
 
 // seedApp migrates the database at url, creates an app and returns a test key.
