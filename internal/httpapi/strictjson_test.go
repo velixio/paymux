@@ -36,8 +36,8 @@ func TestDuplicateJSONKeysAreRefused(t *testing.T) {
 func TestBadBodiesDoNotEchoTheDecoderError(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		for name, tc := range map[string]struct{ body, want string }{
-			"wrong type":    {`{"amount":"lots","currency":"INR"}`, `"amount"`},
-			"unknown field": {`{"amount":100,"currency":"INR","bogus":1}`, `"bogus"`},
+			"wrong type":    {`{"amount":"lots","currency":"INR"}`, `amount`},
+			"unknown field": {`{"amount":100,"currency":"INR","bogus":1}`, `bogus`},
 			"syntax":        {`{"amount":100,`, "JSON"},
 			"trailing":      {`{"amount":100,"currency":"INR"} {}`, "JSON"},
 			"not an object": {`[1,2]`, "JSON"},

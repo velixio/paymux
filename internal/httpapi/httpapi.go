@@ -341,14 +341,17 @@ func (a *API) decodeBody(w http.ResponseWriter, r *http.Request, body []byte, ds
 		a.fail(w, r, http.StatusBadRequest, "invalid_request", "a JSON request body is required")
 		return false
 	}
+	if err := checkNoDuplicateKeys(body); err != nil {
+		a.fail(w, r, http.StatusBadRequest, "invalid_request", describeDecodeError(err))
+		return false
+	}
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(dst); err != nil || dec.More() {
-		msg := "request body is not valid JSON for this endpoint"
-		if err != nil {
-			msg += ": " + err.Error()
-		}
-		a.fail(w, r, http.StatusBadRequest, "invalid_request", msg)
+	if err := dec.Decode(dst); err != nil {
+		a.fail(w, r, http.StatusBadRequest, "invalid_request", describeDecodeError(err))
+		return false
+	} else if dec.More() {
+		a.fail(w, r, http.StatusBadRequest, "invalid_request", "the request body is not valid JSON: it has more than one value")
 		return false
 	}
 	return true
