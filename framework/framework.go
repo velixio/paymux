@@ -34,8 +34,8 @@ import (
 
 	"io"
 
-	"github.com/paymux/paymux/hub"
 	"github.com/paymux/paymux/internal/cli"
+	"github.com/paymux/paymux/pkg/hub"
 )
 
 var (

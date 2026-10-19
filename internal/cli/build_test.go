@@ -86,7 +86,7 @@ func TestBuildLinksAnExtraModule(t *testing.T) {
 	write("hookmod.go", `package hookmod
 
 import (
-	"github.com/paymux/paymux/hub"
+	"github.com/paymux/paymux/pkg/hub"
 	"github.com/paymux/paymux/framework"
 )
 

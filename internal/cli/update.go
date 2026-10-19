@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/hub"
+	"github.com/paymux/paymux/pkg/hub"
 )
 
 const updateUsage = "usage: paymux update [--check] [--version vX.Y.Z] [--repo owner/name] [--dest path] [--force]\n" +

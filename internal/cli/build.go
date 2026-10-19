@@ -13,13 +13,13 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/paymux/paymux/hub"
+	"github.com/paymux/paymux/pkg/hub"
 )
 
 const buildUsage = "usage: paymux build --with module[@version][=local/dir] [--with ...] [--replace module=local/dir ...] [--paymux-version v] [--out ./paymux-custom]"
 
 const (
-	basePath         = "github.com/paymux/paymux/hub"
+	basePath         = "github.com/paymux/paymux/pkg/hub"
 	placeholderStamp = "v0.0.0-00010101000000-000000000000" // the version go uses for a replaced module with none
 )
 

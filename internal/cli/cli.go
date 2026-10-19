@@ -7,10 +7,10 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/paymux/paymux/hub"
 	"github.com/paymux/paymux/internal/config"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/migrations"
+	"github.com/paymux/paymux/pkg/hub"
 )
 
 const usage = "usage: paymux <serve|migrate|backup|db|build|update|app|provider|domain|tax-entity|report|fx|endpoint|version>"

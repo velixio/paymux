@@ -13,7 +13,7 @@ import (
 	"log/slog"
 
 	"github.com/paymux/paymux/framework"
-	"github.com/paymux/paymux/hub"
+	"github.com/paymux/paymux/pkg/hub"
 
 	// An extra connector: importing it registers it.
 	_ "github.com/paymux/paymux/examples/framework/demopay"

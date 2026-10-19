@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/framework"
-	"github.com/paymux/paymux/hub"
 	"github.com/paymux/paymux/pkg/connector"
+	"github.com/paymux/paymux/pkg/hub"
 )
 
 func TestBuiltInConnectorsAreLinked(t *testing.T) {

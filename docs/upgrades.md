@@ -141,7 +141,7 @@ The database guarantee above does not cover Go source. These changes break code
 that imports Paymux as a library:
 
 - **The root package moved to `hub`.** `github.com/paymux/paymux` (package
-  `paymux`) is now `github.com/paymux/paymux/hub` (package `hub`), so the
+  `paymux`) is now `github.com/paymux/paymux/pkg/hub` (package `hub`), so the
   repository root holds no Go code. In a framework-mode `main` or a plugin
   module, change the import and the qualifier:
 
@@ -151,13 +151,13 @@ that imports Paymux as a library:
   func(app *paymux.App) { ... paymux.PaymentEvent ... }
 
   // after
-  import "github.com/paymux/paymux/hub"
+  import "github.com/paymux/paymux/pkg/hub"
   func(app *hub.App) { ... hub.PaymentEvent ... }
   ```
 
   The module path (`github.com/paymux/paymux`, used in `go.mod` and in
   `paymux build --with`) did not change. The build-version flag is now
-  `-X github.com/paymux/paymux/hub.Version=...`. Nothing else in the package
+  `-X github.com/paymux/paymux/pkg/hub.Version=...`. Nothing else in the package
   changed, so a find-and-replace is the whole migration. This was done before
   there were framework-mode users.
 
