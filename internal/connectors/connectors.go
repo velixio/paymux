@@ -137,6 +137,9 @@ func (s *Service) CreateAccount(ctx context.Context, actor audit.Actor, sc core.
 	if err := ValidateConfig(info.ConfigSchema, in.Config); err != nil {
 		return store.ProviderAccount{}, invalid("config: %v", err)
 	}
+	if in.Mode == "live" && allowInsecure(in.Config) {
+		return store.ProviderAccount{}, errAllowInsecureLive
+	}
 	if len(in.Currencies) == 0 {
 		in.Currencies = slices.Clone(info.Currencies)
 	}
@@ -265,6 +268,12 @@ func (s *Service) UpdateAccount(ctx context.Context, actor audit.Actor, sc core.
 	if in.Config != nil {
 		if err := ValidateConfig(info.ConfigSchema, in.Config); err != nil {
 			return invalid("config: %v", err)
+		}
+		if pa.Mode == "live" && allowInsecure(in.Config) {
+			return errAllowInsecureLive
+		}
+		if err := s.checkEndpointChange(pa, info, in.Config); err != nil {
+			return err
 		}
 		if _, err := factory(in.Config, s.deps(pa, info, in.Config)); err != nil {
 			return invalid("config: %v", err)
@@ -426,6 +435,11 @@ func (s *Service) Get(ctx context.Context, accountID string) (Live, error) {
 	if err != nil {
 		return Live{}, fmt.Errorf("connectors: decrypting config of %s: %w", pa.ID, err)
 	}
+	if pa.Mode == "live" && allowInsecure(cfg) {
+		// Created before live accounts were refused the opt-out: it is ignored,
+		// for the host's guard (deps) and for the connector's own checks.
+		cfg = withoutAllowInsecure(cfg)
+	}
 	conn, err := factory(cfg, s.deps(pa, info, cfg))
 	if err != nil {
 		return Live{}, fmt.Errorf("connectors: building %s: %w", pa.ID, err)
@@ -448,7 +462,7 @@ func (s *Service) deps(pa store.ProviderAccount, info connector.Info, cfg json.R
 		opts := connector.HTTPOptions{Logger: logger, Secrets: secretValues, RateLimit: info.RateLimit,
 			// A connector that calls an operator-supplied URL gets a client that
 			// refuses internal addresses, unless the account opts out.
-			DenyPrivate: info.DenyPrivateNetwork && !allowInsecure(cfg)}
+			DenyPrivate: info.DenyPrivateNetwork && !(allowInsecure(cfg) && pa.Mode != "live")}
 		if s.o.Observe != nil {
 			opts.Observer = func(o connector.RequestObservation) { s.o.Observe(info.Name, o) }
 		}
@@ -459,6 +473,76 @@ func (s *Service) deps(pa store.ProviderAccount, info connector.Info, cfg json.R
 	}
 	return connector.Deps{HTTP: hc, KV: &kvStore{s: s, account: pa.ID}, Clock: s.o.Now, Logger: logger,
 		URLs: &urls{s: s, account: pa.ID}}
+}
+
+// errAllowInsecureLive is the refusal of allow_insecure on a live account.
+var errAllowInsecureLive = invalid("config: allow_insecure is not allowed for a live account: it switches off the guard against internal addresses " +
+	"and is for local development; use a test-mode account for that")
+
+// withoutAllowInsecure returns cfg with the allow_insecure opt-out removed.
+func withoutAllowInsecure(cfg json.RawMessage) json.RawMessage {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(cfg, &m) != nil {
+		return cfg
+	}
+	delete(m, "allow_insecure")
+	out, err := json.Marshal(m)
+	if err != nil {
+		return cfg
+	}
+	return out
+}
+
+// schemaFlagged returns the config properties of the schema that carry the
+// boolean annotation flag ("x-secret", "x-endpoint").
+func schemaFlagged(schema json.RawMessage, flag string) []string {
+	var sch struct {
+		Properties map[string]map[string]json.RawMessage `json:"properties"`
+	}
+	if json.Unmarshal(schema, &sch) != nil {
+		return nil
+	}
+	var out []string
+	for name, prop := range sch.Properties {
+		if string(prop[flag]) == "true" {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// checkEndpointChange refuses a config that points an endpoint field (a property
+// annotated "x-endpoint": the address the account's secrets are sent to) somewhere
+// else while a secret field still holds its stored value. The dashboard keeps the
+// stored secret when its field is left blank, so without this a changed address
+// would silently receive the old secret. The caller must enter the secret again:
+// a secret typed for the new address cannot be one that was stored for the old.
+func (s *Service) checkEndpointChange(pa store.ProviderAccount, info connector.Info, newCfg json.RawMessage) error {
+	endpoints := schemaFlagged(info.ConfigSchema, "x-endpoint")
+	secretFields := schemaFlagged(info.ConfigSchema, "x-secret")
+	if len(endpoints) == 0 || len(secretFields) == 0 || len(pa.ConfigEnc) == 0 {
+		return nil
+	}
+	oldRaw, err := s.o.Box.Open(pa.ConfigEnc, configAAD(pa.ID))
+	if err != nil {
+		return fmt.Errorf("connectors: decrypting config of %s: %w", pa.ID, err)
+	}
+	var oldCfg, next map[string]any
+	if json.Unmarshal(oldRaw, &oldCfg) != nil || json.Unmarshal(newCfg, &next) != nil {
+		return nil
+	}
+	for _, ep := range endpoints {
+		if fmt.Sprint(oldCfg[ep]) == fmt.Sprint(next[ep]) {
+			continue
+		}
+		for _, sf := range secretFields {
+			if v, ok := next[sf].(string); ok && v != "" && fmt.Sprint(oldCfg[sf]) == v {
+				return invalid("config: %s changed, but %s is still the stored secret: enter the secret again so that it is not sent to the new address", ep, sf)
+			}
+		}
+	}
+	return nil
 }
 
 // allowInsecure reports whether the account config sets "allow_insecure": true,
