@@ -64,7 +64,7 @@ curl -fsS http://127.0.0.1:8080/readyz
 
 ### Caddy
 
-Install Caddy, copy `deploy/Caddyfile` to `/etc/caddy/Caddyfile`, replace `pay.example.com` and the e-mail address, and `systemctl reload caddy`. Point DNS for the hub's host at this server. App custom domains (added on the app's *Domains* tab) get certificates on demand, but only for hosts the hub knows: Caddy asks `http://127.0.0.1:9100/internal/tls-allow?domain=...` before it requests one.
+Install Caddy, copy `deploy/Caddyfile` to `/etc/caddy/Caddyfile`, replace `pay.example.com` and the e-mail address, and `systemctl reload caddy`. Point DNS for the hub's host at this server. App custom domains (added on the app's *Domains* tab) get certificates on demand, but only for hosts the hub knows: Caddy asks `http://127.0.0.1:9100/internal/tls-allow?domain=...` before it requests one. The hub says yes for its own host, for a domain whose ownership was verified (active), and for a domain still pending only while its A or AAAA record already points at the hub's address (the same address `PAYMUX_BASE_URL`'s host resolves to). Anything else gets no certificate, so adding names in the dashboard cannot use up the CA's issuance limits.
 
 **nginx on another device instead of Caddy:** [`deploy/nginx/paymux.shimul.me.conf`](../deploy/nginx/paymux.shimul.me.conf) proxies `paymux.shimul.me` to the Paymux host on the LAN (`192.168.0.174:8050`). `PAYMUX_TRUSTED_PROXIES` defaults to the local network, so the nginx device is believed without a setting; set its exact address for a stricter setup. Allow port 8050 only from that device. nginx has no on-demand TLS, so each app custom domain needs its own server block and certificate.
 

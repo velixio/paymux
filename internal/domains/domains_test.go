@@ -3,9 +3,9 @@ package domains
 import (
 	"context"
 	"errors"
-	"net/netip"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"testing"
 )
 
