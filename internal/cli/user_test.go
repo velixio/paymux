@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -117,8 +118,8 @@ func TestUserResetTOTP(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%q", code, errs)
 	}
-	if !strings.Contains(out, "a@example.com") {
-		t.Fatalf("stdout=%q", out)
+	if !strings.Contains(out, "a@example.com") || !enrolCodeRE.MatchString(out) {
+		t.Fatalf("stdout=%q: no enrolment code", out)
 	}
 	db = openDB(t, lookup)
 	u, _ = db.UserByID(ctx, u.ID)
@@ -143,5 +144,22 @@ func TestUserUsage(t *testing.T) {
 		if code != 2 || !strings.Contains(errs, "usage: paymux user") {
 			t.Errorf("%v: code=%d %q", args, code, errs)
 		}
+	}
+}
+
+var enrolCodeRE = regexp.MustCompile(`[a-z]{6}(-[a-z]{6}){3}`)
+
+// The person is told the one-time code that lets them set up two-factor sign-in.
+func TestUserCreatePrintsTheEnrolmentCode(t *testing.T) {
+	lookup := migrateEnv(t.TempDir())
+	code, out, errs := runWithStdin(t, cliPW+"\n", lookup, "user", "create", "--email", "n@example.com", "--role", "viewer", "--password-stdin")
+	if code != 0 || !enrolCodeRE.MatchString(out) {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, out, errs)
+	}
+	db := openDB(t, lookup)
+	defer db.Close()
+	u, _ := db.UserByEmail(context.Background(), "n@example.com")
+	if ok, _ := db.HasEnrolmentToken(context.Background(), u.ID); !ok {
+		t.Error("no code stored")
 	}
 }

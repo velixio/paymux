@@ -77,7 +77,7 @@ func TestAdminCreatesAndAssignsCustomRoles(t *testing.T) {
 		if r, _ := e.post(e.c, "/dashboard/users/"+uid+"/role", url.Values{"role": {"nonesuch"}, "csrf": {tok}}); r.StatusCode != 400 {
 			t.Errorf("assign unknown role: %d", r.StatusCode)
 		}
-		if r, _ := e.post(e.c, "/dashboard/users", url.Values{"email": {"made@example.com"}, "role": {"auditor"}, "password": {goodPW}, "csrf": {tok}}); r.StatusCode != 303 {
+		if r, _ := e.post(e.c, "/dashboard/users", url.Values{"email": {"made@example.com"}, "role": {"auditor"}, "password": {goodPW}, "csrf": {tok}}); r.StatusCode != 200 {
 			t.Errorf("create a user with a custom role: %d", r.StatusCode)
 		}
 

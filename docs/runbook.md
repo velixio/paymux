@@ -114,7 +114,7 @@ printf '%s\n' "$PASSWORD" | paymux user create --email you@example.com --role ad
 
 Codes cannot be reused, and five wrong sign-in attempts per email and address lock sign-in for 15 minutes.
 
-- Lost authenticator: `paymux user reset-2fa --email you@example.com` (signs the user out everywhere; they enrol again at next sign-in).
+- Lost authenticator: `paymux user reset-2fa --email you@example.com` (signs the user out everywhere and prints a one-time enrolment code; they enter it at the next sign-in to set up a new authenticator). A new user gets such a code when an admin creates them (Users page or `paymux user create`); the Users page can issue another. The code works once, for 7 days, and knowing only the password is not enough to enrol.
 - More users: *Users* in the dashboard (admins create users with an initial password; roles are viewer, operator, admin).
 - `PAYMUX_DEV_SKIP_2FA=true` exists for local development only and is refused in production or on a non-local base URL.
 

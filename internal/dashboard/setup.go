@@ -198,6 +198,11 @@ func (d *Dashboard) setupSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.setupTok = "" // spent: /setup is closed from here on
+	// The setup code already vouches for this person, so no enrolment code is needed.
+	if err := d.users.AuthoriseEnrolment(ctx, u.ID); err != nil {
+		d.fail(w, err)
+		return
+	}
 
 	org, err := d.orgID(ctx)
 	if err == nil {

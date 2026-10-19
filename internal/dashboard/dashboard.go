@@ -226,6 +226,7 @@ func (d *Dashboard) routes() {
 	m.HandleFunc("GET "+prefix+"/users", d.authed(authz.SettingsRead, d.usersPage))
 	m.HandleFunc("POST "+prefix+"/users", d.authed(authz.UserManage, d.userCreate))
 	m.HandleFunc("POST "+prefix+"/users/{id}/role", d.authed(authz.UserManage, d.userRole))
+	m.HandleFunc("POST "+prefix+"/users/{id}/enrolment", d.authed(authz.UserManage, d.userEnrolment))
 	m.HandleFunc("POST "+prefix+"/users/{id}/sso-link", d.authed(authz.UserManage, d.userSSOLink))
 	m.HandleFunc("POST "+prefix+"/users/{id}/disable", d.authed(authz.UserManage, d.userDisable))
 
@@ -299,6 +300,9 @@ type view struct {
 	SetupSignedIn                 bool
 	// totp
 	Enrol               bool
+	NeedEnrolCode       bool   // the enrolment page asks for the admin-issued code first
+	EnrolCode           string // a code just issued, shown once
+	EnrolFor            string
 	TOTPSecret, TOTPURI string
 	// users
 	Users     []userRow

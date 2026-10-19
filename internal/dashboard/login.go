@@ -12,9 +12,12 @@ import (
 )
 
 const (
-	msgBadLogin  = "Invalid email or password."
-	msgBadCode   = "Invalid code. Check your authenticator app and try again."
-	msgLockedOut = "Too many failed attempts. Try again in 15 minutes."
+	msgBadLogin = "Invalid email or password."
+	msgBadCode  = "Invalid code. Check your authenticator app and try again."
+
+	msgNeedEnrolCode = "Enter the enrolment code an admin gave you. Without it, two-factor sign-in cannot be set up."
+	msgBadEnrolCode  = "That enrolment code is not valid or has expired. Ask an admin for a new one."
+	msgLockedOut     = "Too many failed attempts. Try again in 15 minutes."
 )
 
 func totpAAD(userID string) []byte { return []byte("users.totp_secret:" + userID) }
@@ -178,6 +181,19 @@ func (d *Dashboard) pendingUser(w http.ResponseWriter, r *http.Request) (store.U
 }
 
 func (d *Dashboard) totpView(w http.ResponseWriter, r *http.Request, u store.UserRow, status int, msg string) {
+	if u.TOTPLastStep < 0 {
+		// Setting up the second factor needs the code an admin issued; knowing the
+		// password is not enough to be shown the secret.
+		open, err := d.o.DB.EnrolmentUnlocked(r.Context(), u.ID, d.o.Now())
+		if err != nil {
+			d.fail(w, err)
+			return
+		}
+		if !open {
+			d.render(w, status, "dash_totp", view{Title: "Two-factor authentication", CSRF: d.preToken(w, r), Error: msg, Email: u.Email, NeedEnrolCode: true})
+			return
+		}
+	}
 	secret, uri, enrol, err := d.totpSecret(r, u)
 	if err != nil {
 		d.fail(w, err)
@@ -223,6 +239,41 @@ func (d *Dashboard) totpSubmit(w http.ResponseWriter, r *http.Request) {
 		d.totpView(w, r, u, http.StatusTooManyRequests, msgLockedOut)
 		return
 	}
+	if u.TOTPLastStep < 0 {
+		open, err := d.o.DB.EnrolmentUnlocked(r.Context(), u.ID, now)
+		if err != nil {
+			d.fail(w, err)
+			return
+		}
+		if !open {
+			entered := r.PostForm.Get("enrol_code")
+			good := false
+			if strings.TrimSpace(entered) != "" {
+				if good, err = d.o.DB.UnlockEnrolment(r.Context(), u.ID, hashEnrolmentCode(entered), now, enrolmentWindow); err != nil {
+					d.fail(w, err)
+					return
+				}
+				if !good {
+					d.lim.fail(key, now)
+					d.acctTOTP.fail(email, now)
+					if d.budgets.fail(ticket, now) {
+						d.clearCookie(w, cookieTicket)
+						http.Redirect(w, r, prefix+"/login", http.StatusSeeOther)
+						return
+					}
+				}
+			}
+			switch {
+			case good:
+				d.totpView(w, r, u, http.StatusOK, "")
+			case strings.TrimSpace(entered) == "":
+				d.totpView(w, r, u, http.StatusOK, msgNeedEnrolCode)
+			default:
+				d.totpView(w, r, u, http.StatusOK, msgBadEnrolCode)
+			}
+			return
+		}
+	}
 	secret, _, _, err := d.totpSecret(r, u)
 	if err != nil {
 		d.fail(w, err)
@@ -252,6 +303,10 @@ func (d *Dashboard) totpSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	d.lim.reset(key)
 	d.budgets.kill(ticket, now)
+	if err := d.o.DB.ClearEnrolmentToken(r.Context(), u.ID); err != nil {
+		d.fail(w, err)
+		return
+	}
 	if err := d.createSession(r.Context(), w, r, u); err != nil {
 		d.fail(w, err)
 		return
