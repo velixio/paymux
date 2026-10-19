@@ -28,6 +28,8 @@ A browser redirect can happen before confirmation or never arrive. It is navigat
 
 Attempt states include `created`, `pending`, `authorized`, `captured`, and `failed`. The public payment-success event is **`payment.succeeded`**, not `payment.captured`. A simulator's failed attempt may leave the payment payable for another attempt.
 
+**Paying twice.** A second successful attempt on a succeeded payment is flagged `duplicate_success` (and refunded automatically when `duplicate_payment_action` is `auto_refund`). Refunding that *extra* attempt does not touch the sale: `amount_refunded` and the `refunded_*` flags stay as they were, no credit note is issued, and the app gets `payment.duplicate_refunded` (the payment carries the `duplicate_refunded` flag) rather than `refund.succeeded`. A refund of the sale itself still works for the full amount.
+
 A late matching success can move a failed or expired payment to success with a late flag. Success after cancellation or a currency/amount mismatch goes to review. Another successful attempt on an already succeeded payment triggers duplicate-payment handling. Review the effective `duplicate_payment_action` policy rather than assuming every duplicate is automatically refunded.
 
 ## Routing hierarchy
