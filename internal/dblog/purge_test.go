@@ -56,6 +56,9 @@ func remaining(t *testing.T, l *store.DB) map[string]bool {
 func retention(m map[string]int) func(context.Context, string) (int, error) {
 	return func(_ context.Context, key string) (int, error) {
 		v, ok := m[key]
+		if !ok && key == "log_max_mb" {
+			return 1 << 20, nil // no size cap unless a test sets one
+		}
 		if !ok {
 			return 0, fmt.Errorf("no setting %s", key)
 		}
