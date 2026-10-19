@@ -30,15 +30,16 @@ func TestAHookThatAllocatesAGigabyteIsStopped(t *testing.T) {
 		"concat":          `var a = new Array(1 << 26); a.concat(a, a, a, a, a, a, a, a).length`,
 		"apply":           `Array.apply(null, {length: 1e9}).length`,
 		"doubling string": `var s = 'x'; for (var i = 0; i < 40; i++) { s += s; s.length; }`,
-		"growing array":   `var a = []; while (true) { a.push('x'.repeat(1 << 20)); }`,
-		"growing object":  `var o = {}; for (var i = 0; ; i++) { o['k' + i] = 'x'.repeat(1 << 16); }`,
-		"growing closure": `var f = []; while (true) { f.push(new Array(1 << 16).fill(1)); }`,
+		"growing array":   `var a = []; while (true) { a.push('x'.repeat(1 << 23)); }`,
+		"growing object":  `var o = {}; for (var i = 0; ; i++) { o['k' + i] = 'x'.repeat(1 << 22); }`,
+		"growing closure": `var f = []; while (true) { f.push(new Array(1 << 20).fill(1)); }`,
 	}
 	for name, body := range scripts {
 		t.Run(name, func(t *testing.T) {
 			hh := setup(t, map[string]string{"big.js": `onPaymentSucceeded(function () { ` + body + ` });
 				onRefundSucceeded(function (e) { console.log("alive " + e.refund.id); });`}, func(o *jsvm.Options, _ *harness) {
-				o.MaxMemory = 64 << 20
+				o.MaxMemory = 32 << 20
+				o.CallTimeout = 10 * time.Second // the memory limit, not the clock, must be what stops it (the race detector is slow)
 			})
 			start := time.Now()
 			err := hh.rt.Call(ctx, "onPaymentSucceeded", paymentEvent)

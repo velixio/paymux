@@ -20,6 +20,18 @@
 // time (time blocked in fetch does not count); a script that runs longer is
 // interrupted and its runtime thrown away.
 //
+// Memory and output are bounded as well. A call may grow the live heap by at
+// most MaxMemory bytes (checked every millisecond; a script over the limit is
+// interrupted and its runtime thrown away, like one over the time limit), the
+// built-ins that can allocate a huge result in one step (repeat, padStart,
+// padEnd, fill, join, concat, Array.from, apply) refuse sizes beyond
+// maxStringLen characters and maxArrayLen elements, and what a script says is
+// capped: a console message at maxConsoleBytes, console lines per call at
+// maxConsoleLines, and an answer to routing at maxRouteEntries entries. The
+// heap is the process's, so the guard is an approximation under load; it
+// fails closed. Hooks are code the operator wrote, and a container memory
+// limit remains the hard bound.
+//
 // fetch(url, {method, headers, body}) is synchronous: it returns the response
 // {status, ok, headers, text(), json()} or throws. The result can also be
 // awaited or chained with .then, so code written for the web works.
@@ -36,11 +48,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
+	"runtime/metrics"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dop251/goja"
 )
@@ -52,7 +67,16 @@ const (
 	DefaultMaxBody      = 1 << 20
 	DefaultPollEvery    = 10 * time.Second
 	DefaultPoolSize     = 4
+	DefaultMaxMemory    = 128 << 20
 	maxFetchesPerCall   = 10
+
+	maxStringLen    = 16 << 20 // characters a built-in may build in one step
+	maxArrayLen     = 1 << 22  // elements a built-in may touch in one step
+	maxConsoleBytes = 8 << 10  // per console message
+	maxConsoleLines = 100      // per hook call
+	maxResultItems  = 1024     // length of an array a handler may return
+	maxRouteEntries = 64       // accounts in a routing answer
+	maxRouteEntry   = 256      // characters in one
 )
 
 // Options configures a Runtime.
@@ -75,6 +99,7 @@ type Options struct {
 	CallTimeout  time.Duration // script time per call (default 2s)
 	FetchTimeout time.Duration // per fetch (default 5s)
 	MaxBody      int64         // request and response body cap in bytes (default 1 MiB)
+	MaxMemory    int64         // live heap one call may add, in bytes (default 128 MiB)
 	PollEvery    time.Duration // file change check interval for Watch (default 10s)
 }
 
@@ -122,6 +147,9 @@ func New(o Options) (*Runtime, error) {
 	}
 	if o.MaxBody <= 0 {
 		o.MaxBody = DefaultMaxBody
+	}
+	if o.MaxMemory <= 0 {
+		o.MaxMemory = DefaultMaxMemory
 	}
 	if o.PollEvery <= 0 {
 		o.PollEvery = DefaultPollEvery
@@ -375,6 +403,7 @@ type instance struct {
 type callState struct {
 	ctx     context.Context
 	fetches int
+	lines   int // console lines written so far
 	b       *budget
 }
 
@@ -399,14 +428,14 @@ func (g *generation) build(ctx context.Context) (*instance, []fileErr) {
 			if skip[p.name] {
 				continue
 			}
-			b := newBudget(in.vm, g.r.o.CallTimeout)
+			b := newBudget(in.vm, g.r.o.CallTimeout, g.r.o.MaxMemory)
 			in.cur = &callState{ctx: ctx, b: b}
 			_, err := in.vm.RunProgram(p.prog)
 			timedOut := b.stop()
 			in.cur = nil
 			switch {
 			case timedOut:
-				note(p.name, errTimeLimit(g.r.o.CallTimeout))
+				note(p.name, b.limitError(g.r.o.CallTimeout, g.r.o.MaxMemory))
 				skip[p.name] = true
 				tainted = true
 			case err != nil:
@@ -424,6 +453,14 @@ func (g *generation) build(ctx context.Context) (*instance, []fileErr) {
 
 func errTimeLimit(d time.Duration) error {
 	return fmt.Errorf("hook exceeded the time limit of %v", d)
+}
+
+// limitError says which limit stopped the call.
+func (b *budget) limitError(d time.Duration, mem int64) error {
+	if b.memory.Load() {
+		return fmt.Errorf("hook exceeded the memory limit of %d MiB", mem>>20)
+	}
+	return errTimeLimit(d)
 }
 
 // cleanErr turns a goja error into the message a script author wants to see.
@@ -449,14 +486,65 @@ type budget struct {
 	remaining time.Duration
 	started   time.Time
 	timer     *time.Timer
-	fired     atomic.Bool
+	fired     atomic.Bool // the time or the memory limit was hit
+	memory    atomic.Bool // ... and it was the memory limit
 	stopped   bool
+	memStop   chan struct{}
+	memDone   chan struct{}
 }
 
-func newBudget(vm *goja.Runtime, limit time.Duration) *budget {
+func newBudget(vm *goja.Runtime, limit time.Duration, memory int64) *budget {
 	b := &budget{vm: vm, remaining: limit}
 	b.resume()
+	b.watchMemory(memory)
 	return b
+}
+
+// heapObjects is the bytes held by heap objects, live or not yet swept.
+func heapObjects() uint64 {
+	s := []metrics.Sample{{Name: "/memory/classes/heap/objects:bytes"}}
+	metrics.Read(s)
+	if s[0].Value.Kind() == metrics.KindUint64 {
+		return s[0].Value.Uint64()
+	}
+	return 0
+}
+
+// watchMemory interrupts the VM when the call has added more than limit bytes
+// to the live heap. The count of objects includes garbage not yet collected,
+// so when it passes the limit a collection is forced and the live heap is
+// measured again: only memory that survives counts.
+func (b *budget) watchMemory(limit int64) {
+	if limit <= 0 {
+		return
+	}
+	base := heapObjects()
+	b.memStop, b.memDone = make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(b.memDone)
+		t := time.NewTicker(time.Millisecond)
+		defer t.Stop()
+		next := base + uint64(limit)
+		for {
+			select {
+			case <-b.memStop:
+				return
+			case <-t.C:
+				if heapObjects() <= next {
+					continue
+				}
+				runtime.GC()
+				live := heapObjects()
+				if live > base+uint64(limit) {
+					b.memory.Store(true)
+					b.fired.Store(true)
+					b.vm.Interrupt("memory limit")
+					return
+				}
+				next = max(base+uint64(limit), live+uint64(limit)/2)
+			}
+		}
+	}()
 }
 
 func (b *budget) resume() {
@@ -487,10 +575,14 @@ func (b *budget) pause() {
 // the VM has been interrupted and must not be reused.
 func (b *budget) stop() (timedOut bool) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	b.stopped = true
 	if b.timer != nil {
 		b.timer.Stop()
+	}
+	b.mu.Unlock()
+	if b.memStop != nil {
+		close(b.memStop)
+		<-b.memDone
 	}
 	return b.fired.Load()
 }
@@ -522,7 +614,7 @@ func (r *Runtime) Route(ctx context.Context, req any) ([]string, error) {
 		}
 		var out []string
 		for _, x := range list {
-			if s, ok := x.(string); ok && s != "" {
+			if s, ok := x.(string); ok && s != "" && len(s) <= maxRouteEntry && len(out) < maxRouteEntries {
 				out = append(out, s)
 			}
 		}
@@ -551,7 +643,7 @@ func (r *Runtime) invoke(ctx context.Context, hook string, arg any) ([]any, erro
 	discard := false
 	defer func() { g.release(in, discard) }()
 
-	b := newBudget(in.vm, r.o.CallTimeout)
+	b := newBudget(in.vm, r.o.CallTimeout, r.o.MaxMemory)
 	in.cur = &callState{ctx: ctx, b: b}
 	var results []any
 	var errs []error
@@ -573,6 +665,10 @@ func (r *Runtime) invoke(ctx context.Context, hook string, arg any) ([]any, erro
 			continue
 		}
 		if res != nil && !goja.IsUndefined(res) && !goja.IsNull(res) {
+			if err := resultTooBig(res); err != nil {
+				errs = append(errs, err)
+				continue
+			}
 			if p, ok := res.Export().(*goja.Promise); ok {
 				switch p.State() {
 				case goja.PromiseStateRejected:
@@ -582,6 +678,10 @@ func (r *Runtime) invoke(ctx context.Context, hook string, arg any) ([]any, erro
 					r.o.Logger.Warn("js hooks: a handler returned a promise that never settled; nothing can resolve it here", "hook", hook)
 					continue
 				default:
+					if err := resultTooBig(p.Result()); err != nil {
+						errs = append(errs, err)
+						continue
+					}
 					results = append(results, p.Result().Export())
 					continue
 				}
@@ -593,9 +693,20 @@ func (r *Runtime) invoke(ctx context.Context, hook string, arg any) ([]any, erro
 	in.cur = nil
 	if timedOut {
 		discard = true
-		errs = append(errs, errTimeLimit(r.o.CallTimeout))
+		errs = append(errs, b.limitError(r.o.CallTimeout, r.o.MaxMemory))
 	}
 	return results, errors.Join(errs...)
+}
+
+// resultTooBig refuses an answer that is an array of more than maxResultItems
+// entries, before it is copied out of the VM.
+func resultTooBig(v goja.Value) error {
+	if o, ok := v.(*goja.Object); ok && o.ClassName() == "Array" {
+		if n := o.Get("length"); n != nil && n.ToInteger() > maxResultItems {
+			return fmt.Errorf("the hook's answer is too large (%d entries; the limit is %d)", n.ToInteger(), maxResultItems)
+		}
+	}
+	return nil
 }
 
 func rejectionText(v goja.Value) string {
@@ -622,6 +733,44 @@ const fetchPrelude = `(function (native) {
     };
     return res;
   };
+})`
+
+// guardPrelude replaces the built-ins that can allocate a huge result in one
+// step with versions that refuse sizes beyond the limits. A loop that grows
+// memory a little at a time is caught by the memory watch instead.
+const guardPrelude = `(function (maxStr, maxArr) {
+  function big(what) { throw new RangeError(what + " is too large for a hook (limits: " + maxStr + " characters, " + maxArr + " elements)"); }
+  function num(x) { x = Number(x); return x !== x ? 0 : x; }
+  function len(o) { return o == null ? 0 : num(o.length); }
+  var fapply = Function.prototype.apply; // the original, since apply itself is wrapped below
+  function wrap(obj, name, size) {
+    var orig = obj[name];
+    if (typeof orig !== "function") return;
+    Object.defineProperty(obj, name, { configurable: true, writable: true, value: function () {
+      fapply.call(size, this, arguments);
+      return fapply.call(orig, this, arguments);
+    } });
+  }
+  var S = String.prototype, A = Array.prototype;
+  wrap(S, "repeat", function (n) { if (String(this).length * Math.max(0, num(n)) > maxStr) big("a string"); });
+  wrap(S, "padStart", function (n) { if (num(n) > maxStr) big("a string"); });
+  wrap(S, "padEnd", function (n) { if (num(n) > maxStr) big("a string"); });
+  wrap(A, "fill", function () { if (len(this) > maxArr) big("an array"); });
+  wrap(A, "join", function (sep) { if (len(this) * (1 + String(sep === undefined ? "," : sep).length) > maxStr) big("a string"); });
+  wrap(A, "toString", function () { if (len(this) > maxStr) big("a string"); });
+  wrap(A, "concat", function () {
+    var n = len(this);
+    for (var i = 0; i < arguments.length; i++) n += Array.isArray(arguments[i]) ? len(arguments[i]) : 1;
+    if (n > maxArr) big("an array");
+  });
+  wrap(A, "flat", function () { if (len(this) > maxArr) big("an array"); });
+  wrap(A, "slice", function () { if (len(this) > maxArr) big("an array"); });
+  wrap(A, "splice", function () { if (len(this) > maxArr) big("an array"); });
+  wrap(A, "reverse", function () { if (len(this) > maxArr) big("an array"); });
+  wrap(A, "sort", function () { if (len(this) > maxArr) big("an array"); });
+  wrap(Array, "from", function (x) { if (len(x) > maxArr) big("an array"); });
+  wrap(Function.prototype, "apply", function (t, args) { if (len(args) > maxArr) big("an argument list"); });
+  if (typeof Reflect === "object") wrap(Reflect, "apply", function (f, t, args) { if (len(args) > maxArr) big("an argument list"); });
 })`
 
 func (in *instance) install() {
@@ -651,11 +800,27 @@ func (in *instance) install() {
 	console := vm.NewObject()
 	logf := func(level slog.Level) func(goja.FunctionCall) goja.Value {
 		return func(call goja.FunctionCall) goja.Value {
+			if cs := in.cur; cs != nil {
+				if cs.lines++; cs.lines > maxConsoleLines {
+					if cs.lines == maxConsoleLines+1 {
+						in.g.r.o.Logger.Warn("js hook: console output suppressed after the first lines of this call", "source", "js", "limit", maxConsoleLines)
+					}
+					return goja.Undefined()
+				}
+			}
 			parts := make([]string, len(call.Arguments))
 			for i, a := range call.Arguments {
 				parts[i] = in.format(a)
 			}
-			in.g.r.o.Logger.Log(context.Background(), level, "js hook: "+strings.Join(parts, " "), "source", "js")
+			msg := strings.Join(parts, " ")
+			if len(msg) > maxConsoleBytes {
+				cut := maxConsoleBytes
+				for cut > 0 && !utf8.RuneStart(msg[cut]) {
+					cut--
+				}
+				msg = msg[:cut] + "...[truncated]"
+			}
+			in.g.r.o.Logger.Log(context.Background(), level, "js hook: "+msg, "source", "js")
 			return goja.Undefined()
 		}
 	}
@@ -665,6 +830,13 @@ func (in *instance) install() {
 	_ = console.Set("warn", logf(slog.LevelWarn))
 	_ = console.Set("error", logf(slog.LevelError))
 	_ = vm.Set("console", console)
+
+	// Limits on what one built-in call may allocate.
+	if guard, err := vm.RunString(guardPrelude); err == nil {
+		if install, ok := goja.AssertFunction(guard); ok {
+			_, _ = install(goja.Undefined(), vm.ToValue(maxStringLen), vm.ToValue(maxArrayLen))
+		}
+	}
 
 	// fetch.
 	prelude, err := vm.RunString(fetchPrelude)
