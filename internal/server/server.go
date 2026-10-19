@@ -18,6 +18,9 @@ type Options struct {
 	// OnResponse, when set, is called after every request (the error log in the
 	// database hangs on it). It must not block.
 	OnResponse ResponseHook
+	// ClientIP names the sender of a request for Source (nil: the connection's
+	// address). Pass a function that understands the trusted proxies.
+	ClientIP func(*http.Request) string
 }
 
 // Server holds the muxes. Register extra routes before serving.
@@ -28,6 +31,7 @@ type Server struct {
 	mux      *http.ServeMux
 	requests *metrics.CounterVec
 	onResp   ResponseHook
+	clientIP func(*http.Request) string
 }
 
 // New builds a Server with /healthz and /readyz registered.
@@ -39,11 +43,12 @@ func New(o Options) *Server {
 		o.Metrics = metrics.NewRegistry()
 	}
 	s := &Server{
-		log:    o.Logger,
-		reg:    o.Metrics,
-		checks: o.Checks,
-		onResp: o.OnResponse,
-		mux:    http.NewServeMux(),
+		log:      o.Logger,
+		reg:      o.Metrics,
+		checks:   o.Checks,
+		onResp:   o.OnResponse,
+		clientIP: o.ClientIP,
+		mux:      http.NewServeMux(),
 		requests: o.Metrics.Counter("paymux_http_requests_total",
 			"HTTP requests by route pattern and status code.", "route", "code"),
 	}
@@ -63,7 +68,7 @@ func (s *Server) HandleFunc(pattern string, fn http.HandlerFunc) {
 }
 
 // Handler is the public handler wrapped in the middleware chain.
-func (s *Server) Handler() http.Handler { return chain(s.mux, s.log, s.requests, s.onResp) }
+func (s *Server) Handler() http.Handler { return chain(s.mux, s.log, s.requests, s.onResp, s.clientIP) }
 
 // InternalHandler serves /metrics and /debug/pprof/ for the internal listener.
 func (s *Server) InternalHandler() http.Handler {

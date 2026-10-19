@@ -154,6 +154,9 @@ type HTTPEvent struct {
 	Route    string // the matched mux pattern, or "unmatched"
 	Status   int
 	Duration time.Duration
+	// Source is who sent the request (its client address). It is used to keep one
+	// source from filling the log with rejected requests, and is never stored.
+	Source string
 }
 
 // ShouldRecordHTTP says whether a response is worth a row: every 5xx, and a
@@ -185,11 +188,21 @@ func (r *Recorder) HTTP(ctx context.Context, ev HTTPEvent) {
 		return
 	}
 	defer func() { _ = recover() }()
+	now := r.o.Now()
+	allowed, carried := r.throttle.allow(now, ev.Source, ev.Route, ev.Status)
+	if !allowed {
+		r.suppressed.Add(1)
+		return
+	}
 	route := r.red.Text(ev.Route)
-	row := store.LogRow{ID: ids.New("log"), At: r.o.Now(), Level: level, Kind: "http", Component: "http",
+	attrs := map[string]any{"method": ev.Method, "route": route}
+	if carried > 0 {
+		attrs["suppressed"] = carried // rows not written since the last one for this source and route
+	}
+	row := store.LogRow{ID: ids.New("log"), At: now, Level: level, Kind: "http", Component: "http",
 		Msg:    capStr(fmt.Sprintf("%s %s -> %d", ev.Method, route, ev.Status), 2000),
 		Status: ev.Status, DurationMS: ev.Duration.Milliseconds(),
-		Attrs: marshalCapped(map[string]any{"method": ev.Method, "route": route})}
+		Attrs: marshalCapped(attrs)}
 	fillIDs(&row, logctx.IDs(ctx))
 	r.Emit(row)
 }

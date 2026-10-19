@@ -330,6 +330,7 @@ func (a *App) Start(ctx context.Context) error {
 		Logger:     a.log,
 		Metrics:    reg,
 		OnResponse: dbl.responseHook(),
+		ClientIP:   func(r *http.Request) string { return clientip.From(r, a.cfg.TrustedProxies) },
 		Checks: []server.Check{
 			{Name: "db", Fn: db.Ping},
 			{Name: "migrations", Fn: func(ctx context.Context) error {
