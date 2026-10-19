@@ -829,6 +829,15 @@ type UpdateAmountRequest struct {
 }
 
 
+package framework // import "github.com/paymux/paymux/pkg/framework"
+
+func Main(setup ...func(*hub.App))
+
+func OnSetup(f func(*hub.App))
+
+func Run(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer, setup ...func(*hub.App)) int
+
+
 package hub // import "github.com/paymux/paymux/pkg/hub"
 
 var Version = "dev"
@@ -1008,4 +1017,51 @@ type SubscriptionEvent struct {
 	Reason       string          `json:"reason"`
 	Raw          json.RawMessage `json:"raw"`
 }
+
+
+package jsvm // import "github.com/paymux/paymux/pkg/jsvm"
+
+const (
+	DefaultCallTimeout  = 2 * time.Second
+	DefaultFetchTimeout = 5 * time.Second
+	DefaultMaxBody      = 1 << 20
+	DefaultPollEvery    = 10 * time.Second
+	DefaultPoolSize     = 4
+)
+
+type Options struct {
+	Dir          string
+	HTTPClient   *http.Client
+	AllowedHosts []string
+	Logger       *slog.Logger
+	OnError      func(hook string, err error)
+	PoolSize     int
+	CallTimeout  time.Duration
+	FetchTimeout time.Duration
+	MaxBody      int64
+	PollEvery    time.Duration
+}
+
+type Runtime struct {
+
+}// contains filtered or unexported fields
+
+
+func New(o Options) (*Runtime, error)
+
+func (r *Runtime) Call(ctx context.Context, hook string, event any) error
+
+func (r *Runtime) Changed() bool
+
+func (r *Runtime) Close()
+
+func (r *Runtime) Has(hook string) bool
+
+func (r *Runtime) Hooks() []string
+
+func (r *Runtime) Reload() error
+
+func (r *Runtime) Route(ctx context.Context, req any) ([]string, error)
+
+func (r *Runtime) Watch(ctx context.Context)
 

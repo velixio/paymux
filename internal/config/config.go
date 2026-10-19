@@ -72,7 +72,7 @@ type Config struct {
 	OTLPLogsEndpoint string
 	OTLPLogsHeaders  map[string]Secret
 
-	// JavaScript hooks (plugins/jsvm). They run only when JSHooksDir exists.
+	// JavaScript hooks (pkg/jsvm). They run only when JSHooksDir exists.
 	JSHooksDir          string   // PAYMUX_JS_HOOKS_DIR, default <data dir>/hooks
 	JSHooksAllowedHosts []string // PAYMUX_JS_HOOKS_ALLOWED_HOSTS: hosts fetch() may call; "*.example.com" matches subdomains
 }

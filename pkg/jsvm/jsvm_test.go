@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/internal/outbound"
-	"github.com/paymux/paymux/plugins/jsvm"
+	"github.com/paymux/paymux/pkg/jsvm"
 )
 
 var ctx = context.Background()
