@@ -379,16 +379,6 @@ func (d *Dashboard) setCookie(w http.ResponseWriter, name, value string, maxAge 
 
 func (d *Dashboard) clearCookie(w http.ResponseWriter, name string) { d.setCookie(w, name, "", -1) }
 
-// trusted reports whether addr is one of the configured reverse proxies.
-func (d *Dashboard) trusted(addr netip.Addr) bool {
-	for _, p := range d.o.TrustedProxies {
-		if p.Contains(addr) {
-			return true
-		}
-	}
-	return false
-}
-
 // clientIP is the address of the browser (see package clientip).
 func (d *Dashboard) clientIP(r *http.Request) string { return clientip.From(r, d.o.TrustedProxies) }
 
