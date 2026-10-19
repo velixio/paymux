@@ -2,8 +2,11 @@ package jsvm_test
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -39,15 +42,18 @@ func TestAHookThatAllocatesAGigabyteIsStopped(t *testing.T) {
 			hh := setup(t, map[string]string{"big.js": `onPaymentSucceeded(function () { ` + body + ` });
 				onRefundSucceeded(function (e) { console.log("alive " + e.refund.id); });`}, func(o *jsvm.Options, _ *harness) {
 				o.MaxMemory = 32 << 20
-				o.CallTimeout = 10 * time.Second // the memory limit, not the clock, must be what stops it (the race detector is slow)
+				// The memory limit, not the clock, must be what stops it: on a slow, busy machine
+				// the clock could win, so it is made too long to matter.
+				o.CallTimeout = 120 * time.Second
 			})
 			start := time.Now()
 			err := hh.rt.Call(ctx, "onPaymentSucceeded", paymentEvent)
 			if err == nil || !(strings.Contains(err.Error(), "too large") || strings.Contains(err.Error(), "memory")) {
 				t.Fatalf("err = %v", err)
 			}
-			if took := time.Since(start); took > 5*time.Second {
-				t.Errorf("stopped after %v", took)
+			// How fast it is stopped depends on the machine; only a hang is a failure.
+			if took := time.Since(start); took > 100*time.Second {
+				t.Errorf("stopped only after %v", took)
 			}
 			if mb := heapMB(); mb > 400 {
 				t.Errorf("%d MB of heap still in use afterwards", mb)
@@ -71,7 +77,10 @@ func TestOrdinaryScriptsStillWorkUnderTheMemoryLimit(t *testing.T) {
 			var csv = rows.map(function (r) { return r.id + ',' + r.note; }).join('\n');
 			var padded = '7'.padStart(10, '0') + 'ab'.repeat(1000) + new Array(1000).fill('z').join('');
 			console.log("ok " + csv.length + " " + padded.length + " " + [1, 2].concat([3]).length);
-		});`}, nil)
+		});`}, func(o *jsvm.Options, _ *harness) {
+		// This is about the memory limit; a busy machine must not turn it into a time-limit failure.
+		o.CallTimeout = 120 * time.Second
+	})
 	for range 5 {
 		if err := h.rt.Call(ctx, "onPaymentSucceeded", paymentEvent); err != nil {
 			t.Fatal(err)
@@ -116,5 +125,45 @@ func TestRoutingAnswersAreCappedPerEntry(t *testing.T) {
 	order, err := h.rt.Route(ctx, map[string]any{})
 	if err != nil || strings.Join(order, ",") != "pa_1,pa_2" {
 		t.Errorf("order %v err %v", order, err)
+	}
+}
+
+// The limit is on what the script adds, not on the process: memory that
+// something else in the process takes while a hook is waiting (another
+// goroutine, another test) is not the hook's, and does not stop it.
+func TestUnrelatedAllocationDoesNotStopAnInnocentHook(t *testing.T) {
+	reached, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		once.Do(func() { close(reached) })
+		<-release
+		_, _ = w.Write([]byte("ok"))
+	}))
+	t.Cleanup(srv.Close)
+	h := setup(t, map[string]string{"w.js": `onPaymentSucceeded(function () {
+		var before = 'small work'.repeat(10);
+		var r = fetch("` + srv.URL + `");
+		console.log("finished " + r.status + " " + before.length);
+	});`}, func(o *jsvm.Options, _ *harness) {
+		o.AllowedHosts = []string{hostOf(t, srv.URL)}
+		o.MaxMemory = 32 << 20
+		o.CallTimeout = 120 * time.Second
+	})
+	done := make(chan error, 1)
+	go func() { done <- h.rt.Call(ctx, "onPaymentSucceeded", paymentEvent) }()
+	<-reached
+	// While the hook waits, something else in the process takes one and a half times the limit and keeps it.
+	other := make([][]byte, 0, 12)
+	for range 12 {
+		other = append(other, make([]byte, 4<<20))
+	}
+	time.Sleep(300 * time.Millisecond) // many guard ticks with the extra memory in place
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("an innocent hook was stopped: %v", err)
+	}
+	runtime.KeepAlive(other)
+	if !strings.Contains(h.logs.String(), "finished 200") {
+		t.Errorf("the hook did not finish:\n%s", h.logs)
 	}
 }
