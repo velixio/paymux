@@ -245,7 +245,7 @@ func TestSensitiveActionsNeedARecentSignIn(t *testing.T) {
 		page := e.pageOK(c, r.Header.Get("Location"))
 		has(t, page, "password", "code")
 		tok := csrfOf(t, page)
-		next := regexp.MustCompile(`name="next" value="([^"]*)"`).FindStringSubmatch(page)
+		next := regexp.MustCompile(`(?s)action="/dashboard/reauth".*?name="next" value="([^"]*)"`).FindStringSubmatch(page)
 		if next == nil {
 			t.Fatalf("no next field:\n%s", page)
 		}

@@ -211,6 +211,7 @@ var navItems = []navItem{
 type navItem struct{ Key, Label, Href string }
 
 func (d *Dashboard) routes() {
+	d.accountRoutes()
 	m := d.mux
 	m.HandleFunc("GET "+prefix+"/{$}", d.authed(authz.PaymentRead, d.root))
 	m.HandleFunc("GET "+prefix+"/login", d.loginPage)
@@ -224,10 +225,10 @@ func (d *Dashboard) routes() {
 
 	// Users. The list is visible to everyone who can read settings.
 	m.HandleFunc("GET "+prefix+"/users", d.authed(authz.SettingsRead, d.usersPage))
-	m.HandleFunc("POST "+prefix+"/users", d.authed(authz.UserManage, d.userCreate))
-	m.HandleFunc("POST "+prefix+"/users/{id}/role", d.authed(authz.UserManage, d.userRole))
-	m.HandleFunc("POST "+prefix+"/users/{id}/enrolment", d.authed(authz.UserManage, d.userEnrolment))
-	m.HandleFunc("POST "+prefix+"/users/{id}/sso-link", d.authed(authz.UserManage, d.userSSOLink))
+	m.HandleFunc("POST "+prefix+"/users", d.authed(authz.UserManage, d.recent(d.userCreate)))
+	m.HandleFunc("POST "+prefix+"/users/{id}/role", d.authed(authz.UserManage, d.recent(d.userRole)))
+	m.HandleFunc("POST "+prefix+"/users/{id}/enrolment", d.authed(authz.UserManage, d.recent(d.userEnrolment)))
+	m.HandleFunc("POST "+prefix+"/users/{id}/sso-link", d.authed(authz.UserManage, d.recent(d.userSSOLink)))
 	m.HandleFunc("POST "+prefix+"/users/{id}/disable", d.authed(authz.UserManage, d.userDisable))
 
 	// Roles: admin only (role.manage is never grantable to a custom role).
@@ -275,6 +276,9 @@ func (d *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // required by the shared layout.
 type view struct {
 	RememberDays int // the login page offers "Remember me for N days"; 0 hides it
+	Sessions     []sessionRow
+	Next         string // where the confirmation page returns to
+	NeedCode     bool   // the confirmation page asks for an authenticator code too
 	StyleNonce   string
 
 	AppName, LogoURL, Accent string
@@ -667,7 +671,7 @@ func (d *Dashboard) authed(action authz.Action, h authedHandler) http.HandlerFun
 				return
 			}
 		}
-		if !s.can(action) {
+		if action != selfOnly && !s.can(action) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
