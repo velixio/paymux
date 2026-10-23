@@ -239,7 +239,7 @@ func (d *Dashboard) setupSubmit(w http.ResponseWriter, r *http.Request) {
 	v := view{Title: "Setup complete", Email: u.Email, CSRF: d.preToken(w, r)}
 	v.SetupOrg, v.SetupApp, v.SetupKeys = vals.Org, vals.AppName, keys
 	if d.o.DevSkip2FA {
-		if err := d.createSession(ctx, w, r, u); err != nil {
+		if err := d.createSession(ctx, w, r, u, false); err != nil {
 			d.fail(w, err)
 			return
 		}
@@ -253,7 +253,7 @@ func (d *Dashboard) setupSubmit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		v.TOTPSecret, v.TOTPURI = secret, uri
-		d.issueTicket(w, u.ID)
+		d.issueTicket(w, u.ID, false)
 	}
 	d.render(w, http.StatusOK, "dash_setup_done", v)
 }

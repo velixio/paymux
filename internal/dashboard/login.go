@@ -62,7 +62,8 @@ func (d *Dashboard) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, prefix+"/", http.StatusSeeOther)
 		return
 	}
-	d.render(w, http.StatusOK, "dash_login", view{Title: "Sign in", CSRF: d.preToken(w, r), NeedsSetup: d.SetupToken() != "", SSO: d.ssoEnabled()})
+	d.render(w, http.StatusOK, "dash_login", view{Title: "Sign in", CSRF: d.preToken(w, r), NeedsSetup: d.SetupToken() != "", SSO: d.ssoEnabled(),
+		RememberDays: d.rememberDays(r.Context())})
 }
 
 func (d *Dashboard) loginSubmit(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +74,8 @@ func (d *Dashboard) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(strings.TrimSpace(r.PostForm.Get("email")))
 	password := r.PostForm.Get("password")
 	again := func(status int, msg string) {
-		d.render(w, status, "dash_login", view{Title: "Sign in", CSRF: d.preToken(w, r), Email: email, Error: msg, SSO: d.ssoEnabled()})
+		d.render(w, status, "dash_login", view{Title: "Sign in", CSRF: d.preToken(w, r), Email: email, Error: msg, SSO: d.ssoEnabled(),
+			RememberDays: d.rememberDays(r.Context())})
 	}
 	key := d.limitKey(email, r)
 	now := d.o.Now()
@@ -118,16 +120,17 @@ func (d *Dashboard) loginSubmit(w http.ResponseWriter, r *http.Request) {
 
 	// A password success does not clear the failure count: otherwise someone
 	// who knows the password could guess TOTP codes without limit.
+	remember := r.PostForm.Get("remember") != "" && d.rememberDays(r.Context()) > 0
 	if d.o.DevSkip2FA {
 		d.lim.reset(key)
-		if err := d.createSession(r.Context(), w, r, u); err != nil {
+		if err := d.createSession(r.Context(), w, r, u, remember); err != nil {
 			d.fail(w, err)
 			return
 		}
 		http.Redirect(w, r, prefix+"/", http.StatusSeeOther)
 		return
 	}
-	d.issueTicket(w, u.ID)
+	d.issueTicket(w, u.ID, remember)
 	http.Redirect(w, r, prefix+"/login/totp", http.StatusSeeOther)
 }
 
@@ -170,7 +173,7 @@ func provisioningURI(secret, email string) string {
 }
 
 func (d *Dashboard) pendingUser(w http.ResponseWriter, r *http.Request) (store.UserRow, bool) {
-	id, _, ok := d.ticketUser(r)
+	id, _, _, ok := d.ticketUser(r)
 	if ok {
 		u, err := d.o.DB.UserByID(r.Context(), id)
 		if err == nil && !u.Disabled {
@@ -224,7 +227,7 @@ func (d *Dashboard) totpSubmit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	_, ticket, _ := d.ticketUser(r)
+	_, ticket, remember, _ := d.ticketUser(r) // the choice made at the password step, signed into the ticket
 	key := d.limitKey(u.Email, r)
 	now := d.o.Now()
 	email := strings.ToLower(strings.TrimSpace(u.Email))
@@ -308,7 +311,7 @@ func (d *Dashboard) totpSubmit(w http.ResponseWriter, r *http.Request) {
 		d.fail(w, err)
 		return
 	}
-	if err := d.createSession(r.Context(), w, r, u); err != nil {
+	if err := d.createSession(r.Context(), w, r, u, remember); err != nil {
 		d.fail(w, err)
 		return
 	}

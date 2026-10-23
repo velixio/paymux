@@ -16,10 +16,10 @@ func TestAuditPage(t *testing.T) {
 		day := func(d, h int) time.Time { return time.Date(2026, 10, d, h, 0, 0, 0, time.UTC) }
 		err := db.Write(ctx, func(tx store.Tx) error {
 			for _, r := range []store.AuditRow{
-				{ID: "aud_01", ActorType: "user", ActorID: "usr_a", Action: "refund.create", Target: "tgt_one", At: day(1, 10), IP: "203.0.113.7"},
-				{ID: "aud_02", ActorType: "user", ActorID: "usr_b", Action: "setting.update", Target: "tgt_two", At: day(2, 10), After: `{"secret":"[redacted]"}`},
-				{ID: "aud_03", ActorType: "api_key", ActorID: "key_1", Action: "refund.create", Target: "tgt_three", At: day(3, 10)},
-				{ID: "aud_04", ActorType: "system", Action: "app.create", Target: "tgt_four", At: day(4, 10)},
+				{ID: "aud_z1", ActorType: "user", ActorID: "usr_a", Action: "refund.create", Target: "tgt_one", At: day(1, 10), IP: "203.0.113.7"},
+				{ID: "aud_z2", ActorType: "user", ActorID: "usr_b", Action: "setting.update", Target: "tgt_two", At: day(2, 10), After: `{"secret":"[redacted]"}`},
+				{ID: "aud_z3", ActorType: "api_key", ActorID: "key_1", Action: "refund.create", Target: "tgt_three", At: day(3, 10)},
+				{ID: "aud_z4", ActorType: "system", Action: "app.create", Target: "tgt_four", At: day(4, 10)},
 			} {
 				r.OrgID = store.DefaultOrgID
 				if err := store.InsertAudit(ctx, tx, r); err != nil {
@@ -44,7 +44,7 @@ func TestAuditPage(t *testing.T) {
 		has(t, body, "tgt_four", "tgt_three", "system", "app.create", "api_key", "key_1")
 		lacks(t, body, "tgt_two", "tgt_one") // page size 2, newest first
 
-		next := regexpFind(t, `href="([^"]*after=aud_03[^"]*)"`, body)
+		next := regexpFind(t, `href="([^"]*after=aud_z3[^"]*)"`, body)
 		body = e.pageOK(admin, strings.ReplaceAll(next, "&amp;", "&"))
 		has(t, body, "tgt_two", "tgt_one", "203.0.113.7", "[redacted]")
 		lacks(t, body, "tgt_four", "tgt_three")

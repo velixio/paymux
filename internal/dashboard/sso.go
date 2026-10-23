@@ -41,14 +41,18 @@ func (d *Dashboard) ssoEnabled() bool { return d.o.OIDC != nil }
 
 // ssoCookie seals the sign-in's secrets into a signed value: nothing is kept
 // on the server, and the browser cannot alter state, nonce or verifier.
-func (d *Dashboard) ssoCookie(state, nonce, verifier string) string {
-	payload := strings.Join([]string{state, nonce, verifier, strconv.FormatInt(d.o.Now().Add(oidcTTL).Unix(), 10)}, "|")
+func (d *Dashboard) ssoCookie(state, nonce, verifier string, remember bool) string {
+	flag := "0"
+	if remember {
+		flag = "1" // part of the signed value, so the callback's query cannot change it
+	}
+	payload := strings.Join([]string{state, nonce, verifier, strconv.FormatInt(d.o.Now().Add(oidcTTL).Unix(), 10), flag}, "|")
 	m := hmac.New(sha256.New, d.oidcKey)
 	m.Write([]byte(payload))
 	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + base64.RawURLEncoding.EncodeToString(m.Sum(nil))
 }
 
-func (d *Dashboard) readSSOCookie(r *http.Request) (state, nonce, verifier string, ok bool) {
+func (d *Dashboard) readSSOCookie(r *http.Request) (state, nonce, verifier string, remember, ok bool) {
 	c, err := r.Cookie(cookieOIDC)
 	if err != nil {
 		return
@@ -65,14 +69,14 @@ func (d *Dashboard) readSSOCookie(r *http.Request) (state, nonce, verifier strin
 		return
 	}
 	f := strings.Split(string(payload), "|")
-	if len(f) != 4 {
+	if len(f) != 5 {
 		return
 	}
 	exp, err := strconv.ParseInt(f[3], 10, 64)
 	if err != nil || d.o.Now().Unix() > exp {
 		return
 	}
-	return f[0], f[1], f[2], true
+	return f[0], f[1], f[2], f[4] == "1", true
 }
 
 func (d *Dashboard) ssoStart(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +92,7 @@ func (d *Dashboard) ssoStart(w http.ResponseWriter, r *http.Request) {
 		d.ssoFailed(w, r, http.StatusBadGateway)
 		return
 	}
-	d.setCookie(w, cookieOIDC, d.ssoCookie(state, nonce, verifier), int(oidcTTL.Seconds()))
+	d.setCookie(w, cookieOIDC, d.ssoCookie(state, nonce, verifier, r.URL.Query().Get("remember") != ""), int(oidcTTL.Seconds()))
 	http.Redirect(w, r, to, http.StatusSeeOther)
 }
 
@@ -102,7 +106,7 @@ func (d *Dashboard) ssoCallback(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	state, nonce, verifier, ok := d.readSSOCookie(r)
+	state, nonce, verifier, remember, ok := d.readSSOCookie(r)
 	q := r.URL.Query()
 	if !ok || state == "" || subtle.ConstantTimeCompare([]byte(q.Get("state")), []byte(state)) != 1 {
 		d.o.Logger.Warn("dashboard: sso callback with a missing or wrong state", "ip", d.clientIP(r))
@@ -131,7 +135,7 @@ func (d *Dashboard) ssoCallback(w http.ResponseWriter, r *http.Request) {
 		d.ssoFailed(w, r, http.StatusForbidden)
 		return
 	}
-	if err := d.createSession(r.Context(), w, r, u); err != nil {
+	if err := d.createSession(r.Context(), w, r, u, remember); err != nil {
 		d.fail(w, err)
 		return
 	}
