@@ -49,8 +49,8 @@ var oauthNotices = map[string]string{
 
 func (d *Dashboard) routesOAuth() {
 	m := d.mux
-	m.HandleFunc("POST "+prefix+"/providers/{id}/oauth/connect", d.authed(authz.ProviderAccountManage, d.oauthConnect))
-	m.HandleFunc("POST "+prefix+"/providers/{id}/oauth/code", d.authed(authz.ProviderAccountManage, d.oauthPasteCode))
+	m.HandleFunc("POST "+prefix+"/providers/{id}/oauth/connect", d.authed(authz.ProviderAccountManage, d.recent(d.oauthConnect)))
+	m.HandleFunc("POST "+prefix+"/providers/{id}/oauth/code", d.authed(authz.ProviderAccountManage, d.recent(d.oauthPasteCode)))
 	m.HandleFunc("GET "+prefix+"/oauth/callback", d.authed(authz.ProviderAccountManage, d.oauthCallback))
 }
 

@@ -211,6 +211,7 @@ var navItems = []navItem{
 type navItem struct{ Key, Label, Href string }
 
 func (d *Dashboard) routes() {
+	d.accountRoutes()
 	m := d.mux
 	m.HandleFunc("GET "+prefix+"/{$}", d.authed(authz.PaymentRead, d.root))
 	m.HandleFunc("GET "+prefix+"/login", d.loginPage)
@@ -224,10 +225,10 @@ func (d *Dashboard) routes() {
 
 	// Users. The list is visible to everyone who can read settings.
 	m.HandleFunc("GET "+prefix+"/users", d.authed(authz.SettingsRead, d.usersPage))
-	m.HandleFunc("POST "+prefix+"/users", d.authed(authz.UserManage, d.userCreate))
-	m.HandleFunc("POST "+prefix+"/users/{id}/role", d.authed(authz.UserManage, d.userRole))
-	m.HandleFunc("POST "+prefix+"/users/{id}/enrolment", d.authed(authz.UserManage, d.userEnrolment))
-	m.HandleFunc("POST "+prefix+"/users/{id}/sso-link", d.authed(authz.UserManage, d.userSSOLink))
+	m.HandleFunc("POST "+prefix+"/users", d.authed(authz.UserManage, d.recent(d.userCreate)))
+	m.HandleFunc("POST "+prefix+"/users/{id}/role", d.authed(authz.UserManage, d.recent(d.userRole)))
+	m.HandleFunc("POST "+prefix+"/users/{id}/enrolment", d.authed(authz.UserManage, d.recent(d.userEnrolment)))
+	m.HandleFunc("POST "+prefix+"/users/{id}/sso-link", d.authed(authz.UserManage, d.recent(d.userSSOLink)))
 	m.HandleFunc("POST "+prefix+"/users/{id}/disable", d.authed(authz.UserManage, d.userDisable))
 
 	// Roles: admin only (role.manage is never grantable to a custom role).
@@ -274,7 +275,11 @@ func (d *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // view is the data for every dash_* template. AppName, LogoURL and Accent are
 // required by the shared layout.
 type view struct {
-	StyleNonce string
+	RememberDays int // the login page offers "Remember me for N days"; 0 hides it
+	Sessions     []sessionRow
+	Next         string // where the confirmation page returns to
+	NeedCode     bool   // the confirmation page asks for an authenticator code too
+	StyleNonce   string
 
 	AppName, LogoURL, Accent string
 
@@ -437,10 +442,14 @@ func formCSRF(r *http.Request) string {
 
 // ---- login tickets (password verified, TOTP pending) ----
 
-func (d *Dashboard) issueTicket(w http.ResponseWriter, userID string) {
+func (d *Dashboard) issueTicket(w http.ResponseWriter, userID string, remember bool) {
 	nonce := make([]byte, 12)
 	_, _ = rand.Read(nonce)
-	payload := userID + "|" + strconv.FormatInt(d.o.Now().Add(ticketTTL).Unix(), 10) + "|" + base64.RawURLEncoding.EncodeToString(nonce)
+	flag := "0"
+	if remember {
+		flag = "1" // signed with the rest: the second step cannot change it
+	}
+	payload := userID + "|" + strconv.FormatInt(d.o.Now().Add(ticketTTL).Unix(), 10) + "|" + base64.RawURLEncoding.EncodeToString(nonce) + "|" + flag
 	m := hmac.New(sha256.New, d.ticketKey)
 	m.Write([]byte(payload))
 	v := base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + base64.RawURLEncoding.EncodeToString(m.Sum(nil))
@@ -452,37 +461,37 @@ func ttlSeconds(d time.Duration) int64 { return int64(d.Seconds()) }
 // ticketUser returns the user id of a valid, unexpired ticket and the ticket's
 // own id (what its guess budget is kept under). A ticket that has used up its
 // guesses is no ticket.
-func (d *Dashboard) ticketUser(r *http.Request) (userID, ticketID string, ok bool) {
+func (d *Dashboard) ticketUser(r *http.Request) (userID, ticketID string, remember, ok bool) {
 	c, err := r.Cookie(cookieTicket)
 	if err != nil {
-		return "", "", false
+		return "", "", false, false
 	}
 	p, s, found := strings.Cut(c.Value, ".")
 	if !found {
-		return "", "", false
+		return "", "", false, false
 	}
 	payload, err1 := base64.RawURLEncoding.DecodeString(p)
 	sig, err2 := base64.RawURLEncoding.DecodeString(s)
 	if err1 != nil || err2 != nil {
-		return "", "", false
+		return "", "", false, false
 	}
 	m := hmac.New(sha256.New, d.ticketKey)
 	m.Write(payload)
 	if !hmac.Equal(sig, m.Sum(nil)) {
-		return "", "", false
+		return "", "", false, false
 	}
 	parts := strings.Split(string(payload), "|")
-	if len(parts) != 3 {
-		return "", "", false
+	if len(parts) != 4 {
+		return "", "", false, false
 	}
 	n, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil || d.o.Now().Unix() > n {
-		return "", "", false
+		return "", "", false, false
 	}
 	if d.budgets.spent(parts[2], d.o.Now()) {
-		return "", "", false
+		return "", "", false, false
 	}
-	return parts[0], parts[2], true
+	return parts[0], parts[2], parts[3] == "1", true
 }
 
 // ticketBudgets counts the wrong codes each login ticket has taken, in memory.
@@ -538,11 +547,20 @@ type session struct {
 	User    store.UserRow
 	CSRFKey []byte
 	roles   authz.Resolver
+	// Remember is true for a sign-in that was asked to last longer; AuthenticatedAt
+	// is when the user last gave the password and the second factor.
+	Remember        bool
+	AuthenticatedAt time.Time
 }
 
 func (s *session) csrf() string { return auth.CSRFToken(s.CSRFKey, s.ID) }
 
-func (d *Dashboard) createSession(ctx context.Context, w http.ResponseWriter, r *http.Request, u store.UserRow) error {
+// createSession starts a session after a complete sign-in. remember asks for the
+// longer life (session_remember_days) and is honoured only while that setting is
+// above zero. The session id is new: nothing from before the sign-in is reused.
+func (d *Dashboard) createSession(ctx context.Context, w http.ResponseWriter, r *http.Request, u store.UserRow, remember bool) error {
+	lim := d.sessionLimits(ctx)
+	remember = remember && lim.remember > 0
 	token, hash := auth.NewSessionToken()
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
@@ -553,15 +571,27 @@ func (d *Dashboard) createSession(ctx context.Context, w http.ResponseWriter, r 
 	if len(ua) > 300 {
 		ua = ua[:300]
 	}
+	life, cookieAge := lim.max, 0 // a session cookie, as before, unless remembered
+	if remember {
+		life, cookieAge = lim.remember, int(lim.remember.Seconds())
+	}
+	ip := d.clientIP(r)
 	row := store.SessionRow{ID: sessionID(), UserID: u.ID, TokenHash: hash, CSRFKey: key, CreatedAt: now, LastSeenAt: now,
-		ExpiresAt: now.Add(MaxSessionAge), IP: d.clientIP(r), UserAgent: ua}
+		ExpiresAt: now.Add(life), IP: ip, UserAgent: ua, Remember: remember, AuthenticatedAt: now, IPHint: ipHint(ip)}
 	if err := d.o.DB.InsertSession(ctx, row); err != nil {
 		return err
+	}
+	flag := "false"
+	if remember {
+		flag = "true"
+	}
+	if err := d.recordSSO(ctx, r, u.ID, "user.login", map[string]string{"email": u.Email, "remember": flag}); err != nil {
+		d.o.Logger.Warn("dashboard: audit of sign-in", "err", err)
 	}
 	if _, err := d.o.DB.DeleteExpiredSessions(ctx, now); err != nil {
 		d.o.Logger.Warn("dashboard: session cleanup", "err", err)
 	}
-	d.setCookie(w, cookieSession, token, 0)
+	d.setCookie(w, cookieSession, token, cookieAge)
 	d.clearCookie(w, cookieTicket)
 	return nil
 }
@@ -584,7 +614,12 @@ func (d *Dashboard) currentSession(r *http.Request) (*session, bool) {
 		return nil, false
 	}
 	now := d.o.Now()
-	if !now.Before(s.ExpiresAt) || now.Sub(s.LastSeenAt) > IdleTimeout {
+	lim := d.sessionLimits(r.Context())
+	idle := lim.idle
+	if s.Remember && lim.remember > 0 {
+		idle = lim.remember
+	}
+	if !now.Before(s.ExpiresAt) || now.Sub(s.LastSeenAt) > idle {
 		_ = d.o.DB.DeleteSession(r.Context(), s.ID)
 		return nil, false
 	}
@@ -596,7 +631,7 @@ func (d *Dashboard) currentSession(r *http.Request) (*session, bool) {
 			d.o.Logger.Warn("dashboard: touch session", "err", err)
 		}
 	}
-	return &session{ID: s.ID, User: u, CSRFKey: s.CSRFKey, roles: d.roles}, true
+	return &session{ID: s.ID, User: u, CSRFKey: s.CSRFKey, roles: d.roles, Remember: s.Remember, AuthenticatedAt: s.AuthenticatedAt}, true
 }
 
 type authedHandler func(w http.ResponseWriter, r *http.Request, s *session)
@@ -636,7 +671,7 @@ func (d *Dashboard) authed(action authz.Action, h authedHandler) http.HandlerFun
 				return
 			}
 		}
-		if !s.can(action) {
+		if action != selfOnly && !s.can(action) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}

@@ -7,9 +7,13 @@
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <label>Email address<input class="field" name="email" type="email" placeholder="Email" value="{{.Email}}" autocomplete="username" required autofocus></label>
 <label>Password<input class="field" name="password" type="password" placeholder="Password" autocomplete="current-password" required></label>
+{{if .RememberDays}}<label class="check"><input type="checkbox" name="remember" value="1"> Remember me for {{.RememberDays}} days</label>{{end}}
 <button class="btn" type="submit">Continue</button>
 </form>
 {{if .SSO}}<p class="muted">or</p>
-<a class="btn" href="/dashboard/login/oidc">Sign in with single sign-on</a>{{end}}
+<form method="get" action="/dashboard/login/oidc">
+{{if .RememberDays}}<label class="check"><input type="checkbox" name="remember" value="1"> Remember me for {{.RememberDays}} days</label>{{end}}
+<button class="btn" type="submit">Sign in with single sign-on</button>
+</form>{{end}}
 {{if .NeedsSetup}}<p class="muted">This hub has no users yet. <a href="/setup">Run the first-run setup</a>.</p>{{end}}
 {{template "dash_close" .}}{{end}}

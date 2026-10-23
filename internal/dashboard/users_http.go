@@ -11,11 +11,12 @@ import (
 )
 
 var notices = map[string]string{
-	"created":  "User created. They will set up two-factor authentication at first login.",
-	"role":     "Role updated.",
-	"disabled": "User disabled and signed out.",
-	"enabled":  "User enabled.",
-	"sso":      "Single sign-on allowed. Their next sign-in through the identity provider with this e-mail is linked to the account.",
+	"created":   "User created. They will set up two-factor authentication at first login.",
+	"role":      "Role updated.",
+	"disabled":  "User disabled and signed out.",
+	"enabled":   "User enabled.",
+	"signedout": "Signed out everywhere.",
+	"sso":       "Single sign-on allowed. Their next sign-in through the identity provider with this e-mail is linked to the account.",
 }
 
 func (d *Dashboard) usersPage(w http.ResponseWriter, r *http.Request, s *session) {
@@ -130,6 +131,11 @@ func (d *Dashboard) userEnrolment(w http.ResponseWriter, r *http.Request, s *ses
 	}
 	code, err := d.users.IssueEnrolmentToken(r.Context(), u.ID)
 	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	// A new code starts the enrolment over: whatever the user is signed in with is over.
+	if err := d.o.DB.DeleteUserSessions(r.Context(), u.ID); err != nil {
 		d.fail(w, err)
 		return
 	}

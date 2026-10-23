@@ -1,0 +1,37 @@
+{{define "title"}}Your sessions - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h1>Your sessions</h1>
+{{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<p class="muted">Every place you are signed in. Sign out of any you do not recognise, then change your password.</p>
+<div class="table-scroll"><table class="grid">
+<thead><tr><th>Signed in</th><th>Last seen</th><th>Ends</th><th>Kind</th><th>Network</th><th>Device</th><th>Action</th></tr></thead>
+<tbody>
+{{range .Sessions}}<tr>
+<td>{{.Created}}</td><td>{{.LastSeen}}</td><td>{{.Expires}}</td>
+<td>{{if .Remembered}}Remembered{{else}}Standard{{end}}{{if .Current}} <strong>This session</strong>{{end}}</td>
+<td>{{.Network}}</td><td>{{.Device}}</td>
+<td>{{if not .Current}}<form class="inline" method="post" action="/dashboard/account/sessions/{{.ID}}/revoke">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<button class="linkbtn" type="submit">Sign out</button>
+</form>{{end}}</td>
+</tr>{{end}}
+</tbody>
+</table></div>
+<form method="post" action="/dashboard/account/sessions/revoke-others">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<button class="btn" type="submit">Sign out all other sessions</button>
+</form>
+
+<h2>Change password</h2>
+<p class="muted">Changing it signs you out everywhere, this session too.</p>
+<form method="post" action="/dashboard/account/password" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<label>Current password<input class="field" name="current_password" type="password" autocomplete="current-password" required></label>
+<label>New password (12 characters or more)<input class="field" name="new_password" type="password" autocomplete="new-password" minlength="12" required></label>
+<label>New password again<input class="field" name="confirm_password" type="password" autocomplete="new-password" minlength="12" required></label>
+<button class="btn" type="submit">Change password</button>
+</form>
+{{template "dash_close" .}}{{end}}

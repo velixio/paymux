@@ -72,9 +72,9 @@ func (d *Dashboard) routesProviders() {
 	m := d.mux
 	m.HandleFunc("GET "+prefix+"/providers", d.authed(authz.SettingsRead, d.providersPage))
 	m.HandleFunc("GET "+prefix+"/providers/new", d.authed(authz.ProviderAccountManage, d.providerNew))
-	m.HandleFunc("POST "+prefix+"/providers", d.authed(authz.ProviderAccountManage, d.providerCreate))
+	m.HandleFunc("POST "+prefix+"/providers", d.authed(authz.ProviderAccountManage, d.recent(d.providerCreate)))
 	m.HandleFunc("GET "+prefix+"/providers/{id}", d.authed(authz.SettingsRead, d.providerPage))
-	m.HandleFunc("POST "+prefix+"/providers/{id}", d.authed(authz.ProviderAccountManage, d.providerUpdate))
+	m.HandleFunc("POST "+prefix+"/providers/{id}", d.authed(authz.ProviderAccountManage, d.recent(d.providerUpdate)))
 	m.HandleFunc("POST "+prefix+"/providers/{id}/apps", d.authed(authz.ProviderAccountManage, d.providerLink))
 	m.HandleFunc("POST "+prefix+"/providers/{id}/test", d.authed(authz.ProviderAccountManage, d.providerTest))
 	d.routesOAuth()

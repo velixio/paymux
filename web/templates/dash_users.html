@@ -24,6 +24,10 @@
 <select name="role" aria-label="Role for {{.Email}}">{{$row := .}}{{range $.Roles}}<option value="{{.}}"{{if eq . $row.Role}} selected{{end}}>{{.}}</option>{{end}}</select>
 <button class="linkbtn" type="submit">Set role</button>
 </form>
+<form class="inline" method="post" action="/dashboard/users/{{.ID}}/sessions/revoke">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<button class="linkbtn" type="submit" title="End every session of this user, wherever they are signed in">Sign out everywhere</button>
+</form>
 {{if not .Enrolled}}<form class="inline" method="post" action="/dashboard/users/{{.ID}}/enrolment">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <button class="linkbtn" type="submit" title="Make a new one-time code for setting up two-factor sign-in">Enrolment code</button>

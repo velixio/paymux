@@ -206,11 +206,13 @@ func settingGroup(key string) string {
 		return "Appearance and language"
 	case "webhook_retry_schedule", "recon_time", "provider_event_retention", "document_retention", "log_retention_error_days", "log_retention_warn_days", "log_max_rows", "audit_retention_days":
 		return "Delivery and retention"
+	case "session_idle_hours", "session_max_days", "session_remember_days":
+		return "Sign-in sessions"
 	default:
 		return "Invoices and tax"
 	}
 }
 func sortSettingRows(rows []settingRow) {
-	order := map[string]int{"Payment behavior": 0, "Routing": 1, "Subscriptions and recovery": 2, "Invoices and tax": 3, "Delivery and retention": 4, "Appearance and language": 5}
+	order := map[string]int{"Payment behavior": 0, "Routing": 1, "Subscriptions and recovery": 2, "Invoices and tax": 3, "Delivery and retention": 4, "Appearance and language": 5, "Sign-in sessions": 6}
 	sort.SliceStable(rows, func(i, j int) bool { return order[rows[i].Group] < order[rows[j].Group] })
 }

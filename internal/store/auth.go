@@ -208,15 +208,28 @@ type SessionRow struct {
 	CSRFKey                          []byte
 	CreatedAt, LastSeenAt, ExpiresAt time.Time
 	IP, UserAgent                    string
+	// Remember is true when the user asked to stay signed in for longer.
+	Remember bool
+	// AuthenticatedAt is when the user last proved who they are with the password
+	// and the second factor (the sign-in, or a later confirmation). It reads as
+	// CreatedAt for a session made before the column existed.
+	AuthenticatedAt time.Time
+	// IPHint is the network the session came from (a /24 or /64 prefix).
+	IPHint string
 }
 
 // InsertSession stores a new session.
 func (db *DB) InsertSession(ctx context.Context, s SessionRow) error {
+	var authMS int64 // 0: authenticated when the session began
+	if !s.AuthenticatedAt.IsZero() {
+		authMS = ms(s.AuthenticatedAt)
+	}
 	return db.Write(ctx, func(tx Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO sessions
-			(id, user_id, token_hash, csrf_key, created_at, last_seen_at, expires_at, ip, user_agent)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			s.ID, s.UserID, s.TokenHash, s.CSRFKey, ms(s.CreatedAt), ms(s.LastSeenAt), ms(s.ExpiresAt), s.IP, s.UserAgent)
+			(id, user_id, token_hash, csrf_key, created_at, last_seen_at, expires_at, ip, user_agent, remember, authenticated_at, ip_hint)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			s.ID, s.UserID, s.TokenHash, s.CSRFKey, ms(s.CreatedAt), ms(s.LastSeenAt), ms(s.ExpiresAt), s.IP, s.UserAgent,
+			b2i(s.Remember), authMS, s.IPHint)
 		if err != nil {
 			return fmt.Errorf("insert session: %w", err)
 		}
@@ -229,17 +242,23 @@ func (db *DB) SessionByTokenHash(ctx context.Context, hash string) (SessionRow, 
 	var s SessionRow
 	var u UserRow
 	err := db.Read(ctx, func(q Querier) error {
-		var created, seen, exp, ucreated int64
-		var disabled int
+		var created, seen, exp, ucreated, authed int64
+		var disabled, remember int
 		err := q.QueryRowContext(ctx, `SELECT s.id, s.user_id, s.token_hash, s.csrf_key, s.created_at, s.last_seen_at, s.expires_at, s.ip, s.user_agent,
+			s.remember, s.authenticated_at, s.ip_hint,
 			u.id, u.email, u.password_hash, u.totp_secret_enc, u.totp_last_step, u.role, u.disabled, u.created_at
 			FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`, hash).
-			Scan(&s.ID, &s.UserID, &s.TokenHash, &s.CSRFKey, &created, &seen, &exp, &s.IP, &s.UserAgent,
+			Scan(&s.ID, &s.UserID, &s.TokenHash, &s.CSRFKey, &created, &seen, &exp, &s.IP, &s.UserAgent, &remember, &authed, &s.IPHint,
 				&u.ID, &u.Email, &u.PasswordHash, &u.TOTPSecretEnc, &u.TOTPLastStep, &u.Role, &disabled, &ucreated)
 		if err != nil {
 			return err
 		}
 		s.CreatedAt, s.LastSeenAt, s.ExpiresAt = fromMS(created), fromMS(seen), fromMS(exp)
+		s.Remember = remember != 0
+		s.AuthenticatedAt = fromMS(authed)
+		if authed == 0 {
+			s.AuthenticatedAt = s.CreatedAt
+		}
 		u.Disabled, u.CreatedAt = disabled != 0, fromMS(ucreated)
 		return nil
 	})
@@ -269,6 +288,75 @@ func (db *DB) DeleteSession(ctx context.Context, id string) error {
 func (db *DB) DeleteUserSessions(ctx context.Context, userID string) error {
 	return db.Write(ctx, func(tx Tx) error {
 		_, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, userID)
+		return err
+	})
+}
+
+// ListUserSessions returns a user's sessions, newest first.
+func (db *DB) ListUserSessions(ctx context.Context, userID string) ([]SessionRow, error) {
+	var out []SessionRow
+	err := db.Read(ctx, func(q Querier) error {
+		rows, err := q.QueryContext(ctx, `SELECT id, user_id, created_at, last_seen_at, expires_at, ip, user_agent, remember, authenticated_at, ip_hint
+			FROM sessions WHERE user_id = ? ORDER BY created_at DESC, id`, userID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var s SessionRow
+			var created, seen, exp, authed int64
+			var remember int
+			if err := rows.Scan(&s.ID, &s.UserID, &created, &seen, &exp, &s.IP, &s.UserAgent, &remember, &authed, &s.IPHint); err != nil {
+				return err
+			}
+			s.CreatedAt, s.LastSeenAt, s.ExpiresAt, s.Remember = fromMS(created), fromMS(seen), fromMS(exp), remember != 0
+			s.AuthenticatedAt = fromMS(authed)
+			if authed == 0 {
+				s.AuthenticatedAt = s.CreatedAt
+			}
+			out = append(out, s)
+		}
+		return rows.Err()
+	})
+	return out, err
+}
+
+// DeleteUserSession removes one session of the user; false when the user has no
+// such session (so nobody can revoke another user's).
+func (db *DB) DeleteUserSession(ctx context.Context, userID, sessionID string) (bool, error) {
+	var ok bool
+	err := db.Write(ctx, func(tx Tx) error {
+		res, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE id = ? AND user_id = ?`, sessionID, userID)
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		ok = n > 0
+		return nil
+	})
+	return ok, err
+}
+
+// DeleteUserSessionsExcept removes every session of the user but one and says
+// how many it removed.
+func (db *DB) DeleteUserSessionsExcept(ctx context.Context, userID, keepID string) (int, error) {
+	var n int
+	err := db.Write(ctx, func(tx Tx) error {
+		res, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ? AND id <> ?`, userID, keepID)
+		if err != nil {
+			return err
+		}
+		d, _ := res.RowsAffected()
+		n = int(d)
+		return nil
+	})
+	return n, err
+}
+
+// SetSessionAuthenticated records that the user proved who they are again.
+func (db *DB) SetSessionAuthenticated(ctx context.Context, id string, at time.Time) error {
+	return db.Write(ctx, func(tx Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE sessions SET authenticated_at = ? WHERE id = ?`, ms(at), id)
 		return err
 	})
 }

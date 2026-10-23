@@ -4,6 +4,7 @@
 <a class="dash-brand" href="/dashboard/overview" aria-label="Paymux overview"><span aria-hidden="true" class="brand-symbol">↗</span>paymux</a>
 <span class="muted">{{.User.Email}} ({{.User.Role}})</span>
 <form class="modeform" method="post" action="/dashboard/mode"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="next" value="{{.Path}}"><span class="mode mode-{{.Mode}}">{{.Mode}} mode</span> <button class="linkbtn" type="submit" name="mode" value="{{if eq .Mode "live"}}test{{else}}live{{end}}">Switch to {{if eq .Mode "live"}}test{{else}}live{{end}}</button></form>
+<a class="linkbtn" href="/dashboard/account">Your sessions</a>
 <form method="post" action="/dashboard/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="linkbtn" type="submit">Log out</button></form>
 </header>
 <button type="button" class="workspace-menu" aria-controls="workspace-nav" aria-expanded="true">Workspace navigation</button><div class="dash-body">

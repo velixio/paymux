@@ -1,0 +1,15 @@
+{{define "title"}}Confirm it is you - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h1>Confirm it is you</h1>
+<p class="muted">This action needs a recent sign-in. Enter your password{{if .NeedCode}} and the code from your authenticator app{{end}}, then repeat the action.</p>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<form method="post" action="/dashboard/reauth" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<input type="hidden" name="next" value="{{.Next}}">
+<label>Password<input class="field" name="password" type="password" autocomplete="current-password" required autofocus></label>
+{{if .NeedCode}}<label>Authenticator code<input class="field" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="8" placeholder="123456" required></label>{{end}}
+<button class="btn" type="submit">Confirm</button>
+</form>
+{{template "dash_close" .}}{{end}}
