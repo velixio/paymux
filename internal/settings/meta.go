@@ -96,6 +96,12 @@ var metas = map[string]Meta{
 		Help: "The most log rows kept, whatever their age; the oldest go first. Keeps a SQLite logs.db small."},
 	"log_max_mb": {Kind: KindInt, Unit: "MB", Min: 16, Max: 1000000,
 		Help: "The most space the log rows may take (the text of their messages, bodies and details), whatever their age; the oldest go first."},
+	"session_idle_hours": {Kind: KindInt, Unit: "hours", Min: 1, Max: 720,
+		Help: "A dashboard sign-in ends after this many hours without a request (unless Remember me was ticked)."},
+	"session_max_days": {Kind: KindInt, Unit: "days", Min: 1, Max: 90,
+		Help: "A dashboard sign-in ends this many days after it began, however active (unless Remember me was ticked)."},
+	"session_remember_days": {Kind: KindInt, Unit: "days", Min: 1, Max: 90, ZeroOK: true,
+		Help: "With Remember me ticked, a sign-in lasts this many days from the sign-in and ends after this many days without a request. 0 removes the checkbox."},
 	"audit_retention_days": {Kind: KindInt, Unit: "days", Min: 365, ZeroOK: true,
 		Help: "How long audit log entries are kept. 0 keeps them forever; otherwise at least 365 days (PCI DSS 10.5.1)."},
 }

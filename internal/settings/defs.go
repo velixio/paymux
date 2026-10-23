@@ -145,6 +145,13 @@ var defs = []Def{
 	// audit_retention_days: PCI DSS 10.5.1 asks for at least a year of audit
 	// history, so nothing below 365 days is accepted; 0 keeps it forever.
 	{"audit_retention_days", `400`, LevelOrg, zeroOrAtLeast(365)},
+	// How long a dashboard sign-in lasts. A session ends after session_idle_hours
+	// without a request and after session_max_days whatever happens. With
+	// "Remember me" ticked at sign-in both limits are session_remember_days instead;
+	// 0 removes the checkbox.
+	{"session_idle_hours", `12`, LevelOrg, intRange(1, 720)},
+	{"session_max_days", `7`, LevelOrg, intRange(1, 90)},
+	{"session_remember_days", `30`, LevelOrg, intRange(0, 90)},
 }
 
 var clockRE = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
