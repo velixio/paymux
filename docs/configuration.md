@@ -61,6 +61,16 @@ These switches are not substitutes for configuring a public endpoint and dashboa
 
 The last three are described in the runbook under *Logs*. SMTP settings affect invoice and operational email. The ops webhook is separate from an application's signed payment-event endpoint. Alerts also appear in the dashboard; acknowledge them after investigation.
 
+## Dashboard sessions
+
+These are organisation settings (the dashboard's *Settings* page), not environment variables.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `session_idle_hours` | `12` (1 to 720) | A session ends after this many hours without a request. |
+| `session_max_days` | `7` (1 to 90) | A session ends this many days after sign-in, however active. |
+| `session_remember_days` | `30` (0 to 90) | With *Remember me* ticked, both limits become this many days. `0` removes the checkbox; sessions already remembered fall back to the two limits above. |
+
 ## Dashboard single sign-on
 
 | Variable | Default | Meaning |

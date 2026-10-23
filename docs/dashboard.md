@@ -14,6 +14,12 @@ The navigation groups payment operations, billing, integration configuration, an
 
 Custom roles can receive explicit actions. User and role management remain administrator-only. A hidden action is not an invitation to call its URL directly: the server checks permissions on writes as well. API key scopes are a separate control from dashboard roles.
 
+## Signing in, "Remember me" and your sessions
+
+The login page has a **Remember me for 30 days** checkbox, off by default (the number is the setting `session_remember_days`; 0 hides the checkbox). Without it a sign-in ends after 12 hours idle or 7 days at most (`session_idle_hours`, `session_max_days`). With it the sign-in lasts up to the chosen number of days from the moment you signed in, as long as you use it at least once in that many days; both limits are that number, and using the dashboard does not extend it. You still enter the password and the authenticator code every time you sign in. The three settings are on *Settings*, under *Sign-in sessions*, with the value in effect and where it comes from.
+
+**Your sessions** (the link in the header) lists where you are signed in, with *Sign out* for each, *Sign out all other sessions* and *Change password* (which ends every session, this one too). Administrators can end all sessions of any user from the Users page (*Sign out everywhere*). Creating keys, changing roles and similar actions ask for your password and code again when the last full sign-in is more than 12 hours old.
+
 ## Applications and keys
 
 An application owns its API integration and webhook endpoints. Its detail tabs include keys, webhooks, branding, providers, domains, tax, and settings.

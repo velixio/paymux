@@ -295,6 +295,10 @@ Provider menus change; the descriptions above name the settings to look for, not
 | `PAYMUX_OTLP_LOGS_ENDPOINT`, `PAYMUX_OTLP_LOGS_HEADERS` | unset | Also ship the stored log rows to an OpenTelemetry collector (OTLP/HTTP JSON). |
 | `PAYMUX_ENV_FILE` | `.env` | Extra env file for CLI use. |
 
+## Dashboard sessions
+
+How long a sign-in lasts is three settings (*Settings*, *Sign-in sessions*): `session_idle_hours` (12), `session_max_days` (7) and `session_remember_days` (30; 0 removes the *Remember me* checkbox). To end sessions: a user's own list is under **Your sessions**; for someone else use **Sign out everywhere** on the Users page (also done by disabling the user, a password change, `paymux user reset-2fa` and a new enrolment code). If a laptop or a cookie is lost, sign the user out everywhere and change their password. Setting `session_remember_days` to `0` stops new remembered sign-ins at once and makes existing ones follow the ordinary limits.
+
 ## Rotating the master key
 
 Rotate the key when it may have leaked, when a person who had it leaves, or on your own schedule. The master key encrypts provider credentials, webhook signing secrets, authenticator secrets, payout beneficiaries, signing certificates, connector state and stored API responses; the key rotation re-encrypts all of them. Nothing is lost if you follow the order below, and the hub never has to stop for longer than a restart.

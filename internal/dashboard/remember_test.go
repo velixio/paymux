@@ -278,3 +278,13 @@ func TestSessionLimitsFollowTheSettings(t *testing.T) {
 		}
 	})
 }
+
+// The three durations are on the settings page with their value and where it comes from.
+func TestSessionSettingsAreOnTheSettingsPage(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		admin := e.roleClient("admin")
+		page := e.pageOK(admin, "/dashboard/settings")
+		has(t, page, "session_remember_days", "session_idle_hours", "session_max_days", "Sign-in sessions")
+	})
+}
