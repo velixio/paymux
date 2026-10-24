@@ -275,6 +275,7 @@ function Workspace({
   return (
     <RuntimeProvider page={page}>
       <div
+        data-mode={page.mode.includes("test") ? "test" : "live"}
         className={
           "paymux-react " +
           (page.auth
@@ -370,13 +371,15 @@ function Workspace({
                       page.mode.includes("test") ? "test-label" : "live-label"
                     }
                   >
-                    {page.mode.replace(" mode", "")}
+                    {page.mode.replace(" mode", "").toUpperCase()}
                   </Badge>
                   <RefreshWorkspace refresh={refresh} loading={loading} />
                   <Button
                     variant="ghost"
                     size="icon"
-                    aria-label={dark ? "Use light theme" : "Use dark theme"}
+                    aria-label={
+                      dark ? "Switch to light theme" : "Switch to dark theme"
+                    }
                     onClick={() => {
                       setDark(!dark);
                       try {

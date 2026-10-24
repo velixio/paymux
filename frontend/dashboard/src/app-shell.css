@@ -518,3 +518,28 @@
 .app-shell .num {
   font-feature-settings: "tnum";
 }
+.app-shell[data-mode="test"] {
+  border-top: 3px solid var(--test-mode);
+}
+.app-shell .pill {
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.app-shell .pill.pill-ok {
+  background: var(--status-ok-bg);
+  color: var(--status-ok-fg);
+}
+.app-shell .pill.pill-warn {
+  background: var(--status-warn-bg);
+  color: var(--status-warn-fg);
+}
+.app-shell .pill.pill-bad {
+  background: var(--status-bad-bg);
+  color: var(--status-bad-fg);
+}
+.app-shell .pill.pill-neutral {
+  background: var(--status-neutral-bg);
+  color: var(--status-neutral-fg);
+}
