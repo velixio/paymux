@@ -3,101 +3,29 @@ import {
   act,
   cleanup,
   fireEvent,
-  render,
   screen,
   waitFor,
 } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
-import { createDashboardRouter, useTabs, type TabsApi } from "./shell";
+import {
+  api,
+  calls,
+  handlers,
+  link,
+  loginHtml,
+  mount,
+  pageHtml,
+  resetHost,
+  sectionOf,
+  storageName,
+  tabByHref,
+} from "./host.test.helpers";
 
-const NAV = ["overview", "payments", "apps"]
-  .map(
-    (p) => `<a href="/dashboard/${p}">${p[0].toUpperCase() + p.slice(1)}</a>`,
-  )
-  .join("");
-
-function pageHtml(title: string, body: string) {
-  return `<title>${title} - Paymux</title><div id="paymux-server-page"><header class="dash-head"><span class="muted">u@example.com (admin)</span><form class="modeform" method="post" action="/dashboard/mode"><span class="mode">live mode</span></form></header><nav class="dash-nav">${NAV}</nav><section class="dash-main">${body}</section></div>`;
-}
-const loginHtml =
-  '<title>Sign in - Paymux</title><div id="paymux-server-page"><form action="/dashboard/login"><input name="csrf" value="t"></form></div>';
-
-type Handler = (call: number) => string;
-let handlers: Record<string, Handler>;
-let calls: Record<string, number>;
-
-beforeEach(() => {
-  localStorage.clear();
-  calls = {};
-  handlers = {
-    "/dashboard/overview": () => pageHtml("Overview", "<p>Overview body</p>"),
-    "/dashboard/payments": () => pageHtml("Payments", "<p>Payments body</p>"),
-    "/dashboard/apps": () => pageHtml("Apps", "<p>Apps body</p>"),
-  };
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: string) => {
-      const path = input.split("?")[0];
-      calls[path] = (calls[path] ?? 0) + 1;
-      const html = handlers[path]?.(calls[path]) ?? "";
-      return {
-        ok: true,
-        status: 200,
-        redirected: false,
-        url: location.origin + input,
-        headers: { get: () => "text/html" },
-        text: async () => html,
-      };
-    }),
-  );
-});
+beforeEach(resetHost);
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
-
-let api: TabsApi;
-function Probe() {
-  api = useTabs();
-  return null;
-}
-
-async function mount(initial = "/dashboard/overview") {
-  const client = new QueryClient({
-    defaultOptions: {
-      queries: {
-        staleTime: 30_000,
-        gcTime: 0,
-        retry: false,
-        refetchOnWindowFocus: false,
-      },
-    },
-  });
-  const router = createDashboardRouter(
-    createMemoryHistory({ initialEntries: [initial] }),
-    <Probe />,
-  );
-  render(
-    <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
-  );
-  await waitFor(() =>
-    expect(
-      document.querySelector("[data-tab], .auth-workspace"),
-    ).not.toBeNull(),
-  );
-  return router;
-}
-
-const link = (name: string) =>
-  screen.getAllByRole("link", { name }).find((a) => a.closest("aside"))!;
-const sectionOf = (text: string) =>
-  screen.queryByText(text)?.closest("section") ?? null;
-const tabByHref = (href: string) =>
-  api.state.tabs.find((t) => t.href === href)!;
 
 test("opening a second page keeps the first mounted but hidden", async () => {
   await mount();
@@ -114,7 +42,7 @@ test("opening a second page keeps the first mounted but hidden", async () => {
 
 test("hidden tab does not fetch", async () => {
   localStorage.setItem(
-    "paymux-tabs:u@example.com (admin):live mode",
+    storageName,
     JSON.stringify({
       tabs: [
         {
@@ -251,9 +179,7 @@ test("a login URL reached from the shell does not become a tab", async () => {
   await waitFor(() =>
     expect(document.querySelector(".auth-workspace")).not.toBeNull(),
   );
-  const saved = localStorage.getItem(
-    "paymux-tabs:u@example.com (admin):live mode",
-  )!;
+  const saved = localStorage.getItem(storageName)!;
   expect(JSON.parse(saved).tabs.map((t: { href: string }) => t.href)).toEqual([
     "/dashboard/overview",
   ]);
@@ -263,9 +189,7 @@ test("tabs persist per user and mode with only id, href, title, pinned", async (
   await mount();
   fireEvent.click(link("Payments"));
   await screen.findByText("Payments body");
-  const saved = JSON.parse(
-    localStorage.getItem("paymux-tabs:u@example.com (admin):live mode")!,
-  );
+  const saved = JSON.parse(localStorage.getItem(storageName)!);
   expect(saved.tabs).toHaveLength(2);
   expect(Object.keys(saved.tabs[1]).sort()).toEqual([
     "href",
