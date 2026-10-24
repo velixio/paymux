@@ -6,6 +6,7 @@
   overflow: hidden;
   font-size: 13px;
   line-height: 1.5;
+  font-family: "Inter Variable", system-ui, sans-serif;
 }
 .app-shell .react-sidebar {
   width: var(--shell-sidebar-width);
@@ -507,4 +508,13 @@
     min-height: 44px;
     height: 44px;
   }
+}
+.app-shell .react-sidebar {
+  background: var(--sidebar);
+  border: 0;
+  box-shadow: none;
+}
+.app-shell td,
+.app-shell .num {
+  font-feature-settings: "tnum";
 }

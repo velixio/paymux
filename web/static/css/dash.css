@@ -460,14 +460,14 @@ body {
 
 /* Paymux operational workspace. Tokens remain compatible with bundled themes. */
 :root {
-  --color-bg: #f6f8fb;
-  --color-fg: #182337;
-  --color-muted: #5e6a7d;
-  --color-line: #e1e6ed;
-  --color-nav: #fff;
-  --color-accent: #2256d9;
-  --surface: #fff;
-  --focus: #2256d9;
+  --color-bg: #ffffff;
+  --color-fg: #1a1f36;
+  --color-muted: #5c6478;
+  --color-line: #e3e8ee;
+  --color-nav: #f7f8fa;
+  --color-accent: #635bff;
+  --surface: #ffffff;
+  --focus: #635bff;
 }
 body:has(main.dash) {
   font-size: 14px;
@@ -545,8 +545,8 @@ body:has(main.dash) {
 }
 .dash-nav a.active {
   background: #eaf0ff;
-  color: #1d4fc6;
-  box-shadow: inset 3px 0 #2256d9;
+  color: #4b44d6;
+  box-shadow: inset 3px 0 #635bff;
 }
 .dash-nav a:hover {
   background: #f0f3f9;
@@ -857,17 +857,17 @@ h3,
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-bg: #111827;
-    --color-fg: #e6edf7;
-    --color-muted: #a8b6c9;
-    --color-line: #344156;
-    --color-nav: #192234;
-    --surface: #192234;
-    --focus: #8caeff;
+    --color-bg: #0f1117;
+    --color-fg: #e6e8ef;
+    --color-muted: #9aa1b2;
+    --color-line: #262a35;
+    --color-nav: #14161d;
+    --surface: #14161d;
+    --focus: #8b85ff;
   }
   .dash-nav a.active {
-    background: #25385f;
-    color: #b6ccff;
+    background: #24224a;
+    color: #c4c1ff;
   }
   .dash-nav a:hover {
     background: #253149;
@@ -1272,4 +1272,15 @@ pre.log-json {
     font-size: 11px;
     opacity: 0.7;
   }
+}
+table.grid th {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+}
+table.grid td,
+table.grid .num {
+  font-feature-settings: "tnum";
 }

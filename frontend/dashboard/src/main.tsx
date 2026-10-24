@@ -74,6 +74,7 @@ import {
   useRuntime,
 } from "./runtime";
 import { PageContent, RenderNode } from "./render";
+import "@fontsource-variable/inter";
 import "../../styles.css";
 import "./workspace.css";
 import "./app-shell.css";
