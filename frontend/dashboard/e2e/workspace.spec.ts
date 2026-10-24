@@ -89,3 +89,21 @@ test("switch to 12M shows monthly bars", async ({ page }) => {
   await bars.nth((await bars.count()) - 1).focus();
   await expect(visible(page).getByRole("tooltip")).toContainText("Gross");
 });
+
+test("ctrl+k finds a payment id and opens it", async ({ page }) => {
+  await login(page);
+  await page.goto("/dashboard/overview");
+  await expect(page.getByRole("tab")).toHaveCount(1);
+  await page.keyboard.press("Control+k");
+  const box = page.getByRole("combobox", { name: /search pages/i });
+  await expect(box).toBeFocused();
+  await box.fill("pay_e2e_033");
+  await expect(page.getByRole("option").first()).toContainText(
+    "Open payment pay_e2e_033",
+  );
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/dashboard\/payments\/pay_e2e_033$/);
+  await expect(visible(page).getByText("pay_e2e_033").first()).toBeVisible();
+  // The pinned Overview stays; the payment opened beside it.
+  await expect(page.getByRole("tab")).toHaveCount(2);
+});

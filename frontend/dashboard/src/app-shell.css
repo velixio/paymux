@@ -683,3 +683,102 @@
   color: var(--primary-foreground);
   text-decoration: none;
 }
+/* Command bar */
+.app-shell .command-trigger {
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 400;
+}
+.app-shell .command-trigger kbd {
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--muted);
+  font: inherit;
+  font-size: 10px;
+}
+@media (max-width: 760px) {
+  .app-shell .command-trigger span,
+  .app-shell .command-trigger kbd {
+    display: none;
+  }
+}
+.command-bar {
+  top: 18%;
+  translate: -50% 0;
+  gap: 0;
+  padding: 0;
+  max-width: 560px;
+  overflow: hidden;
+}
+.command-bar .command-input {
+  width: 100%;
+  height: 48px;
+  padding: 0 16px;
+  background: transparent;
+  color: var(--foreground);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+  outline: none;
+}
+.command-bar .command-list {
+  max-height: 340px;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  list-style: none;
+}
+.command-bar .command-group {
+  padding: 8px 10px 4px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.command-bar .command-option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.command-bar .command-option small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.command-bar .command-option.active {
+  background: var(--ui-accent);
+  color: var(--accent-foreground);
+}
+.command-bar .command-option.active small {
+  color: inherit;
+}
+.command-bar .command-empty,
+.command-bar .command-help {
+  padding: 10px 16px;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.command-bar .command-help {
+  border-top: 1px solid var(--border);
+}
+@media (min-width: 761px) {
+  .app-shell .header-controls [data-slot="button"].command-trigger {
+    width: auto;
+    height: 30px;
+    min-height: 30px;
+    padding: 0 10px;
+  }
+}

@@ -224,7 +224,6 @@ export default function RevenueChart({ series }: { series: Series }) {
         <span className="rev-key rev-key-gross">Gross</span>
         <span className="rev-key rev-key-refunds">Refunds</span>
         <span className="rev-key rev-key-prev">Previous period</span>
-        {series.estimated && <span>Includes estimated conversions</span>}
       </figcaption>
     </figure>
   );

@@ -76,14 +76,8 @@ test("x labels are thinned to at most eight", () => {
   expect(labels.length).toBeLessThanOrEqual(8);
 });
 
-test("shows the estimated-conversion note only when estimated", () => {
-  const { unmount } = chart(3, {
-    "data-estimated": "true",
-    "data-converted": "true",
-  });
-  expect(screen.getByText("Includes estimated conversions")).toBeTruthy();
-  unmount();
-  chart(3);
+test("the legend leaves the estimated-conversion note to the server text", () => {
+  chart(3, { "data-estimated": "true", "data-converted": "true" });
   expect(screen.queryByText("Includes estimated conversions")).toBeNull();
 });
 

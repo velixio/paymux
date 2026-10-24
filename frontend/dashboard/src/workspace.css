@@ -1447,3 +1447,155 @@ main.dash:has(#paymux-react-root) {
     font-size: 15px;
   }
 }
+/* Saved filters above a GET filter form */
+.react-content .saved-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 6px;
+}
+.react-content .saved-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.react-content .saved-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--muted);
+  font-size: 12px;
+}
+.react-content .saved-chip button {
+  padding: 3px 10px;
+  background: transparent;
+  border: 0;
+  color: var(--foreground);
+  font: inherit;
+  cursor: pointer;
+}
+.react-content .saved-chip button:first-child:hover {
+  color: var(--accent-foreground);
+}
+.react-content .saved-chip .saved-chip-remove {
+  display: grid;
+  place-items: center;
+  padding: 3px 7px 3px 2px;
+  color: var(--muted-foreground);
+}
+.react-content .saved-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.react-content .saved-name input {
+  height: 28px;
+  padding: 0 8px;
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  font-size: 12px;
+}
+/* Keyboard row focus and copy buttons */
+.react-content table[data-nav] tbody tr:focus {
+  outline: none;
+}
+.react-content table[data-nav] tbody tr[data-nav-row]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+  background: var(--ui-accent);
+}
+.react-content .copy-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.react-content .copy-button {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  opacity: 0;
+}
+.react-content .copy-code:hover .copy-button,
+.react-content .copy-button:focus-visible {
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  .react-content .copy-button {
+    opacity: 1;
+    width: 28px;
+    height: 28px;
+  }
+}
+.react-content .copy-button:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+/* Shortcut sheet */
+.shortcut-sheet {
+  max-width: 520px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.shortcut-sheet h3 {
+  margin: 12px 0 4px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.shortcut-sheet dl {
+  margin: 0;
+}
+.shortcut-sheet dl > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.shortcut-sheet dt,
+.shortcut-sheet dd {
+  margin: 0;
+}
+.shortcut-sheet kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--muted);
+  font: inherit;
+  font-size: 11px;
+}
+.shortcut-sheet .shortcut-or,
+.shortcut-sheet .shortcut-then {
+  margin: 0 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.app-shell .shortcuts-link {
+  background: transparent;
+  border: 0;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.app-shell .shortcuts-link kbd {
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+}
