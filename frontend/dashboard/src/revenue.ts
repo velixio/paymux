@@ -66,14 +66,23 @@ export function scale(values: number[], height: number) {
   for (let k = first; k <= last; k++) ticks.push(k * step);
   const min = ticks[0];
   const max = ticks[ticks.length - 1];
-  return { min, max, ticks, y: (v: number) => ((max - v) / (max - min)) * height };
+  return {
+    min,
+    max,
+    ticks,
+    y: (v: number) => ((max - v) / (max - min)) * height,
+  };
 }
 
 const trim = (n: number) => n.toFixed(1).replace(/\.0$/, "");
 
 // Short axis labels. INR uses Indian units (K, lakh, crore); other currencies
 // use the locale's compact notation.
-export function compactMoney(minor: number, currency: string, exp: number): string {
+export function compactMoney(
+  minor: number,
+  currency: string,
+  exp: number,
+): string {
   const major = minor / 10 ** exp;
   if (currency === "INR") {
     const abs = Math.abs(major);
