@@ -316,13 +316,14 @@ test("hidden duplicate keeps its edits when the visible one refetches", async ()
 });
 
 test("a query-only link on the pinned active tab updates that tab in place", async () => {
-  handlers["/dashboard/overview"] = () =>
+  // The stub keys by path; the second request is the 12M one.
+  handlers["/dashboard/overview"] = (n) =>
     pageHtml(
       "Overview",
-      '<p>Overview body</p><a href="/dashboard/overview?range=12m">12M</a>',
+      n === 1
+        ? '<p>Overview body</p><a href="/dashboard/overview?range=12m">12M</a>'
+        : "<p>Overview 12m body</p>",
     );
-  handlers["/dashboard/overview?range=12m"] = () =>
-    pageHtml("Overview", "<p>Overview 12m body</p>");
   await mount();
   fireEvent.click(screen.getByRole("link", { name: "12M" }));
   await screen.findByText("Overview 12m body");
