@@ -334,17 +334,21 @@ func LedgerSeries(ctx context.Context, q Queryer, f SeriesFilter) ([]SeriesRow, 
 	if f.Hourly {
 		unit = 3_600_000
 	}
-	args := []any{int64(f.OffsetSeconds) * 1000, unit, f.OrgID, f.OrgID, f.Mode, ms(f.From), ms(f.To)}
-	appClause := ""
+	args := []any{int64(f.OffsetSeconds) * 1000, unit, f.OrgID, f.Mode, ms(f.From), ms(f.To)}
+	// The payments join is only needed to filter by app; org isolation is
+	// already enforced by l.org_id, and skipping it lets the covering index
+	// answer the query.
+	from, appClause := "ledger_entries l", ""
 	if f.AppID != "" {
-		appClause = " AND p.app_id = ?"
-		args = append(args, f.AppID)
+		from = "ledger_entries l JOIN payments p ON p.id = l.payment_id"
+		appClause = " AND p.org_id = ? AND p.app_id = ?"
+		args = append(args, f.OrgID, f.AppID)
 	}
 	rows, err := q.QueryContext(ctx, `SELECT (l.occurred_at + ?) / ? AS slot, l.currency,
 			COALESCE(SUM(CASE WHEN l.kind = 'charge' THEN l.amount ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN l.kind = 'refund' THEN -l.amount ELSE 0 END), 0)
-		FROM ledger_entries l JOIN payments p ON p.id = l.payment_id
-		WHERE l.org_id = ? AND p.org_id = ? AND l.mode = ? AND l.occurred_at >= ? AND l.occurred_at < ?
+		FROM `+from+`
+		WHERE l.org_id = ? AND l.mode = ? AND l.occurred_at >= ? AND l.occurred_at < ?
 			AND l.kind IN ('charge','refund')`+appClause+`
 		GROUP BY slot, l.currency ORDER BY slot, l.currency`, args...)
 	if err != nil {
