@@ -107,3 +107,14 @@ test("customer pages keep their palette", () => {
     expect(read(f).toLowerCase()).not.toContain("635bff");
   }
 });
+
+test("link buttons use the on-primary text colour, not the link colour", () => {
+  const shell = read("./app-shell.css");
+  const work = read("./workspace.css");
+  // The generic in-app link colour must not apply to a.btn ...
+  expect(work).toMatch(/a:not\(\.navigation-item\)[^{]*:not\(\.btn\)/);
+  // ... and a.btn sets its own text and background from the tokens.
+  const rule = shell.match(/\.paymux-react a\.btn\s*\{([^}]*)\}/)?.[1] ?? "";
+  expect(rule).toContain("color: var(--primary-foreground)");
+  expect(rule).toContain("background: var(--primary)");
+});
