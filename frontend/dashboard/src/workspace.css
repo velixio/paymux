@@ -288,7 +288,7 @@ main.dash:has(#paymux-react-root) {
   color: var(--muted-foreground);
 }
 .paymux-react
-  a:not(.navigation-item):not(.react-logo):not([data-slot="button"]) {
+  a:not(.navigation-item):not(.react-logo):not([data-slot="button"]):not(.btn) {
   color: var(--primary);
   text-underline-offset: 3px;
 }

@@ -665,3 +665,21 @@
 .tab-sheet-list li > button:first-child {
   flex: 1;
 }
+/* Server-rendered link buttons (a.btn) read as primary buttons. */
+.paymux-react a.btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.paymux-react a.btn:hover {
+  background: color-mix(in srgb, var(--foreground) 10%, var(--primary));
+  color: var(--primary-foreground);
+  text-decoration: none;
+}
