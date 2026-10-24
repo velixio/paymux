@@ -17,6 +17,8 @@ export type DashboardPage = {
   logoutForm: ViewNode | null;
   warnings: string[];
   auth: boolean;
+  /** The page shows a one-time secret: never keep it mounted or cached. */
+  once: boolean;
   theme: string | null;
 };
 const ignored = new Set(["script", "style", "link", "noscript"]);
@@ -93,6 +95,7 @@ export function parseDashboard(doc: Document, href: string): DashboardPage {
       (e) => e.textContent!.trim(),
     ),
     auth: !doc.querySelector(".dash-head"),
+    once: !!main.querySelector("[data-once]"),
     theme:
       doc.querySelector('link[href^="/theme/"]')?.getAttribute("href") || null,
   };
