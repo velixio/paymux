@@ -9,7 +9,7 @@ import {
 import RevenueChart from "./revenue-chart";
 import { RenderNode } from "./render";
 import { parseRevenue } from "./revenue";
-import { revenueTable } from "./revenue.test";
+import { revenueTable } from "./revenue.test.helpers";
 
 afterEach(cleanup);
 
