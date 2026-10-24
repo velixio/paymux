@@ -89,6 +89,16 @@ describe("existing Go page contract", () => {
       readOnly: true,
     });
   });
+  test("marks pages that show a one-time secret", () => {
+    expect(page().once).toBe(false);
+    const d = new win.DOMParser().parseFromString(
+      '<title>Keys - Paymux</title><div id="paymux-server-page"><header class="dash-head"></header><div data-once><code>sk_once</code></div></div>',
+      "text/html",
+    );
+    expect(
+      parseDashboard(d as unknown as Document, "/dashboard/apps").once,
+    ).toBe(true);
+  });
   test("parses authentication pages without inventing account data", () => {
     const d = new win.DOMParser().parseFromString(
       '<title>Sign in</title><div id="paymux-server-page"><form action="/dashboard/login"><input name="csrf" value="login-token"></form></div>',

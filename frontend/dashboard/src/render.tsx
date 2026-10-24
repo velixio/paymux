@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Copy, LoaderCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { statusTone } from "./pill";
 import { attributes, textOf, type ViewNode } from "./adapter";
 import { useRuntime, WorkspaceLink } from "./runtime";
 const renderChildren = (nodes: ViewNode[]) =>
@@ -230,7 +232,11 @@ export function RenderNode({ node: n }: { node: ViewNode }): ReactNode {
     );
   if (n.tag === "span" && /\b(status|mode|flag|badge)\b/.test(cls))
     return (
-      <Badge {...props} variant="secondary">
+      <Badge
+        {...props}
+        variant="secondary"
+        className={cn(cls, "pill", `pill-${statusTone(textOf(n))}`)}
+      >
         {children()}
       </Badge>
     );
