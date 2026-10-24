@@ -80,25 +80,11 @@ import { fetchDashboard, type DashboardPage } from "./adapter";
 import { PageContent, RenderNode } from "./render";
 import { queryKey, RuntimeProvider, WorkspaceLink } from "./runtime";
 import { TabView } from "./tab-view";
+import { TabsContext, useTabs, type TabsApi } from "./tabs-context";
 import * as tabs from "./tabs";
 import type { TabState } from "./tabs";
 
-export type TabsApi = {
-  state: TabState;
-  openHref(href: string, how: "replace" | "new"): void;
-  activate(id: string): void;
-  close(id: string): void;
-  reopen(): void;
-  pin(id: string, v: boolean): void;
-  move(id: string, i: number): void;
-  dirtyIds: ReadonlySet<string>;
-};
-const TabsContext = createContext<TabsApi | null>(null);
-export function useTabs(): TabsApi {
-  const value = useContext(TabsContext);
-  if (!value) throw Error("Missing workspace tabs");
-  return value;
-}
+export { useTabs, type TabsApi };
 
 const noDirty: ReadonlySet<string> = new Set();
 const storage = (): Storage | null => {
@@ -361,7 +347,10 @@ function TabsShell({
     stateRef.current = next;
     setState(next);
   }, []);
-  const [confirmClose, setConfirmClose] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{
+    names: string;
+    run: () => void;
+  } | null>(null);
   const intent = useRef<{ href: string; how: "replace" | "new" } | null>(null);
 
   const go = useCallback(
@@ -451,6 +440,20 @@ function TabsShell({
       if (target && target.href !== hrefOf(router.state.location))
         void go(target.href, { replace: true, ignoreBlocker: true });
     };
+    // Closing tabs with unsaved edits asks first.
+    const closeWith = (ids: string[], run: () => TabState) => {
+      const dirty = stateRef.current.tabs.filter(
+        (t) => ids.includes(t.id) && dirtyRef.current.has(t.id),
+      );
+      const apply = () => {
+        const next = run();
+        commit(next);
+        follow(next);
+      };
+      if (dirty.length === 0) apply();
+      else
+        setConfirm({ names: dirty.map((t) => t.title).join(", "), run: apply });
+    };
     return {
       state,
       dirtyIds,
@@ -463,13 +466,30 @@ function TabsShell({
         commit(next);
         follow(next);
       },
-      close(id) {
-        if (dirtyRef.current.has(id)) setConfirmClose(id);
-        else {
-          const next = tabs.close(stateRef.current, id);
-          commit(next);
-          follow(next);
-        }
+      close: (id) => closeWith([id], () => tabs.close(stateRef.current, id)),
+      closeOthers: (id) =>
+        closeWith(
+          stateRef.current.tabs
+            .filter((t) => t.id !== id && !t.pinned)
+            .map((t) => t.id),
+          () => tabs.closeOthers(stateRef.current, id),
+        ),
+      closeRight(id) {
+        const all = stateRef.current.tabs;
+        closeWith(
+          all.slice(all.findIndex((t) => t.id === id) + 1).map((t) => t.id),
+          () => tabs.closeRight(stateRef.current, id),
+        );
+      },
+      duplicate(id) {
+        const next = tabs.duplicate(stateRef.current, id, Date.now());
+        commit(next);
+        follow(next);
+      },
+      reload(id) {
+        const tab = stateRef.current.tabs.find((t) => t.id === id);
+        if (tab)
+          void client.invalidateQueries({ queryKey: queryKey(tab.href) });
       },
       reopen() {
         const next = tabs.reopen(stateRef.current, Date.now());
@@ -479,14 +499,13 @@ function TabsShell({
       pin: (id, v) => commit(tabs.setPinned(stateRef.current, id, v)),
       move: (id, i) => commit(tabs.move(stateRef.current, id, i)),
     };
-  }, [state, dirtyIds, router, go, commit]);
+  }, [state, dirtyIds, router, go, commit, client]);
 
   const active = state.tabs.find((t) => t.id === state.activeId)!;
   const activeKey = queryKey(active.href);
   const loading = useIsFetching({ queryKey: activeKey }) > 0;
   const refresh = () => void client.refetchQueries({ queryKey: activeKey });
   const name = page.nav.find((n) => n.active)?.label || page.title;
-  const closing = state.tabs.find((t) => t.id === confirmClose);
 
   return (
     <TabsContext.Provider value={api}>
@@ -630,34 +649,27 @@ function TabsShell({
           </div>
         </div>
         <Dialog
-          open={!!closing}
+          open={!!confirm}
           onOpenChange={(open) => {
-            if (!open) setConfirmClose(null);
+            if (!open) setConfirm(null);
           }}
         >
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Discard unsaved changes?</DialogTitle>
               <DialogDescription>
-                {closing?.title} has changes that have not been saved. Keep
-                editing, or discard them and close the tab.
+                {confirm?.names} has changes that have not been saved. Keep
+                editing, or discard them and close.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setConfirmClose(null)}>
+              <Button variant="outline" onClick={() => setConfirm(null)}>
                 Keep editing
               </Button>
               <Button
                 onClick={() => {
-                  const next = tabs.close(stateRef.current, confirmClose!);
-                  setConfirmClose(null);
-                  commit(next);
-                  const target = next.tabs.find((t) => t.id === next.activeId);
-                  if (target && target.href !== hrefOf(router.state.location))
-                    void go(target.href, {
-                      replace: true,
-                      ignoreBlocker: true,
-                    });
+                  confirm?.run();
+                  setConfirm(null);
                 }}
               >
                 Discard and close

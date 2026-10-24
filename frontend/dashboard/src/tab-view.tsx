@@ -40,6 +40,16 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
   });
   const section = useRef<HTMLElement>(null);
 
+  // What is rendered. A hidden tab ignores data updates (another tab on the
+  // same page may refetch) so its form state survives; it picks up the newest
+  // data when shown, unless it holds unsaved edits.
+  const view = useRef({ data, updatedAt: dataUpdatedAt });
+  const wasActive = useRef(active);
+  if (active && !(dirty && !wasActive.current))
+    view.current = { data, updatedAt: dataUpdatedAt };
+  wasActive.current = active;
+  const shown = view.current;
+
   useEffect(() => {
     if (
       active &&
@@ -52,11 +62,12 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
+  const once = !!shown.data?.once;
   useEffect(() => {
-    onOnce(!!data?.once);
-  }, [data?.once, onOnce]);
+    onOnce(once);
+  }, [once, onOnce]);
 
-  const loaded = !!data;
+  const loaded = !!shown.data;
   useLayoutEffect(() => {
     if (active && loaded && section.current)
       section.current.scrollTop = scroll.current;
@@ -73,7 +84,7 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
   return (
     <>
       {active &&
-        data?.warnings.map((message, i) => (
+        shown.data?.warnings.map((message, i) => (
           <div className="workspace-warning" role="status" key={i}>
             {message}
           </div>
@@ -90,20 +101,20 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
             scroll.current = section.current.scrollTop;
         }}
       >
-        {data ? (
+        {shown.data ? (
           <RuntimeProvider
-            key={dataUpdatedAt}
-            page={data}
+            key={shown.updatedAt}
+            page={shown.data}
             guard={active && !tab.pinned}
             onDirtyChange={onDirty}
           >
             <PageContent
               key={
-                data.href +
+                shown.data.href +
                 "-" +
-                data.content.map((n) => n.attrs.id || n.tag).join("")
+                shown.data.content.map((n) => n.attrs.id || n.tag).join("")
               }
-              nodes={data.content}
+              nodes={shown.data.content}
             />
           </RuntimeProvider>
         ) : error ? (
