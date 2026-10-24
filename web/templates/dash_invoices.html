@@ -7,6 +7,7 @@
 <select name="type" aria-label="Type"><option value="invoice"{{if eq .DocFilter.Type "invoice"}} selected{{end}}>Invoices</option><option value="credit_note"{{if eq .DocFilter.Type "credit_note"}} selected{{end}}>Credit notes</option></select>
 <select name="entity" aria-label="Tax entity"><option value="">All entities</option>{{range .Entities}}<option value="{{.ID}}"{{if eq .ID $.DocFilter.Entity}} selected{{end}}>{{.Name}}</option>{{end}}</select>
 <select name="app" aria-label="App"><option value="">All apps</option>{{range .AppOpts}}<option value="{{.ID}}"{{if eq .ID $.DocFilter.App}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+<input name="q" type="search" value="{{.DocFilter.Q}}" placeholder="Invoice number or buyer" aria-label="Search">
 <input name="month" type="month" value="{{.DocFilter.Month}}" aria-label="Month">
 <select name="flag" aria-label="Flag"><option value="">Any flag</option>{{range .DocFlags}}<option value="{{.}}"{{if eq . $.DocFilter.Flag}} selected{{end}}>{{.}}</option>{{end}}</select>
 <button class="btn small" type="submit">Filter</button>

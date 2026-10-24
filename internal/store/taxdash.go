@@ -53,6 +53,7 @@ func UpdateTaxEntity(ctx context.Context, tx Tx, e TaxEntity, now time.Time) err
 type DocFilter struct {
 	OrgID                       string // required: an empty org matches nothing
 	EntityID, AppID, Mode, Flag string
+	Q                           string // invoice number or buyer; matched as a literal, case-insensitive substring
 	From, To                    time.Time
 }
 
@@ -79,6 +80,11 @@ func (f DocFilter) where(afterID string) (string, []any) {
 	}
 	if f.Flag != "" {
 		add(`flags LIKE ? ESCAPE '\'`, `%"`+likeEscape(f.Flag)+`"%`)
+	}
+	if f.Q != "" {
+		// recipient is a JSON snapshot, so the buyer is matched with LIKE over its text.
+		pat := "%" + likeEscape(f.Q) + "%"
+		add(`(number = ? OR LOWER(number) LIKE ? ESCAPE '\' OR LOWER(recipient) LIKE ? ESCAPE '\')`, f.Q, pat, pat)
 	}
 	if afterID != "" {
 		add("id < ?", afterID)
