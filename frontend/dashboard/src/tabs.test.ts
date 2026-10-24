@@ -89,6 +89,22 @@ describe("open", () => {
     expect(active(r).href).toBe(`${D}other`);
   });
 
+  test("replace on a pinned tab that only changes the query updates it in place", () => {
+    const s = initialState(1);
+    const r = open(s, `${D}overview?range=12m`, "Overview", "replace", 2, none);
+    expect(r.tabs).toHaveLength(1);
+    expect(r.tabs[0]).toMatchObject({
+      href: `${D}overview?range=12m`,
+      pinned: true,
+      lastActive: 2,
+    });
+    expect(r.activeId).toBe(s.activeId);
+    // A different pathname still leaves the pinned tab alone.
+    expect(open(r, `${D}payments`, "P", "replace", 3, none).tabs).toHaveLength(
+      2,
+    );
+  });
+
   test("new appends after the active tab", () => {
     let s = withTabs(3);
     s = activate(s, s.tabs[1].id, 60);

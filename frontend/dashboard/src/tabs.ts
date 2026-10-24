@@ -79,6 +79,10 @@ function insertAfter(s: TabState, afterId: string, tab: Tab): Tab[] {
   return settle([...s.tabs.slice(0, i + 1), tab, ...s.tabs.slice(i + 1)]);
 }
 
+const samePath = (a: string, b: string) =>
+  new URL(a, "http://tabs.invalid").pathname ===
+  new URL(b, "http://tabs.invalid").pathname;
+
 export function open(
   s: TabState,
   href: string,
@@ -91,7 +95,9 @@ export function open(
   const same = s.tabs.find((t) => tabKey(t.href) === key);
   if (same) return activate(s, same.id, now);
   const cur = s.tabs.find((t) => t.id === s.activeId);
-  if (how === "replace" && cur && !cur.pinned) {
+  // A pinned tab only keeps users from navigating away from its page; a new
+  // query on the same page (a range preset, a filter) stays in the tab.
+  if (how === "replace" && cur && (!cur.pinned || samePath(cur.href, href))) {
     return {
       ...s,
       tabs: s.tabs.map((t) =>

@@ -683,7 +683,10 @@ function TabsShell({
             </header>
             <TabStrip iconFor={iconFor} />
           </RuntimeProvider>
-          {state.tabs.map((tab) => (
+          {/* The active tab leads in DOM order so ids, label[for] and
+              aria-controls resolve to the visible page. Keyed children move
+              without remounting. */}
+          {[active, ...state.tabs.filter((t) => t !== active)].map((tab) => (
             <TabView
               key={tab.id}
               tab={tab}

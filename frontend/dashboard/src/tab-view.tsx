@@ -105,7 +105,8 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
           <RuntimeProvider
             key={shown.updatedAt}
             page={shown.data}
-            guard={active && !tab.pinned}
+            guard={active}
+            pinned={tab.pinned}
             onDirtyChange={onDirty}
           >
             <PageContent

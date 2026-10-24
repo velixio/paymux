@@ -314,3 +314,52 @@ test("hidden duplicate keeps its edits when the visible one refetches", async ()
     ).value,
   ).toBe("b");
 });
+
+test("a query-only link on the pinned active tab updates that tab in place", async () => {
+  // The stub keys by path; the second request is the 12M one.
+  handlers["/dashboard/overview"] = (n) =>
+    pageHtml(
+      "Overview",
+      n === 1
+        ? '<p>Overview body</p><a href="/dashboard/overview?range=12m">12M</a>'
+        : "<p>Overview 12m body</p>",
+    );
+  await mount();
+  fireEvent.click(screen.getByRole("link", { name: "12M" }));
+  await screen.findByText("Overview 12m body");
+  expect(api.state.tabs).toHaveLength(1);
+  expect(api.state.tabs[0].href).toBe("/dashboard/overview?range=12m");
+  expect(api.state.tabs[0].pinned).toBe(true);
+});
+
+test("a query-only change on a dirty pinned tab asks before replacing it", async () => {
+  handlers["/dashboard/overview"] = () =>
+    pageHtml(
+      "Overview",
+      '<form action="/dashboard/x" method="post"><input name="n" value="a" aria-label="n"></form><a href="/dashboard/overview?range=12m">12M</a>',
+    );
+  await mount();
+  fireEvent.input(screen.getByLabelText("n"), { target: { value: "b" } });
+  await waitFor(() => expect(api.dirtyIds.size).toBe(1));
+  fireEvent.click(screen.getByRole("link", { name: "12M" }));
+  await screen.findByText("Discard unsaved changes?");
+  expect(api.state.tabs[0].href).toBe("/dashboard/overview");
+});
+
+test("the active tab comes first in the DOM, hidden tabs after it", async () => {
+  await mount();
+  act(() => api.openHref("/dashboard/payments", "new"));
+  await screen.findByText("Payments body");
+  const order = () =>
+    [...document.querySelectorAll("[data-tab]")].map((el) =>
+      el.getAttribute("data-tab"),
+    );
+  expect(order()[0]).toBe(api.state.activeId);
+  const overview = tabByHref("/dashboard/overview").id;
+  const node = document.querySelector(`[data-tab="${overview}"]`);
+  act(() => api.activate(overview));
+  await waitFor(() => expect(order()[0]).toBe(overview));
+  // Reordering moves nodes; it does not remount them.
+  expect(document.querySelector(`[data-tab="${overview}"]`)).toBe(node);
+  expect(document.getElementById("react-workspace")).toBe(node);
+});

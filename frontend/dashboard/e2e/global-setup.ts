@@ -19,7 +19,11 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const dataDir = mkdtempSync(join(tmpdir(), "paymux-e2e-"));
   const bin = join(dataDir, "paymux");
   const seedBin = join(dataDir, "paymux-e2eseed");
-  const build = { cwd: root, stdio: "inherit" as const, env: { ...process.env, CGO_ENABLED: "0" } };
+  const build = {
+    cwd: root,
+    stdio: "inherit" as const,
+    env: { ...process.env, CGO_ENABLED: "0" },
+  };
   if (!process.env.PAYMUX_E2E_SKIP_FRONTEND_BUILD) {
     execFileSync("bun", ["run", "--cwd", "frontend", "build:dashboard"], build);
   }
@@ -38,21 +42,58 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     PAYMUX_TZ: "Asia/Kolkata",
   };
   const run = (cmd: string, args: string[], input?: string) =>
-    execFileSync(cmd, args, { cwd: root, env, input, stdio: ["pipe", "inherit", "inherit"] });
+    execFileSync(cmd, args, {
+      cwd: root,
+      env,
+      input,
+      stdio: ["pipe", "inherit", "inherit"],
+    });
 
   run(bin, ["migrate"]);
-  run(bin, ["user", "create", "--email", OWNER_EMAIL, "--role", "admin", "--password-stdin"], OWNER_PASSWORD + "\n");
+  run(
+    bin,
+    [
+      "user",
+      "create",
+      "--email",
+      OWNER_EMAIL,
+      "--role",
+      "admin",
+      "--password-stdin",
+    ],
+    OWNER_PASSWORD + "\n",
+  );
   run(bin, ["app", "create", "--name", "Demo", "--slug", "demo"]);
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
-  run(bin, ["fx", "set", "--currency", "USD", "--date", today, "--rate", "83.2500"]);
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+  }).format(new Date());
+  run(bin, [
+    "fx",
+    "set",
+    "--currency",
+    "USD",
+    "--date",
+    today,
+    "--rate",
+    "83.2500",
+  ]);
   run(seedBin, []);
 
-  const server: ChildProcess = spawn(bin, ["serve"], { cwd: root, env, stdio: process.env.PAYMUX_E2E_VERBOSE ? "inherit" : "ignore" });
-  const exited = new Promise<never>((_, reject) => server.once("exit", (code) => reject(new Error(`paymux serve exited with ${code}`))));
+  const server: ChildProcess = spawn(bin, ["serve"], {
+    cwd: root,
+    env,
+    stdio: process.env.PAYMUX_E2E_VERBOSE ? "inherit" : "ignore",
+  });
+  const exited = new Promise<never>((_, reject) =>
+    server.once("exit", (code) =>
+      reject(new Error(`paymux serve exited with ${code}`)),
+    ),
+  );
   const ready = (async () => {
     for (let i = 0; i < 150; i++) {
       try {
-        if ((await fetch(`http://127.0.0.1:${port}/dashboard/login`)).ok) return;
+        if ((await fetch(`http://127.0.0.1:${port}/dashboard/login`)).ok)
+          return;
       } catch {
         /* not listening yet */
       }

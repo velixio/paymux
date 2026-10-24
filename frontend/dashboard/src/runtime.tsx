@@ -103,6 +103,7 @@ export function RuntimeProvider({
   page,
   children,
   guard = true,
+  pinned = false,
   onDirtyChange,
 }: {
   page: DashboardPage;
@@ -113,6 +114,9 @@ export function RuntimeProvider({
    * a new tab instead of being replaced.
    */
   guard?: boolean;
+  /** A pinned tab opens other pages in a new tab, so only a new query on the
+   *  same page can replace (and discard) its edits. */
+  pinned?: boolean;
   /** Reports whether this view has unsaved edits (false again on unmount). */
   onDirtyChange?: (dirty: boolean) => void;
 }) {
@@ -205,6 +209,7 @@ export function RuntimeProvider({
   });
   const blocker = useBlocker({
     shouldBlockFn: ({ current, next }) =>
+      !(pinned && current.pathname !== next.pathname) &&
       (current.pathname !== next.pathname ||
         JSON.stringify(current.search) !== JSON.stringify(next.search)) &&
       (dirtyForms.size > 0 || mutation.isPending),

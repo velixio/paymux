@@ -1,9 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { OWNER_EMAIL, OWNER_PASSWORD } from "./global-setup";
 
-// Hidden tabs stay mounted (and repeat ids), so look only at the visible tab.
-const visible = (page: Page) => page.locator("section.react-content:not([hidden])");
-
 async function login(page: Page) {
   await page.goto("/dashboard/login");
   await page.getByLabel("Email address").fill(OWNER_EMAIL);
@@ -12,27 +9,41 @@ async function login(page: Page) {
   await page.waitForURL(/\/dashboard\/(overview)?$/);
 }
 
-test("login, overview shows revenue table, switch to 12M shows monthly rows, CSV downloads", async ({ page }) => {
+test("login, overview shows revenue table, switch to 12M shows monthly rows, CSV downloads", async ({
+  page,
+}) => {
   await login(page);
   await page.goto("/dashboard/overview");
 
-  const table = visible(page).locator("#revenue-data");
+  const table = page.locator("#revenue-data");
   await expect(table).toBeAttached();
   await expect(table).toHaveAttribute("data-currency", "INR");
   await expect(table).toHaveAttribute("data-bucket", "day"); // 30D is daily
-  expect(await table.locator("tr[data-start]").count()).toBeGreaterThanOrEqual(30);
+  expect(await table.locator("tr[data-start]").count()).toBeGreaterThanOrEqual(
+    30,
+  );
 
   await page.getByRole("link", { name: "12M", exact: true }).click();
-  await expect(visible(page).locator("#revenue-data")).toHaveAttribute("data-bucket", "month");
-  const rows = visible(page).locator("#revenue-data tr[data-start]");
+  await expect(page.locator("#revenue-data")).toHaveAttribute(
+    "data-bucket",
+    "month",
+  );
+  const rows = page.locator("#revenue-data tr[data-start]");
   expect(await rows.count()).toBeGreaterThanOrEqual(12);
   // the seeded mid-month payments land in their own month, and USD is converted
-  const gross = await rows.evaluateAll((trs) => trs.map((tr) => Number(tr.getAttribute("data-gross"))));
+  const gross = await rows.evaluateAll((trs) =>
+    trs.map((tr) => Number(tr.getAttribute("data-gross"))),
+  );
   expect(gross.filter((g) => g > 0).length).toBeGreaterThanOrEqual(11);
-  await expect(visible(page).locator("#revenue-data")).toHaveAttribute("data-converted", "true");
+  await expect(page.locator("#revenue-data")).toHaveAttribute(
+    "data-converted",
+    "true",
+  );
 
   // The CSV link carries the current query (12M); fetch it with the session.
-  const href = await visible(page).getByRole("link", { name: /download csv/i }).getAttribute("href");
+  const href = await page
+    .getByRole("link", { name: /download csv/i })
+    .getAttribute("href");
   expect(href).toContain("range=12m");
   const res = await page.request.get(href!);
   expect(res.status()).toBe(200);
@@ -41,4 +52,40 @@ test("login, overview shows revenue table, switch to 12M shows monthly rows, CSV
   const lines = (await res.text()).trim().split("\n");
   expect(lines[0]).toBe("start,label,currency,gross,refunds,net");
   expect(lines.length).toBeGreaterThanOrEqual(13);
+});
+
+// Only the visible tab's content counts: hidden tabs stay mounted.
+const visible = (page: Page) =>
+  page.locator("section.react-content:not([hidden])");
+
+test("overview shows chart", async ({ page }) => {
+  await login(page);
+  await page.goto("/dashboard/overview");
+  const chart = visible(page).locator(".revenue-chart");
+  await expect(chart.locator("svg")).toBeVisible();
+  const rowCount = await visible(page)
+    .locator("#revenue-data tr[data-start]")
+    .count();
+  await expect(chart.locator("[data-bar]")).toHaveCount(rowCount);
+  // The table is behind the toggle but still in the page.
+  await expect(visible(page).locator("#revenue-data")).toBeHidden();
+  await visible(page).getByRole("button", { name: "View as table" }).click();
+  await expect(visible(page).locator("#revenue-data")).toBeVisible();
+});
+
+test("switch to 12M shows monthly bars", async ({ page }) => {
+  await login(page);
+  await page.goto("/dashboard/overview");
+  await visible(page).getByRole("link", { name: "12M", exact: true }).click();
+  await expect(visible(page).locator("#revenue-data")).toHaveAttribute(
+    "data-bucket",
+    "month",
+  );
+  const bars = visible(page).locator(".revenue-chart [data-bar]");
+  expect(await bars.count()).toBeGreaterThanOrEqual(12);
+  await expect(bars.first()).toHaveAttribute("aria-label", /net/i);
+  // The pinned Overview tab was updated in place, not duplicated.
+  await expect(page.getByRole("tab")).toHaveCount(1);
+  await bars.nth((await bars.count()) - 1).focus();
+  await expect(visible(page).getByRole("tooltip")).toContainText("Gross");
 });
