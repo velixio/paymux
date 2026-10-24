@@ -360,3 +360,51 @@ func TestRevenueCSV(t *testing.T) {
 		}
 	})
 }
+
+func TestParseRevenueQueryBounds(t *testing.T) {
+	now := time.Date(2026, 10, 25, 15, 30, 0, 0, ist)
+	for q, ok := range map[string]bool{
+		"range=custom&from=2000-01-01&to=2026-10-25": true,
+		"range=custom&from=2026-01-01&to=2027-10-25": true,
+		"range=custom&from=1999-12-31&to=2026-10-25": false,
+		"range=custom&from=1900-01-01&to=2100-12-31": false,
+		"range=custom&from=2026-01-01&to=2027-10-27": false,
+	} {
+		v, _ := url.ParseQuery(q)
+		_, err := parseRevenueQuery(v, now, ist, time.Time{}, false)
+		if (err == nil) != ok {
+			t.Errorf("%s: err %v, want ok=%v", q, err, ok)
+		}
+		if err != nil && !strings.Contains(err.Error(), "out of bounds") && !ok && !strings.Contains(q, "1999") && !strings.Contains(q, "1900") && !strings.Contains(q, "2027-10-27") {
+			t.Errorf("%s: %v", q, err)
+		}
+	}
+}
+
+func TestRevenueCapsPoints(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
+		for bucket, want := range map[string]string{"day": "month", "week": "month", "hour": "month", "month": "month", "quarter": "quarter"} {
+			body := e.pageOK(vw, "/dashboard/overview?range=custom&from=2000-01-01&to=2027-01-15&bucket="+bucket)
+			if got := tableAttr(t, body, "data-bucket"); got != want {
+				t.Errorf("%s: bucket %s want %s", bucket, got, want)
+			}
+			if n := len(revPoints(body)); n > 400 || n == 0 {
+				t.Errorf("%s: %d points", bucket, n)
+			}
+		}
+		// a small range keeps the bucket asked for
+		body := e.pageOK(vw, "/dashboard/overview?range=custom&from=2027-01-01&to=2027-01-15&bucket=day")
+		if tableAttr(t, body, "data-bucket") != "day" || len(revPoints(body)) != 15 {
+			t.Error("small range was coarsened")
+		}
+		if r, _ := e.get(vw, "/dashboard/overview?range=custom&from=1900-01-01&to=2100-12-31"); r.StatusCode != 400 {
+			t.Errorf("out of bounds: %d", r.StatusCode)
+		}
+		r, body := e.get(vw, "/dashboard/overview/revenue.csv?range=custom&from=2000-01-01&to=2027-01-15&bucket=day")
+		if n := strings.Count(body, "\n"); r.StatusCode != 200 || n > 401 {
+			t.Errorf("csv: %d, %d lines", r.StatusCode, n)
+		}
+	})
+}
