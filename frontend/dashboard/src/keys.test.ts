@@ -2,7 +2,10 @@ import { describe, expect, test, vi } from "vitest";
 import { createMatcher, isTyping, type Binding } from "./keys";
 
 type Init = Partial<
-  Pick<KeyboardEvent, "code" | "key" | "ctrlKey" | "altKey" | "metaKey" | "shiftKey">
+  Pick<
+    KeyboardEvent,
+    "code" | "key" | "ctrlKey" | "altKey" | "metaKey" | "shiftKey"
+  >
 > & { target?: EventTarget | null };
 
 const ev = (code: string, init: Init = {}) =>
