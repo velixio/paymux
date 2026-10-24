@@ -372,3 +372,20 @@ test("a full page load on the Overview with a query updates the pinned tab in pl
     pinned: true,
   });
 });
+
+test("copy button copies code text", async () => {
+  const writeText = vi.fn(async () => {});
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  handlers["/dashboard/overview"] = () =>
+    pageHtml(
+      "Overview",
+      "<table><tbody><tr><td><code>pay_copy_1</code></td></tr></tbody></table><dl><dt>Key</dt><dd><code>sk_abc</code></dd></dl><p><code>not_in_cell</code></p>",
+    );
+  await mount();
+  fireEvent.click(screen.getByRole("button", { name: "Copy pay_copy_1" }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith("pay_copy_1"));
+  expect((await screen.findByRole("status")).textContent).toContain("Copied");
+  fireEvent.click(screen.getByRole("button", { name: "Copy sk_abc" }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith("sk_abc"));
+  expect(screen.queryByRole("button", { name: "Copy not_in_cell" })).toBeNull();
+});
