@@ -6,26 +6,45 @@ const MAX_PER_PATH = 12;
 const key = (user: string, path: string) => `paymux-filters:${user}:${path}`;
 
 const valid = (x: unknown): x is SavedFilter =>
-  typeof x === "object" && x !== null && typeof (x as SavedFilter).name === "string" && typeof (x as SavedFilter).query === "string";
+  typeof x === "object" &&
+  x !== null &&
+  typeof (x as SavedFilter).name === "string" &&
+  typeof (x as SavedFilter).query === "string";
 
-export function list(storage: Pick<Storage, "getItem"> | null, user: string, path: string): SavedFilter[] {
+export function list(
+  storage: Pick<Storage, "getItem"> | null,
+  user: string,
+  path: string,
+): SavedFilter[] {
   try {
     const raw = storage?.getItem(key(user, path));
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(valid).map(({ name, query }) => ({ name, query })) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter(valid).map(({ name, query }) => ({ name, query }))
+      : [];
   } catch {
     return [];
   }
 }
 
-function save(storage: Pick<Storage, "setItem">, user: string, path: string, filters: SavedFilter[]): void {
+function save(
+  storage: Pick<Storage, "setItem">,
+  user: string,
+  path: string,
+  filters: SavedFilter[],
+): void {
   storage.setItem(key(user, path), JSON.stringify(filters));
 }
 
 // Same name replaces in place; a new name goes last and the oldest falls off
 // beyond 12.
-export function add(storage: Pick<Storage, "getItem" | "setItem"> | null, user: string, path: string, f: SavedFilter): void {
+export function add(
+  storage: Pick<Storage, "getItem" | "setItem"> | null,
+  user: string,
+  path: string,
+  f: SavedFilter,
+): void {
   try {
     const name = f.name.trim();
     if (!storage || !name) return;
@@ -40,17 +59,29 @@ export function add(storage: Pick<Storage, "getItem" | "setItem"> | null, user: 
   }
 }
 
-export function remove(storage: Pick<Storage, "getItem" | "setItem"> | null, user: string, path: string, name: string): void {
+export function remove(
+  storage: Pick<Storage, "getItem" | "setItem"> | null,
+  user: string,
+  path: string,
+  name: string,
+): void {
   try {
     if (!storage) return;
-    save(storage, user, path, list(storage, user, path).filter((x) => x.name !== name));
+    save(
+      storage,
+      user,
+      path,
+      list(storage, user, path).filter((x) => x.name !== name),
+    );
   } catch {
     /* see add */
   }
 }
 
 // The query string of a filter form: drops csrf, empty values and files.
-export function filterQuery(entries: Iterable<[string, FormDataEntryValue]>): string {
+export function filterQuery(
+  entries: Iterable<[string, FormDataEntryValue]>,
+): string {
   const params = new URLSearchParams();
   for (const [k, v] of entries) {
     if (k === "csrf" || typeof v !== "string" || v === "") continue;

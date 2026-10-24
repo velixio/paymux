@@ -53,7 +53,8 @@ describe("saved filters", () => {
 
   test("cap 12 drops the oldest", () => {
     const s = memory();
-    for (let n = 0; n < 15; n++) add(s, "u", P, { name: `f${n}`, query: `n=${n}` });
+    for (let n = 0; n < 15; n++)
+      add(s, "u", P, { name: `f${n}`, query: `n=${n}` });
     const got = list(s, "u", P);
     expect(got).toHaveLength(12);
     expect(got[0].name).toBe("f3");
@@ -94,7 +95,15 @@ describe("saved filters", () => {
     expect(list(s, "u", P)).toEqual([]);
     s.data.set(k, JSON.stringify({ not: "array" }));
     expect(list(s, "u", P)).toEqual([]);
-    s.data.set(k, JSON.stringify([{ name: 1, query: "x" }, { name: "ok", query: "a=1" }, null, { name: "noq" }]));
+    s.data.set(
+      k,
+      JSON.stringify([
+        { name: 1, query: "x" },
+        { name: "ok", query: "a=1" },
+        null,
+        { name: "noq" },
+      ]),
+    );
     expect(list(s, "u", P)).toEqual([{ name: "ok", query: "a=1" }]);
   });
 });

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { intents, rank, recent, remember, type Item } from "./command";
 
-function memory(): Pick<Storage, "getItem" | "setItem"> & { data: Map<string, string> } {
+function memory(): Pick<Storage, "getItem" | "setItem"> & {
+  data: Map<string, string>;
+} {
   const data = new Map<string, string>();
   return {
     data,
@@ -19,7 +21,11 @@ const throwing: Pick<Storage, "getItem" | "setItem"> = {
   },
 };
 
-const it = (id: string, label: string, hint?: string): Item => ({ id, label, hint });
+const it = (id: string, label: string, hint?: string): Item => ({
+  id,
+  label,
+  hint,
+});
 
 describe("intents", () => {
   test("pay_ id goes to /dashboard/payments/<id>", () => {
@@ -57,7 +63,9 @@ describe("intents", () => {
   });
 
   test("an id with path characters is not treated as an id", () => {
-    expect(intents("pay_1/../x")[0].href).toBe("/dashboard/payments?q=pay_1%2F..%2Fx");
+    expect(intents("pay_1/../x")[0].href).toBe(
+      "/dashboard/payments?q=pay_1%2F..%2Fx",
+    );
   });
 
   test("intent ids are unique", () => {
@@ -96,21 +104,35 @@ describe("rank", () => {
   });
 
   test("hint can match when the label does not", () => {
-    expect(rank([it("x", "Zebra", "billing")], "bill").map((i) => i.id)).toEqual(["x"]);
-    expect(rank([it("x", "Zebra", "dark mode")], "dmd").map((i) => i.id)).toEqual(["x"]); // scattered in the hint
+    expect(
+      rank([it("x", "Zebra", "billing")], "bill").map((i) => i.id),
+    ).toEqual(["x"]);
+    expect(
+      rank([it("x", "Zebra", "dark mode")], "dmd").map((i) => i.id),
+    ).toEqual(["x"]); // scattered in the hint
   });
 });
 
 describe("recent and remember", () => {
   test("recent caps at 8 and dedupes", () => {
     const s = memory();
-    for (let n = 0; n < 12; n++) remember(s, "u1", it(`i${n}`, `Item ${n}`, "/p"));
+    for (let n = 0; n < 12; n++)
+      remember(s, "u1", it(`i${n}`, `Item ${n}`, "/p"));
     remember(s, "u1", it("i5", "Item 5 again"));
     const got = recent(s, "u1");
     expect(got).toHaveLength(8);
     expect(got[0]).toMatchObject({ id: "i5", label: "Item 5 again" });
     expect(got.filter((i) => i.id === "i5")).toHaveLength(1);
-    expect(got.map((i) => i.id)).toEqual(["i5", "i11", "i10", "i9", "i8", "i7", "i6", "i4"]);
+    expect(got.map((i) => i.id)).toEqual([
+      "i5",
+      "i11",
+      "i10",
+      "i9",
+      "i8",
+      "i7",
+      "i6",
+      "i4",
+    ]);
   });
 
   test("recent is per user", () => {
@@ -134,7 +156,10 @@ describe("recent and remember", () => {
     const s = memory();
     s.data.set("paymux-recent:u", "{nope");
     expect(recent(s, "u")).toEqual([]);
-    s.data.set("paymux-recent:u", JSON.stringify([{ id: 1 }, { id: "ok", label: "Ok" }, "str", null]));
+    s.data.set(
+      "paymux-recent:u",
+      JSON.stringify([{ id: 1 }, { id: "ok", label: "Ok" }, "str", null]),
+    );
     expect(recent(s, "u")).toEqual([{ id: "ok", label: "Ok" }]);
     s.data.set("paymux-recent:u", JSON.stringify({ not: "an array" }));
     expect(recent(s, "u")).toEqual([]);
