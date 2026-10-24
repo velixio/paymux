@@ -17,5 +17,5 @@
     "resolveJsonModule": true
   },
   "include": ["components", "lib", "dashboard", "home/src", "home/vite.config.ts"],
-  "exclude": ["**/*.test.ts"]
+  "exclude": ["**/*.test.ts", "dashboard/e2e"]
 }
