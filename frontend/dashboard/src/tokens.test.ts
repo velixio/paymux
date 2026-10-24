@@ -11,7 +11,8 @@ function block(selector: string): Record<string, string> {
   const start = css.indexOf(`\n${selector} {`);
   const body = css.slice(start, css.indexOf("}", start));
   const out: Record<string, string> = {};
-  for (const m of body.matchAll(/(--[\w-]+):\s*([^;]+);/g)) out[m[1]] = m[2].trim();
+  for (const m of body.matchAll(/(--[\w-]+):\s*([^;]+);/g))
+    out[m[1]] = m[2].trim();
   return out;
 }
 
@@ -44,17 +45,38 @@ const keys = [
 ];
 
 test("light tokens match spec", () => {
-  const want = ["#ffffff", "#f7f8fa", "#1a1f36", "#5c6478", "#e3e8ee", "#635bff", "#ebeafe", "#4b44d6"];
+  const want = [
+    "#ffffff",
+    "#f7f8fa",
+    "#1a1f36",
+    "#5c6478",
+    "#e3e8ee",
+    "#635bff",
+    "#ebeafe",
+    "#4b44d6",
+  ];
   expect(keys.map((k) => light[k])).toEqual(want);
 });
 
 test("dark tokens match spec", () => {
-  const want = ["#0f1117", "#14161d", "#e6e8ef", "#9aa1b2", "#262a35", "#8b85ff", "#24224a", "#c4c1ff"];
+  const want = [
+    "#0f1117",
+    "#14161d",
+    "#e6e8ef",
+    "#9aa1b2",
+    "#262a35",
+    "#8b85ff",
+    "#24224a",
+    "#c4c1ff",
+  ];
   expect(keys.map((k) => dark[k])).toEqual(want);
 });
 
 test("text pairs reach 4.5:1 in both modes", () => {
-  for (const [mode, t] of [["light", light], ["dark", dark]] as const) {
+  for (const [mode, t] of [
+    ["light", light],
+    ["dark", dark],
+  ] as const) {
     const pairs: [string, string][] = [
       ["--foreground", "--background"],
       ["--muted-foreground", "--background"],
@@ -68,14 +90,20 @@ test("text pairs reach 4.5:1 in both modes", () => {
     for (const [fg, bg] of pairs) {
       expect(t[fg], `${mode} ${fg}`).toBeDefined();
       expect(t[bg], `${mode} ${bg}`).toBeDefined();
-      expect(contrast(t[fg], t[bg]), `${mode} ${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+      expect(
+        contrast(t[fg], t[bg]),
+        `${mode} ${fg} on ${bg}`,
+      ).toBeGreaterThanOrEqual(4.5);
     }
   }
   expect(light["--test-mode"]).toBe("#f59e0b");
 });
 
 test("customer pages keep their palette", () => {
-  for (const f of ["../../../web/static/css/app.css", "../../../web/themes/default/theme.json"]) {
+  for (const f of [
+    "../../../web/static/css/app.css",
+    "../../../web/themes/default/theme.json",
+  ]) {
     expect(read(f).toLowerCase()).not.toContain("635bff");
   }
 });
