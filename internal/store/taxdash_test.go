@@ -247,3 +247,35 @@ func TestInvoicesPendingFXAllCurrencies(t *testing.T) {
 		}
 	})
 }
+
+func TestListFXRatesFor(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		seedBase(t, db)
+		err := db.Write(ctx, func(tx store.Tx) error {
+			for _, r := range []store.FXRate{
+				{OrgID: store.DefaultOrgID, Currency: "USD", Date: "2026-10-03", Rate: "83.50", Source: "manual"},
+				{OrgID: store.DefaultOrgID, Currency: "USD", Date: "2026-10-01", Rate: "83.25", Source: "manual"},
+				{OrgID: store.DefaultOrgID, Currency: "EUR", Date: "2026-10-02", Rate: "90.10", Source: "provider"},
+			} {
+				if err := store.UpsertFXRate(ctx, tx, r, t0); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var usd, none []store.FXRate
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			if usd, err = store.ListFXRatesFor(ctx, q, store.DefaultOrgID, "USD"); err != nil {
+				return
+			}
+			none, err = store.ListFXRatesFor(ctx, q, "org_other", "USD")
+			return
+		})
+		if len(usd) != 2 || usd[0].Date != "2026-10-01" || usd[1].Date != "2026-10-03" || usd[1].Rate != "83.50" || len(none) != 0 {
+			t.Fatalf("usd %+v other %+v", usd, none)
+		}
+	})
+}
