@@ -79,6 +79,8 @@ import {
 import { fetchDashboard, type DashboardPage } from "./adapter";
 import { PageContent, RenderNode } from "./render";
 import { queryKey, RuntimeProvider, WorkspaceLink } from "./runtime";
+import { createMatcher, type Binding } from "./keys";
+import { TabStrip } from "./tab-strip";
 import { TabView } from "./tab-view";
 import { TabsContext, useTabs, type TabsApi } from "./tabs-context";
 import * as tabs from "./tabs";
@@ -142,6 +144,8 @@ const iconMap: Record<string, React.ComponentType<{ size?: number }>> = {
   fx: Coins,
   "tax-entities": Landmark,
 };
+const iconFor = (href: string) =>
+  iconMap[href.split(/[?#]/)[0].split("/").at(-1)!] || Layers;
 function Logo() {
   return (
     <WorkspaceLink
@@ -501,6 +505,49 @@ function TabsShell({
     };
   }, [state, dirtyIds, router, go, commit, client]);
 
+  // One keyboard listener for tab shortcuts: [ and ] step through tabs, g 1..9
+  // jump, g w closes, g t reopens. Shifted bindings, when added, must come
+  // before unshifted ones on the same key.
+  const apiRef = useRef(api);
+  apiRef.current = api;
+  useEffect(() => {
+    const now = () => apiRef.current.state;
+    const step = (by: number) => {
+      const { tabs: list, activeId } = now();
+      const at = list.findIndex((t) => t.id === activeId);
+      apiRef.current.activate(list[(at + by + list.length) % list.length].id);
+    };
+    const bindings: Binding[] = [
+      { keys: ["BracketLeft"], run: () => step(-1) },
+      { keys: ["BracketRight"], run: () => step(1) },
+      ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({
+        keys: ["KeyG", `Digit${n}`],
+        run: () => {
+          const tab = now().tabs[n - 1];
+          if (tab) apiRef.current.activate(tab.id);
+        },
+      })),
+      {
+        keys: ["KeyG", "KeyW"],
+        run: () => apiRef.current.close(now().activeId),
+      },
+      { keys: ["KeyG", "KeyT"], run: () => apiRef.current.reopen() },
+    ];
+    const match = createMatcher(bindings);
+    const onKey = (e: KeyboardEvent) => {
+      // Menus and dialogs own the keyboard while they are open.
+      if (
+        (e.target as Element | null)?.closest?.(
+          '[role="menu"], [role="dialog"]',
+        )
+      )
+        return;
+      if (match(e, Date.now())) e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const active = state.tabs.find((t) => t.id === state.activeId)!;
   const activeKey = queryKey(active.href);
   const loading = useIsFetching({ queryKey: activeKey }) > 0;
@@ -634,6 +681,7 @@ function TabsShell({
                 </DropdownMenu>
               </div>
             </header>
+            <TabStrip iconFor={iconFor} />
           </RuntimeProvider>
           {state.tabs.map((tab) => (
             <TabView

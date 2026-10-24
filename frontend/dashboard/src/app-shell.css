@@ -546,3 +546,122 @@
 .app-shell .react-workspace [hidden] {
   display: none !important;
 }
+.app-shell .tab-strip {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  height: 34px;
+  background: var(--sidebar);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.app-shell .tab-strip::-webkit-scrollbar {
+  display: none;
+}
+.app-shell .tab-strip-compact {
+  align-items: center;
+  padding: 0 12px;
+}
+.app-shell .tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-width: 0;
+  max-width: 200px;
+  border-right: 1px solid var(--border);
+  color: var(--muted-foreground);
+}
+.app-shell .tab:hover {
+  background: var(--muted);
+}
+.app-shell .tab.active {
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: inset 0 -2px 0 var(--primary);
+}
+.app-shell .tab.dragging {
+  opacity: 0.6;
+}
+.app-shell .tab [role="tab"] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  touch-action: none;
+}
+.app-shell .tab.pinned [role="tab"] {
+  padding: 0 12px;
+}
+.app-shell .tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell .tab-dirty {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  flex-shrink: 0;
+}
+.app-shell .tab-close {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  opacity: 0;
+  cursor: pointer;
+}
+.app-shell .tab:hover .tab-close,
+.app-shell .tab.active .tab-close,
+.app-shell .tab-close:focus-visible {
+  opacity: 1;
+}
+.app-shell .tab-close:hover {
+  background: var(--border);
+}
+.app-shell .tab-anchor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.tab-sheet-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 16px 16px;
+}
+.tab-sheet-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+.tab-sheet-list li.active {
+  box-shadow: inset 2px 0 var(--primary);
+}
+.tab-sheet-list button {
+  padding: 12px 8px;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.tab-sheet-list li > button:first-child {
+  flex: 1;
+}
