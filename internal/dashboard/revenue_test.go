@@ -1,9 +1,16 @@
 package dashboard
 
 import (
+	"fmt"
 	"net/url"
+	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/paymux/paymux/internal/store"
+	"github.com/paymux/paymux/internal/store/storetest"
 )
 
 var ist = func() *time.Location {
@@ -121,4 +128,228 @@ func TestBucketStartWeekMondayQuarter(t *testing.T) {
 			t.Errorf("%s %s: %v want %v", c.bucket, c.in.Format(time.RFC3339), got, c.want)
 		}
 	}
+}
+
+// The test clock is 2027-01-15 08:00 UTC and the dashboard runs in UTC.
+func (e *env) d15(dayOfJan int) time.Time { return time.Date(2027, 1, dayOfJan, 12, 0, 0, 0, time.UTC) }
+
+type ledRow struct {
+	pay, kind, cur string
+	amt            int64
+	at             time.Time
+}
+
+var ledSeq int
+
+func (e *env) seedLedger(rows ...ledRow) {
+	e.t.Helper()
+	err := e.db.Write(ctx, func(tx store.Tx) error {
+		for _, l := range rows {
+			ledSeq++
+			err := store.InsertLedgerEntry(ctx, tx, store.LedgerEntry{ID: fmt.Sprintf("rev_%d", ledSeq), OrgID: store.DefaultOrgID, Mode: "live",
+				Kind: l.kind, Amount: l.amt, Currency: l.cur, PaymentID: l.pay, OccurredAt: l.at})
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func (e *env) seedRates(rates ...store.FXRate) {
+	e.t.Helper()
+	err := e.db.Write(ctx, func(tx store.Tx) error {
+		for _, r := range rates {
+			r.OrgID, r.Source = store.DefaultOrgID, "manual"
+			if err := store.UpsertFXRate(ctx, tx, r, e.clk.Now()); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+type revPoint struct {
+	start                                  string
+	gross, refunds, prevGross, prevRefunds int64
+}
+
+var revRowRE = regexp.MustCompile(`<tr data-start="([^"]+)" data-gross="(-?\d+)" data-refunds="(-?\d+)" data-prev-gross="(-?\d+)" data-prev-refunds="(-?\d+)"`)
+
+func revPoints(body string) []revPoint {
+	var out []revPoint
+	for _, m := range revRowRE.FindAllStringSubmatch(body, -1) {
+		n := func(s string) int64 { v, _ := strconv.ParseInt(s, 10, 64); return v }
+		out = append(out, revPoint{m[1], n(m[2]), n(m[3]), n(m[4]), n(m[5])})
+	}
+	return out
+}
+
+func revByDay(body string) map[string]revPoint {
+	m := map[string]revPoint{}
+	for _, p := range revPoints(body) {
+		m[p.start[:10]] = p
+	}
+	return m
+}
+
+func tableAttr(t *testing.T, body, attr string) string {
+	t.Helper()
+	return regexpFind(t, `<table id="revenue-data"[^>]*\b`+attr+`="([^"]*)"`, body)
+}
+
+func TestRevenueINRConversionAndEstimates(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		e.seedLedger(
+			ledRow{"pay_1", "charge", "INR", 1000000, e.d15(15)},
+			ledRow{"pay_1", "charge", "USD", 1000, e.d15(13)}, // same-day rate: 10.00 x 80
+			ledRow{"pay_1", "charge", "USD", 500, e.d15(14)},  // no rate that day: earlier rate, estimated
+			ledRow{"pay_1", "charge", "USD", 100, e.d15(10)},  // before the first rate: later rate, estimated
+			ledRow{"pay_1", "refund", "USD", -200, e.d15(13)}, // refund converts the same way
+			ledRow{"pay_1", "charge", "EUR", 2000, e.d15(12)}, // no rate at all
+		)
+		e.seedRates(store.FXRate{Currency: "USD", Date: "2027-01-13", Rate: "80"})
+		body := e.pageOK(e.roleClient("viewer"), "/dashboard/overview?range=7d")
+		if c, conv, est := tableAttr(t, body, "data-currency"), tableAttr(t, body, "data-converted"), tableAttr(t, body, "data-estimated"); c != "INR" || conv != "true" || est != "true" {
+			t.Fatalf("currency %s converted %s estimated %s", c, conv, est)
+		}
+		if tableAttr(t, body, "data-exp") != "2" || tableAttr(t, body, "data-bucket") != "day" {
+			t.Errorf("exp/bucket: %s %s", tableAttr(t, body, "data-exp"), tableAttr(t, body, "data-bucket"))
+		}
+		pts := revByDay(body)
+		if len(pts) != 7 {
+			t.Fatalf("want 7 daily points, got %d", len(pts))
+		}
+		for day, want := range map[string][2]int64{"2027-01-13": {80000, 16000}, "2027-01-14": {40000, 0}, "2027-01-10": {8000, 0}, "2027-01-15": {1000000, 0}, "2027-01-12": {0, 0}} {
+			if got := pts[day]; got.gross != want[0] || got.refunds != want[1] {
+				t.Errorf("%s: %+v want %v", day, got, want)
+			}
+		}
+		has(t, body, "20.00 EUR", "/dashboard/fx", "estimated")
+		// a window with only exact rates is not estimated
+		body = e.pageOK(e.roleClient("viewer"), "/dashboard/overview?range=custom&from=2027-01-13&to=2027-01-13")
+		if tableAttr(t, body, "data-estimated") != "false" {
+			t.Error("same-day conversion marked estimated")
+		}
+		// the picker view is unconverted
+		body = e.pageOK(e.roleClient("viewer"), "/dashboard/overview?range=7d&currency=USD")
+		if tableAttr(t, body, "data-currency") != "USD" || tableAttr(t, body, "data-converted") != "false" || revByDay(body)["2027-01-14"].gross != 500 {
+			t.Errorf("USD view: %s", body)
+		}
+	})
+}
+
+func tableOnly(body string) string {
+	return regexp.MustCompile(`(?s)<table id="revenue-data".*?</table>`).FindString(body)
+}
+
+func TestRevenueDefaultCurrencyMajority(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		e.seedLedger(ledRow{"pay_1", "charge", "INR", 10000, e.d15(14)}, ledRow{"pay_1", "charge", "USD", 100000, e.d15(14)})
+		e.seedRates(store.FXRate{Currency: "USD", Date: "2027-01-14", Rate: "80"})
+		v := e.roleClient("viewer")
+		body := e.pageOK(v, "/dashboard/overview?range=7d")
+		if tableAttr(t, body, "data-currency") != "USD" || tableAttr(t, body, "data-converted") != "false" || revByDay(body)["2027-01-14"].gross != 100000 {
+			t.Errorf("mostly USD should open on USD unconverted: %s", tableOnly(body))
+		}
+		// asking for INR gives the converted view
+		body = e.pageOK(v, "/dashboard/overview?range=7d&currency=INR")
+		if tableAttr(t, body, "data-currency") != "INR" || tableAttr(t, body, "data-converted") != "true" || revByDay(body)["2027-01-14"].gross != 8010000 {
+			t.Errorf("INR view: %s", tableOnly(body))
+		}
+	})
+}
+
+func TestRevenuePreviousPeriodChange(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		v := e.roleClient("viewer")
+		e.seedLedger(ledRow{"pay_1", "charge", "INR", 15000, e.d15(12)}, ledRow{"pay_1", "refund", "INR", -1000, e.d15(12)},
+			ledRow{"pay_1", "charge", "INR", 10000, e.d15(5)}) // previous 7 days: Jan 2..8
+		body := e.pageOK(v, "/dashboard/overview?range=7d")
+		has(t, body, `data-metric="gross">+50.0%<`)
+		pts := revByDay(body)
+		if p := pts["2027-01-12"]; p.gross != 15000 || p.refunds != 1000 {
+			t.Errorf("point %+v", p)
+		}
+		// previous period values line up by position: Jan 5 is the 4th previous day, Jan 12 the 4th current day
+		if p := pts["2027-01-12"]; p.prevGross != 10000 {
+			t.Errorf("prev gross %+v", p)
+		}
+		lacks(t, body, `data-metric="refunds">+`, "NaN", "Inf")
+		// 30d: previous 30 days hold only Jan 5's 10000? no: Dec 17..Jan 15 / Nov 17..Dec 16 holds nothing
+		body = e.pageOK(v, "/dashboard/overview?range=30d")
+		has(t, body, `data-metric="gross"></`)
+	})
+}
+
+func TestRevenueEmpty(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		body := e.pageOK(e.roleClient("viewer"), "/dashboard/overview?range=all")
+		if n := len(revPoints(body)); n != 0 {
+			t.Errorf("%d points for a new org", n)
+		}
+		lacks(t, body, "NaN", "Inf", "undefined")
+		has(t, body, `id="revenue-data"`)
+	})
+}
+
+func TestOverviewRendersRevenueTable(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		e.seedLedger(ledRow{"pay_1", "charge", "INR", 12345, e.d15(14)})
+		body := e.pageOK(e.roleClient("viewer"), "/dashboard/overview")
+		has(t, body, `<nav class="range-presets"`, `href="/dashboard/overview?range=7d"`, `aria-current="page"`, `class="revenue-summary"`,
+			`id="revenue-data"`, `data-gross="12345"`, "123.45 INR", "/dashboard/overview/revenue.csv?", `id="period-today"`)
+		if tableAttr(t, body, "data-bucket") != "day" {
+			t.Error("30d is daily")
+		}
+		// app filter and unknown app
+		has(t, e.pageOK(e.roleClient("viewer"), "/dashboard/overview?app="+app.ID), `data-gross="12345"`)
+		if r, _ := e.get(e.roleClient("viewer"), "/dashboard/overview?app=app_nope"); r.StatusCode != 400 {
+			t.Errorf("unknown app: %d", r.StatusCode)
+		}
+		if r, _ := e.get(e.roleClient("viewer"), "/dashboard/overview?range=custom&from=2027-02-01&to=2027-01-01"); r.StatusCode != 400 {
+			t.Errorf("bad custom: %d", r.StatusCode)
+		}
+	})
+}
+
+func TestRevenueCSV(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		e.seedLedger(ledRow{"pay_1", "charge", "INR", 12345, e.d15(14)}, ledRow{"pay_1", "refund", "INR", -345, e.d15(14)})
+		r, body := e.get(e.roleClient("viewer"), "/dashboard/overview/revenue.csv?range=7d")
+		if r.StatusCode != 200 || !strings.HasPrefix(r.Header.Get("Content-Type"), "text/csv") ||
+			!strings.Contains(r.Header.Get("Content-Disposition"), `filename="revenue-7d-INR.csv"`) {
+			t.Fatalf("%d %v", r.StatusCode, r.Header)
+		}
+		lines := strings.Split(strings.TrimSpace(body), "\n")
+		if lines[0] != "start,label,currency,gross,refunds,net" || len(lines) != 8 {
+			t.Fatalf("csv:\n%s", body)
+		}
+		has(t, body, "2027-01-14T00:00:00Z,14 Jan,INR,123.45,3.45,120.00")
+		if r, _ := e.get(e.roleClient("viewer"), "/dashboard/overview/revenue.csv?range=bogus"); r.StatusCode != 400 {
+			t.Errorf("bad range: %d", r.StatusCode)
+		}
+	})
 }
