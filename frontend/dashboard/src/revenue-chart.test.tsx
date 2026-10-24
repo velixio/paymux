@@ -7,7 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import RevenueChart from "./revenue-chart";
-import { RenderNode } from "./render";
+import { RevenueBlock } from "./render";
 import { parseRevenue } from "./revenue";
 import { revenueTable } from "./revenue.test.helpers";
 
@@ -124,7 +124,13 @@ test("an all-zero series renders", () => {
 
 test("the revenue table node renders the chart with a View as table toggle", async () => {
   const node = revenueTable(rows(4));
-  render(<RenderNode node={node} />);
+  render(
+    <RevenueBlock node={node}>
+      <table id="revenue-data">
+        <tbody />
+      </table>
+    </RevenueBlock>,
+  );
   expect((await screen.findAllByRole("img")).length).toBe(4);
   const table = document.getElementById("revenue-data")!;
   expect(table.closest("[hidden]")).not.toBeNull();
@@ -140,7 +146,13 @@ test("the revenue table node renders the chart with a View as table toggle", asy
 });
 
 test("a revenue table without rows stays a plain table", () => {
-  render(<RenderNode node={revenueTable([])} />);
+  render(
+    <RevenueBlock node={revenueTable([])}>
+      <table id="revenue-data">
+        <tbody />
+      </table>
+    </RevenueBlock>,
+  );
   expect(screen.queryByRole("button", { name: "View as table" })).toBeNull();
   expect(document.getElementById("revenue-data")).not.toBeNull();
 });

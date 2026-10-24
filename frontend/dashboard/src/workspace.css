@@ -1163,3 +1163,148 @@ main.dash:has(#paymux-react-root) {
     color: var(--muted-foreground);
   }
 }
+/* Revenue chart: hand-written SVG; colours come from the dashboard tokens. */
+.react-content .revenue-chart {
+  position: relative;
+  margin: 12px 0 4px;
+  min-height: 260px;
+}
+.react-content .revenue-chart-loading {
+  height: 292px;
+}
+.react-content .revenue-chart-plot {
+  position: relative;
+  aspect-ratio: 720 / 260;
+}
+.react-content .revenue-chart svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.react-content .rev-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.react-content .rev-zero {
+  stroke: var(--muted-foreground);
+  stroke-width: 1;
+}
+.react-content .rev-tick {
+  fill: var(--muted-foreground);
+  font-size: 10px;
+  font-feature-settings: "tnum";
+}
+.react-content .rev-hit {
+  fill: transparent;
+}
+.react-content .rev-gross {
+  fill: var(--ui-accent);
+}
+.react-content .rev-net {
+  fill: var(--primary);
+}
+.react-content .rev-refunds {
+  fill: var(--status-bad-fg);
+}
+.react-content .rev-prev {
+  stroke: var(--muted-foreground);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+.react-content [data-bar] {
+  outline: none;
+}
+.react-content [data-bar]:hover .rev-hit,
+.react-content [data-bar]:focus-visible .rev-hit {
+  fill: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.react-content [data-bar]:focus-visible .rev-hit {
+  stroke: var(--ring);
+  stroke-width: 2;
+}
+.react-content .revenue-tooltip {
+  position: absolute;
+  top: 8px;
+  transform: translateX(-50%);
+  z-index: 2;
+  min-width: 170px;
+  padding: 8px 10px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 12%);
+}
+.react-content .revenue-tooltip dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  margin: 6px 0 0;
+}
+.react-content .revenue-tooltip dd {
+  margin: 0;
+  text-align: right;
+  font-feature-settings: "tnum";
+}
+.react-content .revenue-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.react-content .rev-key::before {
+  content: "";
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border-radius: 2px;
+  background: var(--primary);
+}
+.react-content .rev-key-gross::before {
+  background: var(--ui-accent);
+}
+.react-content .rev-key-refunds::before {
+  background: var(--status-bad-fg);
+}
+.react-content .rev-key-prev::before {
+  background: none;
+  border-top: 2px dashed var(--muted-foreground);
+  border-radius: 0;
+  height: 0;
+}
+.react-content .revenue-table-toggle {
+  margin: 4px 0 8px;
+}
+/* Range presets read as one segmented control. */
+.react-content nav.range-presets {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 4px 0 12px;
+}
+.react-content nav.range-presets a {
+  padding: 4px 12px;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.react-content nav.range-presets a:hover {
+  color: var(--foreground);
+}
+.react-content nav.range-presets a.active,
+.react-content nav.range-presets a[aria-current="page"] {
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
+}

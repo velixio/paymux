@@ -1,4 +1,12 @@
-import React, { useEffect, useRef, useState, type ReactNode } from "react";
+import React, {
+  Suspense,
+  lazy,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,9 +23,50 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Copy, LoaderCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 import { statusTone } from "./pill";
+import { parseRevenue } from "./revenue";
 import { attributes, textOf, type ViewNode } from "./adapter";
 import { useRuntime, WorkspaceLink } from "./runtime";
+// The chart is a separate chunk; the skeleton has its size so nothing shifts.
+const RevenueChart = lazy(() => import("./revenue-chart"));
+export function RevenueBlock({
+  node,
+  children,
+}: {
+  node: ViewNode;
+  children: ReactNode;
+}) {
+  const series = useMemo(() => parseRevenue(node), [node]);
+  const [table, setTable] = useState(false);
+  if (!series) return children;
+  return (
+    <>
+      <Suspense
+        fallback={
+          <div
+            className="revenue-chart revenue-chart-loading"
+            aria-hidden="true"
+          >
+            <Skeleton className="h-full w-full" />
+          </div>
+        }
+      >
+        <RevenueChart series={series} />
+      </Suspense>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="revenue-table-toggle"
+        aria-expanded={table}
+        onClick={() => setTable(!table)}
+      >
+        {table ? "Hide table" : "View as table"}
+      </Button>
+      <div hidden={!table}>{children}</div>
+    </>
+  );
+}
 const renderChildren = (nodes: ViewNode[]) =>
   nodes.map((node, i) => (
     <RenderNode key={node.attrs.id || `${node.tag}-${i}`} node={node} />
@@ -240,14 +289,20 @@ export function RenderNode({ node: n }: { node: ViewNode }): ReactNode {
         {children()}
       </Badge>
     );
-  if (n.tag === "table")
-    return cls.includes("settings") ? (
+  if (n.tag === "table") {
+    const table = cls.includes("settings") ? (
       <PolicyTable node={n} />
     ) : (
       <Table {...props} className="operational-table">
         {children()}
       </Table>
     );
+    return n.attrs.id === "revenue-data" ? (
+      <RevenueBlock node={n}>{table}</RevenueBlock>
+    ) : (
+      table
+    );
+  }
   if (n.tag === "thead")
     return <TableHeader {...props}>{children()}</TableHeader>;
   if (n.tag === "tbody") return <TableBody {...props}>{children()}</TableBody>;
