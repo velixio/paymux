@@ -10,12 +10,17 @@ async function login(page: Page) {
 }
 
 // Hidden tabs stay mounted, so scope every locator to the visible one.
-const visible = (page: Page) => page.locator("section.react-content:not([hidden])");
+const visible = (page: Page) =>
+  page.locator("section.react-content:not([hidden])");
 const tabs = (page: Page) => page.getByRole("tab");
 const sidebar = (page: Page, label: string) =>
-  page.getByRole("navigation", { name: "Workspace navigation" }).getByRole("link", { name: label, exact: true });
+  page
+    .getByRole("navigation", { name: "Workspace navigation" })
+    .getByRole("link", { name: label, exact: true });
 
-test("open payment in new tab with alt-click, switch tabs keeps filter, reload restores tabs", async ({ page }) => {
+test("open payment in new tab with alt-click, switch tabs keeps filter, reload restores tabs", async ({
+  page,
+}) => {
   await login(page);
   await page.goto("/dashboard/overview");
   await expect(visible(page).locator("#revenue-data")).toBeAttached();
@@ -30,27 +35,40 @@ test("open payment in new tab with alt-click, switch tabs keeps filter, reload r
   await expect(visible(page).locator("tbody tr")).toHaveCount(9);
 
   // Alt-click a payment: it opens in a new tab and the filtered list stays put.
-  await visible(page).locator("tbody tr").first().getByRole("link").first().click({ modifiers: ["Alt"] });
+  await visible(page)
+    .locator("tbody tr")
+    .first()
+    .getByRole("link")
+    .first()
+    .click({ modifiers: ["Alt"] });
   await expect(tabs(page)).toHaveCount(base + 2);
   await expect(page).toHaveURL(/\/dashboard\/payments\/pay_/);
 
   // Switching back to the list shows the same filter.
   await tabs(page).nth(base).click();
-  await expect(visible(page).getByRole("searchbox", { name: "Search" })).toHaveValue("ORD-00");
+  await expect(
+    visible(page).getByRole("searchbox", { name: "Search" }),
+  ).toHaveValue("ORD-00");
   await expect(visible(page).locator("tbody tr")).toHaveCount(9);
 
   // A reload brings the same tabs back, with the same active one.
   await page.reload();
   await expect(tabs(page)).toHaveCount(base + 2);
   await expect(tabs(page).nth(base)).toHaveAttribute("aria-selected", "true");
-  await expect(visible(page).getByRole("searchbox", { name: "Search" })).toHaveValue("ORD-00");
+  await expect(
+    visible(page).getByRole("searchbox", { name: "Search" }),
+  ).toHaveValue("ORD-00");
 });
 
-test("dirty form in hidden tab survives switching and blocks close", async ({ page }) => {
+test("dirty form in hidden tab survives switching and blocks close", async ({
+  page,
+}) => {
   await login(page);
   await page.goto("/dashboard/overview");
   await sidebar(page, "Payment links").click();
-  const description = visible(page).locator('form[action="/dashboard/payment-links"] input[name="description"]');
+  const description = visible(page).locator(
+    'form[action="/dashboard/payment-links"] input[name="description"]',
+  );
   await description.fill("Annual plan, unsaved");
   const linksTab = tabs(page).filter({ has: page.locator(".tab-dirty") });
   await expect(linksTab).toHaveCount(1);
@@ -59,9 +77,11 @@ test("dirty form in hidden tab survives switching and blocks close", async ({ pa
   await tabs(page).first().click();
   await expect(visible(page).locator("#revenue-data")).toBeAttached();
   await linksTab.click();
-  await expect(visible(page).locator('form[action="/dashboard/payment-links"] input[name="description"]')).toHaveValue(
-    "Annual plan, unsaved",
-  );
+  await expect(
+    visible(page).locator(
+      'form[action="/dashboard/payment-links"] input[name="description"]',
+    ),
+  ).toHaveValue("Annual plan, unsaved");
 
   // Closing it asks first; keeping the edit leaves the tab open.
   await page.getByRole("button", { name: /^Close Payment links/ }).click();
@@ -88,8 +108,12 @@ test("test mode shows the top border and TEST badge", async ({ page }) => {
   await page.getByRole("button", { name: /test/i }).click();
   await expect(shell).toHaveAttribute("data-mode", "test");
   await expect(page.locator(".test-label")).toHaveText("TEST");
-  expect(await shell.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe("3px");
-  expect(await shell.evaluate((el) => getComputedStyle(el).borderTopStyle)).toBe("solid");
+  expect(
+    await shell.evaluate((el) => getComputedStyle(el).borderTopWidth),
+  ).toBe("3px");
+  expect(
+    await shell.evaluate((el) => getComputedStyle(el).borderTopStyle),
+  ).toBe("solid");
 });
 
 test("phone width shows the open-tabs sheet", async ({ page }) => {
@@ -116,7 +140,8 @@ test("no request fires from a hidden tab for 60s", async ({ page }) => {
 
   const seen: string[] = [];
   page.on("request", (req) => {
-    if (["document", "fetch", "xhr"].includes(req.resourceType())) seen.push(req.url());
+    if (["document", "fetch", "xhr"].includes(req.resourceType()))
+      seen.push(req.url());
   });
   await page.clock.fastForward(60_000);
   await page.clock.runFor(100);

@@ -31,7 +31,11 @@ export function intents(query: string): Item[] {
   const q = query.trim();
   if (!q) return [];
   for (const r of RECORDS) {
-    if (q.startsWith(r.prefix) && /^[A-Za-z0-9_]+$/.test(q) && q.length > r.prefix.length) {
+    if (
+      q.startsWith(r.prefix) &&
+      /^[A-Za-z0-9_]+$/.test(q) &&
+      q.length > r.prefix.length
+    ) {
       return [
         {
           id: `record:${q}`,
@@ -42,7 +46,11 @@ export function intents(query: string): Item[] {
       ];
     }
   }
-  if (EMAIL.test(q)) return [search("payments", "payments", q), search("subscriptions", "subscriptions", q)];
+  if (EMAIL.test(q))
+    return [
+      search("payments", "payments", q),
+      search("subscriptions", "subscriptions", q),
+    ];
   return [search("payments", "payments", q), search("invoices", "invoices", q)];
 }
 
@@ -85,23 +93,38 @@ export function rank(items: Item[], query: string): Item[] {
 const key = (user: string) => `paymux-recent:${user}`;
 
 const valid = (x: unknown): x is Item =>
-  typeof x === "object" && x !== null && typeof (x as Item).id === "string" && typeof (x as Item).label === "string";
+  typeof x === "object" &&
+  x !== null &&
+  typeof (x as Item).id === "string" &&
+  typeof (x as Item).label === "string";
 
-export function recent(storage: Pick<Storage, "getItem"> | null, user: string): Item[] {
+export function recent(
+  storage: Pick<Storage, "getItem"> | null,
+  user: string,
+): Item[] {
   try {
     const raw = storage?.getItem(key(user));
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(valid).slice(0, MAX_RECENT) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter(valid).slice(0, MAX_RECENT)
+      : [];
   } catch {
     return [];
   }
 }
 
-export function remember(storage: Pick<Storage, "getItem" | "setItem"> | null, user: string, item: Item): void {
+export function remember(
+  storage: Pick<Storage, "getItem" | "setItem"> | null,
+  user: string,
+  item: Item,
+): void {
   try {
     if (!storage) return;
-    const next = [item, ...recent(storage, user).filter((i) => i.id !== item.id)].slice(0, MAX_RECENT);
+    const next = [
+      item,
+      ...recent(storage, user).filter((i) => i.id !== item.id),
+    ].slice(0, MAX_RECENT);
     storage.setItem(key(user), JSON.stringify(next));
   } catch {
     /* storage unavailable: recent items are a convenience */
