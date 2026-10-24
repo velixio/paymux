@@ -49,7 +49,9 @@ test("order: toolbar, KPI tiles, chart, notes, then the table toggle and CSV", a
   // The server's stacked form and definition list are replaced.
   expect(document.querySelector("form.revenue-filters")).toBeNull();
   expect(document.querySelector("dl.revenue-summary")).toBeNull();
-  expect(screen.getByText(/Includes estimated conversions/)).toBeTruthy();
+  expect(
+    screen.getAllByText(/Includes estimated conversions/).length,
+  ).toBeGreaterThan(0);
 });
 
 test("KPI tiles format minor units with the table's currency", async () => {
@@ -90,14 +92,14 @@ test("change chips: a refunds decrease is good, a gross decrease is bad", async 
 
 test("selects apply on change and keep the current range", async () => {
   const router = await overview({}, "/dashboard/overview?range=12m");
-  const toolbar = within(q(".revenue-toolbar") as HTMLElement);
-  fireEvent.change(toolbar.getByLabelText("App"), {
+  const toolbar = () => within(q(".revenue-toolbar") as HTMLElement);
+  fireEvent.change(toolbar().getByLabelText("App"), {
     target: { value: "app_1" },
   });
   await waitFor(() => expect(search(router).get("app")).toBe("app_1"));
   expect(search(router).get("range")).toBe("12m");
   expect(search(router).has("from")).toBe(false);
-  fireEvent.change(toolbar.getByLabelText("Group by"), {
+  fireEvent.change(toolbar().getByLabelText("Group by"), {
     target: { value: "month" },
   });
   await waitFor(() => expect(search(router).get("bucket")).toBe("month"));

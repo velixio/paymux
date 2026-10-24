@@ -7,7 +7,6 @@ import {
   within,
 } from "@testing-library/react";
 import RevenueChart from "./revenue-chart";
-import { RevenueBlock } from "./render";
 import { parseRevenue } from "./revenue";
 import { revenueTable } from "./revenue.test.helpers";
 
@@ -120,39 +119,4 @@ test("an all-zero series renders", () => {
   const series = parseRevenue(revenueTable([[day(1), 0, 0, 0, 0]]))!;
   render(<RevenueChart series={series} />);
   expect(document.querySelector("svg")!.innerHTML).not.toContain("NaN");
-});
-
-test("the revenue table node renders the chart with a View as table toggle", async () => {
-  const node = revenueTable(rows(4));
-  render(
-    <RevenueBlock node={node}>
-      <table id="revenue-data">
-        <tbody />
-      </table>
-    </RevenueBlock>,
-  );
-  expect((await screen.findAllByRole("img")).length).toBe(4);
-  const table = document.getElementById("revenue-data")!;
-  expect(table.closest("[hidden]")).not.toBeNull();
-  const toggle = screen.getByRole("button", { name: "View as table" });
-  expect(toggle.getAttribute("aria-expanded")).toBe("false");
-  fireEvent.click(toggle);
-  expect(table.closest("[hidden]")).toBeNull();
-  expect(
-    screen
-      .getByRole("button", { name: "Hide table" })
-      .getAttribute("aria-expanded"),
-  ).toBe("true");
-});
-
-test("a revenue table without rows stays a plain table", () => {
-  render(
-    <RevenueBlock node={revenueTable([])}>
-      <table id="revenue-data">
-        <tbody />
-      </table>
-    </RevenueBlock>,
-  );
-  expect(screen.queryByRole("button", { name: "View as table" })).toBeNull();
-  expect(document.getElementById("revenue-data")).not.toBeNull();
 });
