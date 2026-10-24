@@ -682,7 +682,8 @@ export function DashboardApp({ slot }: { slot?: React.ReactNode }) {
     queryKey: queryKey(href),
     queryFn: ({ signal }) => fetchDashboard(href, signal),
     // Inside the shell the tab views fetch; this observer only reads.
-    enabled: !inShell,
+    // Sign-in style pages have no tab, so this observer loads them.
+    enabled: !inShell || isAuthHref(href),
   });
   if (data) shown.current = data;
   const page = shown.current;
