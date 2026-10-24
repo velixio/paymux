@@ -1,10 +1,10 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { compactMoney, scale, type Series } from "./revenue";
 
-const W = 720;
+const DEFAULT_W = 720;
+const MIN_W = 320;
 const H = 260;
 const M = { top: 10, right: 8, bottom: 26, left: 56 };
-const PLOT_W = W - M.left - M.right;
 const PLOT_H = H - M.top - M.bottom;
 const MONTHS = [
   "Jan",
@@ -51,6 +51,23 @@ function fullLabel(start: string, bucket: string) {
 export default function RevenueChart({ series }: { series: Series }) {
   const { points, currency, exp, bucket } = series;
   const [hover, setHover] = useState<number | null>(null);
+  // Draw at the container's real width so text stays crisp and bars fill it.
+  const plot = useRef<HTMLDivElement>(null);
+  const [W, setW] = useState(DEFAULT_W);
+  useEffect(() => {
+    const el = plot.current;
+    if (!el) return;
+    const fit = () => {
+      const width = el.getBoundingClientRect().width;
+      if (width > 0) setW(Math.max(MIN_W, Math.round(width)));
+    };
+    fit();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const PLOT_W = W - M.left - M.right;
   const bars = useRef<(SVGGElement | null)[]>([]);
   const money = useMemo(() => {
     const f = new Intl.NumberFormat(currency === "INR" ? "en-IN" : "en", {
@@ -84,12 +101,8 @@ export default function RevenueChart({ series }: { series: Series }) {
 
   return (
     <figure className="revenue-chart" aria-label="Revenue chart">
-      <div className="revenue-chart-plot">
-        <svg
-          viewBox={`0 0 ${W} ${H}`}
-          width="100%"
-          preserveAspectRatio="xMidYMid meet"
-        >
+      <div className="revenue-chart-plot" ref={plot}>
+        <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H}>
           {axis.ticks.map((t) => (
             <g key={t}>
               <line
