@@ -60,6 +60,7 @@ test("text pairs reach 4.5:1 in both modes", () => {
       ["--muted-foreground", "--background"],
       ["--muted-foreground", "--sidebar"],
       ["--accent-foreground", "--ui-accent"],
+      ["--primary-foreground", "--primary"],
       ...["ok", "warn", "bad", "neutral"].map(
         (s) => [`--status-${s}-fg`, `--status-${s}-bg`] as [string, string],
       ),
