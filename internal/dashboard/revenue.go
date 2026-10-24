@@ -1,9 +1,19 @@
 package dashboard
 
 import (
+	"context"
+	"encoding/csv"
 	"fmt"
+	"math"
+	"net/http"
 	"net/url"
+	"slices"
+	"sort"
 	"time"
+
+	"github.com/paymux/paymux/internal/invoice"
+	"github.com/paymux/paymux/internal/store"
+	"github.com/paymux/paymux/pkg/connector/money"
 )
 
 // revenueQuery is the parsed, resolved query of the overview revenue chart.
@@ -130,4 +140,423 @@ func bucketStart(t time.Time, bucket string, loc *time.Location) time.Time {
 		return time.Date(y, m-(m-1)%3, 1, 0, 0, 0, 0, loc)
 	}
 	return time.Date(y, m, d, 0, 0, 0, 0, loc)
+}
+
+type revenuePoint struct {
+	Start                                  time.Time
+	Label                                  string
+	Gross, Refunds, PrevGross, PrevRefunds int64
+	StartS, GrossS, RefundsS, NetS         string // RFC 3339 start and formatted amounts, for the template and CSV
+}
+
+type revenuePreset struct {
+	ID, Label, Href string
+	Current         bool
+}
+
+type revenueView struct {
+	Query                                 revenueQuery
+	Bucket                                string // the bucket in use (auto resolved)
+	Currency                              string // currency of the amounts shown
+	Exp                                   int    // its minor-unit exponent
+	Converted                             bool   // INR conversion applied
+	Estimated                             bool   // some conversion used a non-same-day rate
+	Excluded                              []string
+	Points                                []revenuePoint
+	Gross, Refunds, Net                   int64
+	GrossS, RefundsS, NetS                string
+	GrossChange, NetChange, RefundsChange string
+	Currencies                            []string
+	Presets                               []revenuePreset
+	Apps                                  []appOpt
+	CSVHref                               string
+	FromS, ToS                            string // custom range inputs, YYYY-MM-DD (To inclusive)
+}
+
+// revenue builds the revenue chart data of one org and mode.
+func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode string, rq revenueQuery) (revenueView, error) {
+	loc := d.o.Location
+	v := revenueView{Query: rq, Bucket: rq.Bucket}
+	if v.Bucket == "auto" {
+		v.Bucket = autoBucket(rq.Range, rq.From, rq.To)
+	}
+	if v.Bucket == "hour" && rq.To.Sub(rq.From) > 7*24*time.Hour {
+		v.Bucket = "day" // an hourly series over weeks is unreadable and large
+	}
+	hourly := v.Bucket == "hour"
+	_, off := rq.From.In(loc).Zone()
+
+	var rows, prevRows []store.SeriesRow
+	prevFrom := rq.From
+	if rq.To.After(rq.From) {
+		days := int(math.Round(rq.To.Sub(rq.From).Hours() / 24))
+		prevFrom = rq.From.AddDate(0, 0, -days)
+		f := store.SeriesFilter{OrgID: org, Mode: mode, AppID: rq.App, From: rq.From, To: rq.To, Hourly: hourly, OffsetSeconds: off}
+		var err error
+		if rows, err = store.LedgerSeries(ctx, q, f); err != nil {
+			return v, err
+		}
+		f.From, f.To = prevFrom, rq.From
+		if prevRows, err = store.LedgerSeries(ctx, q, f); err != nil {
+			return v, err
+		}
+	}
+
+	// Rates, for every foreign currency in either window.
+	present := map[string]bool{}
+	for _, r := range rows {
+		present[r.Currency] = true
+	}
+	rc := rateCtx{loc: loc, off: off, hourly: hourly, rates: map[string][]store.FXRate{}}
+	for _, r := range slices.Concat(rows, prevRows) {
+		if _, ok := rc.rates[r.Currency]; !ok && r.Currency != "INR" {
+			rates, err := store.ListFXRatesFor(ctx, q, org, r.Currency)
+			if err != nil {
+				return v, err
+			}
+			rc.rates[r.Currency] = rates
+		}
+	}
+	rc.date = rq.From.Format("2006-01-02")
+	conv, estCur, excluded, err := rc.convert(rows)
+	if err != nil {
+		return v, err
+	}
+	rc.date = prevFrom.Format("2006-01-02")
+	convPrev, estPrev, _, err := rc.convert(prevRows)
+	if err != nil {
+		return v, err
+	}
+
+	// Which currency to show.
+	shown, converted := rq.Currency, false
+	switch {
+	case shown == "INR":
+		converted = true
+	case shown == "":
+		shown, converted = "INR", true
+		var total, inr int64
+		per := map[string]int64{}
+		for _, r := range conv {
+			total += r.Gross
+			per[r.origin] += r.Gross
+		}
+		inr = per["INR"]
+		if total > 0 && inr*2 < total {
+			shown, converted = "", false
+			for c, g := range per {
+				if shown == "" || g > per[shown] || g == per[shown] && c < shown {
+					shown = c
+				}
+			}
+		}
+	}
+	if converted {
+		// Conversion only matters when there is foreign money in the window.
+		foreign := false
+		for c := range present {
+			foreign = foreign || c != "INR"
+		}
+		v.Converted = foreign
+		v.Estimated = foreign && (estCur || estPrev)
+		for _, c := range sortedKeys(excluded) {
+			v.Excluded = append(v.Excluded, fmtMoney(excluded[c], c))
+		}
+	}
+	v.Currency = shown
+	v.Exp = 2
+	if e, err := money.Exponent(shown); err == nil {
+		v.Exp = e
+	}
+	cur, prev := conv, convPrev
+	if !converted {
+		cur, prev = native(rows, shown), native(prevRows, shown)
+	}
+
+	// Points.
+	if rq.To.After(rq.From) {
+		idx := map[int64]int{}
+		for s := bucketStart(rq.From, v.Bucket, loc); s.Before(rq.To); s = nextBucket(s, v.Bucket) {
+			idx[s.Unix()] = len(v.Points)
+			v.Points = append(v.Points, revenuePoint{Start: s, Label: bucketLabel(s, v.Bucket, rq)})
+		}
+		for _, r := range cur {
+			if i, ok := idx[bucketStart(slotTime(r.Slot, hourly, off, loc), v.Bucket, loc).Unix()]; ok {
+				v.Points[i].Gross += r.Gross
+				v.Points[i].Refunds += r.Refunds
+			}
+		}
+		pidx := map[int64]int{}
+		n := 0
+		for s := bucketStart(prevFrom, v.Bucket, loc); s.Before(rq.From); s = nextBucket(s, v.Bucket) {
+			pidx[s.Unix()] = n
+			n++
+		}
+		for _, r := range prev {
+			if i, ok := pidx[bucketStart(slotTime(r.Slot, hourly, off, loc), v.Bucket, loc).Unix()]; ok && i < len(v.Points) {
+				v.Points[i].PrevGross += r.Gross
+				v.Points[i].PrevRefunds += r.Refunds
+			}
+		}
+	}
+	var pg, pr int64
+	for _, r := range cur {
+		v.Gross += r.Gross
+		v.Refunds += r.Refunds
+	}
+	for _, r := range prev {
+		pg += r.Gross
+		pr += r.Refunds
+	}
+	v.Net = v.Gross - v.Refunds
+	v.GrossChange, v.RefundsChange, v.NetChange = pctChange(v.Gross, pg), pctChange(v.Refunds, pr), pctChange(v.Net, pg-pr)
+	v.GrossS, v.RefundsS, v.NetS = fmtSigned(v.Gross, shown), fmtSigned(v.Refunds, shown), fmtSigned(v.Net, shown)
+	for i := range v.Points {
+		p := &v.Points[i]
+		p.StartS = p.Start.Format(time.RFC3339)
+		p.GrossS, p.RefundsS, p.NetS = fmtSigned(p.Gross, shown), fmtSigned(p.Refunds, shown), fmtSigned(p.Gross-p.Refunds, shown)
+	}
+
+	// Pickers and links.
+	present["INR"], present[shown] = true, shown != ""
+	v.Currencies = sortedKeys(present)
+	v.FromS, v.ToS = rq.From.Format("2006-01-02"), rq.To.AddDate(0, 0, -1).Format("2006-01-02")
+	for _, p := range revenueRanges {
+		qv := url.Values{"range": {p.ID}}
+		if rq.App != "" {
+			qv.Set("app", rq.App)
+		}
+		if rq.Currency != "" {
+			qv.Set("currency", rq.Currency)
+		}
+		v.Presets = append(v.Presets, revenuePreset{ID: p.ID, Label: p.Label, Href: prefix + "/overview?" + qv.Encode(), Current: p.ID == rq.Range})
+	}
+	qv := url.Values{"range": {rq.Range}}
+	if rq.Bucket != "auto" {
+		qv.Set("bucket", rq.Bucket)
+	}
+	if rq.App != "" {
+		qv.Set("app", rq.App)
+	}
+	if rq.Currency != "" {
+		qv.Set("currency", rq.Currency)
+	}
+	if rq.Range == "custom" {
+		qv.Set("from", v.FromS)
+		qv.Set("to", v.ToS)
+	}
+	v.CSVHref = prefix + "/overview/revenue.csv?" + qv.Encode()
+	return v, nil
+}
+
+// native is the rows of one currency, unconverted.
+func native(rows []store.SeriesRow, currency string) []convRow {
+	var out []convRow
+	for _, r := range rows {
+		if r.Currency == currency {
+			out = append(out, convRow{r.Slot, currency, r.Gross, r.Refunds})
+		}
+	}
+	return out
+}
+
+// convRow is a series row after conversion; origin is the original currency.
+type convRow struct {
+	Slot           int64
+	origin         string
+	Gross, Refunds int64
+}
+
+type rateCtx struct {
+	loc    *time.Location
+	off    int
+	hourly bool
+	date   string // the rate date for hourly slots (the window's first day)
+	rates  map[string][]store.FXRate
+}
+
+// convert turns rows into INR (paise). Currencies without any stored rate are
+// left out and reported in excluded (their gross). estimated is true when a
+// non-same-day rate was used.
+func (rc rateCtx) convert(rows []store.SeriesRow) (out []convRow, estimated bool, excluded map[string]int64, err error) {
+	excluded = map[string]int64{}
+	for _, r := range rows {
+		if r.Currency == "INR" {
+			out = append(out, convRow{r.Slot, "INR", r.Gross, r.Refunds})
+			continue
+		}
+		rates := rc.rates[r.Currency]
+		if len(rates) == 0 {
+			excluded[r.Currency] += r.Gross
+			continue
+		}
+		date := rc.date
+		if !rc.hourly {
+			date = slotTime(r.Slot, false, rc.off, rc.loc).Format("2006-01-02")
+		}
+		i := sort.Search(len(rates), func(i int) bool { return rates[i].Date >= date })
+		rate := rates[0]
+		switch {
+		case i < len(rates) && rates[i].Date == date:
+			rate = rates[i]
+		case i > 0:
+			rate, estimated = rates[i-1], true
+		default:
+			estimated = true
+		}
+		g, err := invoice.ToINR(r.Gross, r.Currency, rate.Rate)
+		if err != nil {
+			return nil, false, nil, err
+		}
+		f, err := invoice.ToINR(r.Refunds, r.Currency, rate.Rate)
+		if err != nil {
+			return nil, false, nil, err
+		}
+		out = append(out, convRow{r.Slot, r.Currency, g, f})
+	}
+	return out, estimated, excluded, nil
+}
+
+// slotTime is the local start of a LedgerSeries slot.
+func slotTime(slot int64, hourly bool, off int, loc *time.Location) time.Time {
+	if hourly {
+		return time.UnixMilli(slot*3_600_000 - int64(off)*1000).In(loc)
+	}
+	u := time.UnixMilli(slot * 86_400_000).UTC()
+	return time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, loc)
+}
+
+func nextBucket(t time.Time, bucket string) time.Time {
+	switch bucket {
+	case "hour":
+		return t.Add(time.Hour)
+	case "week":
+		return t.AddDate(0, 0, 7)
+	case "month":
+		return t.AddDate(0, 1, 0)
+	case "quarter":
+		return t.AddDate(0, 3, 0)
+	}
+	return t.AddDate(0, 0, 1)
+}
+
+func bucketLabel(t time.Time, bucket string, rq revenueQuery) string {
+	switch bucket {
+	case "hour":
+		return t.Format("15:04")
+	case "month":
+		return t.Format("Jan 2006")
+	case "quarter":
+		return fmt.Sprintf("Q%d %d", (int(t.Month())-1)/3+1, t.Year())
+	}
+	if rq.From.Year() != rq.To.AddDate(0, 0, -1).Year() {
+		return t.Format("2 Jan 2006")
+	}
+	return t.Format("2 Jan")
+}
+
+// pctChange is "+12.4%" or "−3.0%"; "" when the previous value is zero.
+func pctChange(cur, prev int64) string {
+	if prev == 0 {
+		return ""
+	}
+	p := math.Round(float64(cur-prev)/math.Abs(float64(prev))*1000) / 10
+	if p < 0 {
+		return fmt.Sprintf("−%.1f%%", -p)
+	}
+	return fmt.Sprintf("+%.1f%%", p)
+}
+
+// fmtSigned is fmtMoney for values that may be negative (a net).
+func fmtSigned(minor int64, currency string) string {
+	if minor < 0 {
+		return "-" + fmtMoney(-minor, currency)
+	}
+	return fmtMoney(minor, currency)
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		if k != "" {
+			out = append(out, k)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// revenueData parses the request query and builds the view. bad is a message
+// for a 400 response.
+func (d *Dashboard) revenueData(ctx context.Context, r *http.Request, org, mode string) (v revenueView, bad string, err error) {
+	err = d.o.DB.Read(ctx, func(q store.Querier) error {
+		first, hasFirst, err := store.FirstLedgerAt(ctx, q, org, mode)
+		if err != nil {
+			return err
+		}
+		rq, perr := parseRevenueQuery(r.URL.Query(), d.o.Now(), d.o.Location, first, hasFirst)
+		if perr != nil {
+			bad = perr.Error()
+			return nil
+		}
+		apps, err := store.ListApps(ctx, q, org)
+		if err != nil {
+			return err
+		}
+		known := rq.App == ""
+		var opts []appOpt
+		for _, a := range apps {
+			opts = append(opts, appOpt{ID: a.ID, Name: a.Name})
+			known = known || a.ID == rq.App
+		}
+		if !known {
+			bad = "unknown app"
+			return nil
+		}
+		if v, err = d.revenue(ctx, q, org, mode, rq); err != nil {
+			return err
+		}
+		v.Apps = opts
+		return nil
+	})
+	return v, bad, err
+}
+
+func (d *Dashboard) revenueCSV(w http.ResponseWriter, r *http.Request, s *session) {
+	ctx := r.Context()
+	org, err := d.orgID(ctx)
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	v, bad, err := d.revenueData(ctx, r, org, d.mode(r, s))
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	if bad != "" {
+		badRequest(w, bad)
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="revenue-%s-%s.csv"`, v.Query.Range, v.Currency))
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"start", "label", "currency", "gross", "refunds", "net"})
+	for _, p := range v.Points {
+		_ = cw.Write([]string{p.StartS, p.Label, v.Currency, majorUnits(p.Gross, v.Currency), majorUnits(p.Refunds, v.Currency), majorUnits(p.Gross-p.Refunds, v.Currency)})
+	}
+	cw.Flush()
+}
+
+// majorUnits renders minor units as a plain decimal such as "-120.00".
+func majorUnits(minor int64, currency string) string {
+	sign := ""
+	if minor < 0 {
+		sign, minor = "-", -minor
+	}
+	out, err := money.FormatDecimal(minor, currency)
+	if err != nil {
+		return fmt.Sprint(minor)
+	}
+	return sign + out
 }

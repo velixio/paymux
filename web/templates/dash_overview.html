@@ -4,6 +4,33 @@
 {{define "content"}}{{template "dash_open" .}}
 <h1>Overview <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h1>
 <p class="muted">Gross charges, refunds and net, per app and currency, from the ledger. Each currency is reported separately.</p><nav class="overview-actions" aria-label="Workspace actions"><a class="btn" href="/dashboard/payments">View payments</a><a href="/dashboard/providers">Manage provider accounts</a><a href="/docs">API reference</a></nav>
+{{with .Revenue}}
+<section id="revenue" aria-label="Revenue">
+<h2>Revenue</h2>
+<nav class="range-presets" aria-label="Revenue range">{{range .Presets}}<a href="{{.Href}}"{{if .Current}} aria-current="page" class="active"{{end}}>{{.Label}}</a>{{end}}</nav>
+<form class="revenue-filters" method="get" action="/dashboard/overview">
+<label>From <input type="date" name="from" value="{{.FromS}}"></label>
+<label>To <input type="date" name="to" value="{{.ToS}}"></label>
+<label>App <select name="app"><option value="">All apps</option>{{range .Apps}}<option value="{{.ID}}"{{if eq .ID $.Revenue.Query.App}} selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+<label>Currency <select name="currency"><option value="">Default</option>{{range .Currencies}}<option value="{{.}}"{{if eq . $.Revenue.Query.Currency}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Group by <select name="bucket"><option value="auto"{{if eq .Query.Bucket "auto"}} selected{{end}}>Auto</option><option value="hour"{{if eq .Query.Bucket "hour"}} selected{{end}}>Hour</option><option value="day"{{if eq .Query.Bucket "day"}} selected{{end}}>Day</option><option value="week"{{if eq .Query.Bucket "week"}} selected{{end}}>Week</option><option value="month"{{if eq .Query.Bucket "month"}} selected{{end}}>Month</option><option value="quarter"{{if eq .Query.Bucket "quarter"}} selected{{end}}>Quarter</option></select></label>
+<input type="hidden" name="range" value="custom">
+<button class="btn small" type="submit">Apply custom range</button>
+</form>
+<dl class="revenue-summary">
+<div><dt>Gross</dt><dd>{{.GrossS}} <span class="change" data-metric="gross">{{.GrossChange}}</span></dd></div>
+<div><dt>Refunds</dt><dd>{{.RefundsS}} <span class="change" data-metric="refunds">{{.RefundsChange}}</span></dd></div>
+<div><dt>Net</dt><dd>{{.NetS}} <span class="change" data-metric="net">{{.NetChange}}</span></dd></div>
+</dl>
+{{if .Converted}}<p class="muted">Foreign-currency amounts are converted to INR at the stored daily rate.{{if .Estimated}} Includes estimated conversions (no rate stored for some days). <a href="/dashboard/fx">FX rates</a>{{end}}</p>{{end}}
+{{if .Excluded}}<p class="muted">Not included: {{range $i, $x := .Excluded}}{{if $i}}, {{end}}{{$x}}{{end}} &mdash; no exchange rate stored. <a href="/dashboard/fx">Add rates</a>.</p>{{end}}
+<div class="table-scroll"><table id="revenue-data" class="grid" data-currency="{{.Currency}}" data-exp="{{.Exp}}" data-bucket="{{.Bucket}}" data-converted="{{.Converted}}" data-estimated="{{.Estimated}}">
+<thead><tr><th>Period</th><th>Gross</th><th>Refunds</th><th>Net</th></tr></thead>
+<tbody>{{range .Points}}<tr data-start="{{.StartS}}" data-gross="{{.Gross}}" data-refunds="{{.Refunds}}" data-prev-gross="{{.PrevGross}}" data-prev-refunds="{{.PrevRefunds}}"><td>{{.Label}}</td><td>{{.GrossS}}</td><td>{{.RefundsS}}</td><td>{{.NetS}}</td></tr>{{else}}<tr><td colspan="4" class="muted">No activity in this range.</td></tr>{{end}}</tbody>
+</table></div>
+<p><a href="{{.CSVHref}}" download>Download CSV</a></p>
+</section>
+{{end}}
 {{range .Periods}}
 <section id="period-{{.ID}}">
 <h3>{{.Label}}</h3>

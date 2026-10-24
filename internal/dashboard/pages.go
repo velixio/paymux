@@ -102,6 +102,7 @@ type Page struct {
 	AuditRows   []auditRow
 	AuditFilter auditFilter
 	Periods     []periodView
+	Revenue     revenueView
 }
 
 type appOpt struct{ ID, Name string }

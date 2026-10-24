@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"fmt"
+	"html"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -207,6 +208,7 @@ func tableAttr(t *testing.T, body, attr string) string {
 func TestRevenueINRConversionAndEstimates(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
 		app := e.seedApp("alpha")
 		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
 		e.seedLedger(
@@ -218,7 +220,7 @@ func TestRevenueINRConversionAndEstimates(t *testing.T) {
 			ledRow{"pay_1", "charge", "EUR", 2000, e.d15(12)}, // no rate at all
 		)
 		e.seedRates(store.FXRate{Currency: "USD", Date: "2027-01-13", Rate: "80"})
-		body := e.pageOK(e.roleClient("viewer"), "/dashboard/overview?range=7d")
+		body := e.pageOK(vw, "/dashboard/overview?range=7d")
 		if c, conv, est := tableAttr(t, body, "data-currency"), tableAttr(t, body, "data-converted"), tableAttr(t, body, "data-estimated"); c != "INR" || conv != "true" || est != "true" {
 			t.Fatalf("currency %s converted %s estimated %s", c, conv, est)
 		}
@@ -236,12 +238,12 @@ func TestRevenueINRConversionAndEstimates(t *testing.T) {
 		}
 		has(t, body, "20.00 EUR", "/dashboard/fx", "estimated")
 		// a window with only exact rates is not estimated
-		body = e.pageOK(e.roleClient("viewer"), "/dashboard/overview?range=custom&from=2027-01-13&to=2027-01-13")
+		body = e.pageOK(vw, "/dashboard/overview?range=custom&from=2027-01-13&to=2027-01-13")
 		if tableAttr(t, body, "data-estimated") != "false" {
 			t.Error("same-day conversion marked estimated")
 		}
 		// the picker view is unconverted
-		body = e.pageOK(e.roleClient("viewer"), "/dashboard/overview?range=7d&currency=USD")
+		body = e.pageOK(vw, "/dashboard/overview?range=7d&currency=USD")
 		if tableAttr(t, body, "data-currency") != "USD" || tableAttr(t, body, "data-converted") != "false" || revByDay(body)["2027-01-14"].gross != 500 {
 			t.Errorf("USD view: %s", body)
 		}
@@ -255,11 +257,12 @@ func tableOnly(body string) string {
 func TestRevenueDefaultCurrencyMajority(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
 		app := e.seedApp("alpha")
 		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
 		e.seedLedger(ledRow{"pay_1", "charge", "INR", 10000, e.d15(14)}, ledRow{"pay_1", "charge", "USD", 100000, e.d15(14)})
 		e.seedRates(store.FXRate{Currency: "USD", Date: "2027-01-14", Rate: "80"})
-		v := e.roleClient("viewer")
+		v := vw
 		body := e.pageOK(v, "/dashboard/overview?range=7d")
 		if tableAttr(t, body, "data-currency") != "USD" || tableAttr(t, body, "data-converted") != "false" || revByDay(body)["2027-01-14"].gross != 100000 {
 			t.Errorf("mostly USD should open on USD unconverted: %s", tableOnly(body))
@@ -275,13 +278,14 @@ func TestRevenueDefaultCurrencyMajority(t *testing.T) {
 func TestRevenuePreviousPeriodChange(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
 		app := e.seedApp("alpha")
 		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
-		v := e.roleClient("viewer")
+		v := vw
 		e.seedLedger(ledRow{"pay_1", "charge", "INR", 15000, e.d15(12)}, ledRow{"pay_1", "refund", "INR", -1000, e.d15(12)},
 			ledRow{"pay_1", "charge", "INR", 10000, e.d15(5)}) // previous 7 days: Jan 2..8
 		body := e.pageOK(v, "/dashboard/overview?range=7d")
-		has(t, body, `data-metric="gross">+50.0%<`)
+		has(t, html.UnescapeString(body), `data-metric="gross">+50.0%<`)
 		pts := revByDay(body)
 		if p := pts["2027-01-12"]; p.gross != 15000 || p.refunds != 1000 {
 			t.Errorf("point %+v", p)
@@ -300,7 +304,8 @@ func TestRevenuePreviousPeriodChange(t *testing.T) {
 func TestRevenueEmpty(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
-		body := e.pageOK(e.roleClient("viewer"), "/dashboard/overview?range=all")
+		vw := e.roleClient("viewer")
+		body := e.pageOK(vw, "/dashboard/overview?range=all")
 		if n := len(revPoints(body)); n != 0 {
 			t.Errorf("%d points for a new org", n)
 		}
@@ -312,21 +317,22 @@ func TestRevenueEmpty(t *testing.T) {
 func TestOverviewRendersRevenueTable(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
 		app := e.seedApp("alpha")
 		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
 		e.seedLedger(ledRow{"pay_1", "charge", "INR", 12345, e.d15(14)})
-		body := e.pageOK(e.roleClient("viewer"), "/dashboard/overview")
+		body := e.pageOK(vw, "/dashboard/overview")
 		has(t, body, `<nav class="range-presets"`, `href="/dashboard/overview?range=7d"`, `aria-current="page"`, `class="revenue-summary"`,
 			`id="revenue-data"`, `data-gross="12345"`, "123.45 INR", "/dashboard/overview/revenue.csv?", `id="period-today"`)
 		if tableAttr(t, body, "data-bucket") != "day" {
 			t.Error("30d is daily")
 		}
 		// app filter and unknown app
-		has(t, e.pageOK(e.roleClient("viewer"), "/dashboard/overview?app="+app.ID), `data-gross="12345"`)
-		if r, _ := e.get(e.roleClient("viewer"), "/dashboard/overview?app=app_nope"); r.StatusCode != 400 {
+		has(t, e.pageOK(vw, "/dashboard/overview?app="+app.ID), `data-gross="12345"`)
+		if r, _ := e.get(vw, "/dashboard/overview?app=app_nope"); r.StatusCode != 400 {
 			t.Errorf("unknown app: %d", r.StatusCode)
 		}
-		if r, _ := e.get(e.roleClient("viewer"), "/dashboard/overview?range=custom&from=2027-02-01&to=2027-01-01"); r.StatusCode != 400 {
+		if r, _ := e.get(vw, "/dashboard/overview?range=custom&from=2027-02-01&to=2027-01-01"); r.StatusCode != 400 {
 			t.Errorf("bad custom: %d", r.StatusCode)
 		}
 	})
@@ -335,10 +341,11 @@ func TestOverviewRendersRevenueTable(t *testing.T) {
 func TestRevenueCSV(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
 		app := e.seedApp("alpha")
 		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
 		e.seedLedger(ledRow{"pay_1", "charge", "INR", 12345, e.d15(14)}, ledRow{"pay_1", "refund", "INR", -345, e.d15(14)})
-		r, body := e.get(e.roleClient("viewer"), "/dashboard/overview/revenue.csv?range=7d")
+		r, body := e.get(vw, "/dashboard/overview/revenue.csv?range=7d")
 		if r.StatusCode != 200 || !strings.HasPrefix(r.Header.Get("Content-Type"), "text/csv") ||
 			!strings.Contains(r.Header.Get("Content-Disposition"), `filename="revenue-7d-INR.csv"`) {
 			t.Fatalf("%d %v", r.StatusCode, r.Header)
@@ -348,7 +355,7 @@ func TestRevenueCSV(t *testing.T) {
 			t.Fatalf("csv:\n%s", body)
 		}
 		has(t, body, "2027-01-14T00:00:00Z,14 Jan,INR,123.45,3.45,120.00")
-		if r, _ := e.get(e.roleClient("viewer"), "/dashboard/overview/revenue.csv?range=bogus"); r.StatusCode != 400 {
+		if r, _ := e.get(vw, "/dashboard/overview/revenue.csv?range=bogus"); r.StatusCode != 400 {
 			t.Errorf("bad range: %d", r.StatusCode)
 		}
 	})

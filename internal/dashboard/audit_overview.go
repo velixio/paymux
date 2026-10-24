@@ -26,6 +26,7 @@ type totalRow struct{ App, Currency, Gross, Refunds, Net string }
 func (d *Dashboard) routesAuditOverview() {
 	d.mux.HandleFunc("GET "+prefix+"/audit", d.authed(authz.AuditRead, d.auditPage))
 	d.mux.HandleFunc("GET "+prefix+"/overview", d.authed(authz.PaymentRead, d.overviewPage))
+	d.mux.HandleFunc("GET "+prefix+"/overview/revenue.csv", d.authed(authz.PaymentRead, d.revenueCSV))
 }
 
 func (d *Dashboard) auditPage(w http.ResponseWriter, r *http.Request, s *session) {
@@ -104,6 +105,15 @@ func (d *Dashboard) overviewPage(w http.ResponseWriter, r *http.Request, s *sess
 		d.fail(w, err)
 		return
 	}
+	rev, bad, err := d.revenueData(ctx, r, org, mode)
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	if bad != "" {
+		badRequest(w, bad)
+		return
+	}
 	names := map[string]string{}
 	totals := make([][]store.LedgerTotal, len(periods))
 	err = d.o.DB.Read(ctx, func(q store.Querier) error {
@@ -126,6 +136,7 @@ func (d *Dashboard) overviewPage(w http.ResponseWriter, r *http.Request, s *sess
 		return
 	}
 	v := d.shell(r, s, "overview", "Overview")
+	v.Revenue = rev
 	if ents, err := d.listEntities(ctx); err == nil {
 		v.Warnings = d.lutWarnings(ents)
 	}
