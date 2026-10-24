@@ -1,4 +1,11 @@
-import React, { useEffect, useRef, useState, type ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +27,31 @@ import { RevenueSection } from "./revenue-section";
 import { SavedFiltersBar } from "./saved-filters-bar";
 import { attributes, textOf, type ViewNode } from "./adapter";
 import { useRuntime, WorkspaceLink } from "./runtime";
+// <code> values inside table cells and definition lists get a copy button.
+const CellContext = createContext(false);
+function CopyCode({ node }: { node: ViewNode }) {
+  const { copy } = useRuntime();
+  const value = textOf(node);
+  return (
+    <span className="copy-code">
+      <code {...attributes(node)}>{value}</code>
+      <button
+        type="button"
+        className="copy-button"
+        aria-label={`Copy ${value}`}
+        onClick={() => void copy(value)}
+      >
+        <Copy size={12} />
+      </button>
+    </span>
+  );
+}
+const hasLinkRow = (n: ViewNode): boolean =>
+  n.tag === "tr"
+    ? n.children.some(function find(c: ViewNode): boolean {
+        return c.tag === "a" || c.children.some(find);
+      })
+    : n.children.some(hasLinkRow);
 const renderChildren = (nodes: ViewNode[]) =>
   nodes.map((node, i) => (
     <RenderNode key={node.attrs.id || `${node.tag}-${i}`} node={node} />
@@ -148,6 +180,7 @@ function PolicyTable({ node }: { node: ViewNode }) {
 }
 export function RenderNode({ node: n }: { node: ViewNode }): ReactNode {
   const runtime = useRuntime();
+  const inCell = useContext(CellContext);
   const props = attributes(n);
   const cls = n.attrs.class || "";
   const children = () => renderChildren(n.children);
@@ -253,7 +286,11 @@ export function RenderNode({ node: n }: { node: ViewNode }): ReactNode {
     return cls.includes("settings") ? (
       <PolicyTable node={n} />
     ) : (
-      <Table {...props} className="operational-table">
+      <Table
+        {...props}
+        data-nav={hasLinkRow(n) || undefined}
+        className="operational-table"
+      >
         {children()}
       </Table>
     );
@@ -273,7 +310,19 @@ export function RenderNode({ node: n }: { node: ViewNode }): ReactNode {
   if (n.tag === "tbody") return <TableBody {...props}>{children()}</TableBody>;
   if (n.tag === "tr") return <TableRow {...props}>{children()}</TableRow>;
   if (n.tag === "th") return <TableHead {...props}>{children()}</TableHead>;
-  if (n.tag === "td") return <TableCell {...props}>{children()}</TableCell>;
+  if (n.tag === "td")
+    return (
+      <CellContext.Provider value>
+        <TableCell {...props}>{children()}</TableCell>
+      </CellContext.Provider>
+    );
+  if (n.tag === "dd")
+    return (
+      <CellContext.Provider value>
+        <dd {...props}>{children()}</dd>
+      </CellContext.Provider>
+    );
+  if (n.tag === "code" && inCell) return <CopyCode node={n} />;
   if (n.tag === "details")
     return (
       <details

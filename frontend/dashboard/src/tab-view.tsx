@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { fetchDashboard } from "./adapter";
 import { PageContent } from "./render";
 import { queryKey, RuntimeProvider } from "./runtime";
+import { useTableNav } from "./use-table-nav";
 import type { Tab } from "./tabs";
 
 /** A hidden, clean tab is unmounted after this long without a visit. */
@@ -39,6 +40,7 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
     enabled: active,
   });
   const section = useRef<HTMLElement>(null);
+  useTableNav(section, active);
 
   // What is rendered. A hidden tab ignores data updates (another tab on the
   // same page may refetch) so its form state survives; it picks up the newest

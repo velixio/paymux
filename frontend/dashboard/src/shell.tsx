@@ -82,6 +82,7 @@ import { fetchDashboard, type DashboardPage } from "./adapter";
 import { PageContent, RenderNode } from "./render";
 import { queryKey, RuntimeProvider, WorkspaceLink } from "./runtime";
 import { createMatcher, isTyping, type Binding } from "./keys";
+import { ShortcutSheet } from "./shortcut-sheet";
 import { TabStrip } from "./tab-strip";
 import { TabView } from "./tab-view";
 import { TabsContext, useTabs, type TabsApi } from "./tabs-context";
@@ -330,6 +331,7 @@ function TabsShell({
   const [menu, setMenu] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandLoaded, setCommandLoaded] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const openCommand = useCallback(() => {
     setCommandLoaded(true);
     setCommandOpen(true);
@@ -525,6 +527,8 @@ function TabsShell({
   // before unshifted ones on the same key.
   const apiRef = useRef(api);
   apiRef.current = api;
+  const openShortcutsRef = useRef(() => {});
+  openShortcutsRef.current = () => setShortcutsOpen(true);
   const openCommandRef = useRef(openCommand);
   openCommandRef.current = openCommand;
   useEffect(() => {
@@ -561,6 +565,18 @@ function TabsShell({
       ) {
         e.preventDefault();
         openCommandRef.current();
+        return;
+      }
+      if (
+        e.code === "Slash" &&
+        e.shiftKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !isTyping(e.target)
+      ) {
+        e.preventDefault();
+        openShortcutsRef.current();
         return;
       }
       // Menus and dialogs own the keyboard while they are open.
@@ -737,6 +753,14 @@ function TabsShell({
           ))}
           <div className="workspace-bottom">
             <span>Paymux control plane</span>
+            <button
+              type="button"
+              className="shortcuts-link"
+              aria-label="Keyboard shortcuts"
+              onClick={() => setShortcutsOpen(true)}
+            >
+              Shortcuts <kbd>?</kbd>
+            </button>
             <a href="/docs">API reference</a>
           </div>
         </div>
@@ -769,6 +793,7 @@ function TabsShell({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <ShortcutSheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
         {slot}
       </div>
     </TabsContext.Provider>
