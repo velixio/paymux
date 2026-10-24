@@ -25,7 +25,8 @@ const D = "/dashboard/";
 
 function withTabs(n: number, now = 1): TabState {
   let s = initialState(now);
-  for (let i = 1; i <= n; i++) s = open(s, `${D}p${i}`, `P${i}`, "new", now + i, none);
+  for (let i = 1; i <= n; i++)
+    s = open(s, `${D}p${i}`, `P${i}`, "new", now + i, none);
   return s;
 }
 const hrefs = (s: TabState) => s.tabs.map((t) => t.href);
@@ -36,8 +37,13 @@ describe("tabKey", () => {
     expect(tabKey("/dashboard/payments?b=2&a=1&classic=1#x")).toBe(
       tabKey("/dashboard/payments?a=1&b=2"),
     );
-    expect(tabKey("/dashboard/payments?a=&classic=1")).toBe("/dashboard/payments");
-    expect(tabKey("/dashboard/payments?a=1")).not.toBe(tabKey("/dashboard/payments?a=2"));
+    expect(tabKey("/dashboard/p?a=2&a=1&b=1")).toBe("/dashboard/p?a=1&a=2&b=1");
+    expect(tabKey("/dashboard/payments?a=&classic=1")).toBe(
+      "/dashboard/payments",
+    );
+    expect(tabKey("/dashboard/payments?a=1")).not.toBe(
+      tabKey("/dashboard/payments?a=2"),
+    );
   });
 });
 
@@ -45,7 +51,11 @@ describe("open", () => {
   test("initialState is one pinned Overview tab", () => {
     const s = initialState(5);
     expect(s.tabs).toHaveLength(1);
-    expect(s.tabs[0]).toMatchObject({ href: "/dashboard/overview", pinned: true, lastActive: 5 });
+    expect(s.tabs[0]).toMatchObject({
+      href: "/dashboard/overview",
+      pinned: true,
+      lastActive: 5,
+    });
     expect(s.activeId).toBe(s.tabs[0].id);
   });
 
@@ -64,7 +74,11 @@ describe("open", () => {
     const r = open(s, `${D}other`, "Other", "replace", 50, none);
     expect(r.tabs).toHaveLength(3);
     expect(r.activeId).toBe(id);
-    expect(active(r)).toMatchObject({ href: `${D}other`, title: "Other", lastActive: 50 });
+    expect(active(r)).toMatchObject({
+      href: `${D}other`,
+      title: "Other",
+      lastActive: 50,
+    });
   });
 
   test("replace on a pinned active tab opens a new tab", () => {
@@ -138,14 +152,17 @@ describe("close", () => {
     const s = initialState(7);
     const r = close(s, s.activeId);
     expect(r.tabs).toHaveLength(1);
-    expect(r.tabs[0]).toMatchObject({ href: "/dashboard/overview", pinned: true });
+    expect(r.tabs[0]).toMatchObject({
+      href: "/dashboard/overview",
+      pinned: true,
+    });
   });
 
   test("closed list is capped at 10, most recent first", () => {
     let s = withTabs(12);
     for (let i = 0; i < 12; i++) s = close(s, s.tabs[s.tabs.length - 1].id);
     expect(s.closed).toHaveLength(10);
-    expect(s.closed[0].href).toBe(`${D}p1`);
+    expect(s.closed[0].href).toBe("/dashboard/overview");
   });
 
   test("closeOthers keeps pinned and the chosen tab", () => {
@@ -163,6 +180,7 @@ describe("close", () => {
     expect(hrefs(r)).toEqual(["/dashboard/overview", `${D}p1`]);
     expect(r.activeId).toBe(s.tabs[1].id);
     expect(closeRight(s, "nope")).toBe(s);
+    expect(closeOthers(s, "nope")).toBe(s);
   });
 });
 
@@ -212,13 +230,17 @@ describe("reopen, duplicate, pin, move, rename, navigate", () => {
     expect(moved.tabs.map((t) => t.pinned)).toEqual([true, true, false, false]);
     const m2 = move(s, s.tabs[0].id, 3);
     expect(m2.tabs.map((t) => t.pinned)).toEqual([true, true, false, false]);
-    expect(hrefs(move(s, s.tabs[2].id, 3))).toEqual(hrefs(s).slice(0, 2).concat(`${D}p2`, `${D}p1`));
+    expect(hrefs(move(s, s.tabs[2].id, 3))).toEqual(
+      hrefs(s).slice(0, 2).concat(`${D}p2`, `${D}p1`),
+    );
     expect(move(s, "nope", 0)).toBe(s);
   });
 
   test("setPinned false moves the tab into the unpinned region", () => {
-    const s = setPinned(withTabs(1), initialState(1).tabs[0].id, false);
-    expect(s.tabs.every((t) => !t.pinned) || s.tabs.some((t) => t.pinned)).toBe(true);
+    let s = setPinned(withTabs(1), withTabs(1).tabs[1].id, true);
+    s = setPinned(s, s.tabs[0].id, false);
+    expect(s.tabs.map((t) => t.pinned)).toEqual([true, false]);
+    expect(s.tabs[0].href).toBe(`${D}p1`);
   });
 
   test("rename and navigate update one tab", () => {
@@ -265,7 +287,12 @@ describe("persistence", () => {
     const raw = JSON.stringify({
       tabs: [
         { id: "a", href: "/dashboard/payments", title: "Pay", pinned: true },
-        { id: "b", href: "https://evil.example.com/dashboard/x", title: "E", pinned: false },
+        {
+          id: "b",
+          href: "https://evil.example.com/dashboard/x",
+          title: "E",
+          pinned: false,
+        },
         { id: "c", href: "/dashboardx", title: "E", pinned: false },
         { id: "d", href: "/other", title: "E", pinned: false },
         { id: 5, href: "/dashboard/x", title: "bad", pinned: false },
@@ -276,9 +303,15 @@ describe("persistence", () => {
     expect(s.tabs.map((t) => t.id)).toEqual(["a", "e"]);
     expect(s.activeId).toBe("a");
     expect(s.tabs[0].lastActive).toBe(9);
-    expect(load(store('{"tabs":[{"id":"d","href":"/other","title":"","pinned":false}]}'), key, 1)).toEqual(
-      initialState(1),
-    );
+    expect(
+      load(
+        store(
+          '{"tabs":[{"id":"d","href":"/other","title":"","pinned":false}]}',
+        ),
+        key,
+        1,
+      ),
+    ).toEqual(initialState(1));
   });
 
   test("save writes only id, href, title, pinned", () => {
@@ -287,16 +320,27 @@ describe("persistence", () => {
     save({ setItem: (_k, v) => (written = v) }, key, s);
     const parsed = JSON.parse(written);
     expect(Object.keys(parsed)).toEqual(["tabs"]);
-    for (const t of parsed.tabs) expect(Object.keys(t).sort()).toEqual(["href", "id", "pinned", "title"]);
+    for (const t of parsed.tabs)
+      expect(Object.keys(t).sort()).toEqual(["href", "id", "pinned", "title"]);
     expect(parsed.tabs).toHaveLength(2);
-    expect(load({ getItem: () => written }, key, 3).tabs.map((t) => t.href)).toEqual(hrefs(s));
+    expect(
+      load({ getItem: () => written }, key, 3).tabs.map((t) => t.href),
+    ).toEqual(hrefs(s));
   });
 
   test("save tolerates throwing or missing storage", () => {
     const s = withTabs(0);
     expect(() => save(null, key, s)).not.toThrow();
     expect(() =>
-      save({ setItem: () => { throw new Error("quota"); } }, key, s),
+      save(
+        {
+          setItem: () => {
+            throw new Error("quota");
+          },
+        },
+        key,
+        s,
+      ),
     ).not.toThrow();
   });
 });
