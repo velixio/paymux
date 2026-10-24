@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"net/url"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -97,4 +98,38 @@ func auditAfter(t *testing.T, db *store.DB, action string) string {
 		return err
 	})
 	return out
+}
+
+func TestKeyRevealMarkedOnce(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		app := e.seedApp("alpha")
+		admin := e.roleClient("admin")
+		page := "/dashboard/apps/" + app.ID
+		tok := csrfOf(t, e.pageOK(admin, page))
+		if strings.Contains(e.pageOK(admin, page+"?tab=keys"), "data-once") {
+			t.Fatal("the plain keys page is not a one-time view")
+		}
+		r, body := e.post(admin, page+"/keys", url.Values{"mode": {"live"}, "csrf": {tok}})
+		if r.StatusCode != 200 {
+			t.Fatalf("create: %d", r.StatusCode)
+		}
+		has(t, body, `data-once`)
+		if keyTokenRE.FindString(body) == "" {
+			t.Fatal("no key revealed")
+		}
+	})
+}
+
+// The other one-time secret views carry the marker in their templates.
+func TestOneTimeTemplatesMarkedOnce(t *testing.T) {
+	for _, f := range []string{"dash_app.html", "dash_setup_done.html", "dash_subscription.html", "dash_users.html"} {
+		b, err := os.ReadFile("../../web/templates/" + f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(b), "data-once") {
+			t.Errorf("%s: missing data-once", f)
+		}
+	}
 }

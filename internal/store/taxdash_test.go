@@ -247,3 +247,95 @@ func TestInvoicesPendingFXAllCurrencies(t *testing.T) {
 		}
 	})
 }
+
+func TestListFXRatesFor(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		seedBase(t, db)
+		err := db.Write(ctx, func(tx store.Tx) error {
+			for _, r := range []store.FXRate{
+				{OrgID: store.DefaultOrgID, Currency: "USD", Date: "2026-10-03", Rate: "83.50", Source: "manual"},
+				{OrgID: store.DefaultOrgID, Currency: "USD", Date: "2026-10-01", Rate: "83.25", Source: "manual"},
+				{OrgID: store.DefaultOrgID, Currency: "EUR", Date: "2026-10-02", Rate: "90.10", Source: "provider"},
+			} {
+				if err := store.UpsertFXRate(ctx, tx, r, t0); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var usd, none []store.FXRate
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			if usd, err = store.ListFXRatesFor(ctx, q, store.DefaultOrgID, "USD"); err != nil {
+				return
+			}
+			none, err = store.ListFXRatesFor(ctx, q, "org_other", "USD")
+			return
+		})
+		if len(usd) != 2 || usd[0].Date != "2026-10-01" || usd[1].Date != "2026-10-03" || usd[1].Rate != "83.50" || len(none) != 0 {
+			t.Fatalf("usd %+v other %+v", usd, none)
+		}
+	})
+}
+
+func TestSearchInvoicesQ(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		seedBase(t, db)
+		oct := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
+		err := db.Write(ctx, func(tx store.Tx) error {
+			if err := store.InsertTaxEntity(ctx, tx, entity("te_a", "27AAPFU0939F1ZV")); err != nil {
+				return err
+			}
+			for i, c := range []struct{ id, number, buyer string }{
+				{"inv_1", "INV/2627/000001", "Asha Traders"},
+				{"inv_2", "INV/2627/000002", "Bob Ltd"},
+				{"inv_3", "INV/2627/000013", "50% Off_Co"},
+			} {
+				x := inv(c.id, "te_a", "app_a", "live", c.number, oct.Add(time.Duration(i)*time.Hour))
+				x.Recipient = json.RawMessage(`{"name":"` + c.buyer + `"}`)
+				if err := store.InsertInvoice(ctx, tx, x); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids := func(q string) []string {
+			var out []string
+			_ = db.Read(ctx, func(qr store.Querier) error {
+				rows, err := store.SearchInvoices(ctx, qr, store.DocFilter{OrgID: store.DefaultOrgID, Mode: "live", Q: q}, "", 10)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, r := range rows {
+					out = append(out, r.ID)
+				}
+				return nil
+			})
+			return out
+		}
+		for name, c := range map[string]struct {
+			q    string
+			want []string
+		}{
+			"exact number":       {"INV/2627/000002", []string{"inv_2"}},
+			"prefix":             {"INV/2627/00000", []string{"inv_2", "inv_1"}},
+			"prefix any case":    {"inv/2627/0000", []string{"inv_3", "inv_2", "inv_1"}},
+			"buyer substring":    {"traders", []string{"inv_1"}},
+			"buyer any case":     {"BOB", []string{"inv_2"}},
+			"percent literal":    {"%", []string{"inv_3"}},
+			"underscore literal": {"_", []string{"inv_3"}},
+			"backslash literal":  {`\`, nil},
+			"no match":           {"zzz", nil},
+			"empty is no filter": {"", []string{"inv_3", "inv_2", "inv_1"}},
+		} {
+			if got := ids(c.q); !reflect.DeepEqual(got, c.want) {
+				t.Errorf("%s (%q): got %v want %v", name, c.q, got, c.want)
+			}
+		}
+	})
+}

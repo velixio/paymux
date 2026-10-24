@@ -8,7 +8,7 @@
 {{if $.CanLogs}}<p><a href="/dashboard/logs?id={{.ID}}">Logs for this subscription</a></p>{{end}}
 {{with $.Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 {{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
-{{with $.Link}}<div class="notice" role="status">
+{{with $.Link}}<div class="notice" role="status" data-once>
 <label for="checkout-link"><strong>Checkout link</strong> (shown once; send it to the customer)</label><br>
 <input id="checkout-link" class="field" readonly value="{{.}}" size="80"> <button class="btn small" type="button" data-copy="checkout-link">Copy</button>
 </div><script src="/assets/js/copy.js" defer></script>{{end}}

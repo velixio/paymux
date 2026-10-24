@@ -23,9 +23,9 @@ func parseRate(s string) (*big.Rat, error) {
 	return r, nil
 }
 
-// toINR converts minor units of currency to paise at rate (INR per unit),
+// ToINR converts minor units of currency to paise at rate (INR per unit),
 // rounding half up.
-func toINR(minor int64, currency, rate string) (int64, error) {
+func ToINR(minor int64, currency, rate string) (int64, error) {
 	if currency == "INR" {
 		return minor, nil
 	}
@@ -65,7 +65,7 @@ func inrAmounts(a tax.Amounts, currency, rate string) (tax.Amounts, bool, error)
 		in  int64
 		out *int64
 	}{{a.Taxable, &out.Taxable}, {a.CGST, &out.CGST}, {a.SGST, &out.SGST}, {a.IGST, &out.IGST}} {
-		v, err := toINR(c.in, currency, rate)
+		v, err := ToINR(c.in, currency, rate)
 		if err != nil {
 			return tax.Amounts{}, false, err
 		}

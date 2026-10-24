@@ -5,7 +5,7 @@
 <h1>Users</h1>
 {{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
-{{if .EnrolCode}}<div class="notice" role="status">
+{{if .EnrolCode}}<div class="notice" role="status" data-once>
 <p>Enrolment code for {{.EnrolFor}}. It is shown only now; give it to them with the password. They need it to set up two-factor sign-in at their first login, and it works once, for 7 days.</p>
 <p><code id="enrolment-code">{{.EnrolCode}}</code></p>
 </div>{{end}}

@@ -7,7 +7,7 @@
 <h1>{{.Name}} <small class="muted">{{.Slug}} &middot; {{.ID}}</small></h1>
 <nav class="tabs" aria-label="App sections">{{range .Tabs}}<a href="/dashboard/apps/{{$.App.ID}}?tab={{.}}"{{if eq . $.App.Tab}} class="active"{{end}}>{{.}}</a>{{end}}</nav>
 {{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
-{{with $.Reveal}}<div class="reveal" role="alert">
+{{with $.Reveal}}<div class="reveal" role="alert" data-once>
 <p><strong>{{.Label}}</strong></p>
 <p class="secret" id="revealed-secret">{{.Value}}</p>
 <p class="muted">This is the only time it is shown. Copy it now; it cannot be retrieved later.</p>
