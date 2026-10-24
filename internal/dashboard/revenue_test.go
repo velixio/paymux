@@ -375,7 +375,7 @@ func TestParseRevenueQueryBounds(t *testing.T) {
 		if (err == nil) != ok {
 			t.Errorf("%s: err %v, want ok=%v", q, err, ok)
 		}
-		if err != nil && !strings.Contains(err.Error(), "out of bounds") && !ok && !strings.Contains(q, "1999") && !strings.Contains(q, "1900") && !strings.Contains(q, "2027-10-27") {
+		if err != nil && !strings.Contains(err.Error(), "out of bounds") {
 			t.Errorf("%s: %v", q, err)
 		}
 	}

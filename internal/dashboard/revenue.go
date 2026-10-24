@@ -86,6 +86,11 @@ func parseRevenueQuery(v url.Values, now time.Time, loc *time.Location, first ti
 		if to.Before(from) {
 			return rq, fmt.Errorf("from must not be after to")
 		}
+		// The ledger cannot reach before 2000, and nothing happens later than
+		// next year; this keeps the window (and its series) bounded.
+		if from.Before(time.Date(2000, 1, 1, 0, 0, 0, 0, loc)) || to.After(today.AddDate(1, 0, 0)) {
+			return rq, fmt.Errorf("range out of bounds: from 2000-01-01 to one year ahead")
+		}
 		rq.From, rq.To = from, to.AddDate(0, 0, 1)
 	default:
 		return rq, fmt.Errorf("unknown range %q", rq.Range)
@@ -183,6 +188,7 @@ func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode stri
 	if v.Bucket == "hour" && rq.To.Sub(rq.From) > 7*24*time.Hour {
 		v.Bucket = "day" // an hourly series over weeks is unreadable and large
 	}
+	v.Bucket = capBucket(rq.From, rq.To, v.Bucket, loc)
 	hourly := v.Bucket == "hour"
 	_, off := rq.From.In(loc).Zone()
 
@@ -424,6 +430,28 @@ func slotTime(slot int64, hourly bool, off int, loc *time.Location) time.Time {
 	}
 	u := time.UnixMilli(slot * 86_400_000).UTC()
 	return time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, loc)
+}
+
+const maxPoints = 400
+
+// capBucket steps the bucket up (hour, day, week, month, quarter) until the
+// window has at most maxPoints buckets. Quarter is never capped.
+func capBucket(from, to time.Time, bucket string, loc *time.Location) string {
+	order := []string{"hour", "day", "week", "month", "quarter"}
+	i := slices.Index(order, bucket)
+	for ; i >= 0 && i < len(order)-1; i++ {
+		n := 0
+		for s := bucketStart(from, order[i], loc); s.Before(to) && n <= maxPoints; s = nextBucket(s, order[i]) {
+			n++
+		}
+		if n <= maxPoints {
+			return order[i]
+		}
+	}
+	if i >= 0 {
+		return order[i]
+	}
+	return bucket
 }
 
 func nextBucket(t time.Time, bucket string) time.Time {
