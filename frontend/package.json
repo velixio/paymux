@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test:frontend": "vitest run --config vitest.config.ts",
     "test:home": "playwright test --config playwright.home.config.ts",
+    "test:dashboard": "playwright test --config playwright.dashboard.config.ts",
     "check:docs": "cd .. && bun scripts/check-docs.ts",
     "test:docs": "vitest run --config vitest.config.ts",
     "coverage:frontend": "vitest run --config vitest.config.ts --coverage",
