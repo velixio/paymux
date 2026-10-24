@@ -307,6 +307,74 @@ func LedgerTotals(ctx context.Context, q Queryer, orgID, mode string, since time
 	return out, rows.Err()
 }
 
+// ---- ledger series ----
+
+// SeriesFilter selects the ledger window for LedgerSeries: [From, To) of one
+// org and mode, optionally one app. OffsetSeconds is the display location's
+// UTC offset at From, so slots are local days (or hours).
+type SeriesFilter struct {
+	OrgID, Mode, AppID string // AppID "" = all apps
+	From, To           time.Time
+	Hourly             bool // false = daily slots
+	OffsetSeconds      int
+}
+
+// SeriesRow is the money moved in one slot and currency. Slot is
+// floor((occurred_at_ms + OffsetSeconds*1000) / unit_ms); Refunds is positive.
+type SeriesRow struct {
+	Slot           int64
+	Currency       string
+	Gross, Refunds int64
+}
+
+// LedgerSeries sums charge and refund entries per slot and currency, using the
+// same ledger rules as LedgerTotals, ordered by slot then currency.
+func LedgerSeries(ctx context.Context, q Queryer, f SeriesFilter) ([]SeriesRow, error) {
+	unit := int64(86_400_000)
+	if f.Hourly {
+		unit = 3_600_000
+	}
+	args := []any{int64(f.OffsetSeconds) * 1000, unit, f.OrgID, f.OrgID, f.Mode, ms(f.From), ms(f.To)}
+	appClause := ""
+	if f.AppID != "" {
+		appClause = " AND p.app_id = ?"
+		args = append(args, f.AppID)
+	}
+	rows, err := q.QueryContext(ctx, `SELECT (l.occurred_at + ?) / ? AS slot, l.currency,
+			COALESCE(SUM(CASE WHEN l.kind = 'charge' THEN l.amount ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN l.kind = 'refund' THEN -l.amount ELSE 0 END), 0)
+		FROM ledger_entries l JOIN payments p ON p.id = l.payment_id
+		WHERE l.org_id = ? AND p.org_id = ? AND l.mode = ? AND l.occurred_at >= ? AND l.occurred_at < ?
+			AND l.kind IN ('charge','refund')`+appClause+`
+		GROUP BY slot, l.currency ORDER BY slot, l.currency`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SeriesRow
+	for rows.Next() {
+		var r SeriesRow
+		if err := rows.Scan(&r.Slot, &r.Currency, &r.Gross, &r.Refunds); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// FirstLedgerAt is the time of the earliest ledger entry of an org and mode;
+// ok is false when there is none.
+func FirstLedgerAt(ctx context.Context, q Queryer, orgID, mode string) (time.Time, bool, error) {
+	var v sql.NullInt64
+	if err := q.QueryRowContext(ctx, `SELECT MIN(occurred_at) FROM ledger_entries WHERE org_id = ? AND mode = ?`, orgID, mode).Scan(&v); err != nil {
+		return time.Time{}, false, err
+	}
+	if !v.Valid {
+		return time.Time{}, false, nil
+	}
+	return fromMS(v.Int64), true, nil
+}
+
 // ---- audit ----
 
 // AuditFilter selects audit rows. Actor matches an actor id or an actor type
