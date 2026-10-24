@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LoaderCircle } from "lucide-react";
+import { useOptionalTabs } from "./tabs-context";
 import {
   parseDashboard,
   isDownloadPath,
@@ -53,6 +54,7 @@ export function WorkspaceLink({
   children,
   ...props
 }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+  const tabs = useOptionalTabs();
   const url = new URL(href, location.href);
   return !props.target &&
     !props.download &&
@@ -65,6 +67,21 @@ export function WorkspaceLink({
       hash={url.hash.slice(1)}
       {...props}
       onClick={(event) => {
+        // Alt-click opens a new tab. A plain click navigates in the current
+        // tab (the shell replaces it, or opens a new tab when it is pinned);
+        // Ctrl/Meta/Shift/middle clicks stay with the browser.
+        if (
+          tabs &&
+          event.altKey &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.shiftKey &&
+          event.button === 0
+        ) {
+          event.preventDefault();
+          tabs.openHref(url.pathname + url.search, "new");
+          return;
+        }
         if (["#routing", "#route-test"].includes(url.hash)) {
           const details = document.querySelector<HTMLDetailsElement>(
             ".react-content .routing-disclosure",
