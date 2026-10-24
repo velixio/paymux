@@ -118,6 +118,25 @@ func ListFXRates(ctx context.Context, q Queryer, orgID string, limit int) ([]FXR
 	return out, rows.Err()
 }
 
+// ListFXRatesFor returns every stored rate of one currency, oldest date first.
+func ListFXRatesFor(ctx context.Context, q Queryer, orgID, currency string) ([]FXRate, error) {
+	rows, err := q.QueryContext(ctx, `SELECT rate_date, rate_to_inr, source FROM fx_rates WHERE org_id = ? AND currency = ?
+		ORDER BY rate_date`, orgID, currency)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []FXRate
+	for rows.Next() {
+		r := FXRate{OrgID: orgID, Currency: currency}
+		if err := rows.Scan(&r.Date, &r.Rate, &r.Source); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // ListDomains lists an app's custom domains, oldest first.
 func ListDomains(ctx context.Context, q Queryer, appID string) ([]Domain, error) {
 	rows, err := q.QueryContext(ctx, `SELECT id, org_id, app_id, host, is_primary, status, token, last_check_at,
