@@ -74,8 +74,12 @@ test("combobox: aria-activedescendant follows the arrow keys", async () => {
   expect(input.getAttribute("aria-activedescendant")).toBe(options[1].id);
   expect(options[1].getAttribute("aria-selected")).toBe("true");
   fireEvent.keyDown(input, { key: "ArrowUp" });
-  fireEvent.keyDown(input, { key: "ArrowUp" });
   expect(input.getAttribute("aria-activedescendant")).toBe(options[0].id);
+  // It wraps around.
+  fireEvent.keyDown(input, { key: "ArrowUp" });
+  expect(input.getAttribute("aria-activedescendant")).toBe(
+    options[options.length - 1].id,
+  );
 });
 
 test("lists actions, pages and open tabs with no query", async () => {
@@ -149,7 +153,7 @@ test("Switch to test submits the mode form", async () => {
   await waitFor(() => expect(calls["/dashboard/mode"]).toBe(1));
   const [, init] = vi
     .mocked(fetch)
-    .mock.calls.find((c) => c[0] === "/dashboard/mode")!;
+    .mock.calls.find((c) => String(c[0]).endsWith("/dashboard/mode"))!;
   expect(String((init as RequestInit).body)).toContain("mode=test");
 });
 
@@ -191,7 +195,7 @@ test("free text offers payments and invoices searches", async () => {
   expect(names.some((n) => n.includes('invoices for "alice"'))).toBe(true);
 });
 
-test("no results shows an empty message", async () => {
+test("free text is never an empty list", async () => {
   await mount();
   ctrlK();
   fireEvent.change(await box(), { target: { value: "   " } });

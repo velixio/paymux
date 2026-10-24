@@ -33,7 +33,7 @@ export function resetHost() {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string) => {
-      const path = input.split("?")[0];
+      const path = new URL(input, location.origin).pathname;
       calls[path] = (calls[path] ?? 0) + 1;
       const html = handlers[path]?.(calls[path]) ?? "";
       return {

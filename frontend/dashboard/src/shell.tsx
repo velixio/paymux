@@ -1,4 +1,6 @@
 import React, {
+  Suspense,
+  lazy,
   createContext,
   useCallback,
   useContext,
@@ -79,7 +81,7 @@ import {
 import { fetchDashboard, type DashboardPage } from "./adapter";
 import { PageContent, RenderNode } from "./render";
 import { queryKey, RuntimeProvider, WorkspaceLink } from "./runtime";
-import { createMatcher, type Binding } from "./keys";
+import { createMatcher, isTyping, type Binding } from "./keys";
 import { TabStrip } from "./tab-strip";
 import { TabView } from "./tab-view";
 import { TabsContext, useTabs, type TabsApi } from "./tabs-context";
@@ -87,6 +89,9 @@ import * as tabs from "./tabs";
 import type { TabState } from "./tabs";
 
 export { useTabs, type TabsApi };
+
+// The command bar is a separate chunk, fetched when first opened.
+const CommandBar = lazy(() => import("./command-bar"));
 
 const noDirty: ReadonlySet<string> = new Set();
 const storage = (): Storage | null => {
@@ -323,6 +328,18 @@ function TabsShell({
   const loc = useLocation();
   const href = hrefOf(loc);
   const [menu, setMenu] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commandLoaded, setCommandLoaded] = useState(false);
+  const openCommand = useCallback(() => {
+    setCommandLoaded(true);
+    setCommandOpen(true);
+  }, []);
+  const toggleTheme = () => {
+    setDark(!dark);
+    try {
+      localStorage.setItem("paymux-theme", !dark ? "dark" : "light");
+    } catch {}
+  };
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem("paymux-sidebar-collapsed") === "true";
@@ -508,6 +525,8 @@ function TabsShell({
   // before unshifted ones on the same key.
   const apiRef = useRef(api);
   apiRef.current = api;
+  const openCommandRef = useRef(openCommand);
+  openCommandRef.current = openCommand;
   useEffect(() => {
     const now = () => apiRef.current.state;
     const step = (by: number) => {
@@ -533,6 +552,17 @@ function TabsShell({
     ];
     const match = createMatcher(bindings);
     const onKey = (e: KeyboardEvent) => {
+      // The command bar opens from anywhere with Ctrl/Cmd+K, and with / when
+      // the user is not typing.
+      const plain = !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey;
+      if (
+        ((e.metaKey || e.ctrlKey) && e.code === "KeyK") ||
+        (plain && e.code === "Slash" && !isTyping(e.target))
+      ) {
+        e.preventDefault();
+        openCommandRef.current();
+        return;
+      }
       // Menus and dialogs own the keyboard while they are open.
       if (
         (e.target as Element | null)?.closest?.(
@@ -636,6 +666,17 @@ function TabsShell({
                 >
                   {page.mode.replace(" mode", "").toUpperCase()}
                 </Badge>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="command-trigger"
+                  aria-label="Search and commands"
+                  onClick={openCommand}
+                >
+                  <Search size={14} />
+                  <span>Search</span>
+                  <kbd>Ctrl K</kbd>
+                </Button>
                 <RefreshWorkspace
                   refresh={refresh}
                   loading={loading}
@@ -647,15 +688,7 @@ function TabsShell({
                   aria-label={
                     dark ? "Switch to light theme" : "Switch to dark theme"
                   }
-                  onClick={() => {
-                    setDark(!dark);
-                    try {
-                      localStorage.setItem(
-                        "paymux-theme",
-                        !dark ? "dark" : "light",
-                      );
-                    } catch {}
-                  }}
+                  onClick={toggleTheme}
                 >
                   {dark ? <Sun size={17} /> : <Moon size={17} />}
                 </Button>
@@ -680,6 +713,16 @@ function TabsShell({
               </div>
             </header>
             <TabStrip iconFor={iconFor} />
+            {commandLoaded && (
+              <Suspense fallback={null}>
+                <CommandBar
+                  open={commandOpen}
+                  onOpenChange={setCommandOpen}
+                  page={page}
+                  onToggleTheme={toggleTheme}
+                />
+              </Suspense>
+            )}
           </RuntimeProvider>
           {/* The active tab leads in DOM order so ids, label[for] and
               aria-controls resolve to the visible page. Keyed children move
