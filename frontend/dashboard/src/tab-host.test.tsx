@@ -281,3 +281,36 @@ test("a hidden clean tab unmounts after ten idle minutes", async () => {
   expect(screen.queryByText("Payments body")).not.toBeNull();
   expect(calls["/dashboard/payments"]).toBe(2);
 });
+
+test("hidden duplicate keeps its edits when the visible one refetches", async () => {
+  handlers["/dashboard/payments"] = () =>
+    pageHtml(
+      "Payments",
+      '<form action="/dashboard/x" method="post"><input name="n" value="a" aria-label="n"></form>',
+    );
+  await mount();
+  act(() => api.openHref("/dashboard/payments", "new"));
+  await screen.findByLabelText("n");
+  fireEvent.input(screen.getByLabelText("n"), { target: { value: "b" } });
+  await waitFor(() => expect(api.dirtyIds.size).toBe(1));
+  const original = tabByHref("/dashboard/payments").id;
+  act(() => api.duplicate(original));
+  await waitFor(() => expect(api.state.tabs).toHaveLength(3));
+  expect(api.state.activeId).not.toBe(original);
+  const copy = api.state.activeId;
+  act(() => api.reload(copy));
+  await waitFor(() => expect(calls["/dashboard/payments"]).toBe(2));
+  const inputs = screen.getAllByLabelText("n") as HTMLInputElement[];
+  expect(inputs.map((i) => i.value).sort()).toEqual(["a", "b"]);
+  expect(api.dirtyIds.has(original)).toBe(true);
+  // The edits are still there after coming back.
+  act(() => api.activate(original));
+  await waitFor(() => expect(api.state.activeId).toBe(original));
+  expect(
+    (
+      document.querySelector(
+        `[data-tab="${original}"] input`,
+      ) as HTMLInputElement
+    ).value,
+  ).toBe("b");
+});
