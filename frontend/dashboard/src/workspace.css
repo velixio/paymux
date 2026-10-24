@@ -1447,3 +1447,55 @@ main.dash:has(#paymux-react-root) {
     font-size: 15px;
   }
 }
+/* Saved filters above a GET filter form */
+.react-content .saved-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 6px;
+}
+.react-content .saved-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.react-content .saved-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--muted);
+  font-size: 12px;
+}
+.react-content .saved-chip button {
+  padding: 3px 10px;
+  background: transparent;
+  border: 0;
+  color: var(--foreground);
+  font: inherit;
+  cursor: pointer;
+}
+.react-content .saved-chip button:first-child:hover {
+  color: var(--accent-foreground);
+}
+.react-content .saved-chip .saved-chip-remove {
+  display: grid;
+  place-items: center;
+  padding: 3px 7px 3px 2px;
+  color: var(--muted-foreground);
+}
+.react-content .saved-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.react-content .saved-name input {
+  height: 28px;
+  padding: 0 8px;
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  font-size: 12px;
+}

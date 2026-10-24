@@ -17,6 +17,7 @@ import { Copy, LoaderCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { statusTone } from "./pill";
 import { RevenueSection } from "./revenue-section";
+import { SavedFiltersBar } from "./saved-filters-bar";
 import { attributes, textOf, type ViewNode } from "./adapter";
 import { useRuntime, WorkspaceLink } from "./runtime";
 const renderChildren = (nodes: ViewNode[]) =>
@@ -43,34 +44,41 @@ function Form({ node }: { node: ViewNode }) {
       if (el) markDirty(el, false);
     };
   }, [markDirty]);
+  const filterForm =
+    (node.attrs.class ?? "").split(/\s+/).includes("filters") &&
+    (node.attrs.method ?? "get").toLowerCase() === "get";
   return (
-    <form
-      {...attributes(node)}
-      ref={(el) => {
-        form.current = el;
-        if (el && baseline.current === null) baseline.current = fingerprint(el);
-      }}
-      aria-busy={pending}
-      data-dirty={dirty || undefined}
-      onInput={(event) => {
-        const changed = fingerprint(event.currentTarget) !== baseline.current;
-        setDirty(changed);
-        markDirty(event.currentTarget, changed);
-      }}
-      onSubmit={(event) => {
-        event.preventDefault();
-        submit(
-          event.currentTarget,
-          (event.nativeEvent as SubmitEvent)
-            .submitter as HTMLButtonElement | null,
-        );
-      }}
-    >
-      {renderChildren(node.children)}
-      {dirty && node.attrs.class?.includes("setting-form") && (
-        <small className="unsaved-note">Unsaved change</small>
-      )}
-    </form>
+    <>
+      {filterForm && <SavedFiltersBar form={form} />}
+      <form
+        {...attributes(node)}
+        ref={(el) => {
+          form.current = el;
+          if (el && baseline.current === null)
+            baseline.current = fingerprint(el);
+        }}
+        aria-busy={pending}
+        data-dirty={dirty || undefined}
+        onInput={(event) => {
+          const changed = fingerprint(event.currentTarget) !== baseline.current;
+          setDirty(changed);
+          markDirty(event.currentTarget, changed);
+        }}
+        onSubmit={(event) => {
+          event.preventDefault();
+          submit(
+            event.currentTarget,
+            (event.nativeEvent as SubmitEvent)
+              .submitter as HTMLButtonElement | null,
+          );
+        }}
+      >
+        {renderChildren(node.children)}
+        {dirty && node.attrs.class?.includes("setting-form") && (
+          <small className="unsaved-note">Unsaved change</small>
+        )}
+      </form>
+    </>
   );
 }
 function PolicyTable({ node }: { node: ViewNode }) {
