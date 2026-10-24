@@ -2,6 +2,7 @@ import React, {
   createContext,
   useContext,
   useCallback,
+  useEffect,
   useState,
   type ReactNode,
 } from "react";
@@ -84,9 +85,15 @@ export function WorkspaceLink({
 export function RuntimeProvider({
   page,
   children,
+  active = true,
+  onDirtyChange,
 }: {
   page: DashboardPage;
   children: ReactNode;
+  /** Only the visible tab guards navigation; hidden tabs keep their edits. */
+  active?: boolean;
+  /** Reports whether this view has unsaved edits (false again on unmount). */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const router = useRouter();
   const client = useQueryClient();
@@ -103,6 +110,11 @@ export function RuntimeProvider({
       }),
     [],
   );
+  const dirty = dirtyForms.size > 0;
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   const mutation = useMutation({
     mutationFn: async (s: Submission) => {
       const hasFiles = [...s.data.values()].some(
@@ -175,7 +187,9 @@ export function RuntimeProvider({
       (current.pathname !== next.pathname ||
         JSON.stringify(current.search) !== JSON.stringify(next.search)) &&
       (dirtyForms.size > 0 || mutation.isPending),
-    enableBeforeUnload: () => dirtyForms.size > 0 || mutation.isPending,
+    // The shell arms one beforeunload listener for every tab.
+    enableBeforeUnload: false,
+    disabled: !active,
     withResolver: true,
   });
   function submit(form: HTMLFormElement, button: HTMLButtonElement | null) {
