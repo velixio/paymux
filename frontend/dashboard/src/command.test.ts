@@ -97,6 +97,7 @@ describe("rank", () => {
 
   test("hint can match when the label does not", () => {
     expect(rank([it("x", "Zebra", "billing")], "bill").map((i) => i.id)).toEqual(["x"]);
+    expect(rank([it("x", "Zebra", "dark mode")], "dmd").map((i) => i.id)).toEqual(["x"]); // scattered in the hint
   });
 });
 
