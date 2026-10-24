@@ -337,13 +337,11 @@ function TabsShell({
     // The current location wins: focus its tab or add one beside the active tab.
     isAuthHref(href)
       ? tabs.load(storage(), sessionKey, Date.now())
-      : tabs.open(
+      : tabs.land(
           tabs.load(storage(), sessionKey, Date.now()),
           href,
           titleFor(href, page),
-          "new",
           Date.now(),
-          noDirty,
         ),
   );
   const stateRef = useRef(state);

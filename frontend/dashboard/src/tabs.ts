@@ -118,6 +118,34 @@ export function open(
   );
 }
 
+const pathOf = (href: string) => new URL(href, "http://tabs.invalid").pathname;
+
+// Boot on a URL (full page load, restored tabs): focus the tab that shows it;
+// else navigate a tab on the same page in place (pinned first), so a reload of
+// /dashboard/overview?range=12m updates the Overview tab instead of adding one;
+// else open a new tab beside the active one.
+export function land(
+  s: TabState,
+  href: string,
+  title: string,
+  now: number,
+): TabState {
+  const same = s.tabs.find((t) => tabKey(t.href) === tabKey(href));
+  if (same) return activate(s, same.id, now);
+  const path = pathOf(href);
+  const onPage = s.tabs.filter((t) => pathOf(t.href) === path);
+  const match = onPage.find((t) => t.pinned) ?? onPage[0];
+  if (match)
+    return {
+      ...s,
+      activeId: match.id,
+      tabs: s.tabs.map((t) =>
+        t === match ? { ...t, href, title, lastActive: now } : t,
+      ),
+    };
+  return open(s, href, title, "new", now, new Set());
+}
+
 export function activate(s: TabState, id: string, now: number): TabState {
   if (!has(s, id)) return s;
   return {

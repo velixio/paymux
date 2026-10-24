@@ -363,3 +363,12 @@ test("the active tab comes first in the DOM, hidden tabs after it", async () => 
   expect(document.querySelector(`[data-tab="${overview}"]`)).toBe(node);
   expect(document.getElementById("react-workspace")).toBe(node);
 });
+
+test("a full page load on the Overview with a query updates the pinned tab in place", async () => {
+  await mount("/dashboard/overview?range=12m");
+  expect(api.state.tabs).toHaveLength(1);
+  expect(api.state.tabs[0]).toMatchObject({
+    href: "/dashboard/overview?range=12m",
+    pinned: true,
+  });
+});

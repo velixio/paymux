@@ -7,6 +7,7 @@ import {
   closeRight,
   duplicate,
   initialState,
+  land,
   load,
   move,
   navigate,
@@ -358,5 +359,43 @@ describe("persistence", () => {
         s,
       ),
     ).not.toThrow();
+  });
+});
+
+describe("land (boot on a URL)", () => {
+  test("focuses the tab that already shows the URL", () => {
+    const s = withTabs(1);
+    const r = land(s, `${D}p1`, "P1", 50);
+    expect(r.tabs).toHaveLength(2);
+    expect(r.activeId).toBe(s.tabs[1].id);
+  });
+
+  test("a URL on the same pathname as a tab navigates that tab in place", () => {
+    const s = initialState(1);
+    const r = land(s, `${D}overview?range=12m`, "Overview", 50);
+    expect(r.tabs).toHaveLength(1);
+    expect(r.tabs[0]).toMatchObject({
+      href: `${D}overview?range=12m`,
+      pinned: true,
+      lastActive: 50,
+    });
+    expect(r.activeId).toBe(s.activeId);
+  });
+
+  test("prefers a pinned tab, then the first, when several share the pathname", () => {
+    let s = withTabs(1);
+    s = duplicate(s, s.tabs[1].id, 5); // two /p1 tabs
+    s = setPinned(s, s.tabs[2].id, true);
+    const r = land(s, `${D}p1?x=1`, "P1", 60);
+    expect(r.tabs.find((t) => t.href === `${D}p1?x=1`)!.pinned).toBe(true);
+    expect(r.tabs).toHaveLength(s.tabs.length);
+  });
+
+  test("an unknown pathname adds a tab beside the active one", () => {
+    const s = withTabs(1);
+    const r = land(s, `${D}elsewhere`, "Elsewhere", 70);
+    expect(r.tabs).toHaveLength(3);
+    expect(r.tabs.at(-1)!.href).toBe(`${D}elsewhere`);
+    expect(r.activeId).toBe(r.tabs.at(-1)!.id);
   });
 });

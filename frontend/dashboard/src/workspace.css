@@ -288,7 +288,7 @@ main.dash:has(#paymux-react-root) {
   color: var(--muted-foreground);
 }
 .paymux-react
-  a:not(.navigation-item):not(.react-logo):not([data-slot="button"]) {
+  a:not(.navigation-item):not(.react-logo):not([data-slot="button"]):not(.btn) {
   color: var(--primary);
   text-underline-offset: 3px;
 }
@@ -1166,20 +1166,21 @@ main.dash:has(#paymux-react-root) {
 /* Revenue chart: hand-written SVG; colours come from the dashboard tokens. */
 .react-content .revenue-chart {
   position: relative;
-  margin: 12px 0 4px;
+  margin: 4px 0 4px;
   min-height: 260px;
 }
 .react-content .revenue-chart-loading {
   height: 292px;
 }
+#revenue h2 {
+  margin: 20px 0 10px;
+}
 .react-content .revenue-chart-plot {
   position: relative;
-  aspect-ratio: 720 / 260;
+  height: 260px;
 }
 .react-content .revenue-chart svg {
   display: block;
-  width: 100%;
-  height: 100%;
   overflow: visible;
 }
 .react-content .rev-grid {
@@ -1307,4 +1308,142 @@ main.dash:has(#paymux-react-root) {
   background: var(--background);
   color: var(--foreground);
   box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
+}
+/* Revenue toolbar: presets left, filters right, one compact row. */
+.react-content .revenue-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0 0 14px;
+}
+.react-content .revenue-toolbar nav.range-presets {
+  margin: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.react-content .revenue-toolbar nav.range-presets a {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.react-content .revenue-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.react-content .revenue-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.react-content .revenue-select select {
+  height: 30px;
+  padding: 0 24px 0 8px;
+  background-color: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  font-size: 12px;
+  max-width: 140px;
+}
+.react-content .revenue-custom[data-active] {
+  background: var(--ui-accent);
+  color: var(--accent-foreground);
+}
+.revenue-popover {
+  display: grid;
+  gap: 10px;
+}
+.revenue-popover label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.revenue-popover input {
+  height: 32px;
+  padding: 0 8px;
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  font-size: 13px;
+}
+/* KPI tiles */
+.react-content .revenue-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 8px;
+}
+.react-content .revenue-kpi {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  min-width: 0;
+}
+.react-content .kpi-label {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.react-content .kpi-value {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-feature-settings: "tnum";
+  overflow-wrap: anywhere;
+}
+.react-content .kpi-chip {
+  justify-self: start;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  font-feature-settings: "tnum";
+}
+.react-content .kpi-chip[data-tone="good"] {
+  background: var(--status-ok-bg);
+  color: var(--status-ok-fg);
+}
+.react-content .kpi-chip[data-tone="bad"] {
+  background: var(--status-bad-bg);
+  color: var(--status-bad-fg);
+}
+.react-content .kpi-chip[data-tone="flat"] {
+  background: var(--status-neutral-bg);
+  color: var(--status-neutral-fg);
+}
+.react-content .revenue-notes p {
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.react-content .revenue-custom {
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+@media (max-width: 640px) {
+  .react-content .revenue-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .react-content .revenue-kpis {
+    gap: 8px;
+  }
+  .react-content .revenue-kpi {
+    padding: 8px 10px;
+  }
+  .react-content .kpi-value {
+    font-size: 15px;
+  }
 }
