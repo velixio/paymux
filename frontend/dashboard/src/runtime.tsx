@@ -85,13 +85,17 @@ export function WorkspaceLink({
 export function RuntimeProvider({
   page,
   children,
-  active = true,
+  guard = true,
   onDirtyChange,
 }: {
   page: DashboardPage;
   children: ReactNode;
-  /** Only the visible tab guards navigation; hidden tabs keep their edits. */
-  active?: boolean;
+  /**
+   * Whether leaving this view asks about unsaved edits. Only the visible,
+   * unpinned tab guards: hidden tabs keep their edits, and a pinned tab opens
+   * a new tab instead of being replaced.
+   */
+  guard?: boolean;
   /** Reports whether this view has unsaved edits (false again on unmount). */
   onDirtyChange?: (dirty: boolean) => void;
 }) {
@@ -189,7 +193,7 @@ export function RuntimeProvider({
       (dirtyForms.size > 0 || mutation.isPending),
     // The shell arms one beforeunload listener for every tab.
     enableBeforeUnload: false,
-    disabled: !active,
+    disabled: !guard,
     withResolver: true,
   });
   function submit(form: HTMLFormElement, button: HTMLButtonElement | null) {

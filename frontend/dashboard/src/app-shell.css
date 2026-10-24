@@ -543,3 +543,6 @@
   background: var(--status-neutral-bg);
   color: var(--status-neutral-fg);
 }
+.app-shell .react-workspace [hidden] {
+  display: none !important;
+}
