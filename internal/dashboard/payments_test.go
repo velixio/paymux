@@ -331,8 +331,10 @@ func TestRefundFromDashboard(t *testing.T) {
 
 		op := e.roleClient("operator")
 		tok = csrfOf(t, e.pageOK(op, "/dashboard/payments/"+f.pay.ID))
+		// every rendering of the form carries its own single-use nonce
+		nonce := func() string { return nonceOf(t, e.pageOK(op, "/dashboard/payments/"+f.pay.ID)) }
 		// partial refund of an explicit attempt
-		r, body := e.post(op, path, url.Values{"amount": {"25.50"}, "reason": {"customer asked"}, "attempt_id": {"att_ok"}, "csrf": {tok}})
+		r, body := e.post(op, path, url.Values{"amount": {"25.50"}, "reason": {"customer asked"}, "attempt_id": {"att_ok"}, "csrf": {tok}, "nonce": {nonce()}})
 		if r.StatusCode != 303 || r.Header.Get("Location") != "/dashboard/payments/pay_d1" {
 			t.Fatalf("refund: %d %s\n%s", r.StatusCode, r.Header.Get("Location"), body)
 		}
@@ -360,7 +362,7 @@ func TestRefundFromDashboard(t *testing.T) {
 		}
 
 		// blank amount refunds everything still refundable: 100.00 - 15.00 - 25.50 = 59.50
-		r, _ = e.post(op, path, url.Values{"amount": {""}, "csrf": {tok}})
+		r, _ = e.post(op, path, url.Values{"amount": {""}, "csrf": {tok}, "nonce": {nonce()}})
 		if r.StatusCode != 303 {
 			t.Fatalf("full refund: %d", r.StatusCode)
 		}
@@ -373,7 +375,7 @@ func TestRefundFromDashboard(t *testing.T) {
 			t.Fatalf("refunded total %d, want 10000", sum)
 		}
 		// nothing left
-		r, body = e.post(op, path, url.Values{"amount": {"1.00"}, "csrf": {tok}})
+		r, body = e.post(op, path, url.Values{"amount": {"1.00"}, "csrf": {tok}, "nonce": {nonce()}})
 		if r.StatusCode != 400 || !strings.Contains(body, "exceeds the refundable balance") {
 			t.Fatalf("over-refund: %d", r.StatusCode)
 		}
@@ -384,6 +386,7 @@ func TestRefundFromDashboard(t *testing.T) {
 			"bad attempt":  {"amount": {"1.00"}, "attempt_id": {"att_nope"}},
 		} {
 			form.Set("csrf", tok)
+			form.Set("nonce", nonce())
 			if r, _ := e.post(op, path, form); r.StatusCode != 400 {
 				t.Errorf("%s: %d", name, r.StatusCode)
 			}
