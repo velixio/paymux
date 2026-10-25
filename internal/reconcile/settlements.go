@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/paymux/paymux/internal/ids"
@@ -73,6 +74,14 @@ func (s *Service) applySettlement(ctx context.Context, pa store.ProviderAccount,
 			if err != nil {
 				return err
 			}
+			if !strings.EqualFold(a.CurrencyReceived, snap.Currency) {
+				// A fee in another currency than the payment it is charged on cannot
+				// be booked against it. The settlement's fee check then differs from
+				// ours and is reported.
+				s.o.Logger.Warn("reconcile: settlement line in another currency than the payment; fees not booked",
+					"settlement", snap.ProviderSettlementID, "attempt", a.ID, "payment_currency", a.CurrencyReceived, "settlement_currency", snap.Currency)
+				continue
+			}
 			attached, err := store.AttachSettlementFees(ctx, tx, a.ID, row.ID, it.Fee, it.Tax, it.Amount-it.Fee-it.Tax)
 			if err != nil {
 				return err
@@ -88,7 +97,7 @@ func (s *Service) applySettlement(ctx context.Context, pa store.ProviderAccount,
 					continue
 				}
 				if err := store.InsertLedgerEntry(ctx, tx, store.LedgerEntry{ID: ids.New("led"), OrgID: a.OrgID, Mode: a.Mode, Kind: e.kind,
-					Amount: e.amount, Currency: snap.Currency, PaymentID: a.PaymentID, SettlementID: row.ID, OccurredAt: now}); err != nil {
+					Amount: e.amount, Currency: snap.Currency, PaymentID: a.PaymentID, SettlementID: row.ID, AttemptID: a.ID, OccurredAt: now}); err != nil {
 					return err
 				}
 			}
