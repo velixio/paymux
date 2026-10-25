@@ -16,7 +16,7 @@
 <p class="theme-badges"><span class="theme-badge">{{if .Bundled}}Built-in{{else}}Custom{{end}}</span>{{if .Current}} <span class="theme-badge theme-badge-default">Default</span>{{end}}</p>
 <p>{{if .Usable}}{{.Description}}{{else}}<span class="error">Cannot be used: {{.Err}}</span>{{end}}</p>
 {{if .Usable}}<p class="muted">{{.Users}} {{if eq .Users 1}}person has{{else}}people have{{end}} chosen it.</p>
-<p class="theme-actions"><a href="/dashboard/appearance/preview/{{.Name}}">Preview</a>
+<p class="theme-actions"><a href="/dashboard/appearance/preview/{{.Name}}">Preview</a> <a href="/dashboard/appearance/themes/{{.Name}}/export.json" download>Export</a>
 {{if $.CanManage}}<a href="/dashboard/appearance/themes/new?from={{.Name}}">Duplicate</a>{{if .Custom}} <a href="/dashboard/appearance/themes/{{.Name}}/edit">Edit</a>{{end}}{{end}}
 {{if and $.CanManage (not .Current)}}<form class="inline" method="post" action="/dashboard/appearance/theme">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
@@ -37,6 +37,17 @@
 </li>
 {{else}}<li class="muted">No themes installed.</li>{{end}}
 </ul>
+
+{{if .CanManage}}<h3 id="import">Import a theme</h3>
+<p class="muted">Upload a <code>theme.json</code> exported from another Paymux (up to 64 KB). Only that file is read: stylesheets, templates and images are not imported.</p>
+{{with .ImportForm}}{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}{{end}}
+<form method="post" action="/dashboard/appearance/themes/import" enctype="multipart/form-data" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+{{with .ImportForm}}{{if .JSON}}<input type="hidden" name="theme_json" value="{{.JSON}}">{{end}}{{end}}
+<label>theme.json<input type="file" name="theme" accept=".json,application/json"></label>
+<label>Name (optional: use a new name if the file's is taken)<input class="field" name="name" value="{{with .ImportForm}}{{.Name}}{{end}}" maxlength="40" pattern="[a-z0-9][a-z0-9-]*" autocomplete="off"></label>
+<button class="btn" type="submit">Import theme</button>
+</form>{{end}}
 
 <h3>Customer pages, per app</h3>
 <p class="muted">Each app can have its own theme and language for its customer pages. "Inherit" uses the dashboard theme and the org's language setting. Customers can also pick an installed language with <code>?lang=</code> on the link.</p>

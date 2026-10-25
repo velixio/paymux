@@ -267,6 +267,8 @@ func (d *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case strings.HasPrefix(r.URL.Path, prefix+"/disputes/") && strings.HasSuffix(r.URL.Path, "/evidence"):
 		limit = 3*disputes.MaxEvidenceBytes + 1<<20 // up to three files of 10 MiB
+	case r.URL.Path == prefix+"/appearance/themes/import":
+		limit = themeImportMax + 16<<10 // the file plus the form's other fields
 	case isUploadPath(r.URL.Path):
 		limit = maxUploadBytes + 64<<10
 	}
@@ -287,6 +289,7 @@ type view struct {
 	// DashboardTheme names the theme the React dashboard wears; see effectiveDashboardTheme.
 	DashboardTheme string
 	ThemeForm      *themeFormView // the theme editor
+	ImportForm     *importFormView
 	// The account page's theme picker.
 	OrgThemeName string
 	ThemeChoices []themeChoice

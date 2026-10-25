@@ -145,6 +145,8 @@ func (d *Dashboard) routesThemeEditor() {
 	m.HandleFunc("POST "+prefix+"/appearance/themes", d.authed(authz.SettingsWrite, d.recent(d.themeCreate)))
 	m.HandleFunc("GET "+prefix+"/appearance/themes/{name}/edit", d.authed(authz.SettingsWrite, d.themeEditPage))
 	m.HandleFunc("POST "+prefix+"/appearance/themes/{name}", d.authed(authz.SettingsWrite, d.recent(d.themeSave)))
+	m.HandleFunc("GET "+prefix+"/appearance/themes/{name}/export.json", d.authed(authz.SettingsRead, d.themeExport))
+	m.HandleFunc("POST "+prefix+"/appearance/themes/import", d.authed(authz.SettingsWrite, d.recent(d.themeImport)))
 	m.HandleFunc("POST "+prefix+"/appearance/themes/{name}/rename", d.authed(authz.SettingsWrite, d.recent(d.themeRename)))
 	m.HandleFunc("POST "+prefix+"/appearance/themes/{name}/delete", d.authed(authz.SettingsWrite, d.recent(d.themeDelete)))
 }
@@ -206,6 +208,10 @@ func (d *Dashboard) themeCreate(w http.ResponseWriter, r *http.Request, s *sessi
 		from = src
 		// Customer-page settings come along; the dashboard block is what the form says.
 		m.Tokens, m.FontStack = src.Tokens, src.FontStack
+	}
+	if reservedThemeName(m.Name) {
+		d.renderThemeForm(w, r, s, http.StatusBadRequest, view, "That name is reserved. Choose another.")
+		return
 	}
 	if err := d.o.Themes.Create(m, from); err != nil {
 		d.renderThemeForm(w, r, s, http.StatusBadRequest, view, themeErrMessage(err))
@@ -348,6 +354,10 @@ func (d *Dashboard) themeRename(w http.ResponseWriter, r *http.Request, s *sessi
 	old, to := th.Name, strings.TrimSpace(r.PostForm.Get("new_name"))
 	if old == to {
 		d.refused(w, r, s, "That is already its name.")
+		return
+	}
+	if reservedThemeName(to) {
+		d.refused(w, r, s, "That name is reserved. Choose another.")
 		return
 	}
 	refs, err := d.themeRefs(r, old)

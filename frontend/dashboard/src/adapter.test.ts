@@ -153,6 +153,7 @@ test("binary and export endpoints keep native downloads", () => {
     "/dashboard/reports/zip",
     "/dashboard/reports/file",
     "/dashboard/invoices/inv_1/einvoice.json",
+    "/dashboard/appearance/themes/paddle/export.json",
     "/dashboard/disputes/d_1/evidence/b_1",
   ])
     expect(isDownloadPath(path)).toBe(true);

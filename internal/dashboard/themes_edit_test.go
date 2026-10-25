@@ -64,10 +64,10 @@ func TestCardsOfferEditingActionsToAdminsOnly(t *testing.T) {
 		}
 		// Edit: custom themes only.
 		has(t, card(t, body, "teal"), `href="/dashboard/appearance/themes/teal/edit"`)
-		lacks(t, card(t, body, "stripe"), `/themes/stripe/`)
+		lacks(t, card(t, body, "stripe"), `/themes/stripe/edit`, `/themes/stripe/rename`, `/themes/stripe/delete`)
 
 		view := e.pageOK(e.roleClient("viewer"), "/dashboard/appearance")
-		lacks(t, view, `/appearance/themes/`)
+		lacks(t, view, `/appearance/themes/new`, `/edit"`, `/rename`, `/delete`, `/themes/import`)
 	})
 }
 

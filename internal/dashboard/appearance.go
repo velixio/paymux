@@ -56,6 +56,12 @@ func (d *Dashboard) appearancePage(w http.ResponseWriter, r *http.Request, s *se
 }
 
 func (d *Dashboard) renderAppearance(w http.ResponseWriter, r *http.Request, s *session, status int, errMsg string) {
+	d.renderAppearanceWith(w, r, s, status, errMsg, nil)
+}
+
+// renderAppearanceWith is renderAppearance with the import form shown again
+// after a refused import.
+func (d *Dashboard) renderAppearanceWith(w http.ResponseWriter, r *http.Request, s *session, status int, errMsg string, imp *importFormView) {
 	ctx := r.Context()
 	org, err := d.orgID(ctx)
 	if err != nil {
@@ -64,7 +70,7 @@ func (d *Dashboard) renderAppearance(w http.ResponseWriter, r *http.Request, s *
 	}
 	cur := d.dashboardTheme(ctx)
 	v := d.shell(r, s, "appearance", "Appearance")
-	v.Error = errMsg
+	v.Error, v.ImportForm = errMsg, imp
 	v.CanManage = s.can(authz.SettingsWrite)
 	v.CurrentTheme = cur
 	v.OrgThemeName = d.orgDashboardTheme(ctx)
