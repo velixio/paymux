@@ -89,15 +89,26 @@ export function SavedFiltersBar({
               if (e.key === "Escape") setNaming(false);
             }}
           />
-          <Button size="sm" disabled={!name.trim()} onClick={save}>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!name.trim()}
+            onClick={save}
+          >
             Save
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setNaming(false)}>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => setNaming(false)}
+          >
             Cancel
           </Button>
         </span>
       ) : (
         <Button
+          type="button"
           variant="ghost"
           size="sm"
           className="save-filter"

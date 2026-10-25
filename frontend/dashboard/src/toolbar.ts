@@ -30,13 +30,40 @@ function backLink(n: ViewNode) {
     : null;
 }
 
-function statusChips(rest: ViewNode[]): ToolbarModel["statuses"] {
-  const form = rest.find(
+const filterForm = (rest: ViewNode[]) =>
+  rest.find(
     (n) =>
       n.tag === "form" &&
       has(n, "filters") &&
       (n.attrs.method ?? "get").toLowerCase() === "get",
   );
+
+function dropStatusSelect(n: ViewNode): ViewNode | null {
+  if (n.tag === "select" && n.attrs.name === "status") {
+    const chosen = findAll(
+      n,
+      (o) => o.tag === "option" && "selected" in o.attrs,
+    )
+      .map((o) => o.attrs.value ?? textOf(o).trim())
+      .find((v) => v !== "");
+    return chosen
+      ? {
+          tag: "input",
+          attrs: { type: "hidden", name: "status", value: chosen },
+          children: [],
+        }
+      : null;
+  }
+  return {
+    ...n,
+    children: n.children
+      .map(dropStatusSelect)
+      .filter((c): c is ViewNode => c !== null),
+  };
+}
+
+function statusChips(rest: ViewNode[]): ToolbarModel["statuses"] {
+  const form = filterForm(rest);
   const select =
     form && find(form, (n) => n.tag === "select" && n.attrs.name === "status");
   if (!select) return null;
@@ -92,11 +119,21 @@ export function extractToolbar(
     else if (isButtonLink(n)) actions.push(n);
     else if (inner.length === 1 && isButtonLink(inner[0]))
       actions.push(inner[0]);
+    // A paragraph that is only a link (e.g. "Logs for this payment").
+    else if (
+      inner.length === 1 &&
+      inner[0].tag === "a" &&
+      textOf(n).trim() === textOf(inner[0]).trim()
+    )
+      actions.push(inner[0]);
     else break;
   }
-  const rest = list.slice(i);
-  return {
-    toolbar: { back, title, description, actions, statuses: statusChips(rest) },
-    rest,
-  };
+  let rest = list.slice(i);
+  const statuses = statusChips(rest);
+  // The chips replace the form's own status control; the current status still
+  // travels with the form's other filters.
+  const form = filterForm(rest);
+  if (statuses && form)
+    rest = rest.map((n) => (n === form ? dropStatusSelect(n)! : n));
+  return { toolbar: { back, title, description, actions, statuses }, rest };
 }

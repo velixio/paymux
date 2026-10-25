@@ -80,37 +80,34 @@ function Form({ node }: { node: ViewNode }) {
     (node.attrs.class ?? "").split(/\s+/).includes("filters") &&
     (node.attrs.method ?? "get").toLowerCase() === "get";
   return (
-    <>
+    <form
+      {...attributes(node)}
+      ref={(el) => {
+        form.current = el;
+        if (el && baseline.current === null) baseline.current = fingerprint(el);
+      }}
+      aria-busy={pending}
+      data-dirty={dirty || undefined}
+      onInput={(event) => {
+        const changed = fingerprint(event.currentTarget) !== baseline.current;
+        setDirty(changed);
+        markDirty(event.currentTarget, changed);
+      }}
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit(
+          event.currentTarget,
+          (event.nativeEvent as SubmitEvent)
+            .submitter as HTMLButtonElement | null,
+        );
+      }}
+    >
+      {renderChildren(node.children)}
+      {dirty && node.attrs.class?.includes("setting-form") && (
+        <small className="unsaved-note">Unsaved change</small>
+      )}
       {filterForm && <SavedFiltersBar form={form} />}
-      <form
-        {...attributes(node)}
-        ref={(el) => {
-          form.current = el;
-          if (el && baseline.current === null)
-            baseline.current = fingerprint(el);
-        }}
-        aria-busy={pending}
-        data-dirty={dirty || undefined}
-        onInput={(event) => {
-          const changed = fingerprint(event.currentTarget) !== baseline.current;
-          setDirty(changed);
-          markDirty(event.currentTarget, changed);
-        }}
-        onSubmit={(event) => {
-          event.preventDefault();
-          submit(
-            event.currentTarget,
-            (event.nativeEvent as SubmitEvent)
-              .submitter as HTMLButtonElement | null,
-          );
-        }}
-      >
-        {renderChildren(node.children)}
-        {dirty && node.attrs.class?.includes("setting-form") && (
-          <small className="unsaved-note">Unsaved change</small>
-        )}
-      </form>
-    </>
+    </form>
   );
 }
 function PolicyTable({ node }: { node: ViewNode }) {
