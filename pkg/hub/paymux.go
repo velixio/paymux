@@ -141,6 +141,19 @@ func (a *App) Addr() string { a.mu.Lock(); defer a.mu.Unlock(); return a.addr }
 // InternalAddr is the bound address of the internal listener, or "".
 func (a *App) InternalAddr() string { a.mu.Lock(); defer a.mu.Unlock(); return a.iaddr }
 
+// EnableSelfUpdate turns on the dashboard's Update page for the stock paymux
+// binary: it installs releases of repo (owner/name) over the binary at exe and
+// then restarts the process, so Start returns and the caller starts exe again
+// (see RestartRequested). A custom binary built on this package does not call
+// it: replacing it with the stock paymux would be wrong.
+func (a *App) EnableSelfUpdate(repo, exe string) {}
+
+// RestartRequested reports that Start returned because an update was installed
+// and the process should start the new binary.
+func (a *App) RestartRequested() bool { return false }
+
+func (a *App) requestRestart() {}
+
 // Start opens the store, migrates, starts the job queue and both listeners,
 // and blocks until ctx is cancelled (returning nil after a graceful stop) or
 // something fails.
