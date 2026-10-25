@@ -58,8 +58,8 @@ test("a plain click on a row link opens the record in a pane; the list stays", a
     name: "Record preview",
   });
   expect(search(router).peek).toBe("/dashboard/payments/pay_1");
+  expect(await within(p).findByText("succeeded")).toBeTruthy();
   expect(within(p).getByText("pay_1")).toBeTruthy();
-  expect(within(p).getByText("succeeded")).toBeTruthy();
   // inner tabs from Task D
   expect(
     within(p)
@@ -179,4 +179,34 @@ test("j moves the selection and the pane follows; Enter opens the selected recor
   expect(api.state.tabs.find((t) => t.id === api.state.activeId)!.href).toBe(
     "/dashboard/payments/pay_2",
   );
+});
+
+test("closing the pane with unsaved edits asks first", async () => {
+  handlers["/dashboard/payments/pay_1"] = () =>
+    pageHtml(
+      "pay_1",
+      `<h1>pay_1</h1><form method="post" action="/dashboard/payments/pay_1/note"><input type="hidden" name="csrf" value="t"><input name="note" aria-label="Note" value=""><button type="submit">Save</button></form>`,
+    );
+  const router = await onList();
+  fireEvent.click(rowLink("pay_1"));
+  const p = await screen.findByRole("complementary", {
+    name: "Record preview",
+  });
+  const note = await within(p).findByLabelText("Note");
+  fireEvent.input(note, { target: { value: "draft" } });
+  fireEvent.click(within(p).getByRole("button", { name: "Close preview" }));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Discard unsaved changes?",
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(pane()).not.toBeNull();
+  expect(search(router).peek).toBe("/dashboard/payments/pay_1");
+  fireEvent.click(
+    within(pane()!).getByRole("button", { name: "Close preview" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Discard and continue" }),
+  );
+  await waitFor(() => expect(pane()).toBeNull());
 });

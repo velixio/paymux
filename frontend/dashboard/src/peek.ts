@@ -88,3 +88,7 @@ export function peekClickTarget(link: string, current: string): string | null {
     return null;
   return withPeek(here.pathname + here.search, record);
 }
+
+/** The side pane needs room: desktop widths only. */
+export const isWide = (): boolean =>
+  typeof matchMedia === "function" && matchMedia("(min-width: 1100px)").matches;

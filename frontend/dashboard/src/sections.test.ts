@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { ViewNode } from "./adapter";
-import { slugify, splitHead, splitSections } from "./sections";
+import { recordHeading, slugify, splitHead, splitSections } from "./sections";
 
 const el = (
   tag: string,
@@ -104,5 +104,31 @@ describe("splitHead", () => {
   test("no h1: everything is the body", () => {
     expect(splitHead([el("dl")]).head).toEqual([]);
     expect(splitHead([]).rest).toEqual([]);
+  });
+});
+
+describe("recordHeading", () => {
+  test("title is the h1 text; the status span and mode span are separate", () => {
+    const h1: ViewNode = {
+      tag: "h1",
+      attrs: {},
+      children: [
+        { tag: "#text", attrs: {}, children: [], text: "pay_1 " },
+        {
+          ...el("span", "succeeded"),
+          attrs: { class: "status status-succeeded" },
+        },
+        { ...el("span", "live"), attrs: { class: "mode mode-live" } },
+      ],
+    };
+    expect(recordHeading([el("p"), h1])).toEqual({
+      title: "pay_1",
+      status: "succeeded",
+    });
+    expect(recordHeading([el("h1", "Only title")])).toEqual({
+      title: "Only title",
+      status: "",
+    });
+    expect(recordHeading([el("p")])).toEqual({ title: "", status: "" });
   });
 });

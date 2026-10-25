@@ -1,0 +1,75 @@
+/* Side pane (peek): a record opened beside its list. */
+.peek-frame {
+  display: contents;
+}
+.peek-frame.peek-open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.peek-frame.peek-open > .react-content {
+  flex: 1;
+  min-width: 0;
+}
+.peek-frame.peek-open > .workspace-warning {
+  display: none;
+}
+.peek-pane {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--card);
+}
+.peek-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.peek-resize:hover,
+.peek-resize:focus-visible {
+  background: var(--ring);
+  outline: none;
+}
+.peek-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+.peek-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.peek-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.peek-body.react-content {
+  flex: 1;
+  padding: 14px 16px;
+}
+.peek-body.react-content .section-tabs-list {
+  margin-top: 0;
+}
+.peek-frame tbody tr[data-peek-row] {
+  background: var(--accent);
+}
+.peek-error {
+  padding: 16px;
+  color: var(--muted-foreground);
+}

@@ -78,3 +78,21 @@ export function splitSections(nodes: ViewNode[]): SplitPage | null {
     sections,
   };
 }
+
+/** Title and status of a record page, from its h1 (the status is a span). */
+export function recordHeading(nodes: ViewNode[]): {
+  title: string;
+  status: string;
+} {
+  const h1 = nodes.find((n) => n.tag === "h1");
+  if (!h1) return { title: "", status: "" };
+  const status = h1.children.find((c) =>
+    (c.attrs.class ?? "").split(/\s+/).includes("status"),
+  );
+  const title = h1.children
+    .filter((c) => c !== status && !hasClass(c, "mode"))
+    .map(textOf)
+    .join("")
+    .trim();
+  return { title, status: status ? textOf(status).trim() : "" };
+}

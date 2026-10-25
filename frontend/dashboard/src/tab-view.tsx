@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchDashboard } from "./adapter";
 import { PageContent } from "./render";
+import { PeekFrame } from "./peek-pane";
 import { queryKey, RuntimeProvider } from "./runtime";
 import { useTableNav } from "./use-table-nav";
 import type { Tab } from "./tabs";
@@ -189,13 +190,15 @@ export function TabView({
   );
   if (!active && (once || evicted)) return null;
   return (
-    <TabBody
-      tab={tab}
-      active={active}
-      dirty={dirty}
-      onDirty={reportDirty}
-      onOnce={setOnce}
-      scroll={scroll}
-    />
+    <PeekFrame active={active}>
+      <TabBody
+        tab={tab}
+        active={active}
+        dirty={dirty}
+        onDirty={reportDirty}
+        onOnce={setOnce}
+        scroll={scroll}
+      />
+    </PeekFrame>
   );
 }
