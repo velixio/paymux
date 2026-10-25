@@ -3,6 +3,7 @@ package dashboard
 import (
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"strings"
@@ -286,6 +287,9 @@ func (d *Dashboard) themeSave(w http.ResponseWriter, r *http.Request, s *session
 		return
 	case errors.Is(err, web.ErrThemeMissing):
 		http.NotFound(w, r)
+		return
+	case errors.As(err, new(*fs.PathError)): // the disk, not the form
+		d.fail(w, err)
 		return
 	case err != nil:
 		d.renderThemeForm(w, r, s, http.StatusBadRequest, view, themeErrMessage(err))

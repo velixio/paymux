@@ -118,9 +118,14 @@ func (t *Themes) custom(name string) (*os.Root, error) {
 	if err != nil {
 		return nil, err
 	}
-	if fi, err := r.Lstat(name); err != nil || !fi.IsDir() {
+	fi, err := r.Lstat(name)
+	switch {
+	case errors.Is(err, fs.ErrNotExist), err == nil && !fi.IsDir():
 		r.Close()
 		return nil, ErrThemeMissing
+	case err != nil: // permissions, I/O: not "missing"; the caller sees the cause
+		r.Close()
+		return nil, err
 	}
 	return r, nil
 }
@@ -151,6 +156,8 @@ func (t *Themes) Create(m Manifest, from *Theme) error {
 	defer r.Close()
 	if _, err := r.Lstat(m.Name); err == nil {
 		return ErrThemeExists
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
 	}
 	tmp := ".new-" + m.Name + "-" + randSuffix()
 	if err := r.Mkdir(tmp, 0o755); err != nil {
@@ -179,7 +186,10 @@ func (t *Themes) Create(m Manifest, from *Theme) error {
 		return fail(err)
 	}
 	if err := r.Rename(tmp, m.Name); err != nil {
-		return fail(ErrThemeExists)
+		if _, lerr := r.Lstat(m.Name); lerr == nil { // created meanwhile
+			return fail(ErrThemeExists)
+		}
+		return fail(fmt.Errorf("theme: moving %q into place: %w", m.Name, err))
 	}
 	return nil
 }
@@ -233,6 +243,8 @@ func (t *Themes) Rename(old, new string) error {
 	}
 	if _, err := r.Lstat(new); err == nil {
 		return ErrThemeExists
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
 	}
 	cur, err := r.ReadFile(path.Join(old, "theme.json"))
 	if err != nil {
