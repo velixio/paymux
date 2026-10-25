@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -99,5 +100,73 @@ func TestAuditAuthzUserAndKeyRevocationNeedRecentSignIn(t *testing.T) {
 		wantReauth(t, "POST /dashboard/users/{id}/sessions/revoke", r)
 		r, _ = e.post(c, "/dashboard/apps/"+app.ID+"/keys/"+key.ID+"/revoke", url.Values{"csrf": {tok}})
 		wantReauth(t, "POST /dashboard/apps/{id}/keys/{kid}/revoke (live key)", r)
+	})
+}
+
+// R-A9: the remaining configuration writes also need a recent full sign-in.
+// A stale remembered cookie must not add a webhook endpoint (an attacker's URL
+// then receives every event), add a domain, or change org, app or appearance
+// settings. The routes that exist under these names are the endpoint add and
+// disable, the domain add, the org settings (one key and the routing editor),
+// the app settings (set and reset) and the two appearance saves.
+func reauthConfigRoutes(app store.App, sinkURL string) []struct {
+	what, path string
+	form       url.Values
+} {
+	a := "/dashboard/apps/" + app.ID
+	return []struct {
+		what, path string
+		form       url.Values
+	}{
+		{"endpoint add", a + "/endpoints", url.Values{"url": {sinkURL}, "events": {"payment.succeeded"}}},
+		{"endpoint disable", a + "/endpoints/whe_none/disable", url.Values{}},
+		{"domain add", a + "/domains", url.Values{"host": {"pay.alpha.example"}}},
+		{"org setting", "/dashboard/settings/payment_ttl", url.Values{"value": {"45"}}},
+		{"org routing", "/dashboard/settings/routing", url.Values{}},
+		{"app setting", a + "/settings/payment_ttl", url.Values{"value": {"45"}}},
+		{"app setting reset", a + "/settings/payment_ttl/reset", url.Values{}},
+		{"theme", "/dashboard/appearance/theme", url.Values{"theme": {"pink"}}},
+		{"app appearance", "/dashboard/appearance/apps/" + app.ID, url.Values{"theme": {"pink"}, "language": {""}}},
+	}
+}
+
+func TestAuditAuthzConfigWritesNeedRecentSignIn(t *testing.T) {
+	sink := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	defer sink.Close()
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		app := e.seedApp("alpha")
+		c := staleAdmin(t, e)
+		tok := csrfOf(t, e.pageOK(c, "/dashboard/settings"))
+		for _, rt := range reauthConfigRoutes(app, sink.URL) {
+			f := url.Values{"csrf": {tok}}
+			for k, v := range rt.form {
+				f[k] = v
+			}
+			r, _ := e.post(c, rt.path, f)
+			wantReauth(t, "POST "+rt.path+" ("+rt.what+")", r)
+		}
+	})
+}
+
+// The guard only asks for a recent sign-in: with one, every route still works.
+func TestAuditAuthzConfigWritesWorkWithRecentSignIn(t *testing.T) {
+	sink := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	defer sink.Close()
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		app := e.seedApp("alpha")
+		c := e.roleClient("admin")
+		tok := csrfOf(t, e.pageOK(c, "/dashboard/settings"))
+		for _, rt := range reauthConfigRoutes(app, sink.URL) {
+			f := url.Values{"csrf": {tok}}
+			for k, v := range rt.form {
+				f[k] = v
+			}
+			r, body := e.post(c, rt.path, f)
+			if strings.HasPrefix(r.Header.Get("Location"), "/dashboard/reauth") || r.StatusCode >= 400 && rt.what != "endpoint disable" {
+				t.Errorf("POST %s (%s) with a fresh sign-in: %d %q\n%.300s", rt.path, rt.what, r.StatusCode, r.Header.Get("Location"), body)
+			}
+		}
 	})
 }
