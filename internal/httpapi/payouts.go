@@ -33,6 +33,8 @@ func (a *API) failPayout(w http.ResponseWriter, r *http.Request, err error) {
 		status, typ = http.StatusNotFound, "not_found"
 	case errors.Is(err, payouts.ErrNoRoute):
 		status, typ = http.StatusUnprocessableEntity, "no_route"
+	case errors.Is(err, payouts.ErrKeyReuse):
+		status, typ = http.StatusConflict, "idempotency_key_reuse"
 	}
 	a.fail(w, r, status, typ, pe.Message)
 }
@@ -70,7 +72,8 @@ func (a *API) createPayout(w http.ResponseWriter, r *http.Request, pr core.Princ
 	b := req.Beneficiary
 	p, err := a.payouts.Create(r.Context(), payouts.CreateInput{Scope: scope(pr), Amount: *req.Amount, Currency: req.Currency,
 		Beneficiary: connector.Beneficiary{Name: b.Name, AccountNumber: b.AccountNumber, IFSC: b.IFSC, UPI: b.UPI, Email: b.Email, Phone: b.Phone},
-		Narration:   req.Narration, Metadata: req.Metadata, ProviderAccountID: req.ProviderAccountID})
+		Narration:   req.Narration, Metadata: req.Metadata, ProviderAccountID: req.ProviderAccountID,
+		IdempotencyKey: r.Header.Get("Idempotency-Key")})
 	if err != nil {
 		a.failPayout(w, r, err)
 		return

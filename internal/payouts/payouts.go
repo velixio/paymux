@@ -67,6 +67,8 @@ var (
 	ErrInvalid  = errors.New("invalid request")
 	ErrNotFound = errors.New("not found")
 	ErrNoRoute  = errors.New("no route")
+	// ErrKeyReuse means the Idempotency-Key already made a different payout.
+	ErrKeyReuse = errors.New("idempotency key reuse")
 )
 
 // Error is a typed domain error.
@@ -144,6 +146,10 @@ type CreateInput struct {
 	// ProviderAccountID picks the account; empty means the first of the app's
 	// accounts that accepts payouts in the currency.
 	ProviderAccountID string
+	// IdempotencyKey is the request's Idempotency-Key. The payout is stored
+	// with it: a repeat returns the payout the key made first, however the
+	// request was retried.
+	IdempotencyKey string
 }
 
 const maxAmount = int64(1) << 50
@@ -251,6 +257,11 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (store.Payout, err
 	if err := validate(&in); err != nil {
 		return store.Payout{}, err
 	}
+	if in.IdempotencyKey != "" {
+		if p, ok, err := s.byKey(ctx, in); ok || err != nil {
+			return p, err
+		}
+	}
 	accountID, err := s.pickAccount(ctx, in)
 	if err != nil {
 		return store.Payout{}, err
@@ -269,7 +280,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (store.Payout, err
 	p := store.Payout{ID: id, OrgID: app.OrgID, Mode: in.Scope.Mode, AppID: app.ID, ProviderAccountID: accountID,
 		ProviderRef: ids.ProviderRef(), Amount: in.Amount, Currency: in.Currency, Status: StatusPending, BeneficiaryEnc: sealed,
 		BeneficiaryLabel: Label(in.Beneficiary), Narration: strings.TrimSpace(in.Narration), Metadata: in.Metadata, Version: 1,
-		CreatedAt: now, UpdatedAt: now}
+		CreatedAt: now, UpdatedAt: now, IdempotencyKey: in.IdempotencyKey}
 	err = s.o.DB.Write(ctx, func(tx store.Tx) error {
 		if err := store.InsertPayout(ctx, tx, p); err != nil {
 			return err
@@ -279,7 +290,33 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (store.Payout, err
 		}
 		return s.emit(ctx, tx, EvCreated, p)
 	})
+	if errors.Is(err, store.ErrConflict) && in.IdempotencyKey != "" {
+		// A concurrent request with the same key won the insert.
+		if existing, ok, kerr := s.byKey(ctx, in); ok || kerr != nil {
+			return existing, kerr
+		}
+	}
 	return p, err
+}
+
+// byKey returns the payout the request's Idempotency-Key made before. It
+// refuses a key that made a payout of another amount or currency.
+func (s *Service) byKey(ctx context.Context, in CreateInput) (store.Payout, bool, error) {
+	var p store.Payout
+	err := s.o.DB.Read(ctx, func(q store.Querier) (err error) {
+		p, err = store.FindPayoutByKey(ctx, q, in.Scope.AppID, in.Scope.Mode, in.IdempotencyKey)
+		return
+	})
+	if errors.Is(err, store.ErrNotFound) {
+		return store.Payout{}, false, nil
+	}
+	if err != nil {
+		return store.Payout{}, false, err
+	}
+	if p.Amount != in.Amount || p.Currency != in.Currency {
+		return store.Payout{}, false, newErr(ErrKeyReuse, "this Idempotency-Key already made a different payout")
+	}
+	return p, true, nil
 }
 
 // Get returns a payout of the scope's app and mode.

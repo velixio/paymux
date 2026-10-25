@@ -266,7 +266,7 @@ func (s *Service) handleDuplicate(ctx context.Context, tx store.Tx, p *store.Pay
 	if action == "auto_refund" {
 		// A full refund of the EXTRA attempt only. The duplicate is not a
 		// supply, so it gets no invoice and its refund no credit note.
-		_, err := s.insertRefund(ctx, tx, *p, extra, snap.Amount, "duplicate_payment", "system", audit.System)
+		_, err := s.insertRefund(ctx, tx, *p, extra, snap.Amount, "duplicate_payment", "system", "", audit.System)
 		if err == nil {
 			*alerts = append(*alerts, notify.Alert{Severity: notify.SeverityInfo, Kind: "payment.duplicate_refunded",
 				Message: fmt.Sprintf("Payment %s was paid twice; the extra %d %s is being refunded automatically.", p.ID, snap.Amount, snap.Currency),
