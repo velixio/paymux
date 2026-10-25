@@ -396,6 +396,9 @@ func (d *Dashboard) themeDelete(w http.ResponseWriter, r *http.Request, s *sessi
 	if !ok {
 		return
 	}
+	// The in-use check and the delete are not one step: someone may choose the
+	// theme in between. That is harmless by design: every place that wears a theme
+	// falls back (user, then organisation default, then stripe) when it is gone.
 	refs, err := d.themeRefs(r, th.Name)
 	if err != nil {
 		d.fail(w, err)

@@ -61,15 +61,22 @@ func (d *Dashboard) themeImport(w http.ResponseWriter, r *http.Request, s *sessi
 		again(errMsg)
 		return
 	}
+	// A name typed in the form replaces the file's own before anything is
+	// validated, so a file with an unusable name can be rescued by a good one.
+	parsed := raw
+	if rename != "" {
+		var obj map[string]json.RawMessage
+		if json.Unmarshal(raw, &obj) == nil {
+			obj["name"], _ = json.Marshal(rename)
+			parsed, _ = json.Marshal(obj)
+		}
+	}
 	var declared struct{ Name string }
-	_ = json.Unmarshal(raw, &declared)
-	m, err := web.ParseManifest(raw, declared.Name)
+	_ = json.Unmarshal(parsed, &declared)
+	m, err := web.ParseManifest(parsed, declared.Name)
 	if err != nil {
 		again(themeErrMessage(err))
 		return
-	}
-	if rename != "" {
-		m.Name = rename
 	}
 	switch {
 	case d.o.Themes == nil:
