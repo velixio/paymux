@@ -283,6 +283,34 @@ func (s *Service) transition(ctx context.Context, tx store.Tx, d *store.Dispute,
 	var tasks []alertTask
 	s.mergeFields(d, snap)
 	d.Status = string(to)
+	if to == state.DisputeLost || to == state.DisputeAccepted {
+		// What a lost dispute takes is what is left of the attempt after the
+		// disputes still open and those already lost. An earlier dispute that
+		// ended in our favour has freed its share since this one was capped, so
+		// the hold is topped up first: release and loss then net per dispute.
+		open, err := store.SumOpenHolds(ctx, tx, a.ID, d.ID)
+		if err != nil {
+			return nil, err
+		}
+		lost, err := store.SumLostHolds(ctx, tx, a.ID, d.ID)
+		if err != nil {
+			return nil, err
+		}
+		taken := max(min(d.Amount, a.AmountReceived-open-lost), 0)
+		if taken > d.AmountHeld {
+			if err := s.ledger(ctx, tx, *d, "dispute_hold", -(taken - d.AmountHeld), now); err != nil {
+				return nil, err
+			}
+			wasCapped := d.AmountHeld < d.Amount
+			d.AmountHeld = taken
+			if taken < d.Amount && !wasCapped {
+				tasks = append(tasks, alertTask{alert: overlapAlert(*d)})
+			}
+		}
+		if taken < d.Amount {
+			addFlag(p, FlagDisputeOverlap)
+		}
+	}
 	if err := store.UpdateDispute(ctx, tx, d, now); err != nil {
 		return nil, err
 	}

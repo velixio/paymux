@@ -78,9 +78,9 @@ func FindDispute(ctx context.Context, q Queryer, accountID, providerDisputeID st
 // UpdateDispute writes the mutable fields of d if its stored version is
 // d.Version, then bumps the version.
 func UpdateDispute(ctx context.Context, tx Tx, d *Dispute, now time.Time) error {
-	res, err := tx.ExecContext(ctx, `UPDATE disputes SET status = ?, stage = ?, reason = ?, due_by = ?, evidence = ?, amount = ?,
+	res, err := tx.ExecContext(ctx, `UPDATE disputes SET status = ?, stage = ?, reason = ?, due_by = ?, evidence = ?, amount = ?, amount_held = ?,
 		version = version + 1, updated_at = ? WHERE id = ? AND version = ?`,
-		d.Status, nullIfEmpty(d.Stage), nullIfEmpty(d.Reason), nullMSTime(d.DueBy), d.Evidence, d.Amount, ms(now), d.ID, d.Version)
+		d.Status, nullIfEmpty(d.Stage), nullIfEmpty(d.Reason), nullMSTime(d.DueBy), d.Evidence, d.Amount, d.AmountHeld, ms(now), d.ID, d.Version)
 	if err != nil {
 		return err
 	}
@@ -126,6 +126,15 @@ func SumOpenHolds(ctx context.Context, q Queryer, attemptID, exceptID string) (i
 	var n int64
 	err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount_held), 0) FROM disputes WHERE attempt_id = ? AND id <> ?
 		AND status IN ('needs_response','under_review')`, attemptID, exceptID).Scan(&n)
+	return n, err
+}
+
+// SumLostHolds is what the lost or accepted disputes of an attempt, other than
+// exceptID, took from it.
+func SumLostHolds(ctx context.Context, q Queryer, attemptID, exceptID string) (int64, error) {
+	var n int64
+	err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount_held), 0) FROM disputes WHERE attempt_id = ? AND id <> ?
+		AND status IN ('lost','accepted')`, attemptID, exceptID).Scan(&n)
 	return n, err
 }
 
