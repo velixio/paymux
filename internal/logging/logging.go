@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+
+	"github.com/paymux/paymux/internal/redact"
 )
 
 const redacted = "[REDACTED]"
@@ -20,6 +22,12 @@ var (
 	reEmail    = regexp.MustCompile(`([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})`)
 )
 
+// red holds the database log's name and value rules (credential names,
+// "Bearer ...", "whsec_...", key=value pairs), so stderr, which every
+// deployment keeps, is not the weaker copy. Configured secret values are
+// added by the database log handler, which scrubs what it passes on.
+var red = redact.New()
+
 // New returns a JSON slog logger writing to w. Values under secret-looking
 // keys are replaced, and PII-looking substrings in string values are masked.
 func New(w io.Writer, level slog.Level) *slog.Logger {
@@ -29,16 +37,26 @@ func New(w io.Writer, level slog.Level) *slog.Logger {
 	}))
 }
 
-func replaceAttr(_ []string, a slog.Attr) slog.Attr {
-	if isSecretKey(a.Key) {
+func replaceAttr(groups []string, a slog.Attr) slog.Attr {
+	if len(groups) == 0 && (a.Key == slog.TimeKey || a.Key == slog.LevelKey || a.Key == slog.SourceKey) {
+		return a
+	}
+	if isSecretKey(a.Key) || redact.IsCredentialName(a.Key) {
 		return slog.String(a.Key, redacted)
 	}
 	switch a.Value.Kind() {
 	case slog.KindString:
-		a.Value = slog.StringValue(maskString(a.Value.String()))
+		a.Value = slog.StringValue(red.Text(maskString(a.Value.String())))
 	case slog.KindAny:
-		if err, ok := a.Value.Any().(error); ok && err != nil {
-			a.Value = slog.StringValue(maskString(err.Error()))
+		switch v := a.Value.Any().(type) {
+		case nil:
+		case error:
+			a.Value = slog.StringValue(red.Text(maskString(v.Error())))
+		default:
+			// A map or struct may hold a credential under any field name.
+			if out, ok := red.Value(a.Key, v).(string); ok {
+				a.Value = slog.StringValue(maskString(out))
+			}
 		}
 	}
 	return a

@@ -21,6 +21,7 @@ import (
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/store"
+	"github.com/paymux/paymux/pkg/connector"
 )
 
 // Alerter raises ops alerts (*notify.Alerts).
@@ -165,8 +166,9 @@ func DefaultFetch(allowPrivate bool) FetchFunc {
 			if err != nil {
 				return err
 			}
-			if ip := net.ParseIP(host); ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-				ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+			// The connector guard's list (CGNAT, NAT64, benchmarking, reserved...),
+			// so the three outbound guards agree.
+			if ip := net.ParseIP(host); ip == nil || connector.IsPrivateIP(ip) {
 				return errors.New("refusing to connect to a non-public address")
 			}
 			return nil

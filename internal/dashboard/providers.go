@@ -75,7 +75,7 @@ func (d *Dashboard) routesProviders() {
 	m.HandleFunc("POST "+prefix+"/providers", d.authed(authz.ProviderAccountManage, d.recent(d.providerCreate)))
 	m.HandleFunc("GET "+prefix+"/providers/{id}", d.authed(authz.SettingsRead, d.providerPage))
 	m.HandleFunc("POST "+prefix+"/providers/{id}", d.authed(authz.ProviderAccountManage, d.recent(d.providerUpdate)))
-	m.HandleFunc("POST "+prefix+"/providers/{id}/apps", d.authed(authz.ProviderAccountManage, d.providerLink))
+	m.HandleFunc("POST "+prefix+"/providers/{id}/apps", d.authed(authz.ProviderAccountManage, d.recent(d.providerLink)))
 	m.HandleFunc("POST "+prefix+"/providers/{id}/test", d.authed(authz.ProviderAccountManage, d.providerTest))
 	d.routesOAuth()
 }

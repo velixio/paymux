@@ -575,14 +575,10 @@ func (s *Service) deferCharge(ctx context.Context, tx store.Tx, sub store.Subscr
 func toSnapshot(ps connector.PaymentSnapshot, amount int64, currency string) core.Snapshot {
 	switch ps.Status {
 	case connector.PaymentSucceeded:
-		a, c := ps.Amount, ps.Currency
-		if a == 0 {
-			a = amount
-		}
-		if c == "" {
-			c = currency
-		}
-		return core.Snapshot{Status: state.AttemptCaptured, Amount: a, Currency: c, Method: ps.Method, ProviderPaymentID: ps.ProviderPaymentID}
+		// The provider's own amount and currency, never the ones we expected: a
+		// success that states none must not be booked as paid in full (the core
+		// refuses a capture without an amount and reviews a different one).
+		return core.Snapshot{Status: state.AttemptCaptured, Amount: ps.Amount, Currency: ps.Currency, Method: ps.Method, ProviderPaymentID: ps.ProviderPaymentID}
 	case connector.PaymentFailed, connector.PaymentCanceled, connector.PaymentExpired:
 		return core.Snapshot{Status: state.AttemptFailed, Method: ps.Method, ProviderPaymentID: ps.ProviderPaymentID,
 			FailureCode: ps.ErrorCode, FailureMessage: ps.ErrorMessage}

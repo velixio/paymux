@@ -40,7 +40,8 @@ func words(key string) []string {
 // credWords are words that make a field a credential wherever they appear.
 var credWords = set("authorization", "cookie", "cookies", "setcookie", "password", "passwords", "passwd", "pwd",
 	"passphrase", "secret", "secrets", "token", "tokens", "salt", "hash", "signature", "signatures", "otp", "cvv", "cvv2",
-	"cvc", "cvc2", "ccvv", "cvn", "pkcs12", "apikey", "privatekey", "credential", "credentials", "bearer", "pin")
+	"cvc", "cvc2", "ccvv", "cvn", "pkcs12", "apikey", "privatekey", "credential", "credentials", "bearer", "pin",
+	"pass", "totp", "mfa", "sig")
 
 // credKeyPrev are the words that make "<word> key" a credential.
 var credKeyPrev = set("api", "private", "secret", "access", "signing", "master", "encryption", "auth", "license")
@@ -74,6 +75,9 @@ func isCredentialName(key string) bool {
 		return true
 	}
 	ws := words(key)
+	if len(ws) == 1 && (ws[0] == "key" || ws[0] == "auth") { // ?key=, {"auth": ...}; auth_payu_id stays readable
+		return true
+	}
 	for i, w := range ws {
 		if credWords[w] {
 			return true

@@ -108,6 +108,15 @@ func CountDisputesNeedingResponse(ctx context.Context, q Queryer, orgID string) 
 	return n, err
 }
 
+// CountOtherOpenDisputes is how many of a payment's disputes other than
+// exceptID are still open (needs_response or under_review).
+func CountOtherOpenDisputes(ctx context.Context, q Queryer, paymentID, exceptID string) (int, error) {
+	var n int
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM disputes WHERE payment_id = ? AND id <> ? AND status IN ('needs_response','under_review')`,
+		paymentID, exceptID).Scan(&n)
+	return n, err
+}
+
 // ListOpenDisputes returns every open dispute (for deadline alerts).
 func ListOpenDisputes(ctx context.Context, q Queryer, limit int) ([]Dispute, error) {
 	return listDisputes(ctx, q, "SELECT "+disputeCols+" FROM disputes WHERE status IN ('needs_response','under_review') ORDER BY id LIMIT ?", limit)

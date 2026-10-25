@@ -315,7 +315,8 @@ func TestStartupLogRedactsPassword(t *testing.T) {
 	if strings.Contains(logs, ":"+pw+"@") || strings.Contains(logs, ":"+url.QueryEscape(pw)+"@") {
 		t.Fatalf("log leaks password:\n%s", logs)
 	}
-	if !strings.Contains(logs, "xxxxx") {
+	// The shared redactor hides the whole user-info ("postgres://[redacted]@h").
+	if !strings.Contains(logs, "://[redacted]@") {
 		t.Fatalf("startup line should show redacted URL:\n%s", logs)
 	}
 }

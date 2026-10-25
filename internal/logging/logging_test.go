@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 )
 
@@ -99,14 +100,15 @@ func TestMasksGSTIN(t *testing.T) {
 }
 
 func TestMasksURLPassword(t *testing.T) {
-	if got := maskStr(t, "dial postgres://u:s3cret@h/db failed"); got != "dial postgres://u:xxxxx@h/db failed" {
+	// The shared redactor hides the whole user-info, user name included.
+	if got := maskStr(t, "dial postgres://u:s3cret@h/db failed"); strings.Contains(got, "s3cret") || !strings.HasSuffix(got, "@h/db failed") {
 		t.Fatal(got)
 	}
 }
 
 func TestMasksErrorValues(t *testing.T) {
 	m := logOnce(t, func(l *slog.Logger) { l.Error("m", "err", errors.New("open postgres://u:s3cret@h/db")) })
-	if m["err"] != "open postgres://u:xxxxx@h/db" {
+	if s, _ := m["err"].(string); strings.Contains(s, "s3cret") || !strings.HasSuffix(s, "@h/db") {
 		t.Fatal(m["err"])
 	}
 }

@@ -247,6 +247,15 @@ func (s *Service) SubmitRefund(ctx context.Context, payload json.RawMessage) err
 	if r.InitiatedBy == "provider" {
 		return nil // the provider made this refund itself: never send it again
 	}
+	// CreateRefund refuses a disputed payment, but a dispute can open while the
+	// refund waits here; sending it then would pay the customer twice.
+	p, err := s.o.Core.GetPaymentByID(ctx, r.PaymentID)
+	if err != nil {
+		return err
+	}
+	if p.HasFlag("disputed") || p.HasFlag("dispute_lost") {
+		return s.failRefund(ctx, r, "the payment went into dispute before the refund was sent; the money is already being taken back")
+	}
 	a, err := s.o.Core.GetAttempt(ctx, r.AttemptID)
 	if err != nil {
 		return jobs.Permanent(err)

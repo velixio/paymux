@@ -74,7 +74,7 @@ func TestProviderCreateRendersTheSchemaForm(t *testing.T) {
 		}
 
 		tok := csrfOf(t, body)
-		form := url.Values{"connector": {st.Name}, "name": {"Main account"}, "mode": {"live"}, "cfg_key_id": {"key_123"}, "cfg_key_secret": {"s3cr3t-value"},
+		form := url.Values{"connector": {st.Name}, "name": {"Main account"}, "mode": {"test"}, "cfg_key_id": {"key_123"}, "cfg_key_secret": {"s3cr3t-value"},
 			"cfg_region": {"sg"}, "cfg_test_mode": {"1"}, "cfg_retries": {"3"}, "currency": {"INR", "USD"}, "purpose": {"one_time", "subscription"},
 			"statement_descriptor": {"VOICESTUDIO"}, "provider_gstin": {"27AAPFU0939F1ZV"}, "app_id": {app.ID}, "csrf": {tok}}
 		r, b := e.post(admin, "/dashboard/providers", form)
@@ -96,7 +96,7 @@ func TestProviderCreateRendersTheSchemaForm(t *testing.T) {
 			linked, err = store.ListAppProviderAccountIDs(ctx, q, app.ID)
 			return
 		})
-		if pa.Mode != "live" || pa.Name != "Main account" || strings.Join(pa.AcceptedCurrencies, ",") != "INR,USD" || strings.Join(pa.EnabledPurposes, ",") != "one_time,subscription" ||
+		if pa.Mode != "test" || pa.Name != "Main account" || strings.Join(pa.AcceptedCurrencies, ",") != "INR,USD" || strings.Join(pa.EnabledPurposes, ",") != "one_time,subscription" ||
 			pa.StatementDescriptor != "VOICESTUDIO" || len(linked) != 1 || linked[0] != id {
 			t.Fatalf("account %+v linked %v", pa, linked)
 		}
@@ -155,7 +155,13 @@ func TestProviderSecretsAreWriteOnly(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		st := fakeconn.RegisterSchema("dashfake", providerSchema)
-		pa := e.createProvider(st, `{"key_id":"key_123","key_secret":"s3cr3t-value","region":"in","test_mode":true,"retries":2}`)
+		// A sandbox switch is only allowed on a test-mode account.
+		in := connectorsInputCfg(st.Name, `{"key_id":"key_123","key_secret":"s3cr3t-value","region":"in","test_mode":true,"retries":2}`)
+		in.Mode = "test"
+		pa, err := e.conn.CreateAccount(ctx, auditUser("usr_seed"), core.OrgScope{OrgID: store.DefaultOrgID}, in)
+		if err != nil {
+			t.Fatal(err)
+		}
 		admin := e.roleClient("admin")
 		page := "/dashboard/providers/" + pa.ID
 		body := e.pageOK(admin, page)

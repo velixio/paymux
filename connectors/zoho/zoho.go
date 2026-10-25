@@ -495,6 +495,13 @@ func (z *zoho) FetchPayment(ctx context.Context, ref connector.PaymentRef) (conn
 		if got := out.Payment.SessionID; got != "" && ref.ProviderOrderID != "" && got != ref.ProviderOrderID {
 			return connector.PaymentSnapshot{}, fmt.Errorf("%w: payment %s belongs to another session", connector.ErrNotFound, ref.ProviderPaymentID)
 		}
+		// Not contradicting us is not enough: a payment that names no session and
+		// no reference (a payment link's, an invoice's) is not ours either.
+		if (ref.ProviderRef != "" || ref.ProviderOrderID != "") &&
+			!(out.Payment.Reference != "" && out.Payment.Reference == ref.ProviderRef) &&
+			!(out.Payment.SessionID != "" && out.Payment.SessionID == ref.ProviderOrderID) {
+			return connector.PaymentSnapshot{}, fmt.Errorf("%w: payment %s names neither our reference nor our session", connector.ErrNotFound, ref.ProviderPaymentID)
+		}
 		return out.Payment.snapshot(ref.ProviderOrderID)
 	case ref.ProviderOrderID != "":
 		var out struct {

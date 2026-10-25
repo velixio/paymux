@@ -3,6 +3,7 @@ package dblog
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"regexp"
 	"runtime"
@@ -51,10 +52,10 @@ type handler struct {
 	groups []string
 }
 
-// Handler returns a slog.Handler that passes every record to next unchanged
-// (stdout and journald keep their logs as they are) and also stores the
-// records at or above the recorder's level, redacted. A record that cannot be
-// stored is simply not stored.
+// Handler returns a slog.Handler that passes every record to next with the
+// known secret values (provider credentials, the master key) replaced, and
+// also stores the records at or above the recorder's level, fully redacted. A
+// record that cannot be stored is simply not stored.
 func (r *Recorder) Handler(next slog.Handler) slog.Handler { return &handler{r: r, next: next} }
 
 func (h *handler) Enabled(ctx context.Context, l slog.Level) bool {
@@ -64,7 +65,7 @@ func (h *handler) Enabled(ctx context.Context, l slog.Level) bool {
 func (h *handler) Handle(ctx context.Context, rec slog.Record) error {
 	var err error
 	if h.next.Enabled(ctx, rec.Level) {
-		err = h.next.Handle(ctx, rec)
+		err = h.next.Handle(ctx, h.scrubbed(rec))
 	}
 	if rec.Level >= h.r.Level() {
 		func() {
@@ -77,7 +78,7 @@ func (h *handler) Handle(ctx context.Context, rec slog.Record) error {
 
 func (h *handler) WithAttrs(as []slog.Attr) slog.Handler {
 	c := *h
-	c.next = h.next.WithAttrs(as)
+	c.next = h.next.WithAttrs(scrubAttrs(h.r.red, as))
 	c.attrs = append(append([]kvAttr(nil), h.attrs...), flatten(h.groups, as)...)
 	return &c
 }
@@ -90,6 +91,47 @@ func (h *handler) WithGroup(name string) slog.Handler {
 	c.next = h.next.WithGroup(name)
 	c.groups = append(append([]string(nil), h.groups...), name)
 	return &c
+}
+
+// scrubbed is rec with the known secret values replaced, for the next handler
+// (stderr): its own rules cannot know which values are this hub's secrets.
+func (h *handler) scrubbed(rec slog.Record) slog.Record {
+	out := slog.NewRecord(rec.Time, rec.Level, h.r.red.Scrub(rec.Message), rec.PC)
+	var as []slog.Attr
+	rec.Attrs(func(a slog.Attr) bool {
+		as = append(as, a)
+		return true
+	})
+	out.AddAttrs(scrubAttrs(h.r.red, as)...)
+	return out
+}
+
+func scrubAttrs(red *redact.Redactor, as []slog.Attr) []slog.Attr {
+	out := make([]slog.Attr, len(as))
+	for i, a := range as {
+		v := a.Value.Resolve()
+		switch v.Kind() {
+		case slog.KindGroup:
+			out[i] = slog.Attr{Key: a.Key, Value: slog.GroupValue(scrubAttrs(red, v.Group())...)}
+		case slog.KindString:
+			out[i] = slog.String(a.Key, red.Scrub(v.String()))
+		case slog.KindAny:
+			var s string
+			if err, ok := v.Any().(error); ok && err != nil {
+				s = err.Error()
+			} else if v.Any() != nil {
+				s = fmt.Sprint(v.Any())
+			}
+			if t := red.Scrub(s); t != s {
+				out[i] = slog.String(a.Key, t)
+			} else {
+				out[i] = slog.Attr{Key: a.Key, Value: v}
+			}
+		default:
+			out[i] = slog.Attr{Key: a.Key, Value: v}
+		}
+	}
+	return out
 }
 
 // flatten turns attributes into dotted key / value pairs.

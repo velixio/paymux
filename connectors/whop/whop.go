@@ -92,11 +92,16 @@ func New(raw json.RawMessage, deps connector.Deps) (connector.Connector, error) 
 	if cfg.APIKey == "" || cfg.CompanyID == "" || cfg.WebhookSecret == "" {
 		return nil, errors.New("whop: api_key, company_id and webhook_secret are required")
 	}
+	key := signingKey(cfg.WebhookSecret)
+	if len(key) == 0 {
+		// "whsec_" alone decodes to no key at all: anyone could sign webhooks.
+		return nil, errors.New("whop: webhook_secret has no key material")
+	}
 	hc := deps.HTTP
 	if hc == nil {
 		hc = connector.NewHTTPClient(connector.HTTPOptions{Logger: deps.Logger, Secrets: []string{cfg.APIKey, cfg.WebhookSecret}, RateLimit: info.RateLimit})
 	}
-	return &whop{cfg: cfg, deps: deps, http: hc, key: signingKey(cfg.WebhookSecret)}, nil
+	return &whop{cfg: cfg, deps: deps, http: hc, key: key}, nil
 }
 
 // signingKey derives the HMAC key from the configured secret.

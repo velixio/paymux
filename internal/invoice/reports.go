@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -37,11 +38,12 @@ type ReportSet struct {
 
 // Write writes every file into dir (created if needed).
 func (r ReportSet) Write(dir string) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// Buyers' names, GSTINs and amounts: readable by the hub's user only.
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	for _, f := range r.Files {
-		if err := os.WriteFile(filepath.Join(dir, f.Name), f.CSV, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, f.Name), f.CSV, 0o600); err != nil {
 			return err
 		}
 	}
@@ -67,10 +69,34 @@ func (t *csvTable) add(cols ...string) { t.rows = append(t.rows, cols) }
 func (t csvTable) file() (ReportFile, error) {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	if err := w.WriteAll(t.rows); err != nil {
+	rows := make([][]string, len(t.rows))
+	for i, r := range t.rows {
+		rows[i] = make([]string, len(r))
+		for j, c := range r {
+			rows[i][j] = csvCell(c)
+		}
+	}
+	if err := w.WriteAll(rows); err != nil {
 		return ReportFile{}, err
 	}
 	return ReportFile{Name: t.name, CSV: buf.Bytes()}, nil
+}
+
+var plainNumber = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?$`)
+
+// csvCell keeps a spreadsheet from running a cell as a formula: a buyer's
+// name typed on a hosted page ("=HYPERLINK(...)") ends up in these files and
+// an accountant opens them in Excel. Amounts (a credit note's "-1180.00") are
+// left as they are.
+func csvCell(c string) string {
+	if c == "" || plainNumber.MatchString(c) {
+		return c
+	}
+	switch c[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + c
+	}
+	return c
 }
 
 // rupees formats paise as a plain decimal ("1180.00"); blank for pending.
