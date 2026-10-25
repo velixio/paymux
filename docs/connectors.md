@@ -70,7 +70,10 @@ Notification kinds are `payment`, `refund`, `dispute`, `mandate`,
 a `PayoutSnapshot` with your reference or the provider's payout id). Like every
 notification a payout webhook is only a hint: Paymux finds its own payout in the
 account, calls your `FetchPayout`, checks reference, amount and currency, and
-applies that.
+applies that. A payout is only booked as succeeded when the snapshot states the
+amount and currency that were sent (case-insensitively for the currency); a
+success without them, or with others, is left unapplied and raises an alert, so
+set both on every `PayoutSnapshot` you return.
 
 ### Optional interfaces
 
