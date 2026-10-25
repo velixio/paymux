@@ -151,6 +151,7 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	defer db.Close()
 	a.warnDatabaseTLS()
+	a.warnLooseFiles(db)
 
 	dialect := db.Dialect().Name()
 	a.log.Info("paymux starting", "version", Version, "dialect", dialect,

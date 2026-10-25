@@ -389,7 +389,7 @@ func (s *Service) ledger(ctx context.Context, tx store.Tx, d store.Dispute, kind
 		return nil
 	}
 	return store.InsertLedgerEntry(ctx, tx, store.LedgerEntry{ID: ids.New("led"), OrgID: d.OrgID, Mode: d.Mode, Kind: kind,
-		Amount: amount, Currency: d.Currency, PaymentID: d.PaymentID, DisputeID: d.ID, OccurredAt: now})
+		Amount: amount, Currency: d.Currency, PaymentID: d.PaymentID, DisputeID: d.ID, AttemptID: d.AttemptID, OccurredAt: now})
 }
 
 func (s *Service) emit(ctx context.Context, tx store.Tx, typ string, d store.Dispute) error {

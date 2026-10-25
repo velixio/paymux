@@ -1,0 +1,68 @@
+# Nightly fuzzing of the parsers and verifiers that read data from outside:
+# every Fuzz target of the packages below runs for 10 minutes. It runs on a
+# schedule (and by hand) only, never on a pull request, so it cannot hold up
+# a merge. A failing input is written to testdata/fuzz/<target>/ by the Go
+# tool; the job uploads those files, and the corpus the run built up, as an
+# artifact. To keep a finding, copy the failing file into the package's
+# testdata/fuzz directory and commit it with the fix.
+name: Fuzz
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - ./connectors/cashfree
+          - ./connectors/payu
+          - ./connectors/razorpay
+          - ./connectors/stripe
+          - ./connectors/whop
+          - ./connectors/zoho
+          - ./internal/tax
+          - ./pkg/connector/money
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (v4)
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0 (v5)
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Fuzz every target of ${{ matrix.package }} for 10 minutes
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          set -euo pipefail
+          targets=$(go test -list '^Fuzz' "$PACKAGE" | grep '^Fuzz' || true)
+          if [ -z "$targets" ]; then
+            echo "no Fuzz target in $PACKAGE" >&2
+            exit 1
+          fi
+          failed=0
+          for t in $targets; do
+            echo "::group::$PACKAGE $t"
+            go test "$PACKAGE" -run '^$' -fuzz "^${t}\$" -fuzztime 10m || failed=1
+            echo "::endgroup::"
+          done
+          exit $failed
+      - name: Upload failing inputs and the corpus
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-${{ strategy.job-index }}
+          path: |
+            **/testdata/fuzz/**
+            ~/.cache/go-build/fuzz/**
+          if-no-files-found: ignore
+          retention-days: 14

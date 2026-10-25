@@ -174,7 +174,7 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 			a.AmountReceived, a.CurrencyReceived = snap.Amount, snap.Currency
 			a.FailureCode, a.FailureMessage = "", ""
 			if err := store.InsertLedgerEntry(ctx, tx, store.LedgerEntry{ID: ids.New("led"), OrgID: p.OrgID, Mode: p.Mode,
-				Kind: "charge", Amount: snap.Amount, Currency: snap.Currency, PaymentID: p.ID, OccurredAt: now}); err != nil {
+				Kind: "charge", Amount: snap.Amount, Currency: snap.Currency, PaymentID: p.ID, AttemptID: a.ID, OccurredAt: now}); err != nil {
 				return err
 			}
 		}

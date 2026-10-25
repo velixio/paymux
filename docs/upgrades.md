@@ -70,6 +70,30 @@ are strict and there is no repair step. If one fails, fix the rows it names
   GROUP BY 1, 2 HAVING COUNT(*) > 1;
   ```
 
+- **0033, ledger invariants.** Amounts of payments, refunds and payouts must
+  be positive and `payments.amount_refunded` not negative (CHECK constraints
+  on PostgreSQL, triggers on SQLite); a refund is booked once per refund and a
+  dispute releases and loses once per dispute (unique indexes); and
+  `ledger_entries` refuses UPDATE and DELETE from then on. It fails on rows
+  that break one of these. List them before upgrading:
+
+  ```sql
+  SELECT id FROM payments WHERE amount <= 0 OR amount_refunded < 0;
+  SELECT id FROM refunds WHERE amount <= 0;
+  SELECT id FROM payouts WHERE amount <= 0;
+  SELECT refund_id, kind, COUNT(*) FROM ledger_entries WHERE refund_id IS NOT NULL
+  GROUP BY 1, 2 HAVING COUNT(*) > 1;
+  SELECT dispute_id, kind, COUNT(*) FROM ledger_entries
+  WHERE dispute_id IS NOT NULL AND kind <> 'dispute_hold' GROUP BY 1, 2 HAVING COUNT(*) > 1;
+  ```
+
+  The migration also adds `ledger_entries.attempt_id` and fills it for old
+  entries where the attempt is unambiguous; the rest stay empty and count as
+  the sale in revenue totals. Because the ledger is now append-only, a later
+  migration or script that must change ledger rows has to drop the triggers
+  (`ledger_entries_no_update` and `ledger_entries_no_delete` on SQLite,
+  `ledger_entries_no_change` on PostgreSQL) first and recreate them.
+
 ## `paymux update`
 
 ```sh
@@ -86,13 +110,19 @@ host, if you hit rate limits) and then:
 2. checks its SHA-256 against the release's `SHA256SUMS` and refuses to install
    anything it cannot verify (no `SHA256SUMS`, no entry for the file, or a
    different hash);
-3. if the release has a `SHA256SUMS.sig` and `cosign` is installed, verifies
-   that signature as well. Give it what to verify against: `--cosign-key
-   cosign.pub`, or `--cosign-identity <signer> --cosign-issuer <oidc issuer>`
-   for keyless releases (`SHA256SUMS.pem` is used when present). A signature
-   that does not verify aborts the update. With cosign missing, or nothing to
-   verify against, it says "signature not verified" and the checksum alone
-   decides;
+3. verifies the cosign signature of `SHA256SUMS` (`SHA256SUMS.sig` with the
+   certificate `SHA256SUMS.pem`) with `cosign`, which must be installed. By
+   default the signer has to be the release workflow of the repository on a
+   version tag (`https://github.com/<owner>/<name>/.github/workflows/release.yml@refs/tags/v…`,
+   issued by `https://token.actions.githubusercontent.com`); `--repo` changes
+   the repository. To verify against something else give `--cosign-key
+   cosign.pub`, or `--cosign-identity <signer> --cosign-issuer <oidc issuer>`.
+   A release that is not signed, a signature that does not verify, a missing
+   certificate or a missing `cosign` all abort the update. If you accept that
+   risk (for example for an old release made before signing, or without
+   `cosign`), `--insecure-skip-signature` installs on the checksum alone and
+   prints a warning; it cannot be combined with `--cosign-key` or
+   `--cosign-identity`;
 4. runs the new binary's `version` and requires it to report the release's
    version;
 5. replaces the binary atomically (a rename in the same directory), keeping the

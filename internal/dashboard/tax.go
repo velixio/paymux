@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -221,8 +220,12 @@ func (d *Dashboard) reportZip(w http.ResponseWriter, r *http.Request, s *session
 	if !ok {
 		return
 	}
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
+	// Streamed to the client as it is compressed (the route runs outside the
+	// timeout buffer, see server.IsStreamed). Once bytes are out a failure can only
+	// cut the download short, which the client sees as a broken archive.
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="gst-reports-%s-%s.zip"`, set.Entity.GSTIN, set.Month))
+	zw := zip.NewWriter(w)
 	stamp, _, _ := monthBounds(set.Month)
 	for _, f := range set.Files {
 		fw, err := zw.CreateHeader(&zip.FileHeader{Name: f.Name, Method: zip.Deflate, Modified: stamp})
@@ -230,17 +233,13 @@ func (d *Dashboard) reportZip(w http.ResponseWriter, r *http.Request, s *session
 			_, err = fw.Write(f.CSV)
 		}
 		if err != nil {
-			d.fail(w, err)
+			d.o.Logger.Error("dashboard: report zip", "err", err)
 			return
 		}
 	}
 	if err := zw.Close(); err != nil {
-		d.fail(w, err)
-		return
+		d.o.Logger.Error("dashboard: report zip", "err", err)
 	}
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="gst-reports-%s-%s.zip"`, set.Entity.GSTIN, set.Month))
-	_, _ = w.Write(buf.Bytes())
 }
 
 // ---- tax entities ----

@@ -36,7 +36,8 @@ for t in $TARGETS; do
     *) echo "release: unsupported target '$t' (supported: $SUPPORTED)" >&2; exit 2 ;;
   esac
 done
-bun install --cwd frontend --frozen-lockfile
+# --ignore-scripts: a dependency's install script must not run with the release job's token and signing identity.
+bun install --cwd frontend --frozen-lockfile --ignore-scripts
 bun run --cwd frontend typecheck
 bun run --cwd frontend build
 

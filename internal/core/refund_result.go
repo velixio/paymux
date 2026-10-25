@@ -118,7 +118,7 @@ func (s *Service) applyRefundTx(ctx context.Context, tx store.Tx, refundID strin
 				}
 				// Same ledger kind, linked to the refund row, so the extra charge nets out.
 				if err := store.InsertLedgerEntry(ctx, tx, store.LedgerEntry{ID: ids.New("led"), OrgID: r.OrgID, Mode: r.Mode,
-					Kind: "refund", Amount: -r.Amount, Currency: r.Currency, PaymentID: p.ID, RefundID: r.ID, OccurredAt: now}); err != nil {
+					Kind: "refund", Amount: -r.Amount, Currency: r.Currency, PaymentID: p.ID, RefundID: r.ID, AttemptID: r.AttemptID, OccurredAt: now}); err != nil {
 					return res, err
 				}
 				res.Refund, res.Payment, res.Changed = r, p, true
@@ -141,7 +141,7 @@ func (s *Service) applyRefundTx(ctx context.Context, tx store.Tx, refundID strin
 				return res, err
 			}
 			if err := store.InsertLedgerEntry(ctx, tx, store.LedgerEntry{ID: ids.New("led"), OrgID: r.OrgID, Mode: r.Mode,
-				Kind: "refund", Amount: -r.Amount, Currency: r.Currency, PaymentID: p.ID, RefundID: r.ID, OccurredAt: now}); err != nil {
+				Kind: "refund", Amount: -r.Amount, Currency: r.Currency, PaymentID: p.ID, RefundID: r.ID, AttemptID: r.AttemptID, OccurredAt: now}); err != nil {
 				return res, err
 			}
 			// Issues the GST credit note (when the payment has an invoice) in

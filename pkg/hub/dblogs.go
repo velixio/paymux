@@ -44,6 +44,9 @@ func (a *App) openDBLogs(ctx context.Context, main *store.DB) *dbLogs {
 		a.log.Error("the error log in the database is unavailable; continuing without it", "err", err.Error())
 		return nil
 	}
+	if ldb != main {
+		a.warnLooseFiles(ldb)
+	}
 	level := slog.LevelWarn
 	// A level below warn is kept only when the operator asked for it by name.
 	if a.cfg.DBLogLevel != slog.LevelWarn && (a.cfg.DBLogLevel > slog.LevelWarn || a.cfg.DBLogLevelExplicit) {
@@ -170,5 +173,14 @@ func (l *dbLogs) responseHook() server.ResponseHook {
 func (a *App) warnDatabaseTLS() {
 	if msg := config.DatabaseTLSWarning(a.cfg.DatabaseURL, os.Getenv); msg != "" {
 		a.log.Warn(msg)
+	}
+}
+
+// warnLooseFiles warns about SQLite files that other users can read: they hold
+// sealed secrets and customer data. It does not change them, because a backup
+// agent may rely on the mode (a file the hub creates is 0600).
+func (a *App) warnLooseFiles(db *store.DB) {
+	for _, f := range db.LooseFiles() {
+		a.log.Warn("a database file is readable by other users; restrict it with chmod 600", "file", f)
 	}
 }

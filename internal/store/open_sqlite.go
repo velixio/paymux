@@ -72,3 +72,20 @@ func mkdir0700(dir string) error {
 	}
 	return nil
 }
+
+// LooseFiles lists the SQLite files of db (the database, its -wal and -shm)
+// that group or others can read or write. A file the hub creates is 0600, but
+// one that existed keeps the mode the operator gave it. It is empty on
+// PostgreSQL.
+func (db *DB) LooseFiles() []string {
+	if db.path == "" {
+		return nil
+	}
+	var out []string
+	for _, side := range []string{"", "-wal", "-shm"} {
+		if fi, err := os.Stat(db.path + side); err == nil && fi.Mode().Perm()&0o077 != 0 {
+			out = append(out, db.path+side)
+		}
+	}
+	return out
+}
