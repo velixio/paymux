@@ -164,6 +164,7 @@ Everything else is data that you edit in the dashboard or with the CLI: apps, pr
 | [Performance](docs/performance.md) | Targets and the load test |
 | [Dependencies](docs/dependencies.md) | Third-party code and why |
 | [Provider verification](docs/provider-verification.md) | What was written from provider documentation and still has to be checked against a live sandbox, as a checklist per provider |
+| [Webhook receiver examples](docs/webhooks.md#verify-the-exact-bytes) | Signature verification and a durable inbox in [Go](examples/webhook-receiver-go/main.go), [JavaScript](examples/webhook-receiver-js/receiver.mjs) and [Python](examples/webhook-receiver/receiver.py), each with tests |
 | [Security review](docs/security-review.md) | Findings of the correctness and security audit, with severities and dispositions |
 | [Design spec](docs/superpowers/specs/2026-10-17-paymux-design.md) | The source of truth for behaviour |
 

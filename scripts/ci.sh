@@ -31,8 +31,21 @@ bun run --cwd frontend test:home
 step "dashboard browser tests (seeded hub on a temp data dir)"
 bun run --cwd frontend test:dashboard
 
-step "signed webhook receiver example"
-python3 -m unittest discover -s examples/webhook-receiver -p 'test_*.py'
+# The Go receiver (examples/webhook-receiver-go) is tested by `make test` with
+# everything else. The Python and Node receivers are customer-facing examples whose
+# tests need an interpreter the project itself does not: they run when python3 or
+# node is installed and are skipped, with a message, when it is not.
+step "signed webhook receiver examples (Python and Node: optional)"
+if command -v python3 >/dev/null 2>&1; then
+  python3 -m unittest discover -s examples/webhook-receiver -p 'test_*.py'
+else
+  echo "python3 is not installed: skipping the Python receiver example's tests"
+fi
+if command -v node >/dev/null 2>&1; then
+  node --test examples/webhook-receiver-js/receiver.test.mjs
+else
+  echo "node is not installed: skipping the JavaScript receiver example's tests"
+fi
 
 step "go vet"
 go vet ./...

@@ -91,8 +91,8 @@ event and nothing else. Now, test-first on both databases:
   `payment.needs_review` event and a `refund.exceeds_balance` alert.
 - A provider refund never gets a `refund.submit` job, and `SubmitRefund`
   refuses `initiated_by=provider`.
-- The simulator has a "Refund from provider dashboard" button and `smoke.py` a
-  step for it.
+- The simulator has a "Refund from provider dashboard" button and the smoke test
+  (`scripts/smoke`) a step for it.
 
 ### F5: refund adoption
 
