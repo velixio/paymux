@@ -57,7 +57,7 @@ test("a plain click on a row link opens the record in a pane; the list stays", a
   const p = await screen.findByRole("complementary", {
     name: "Record preview",
   });
-  expect(search(router).peek).toBe("/dashboard/payments/pay_1");
+  expect(search(router).peek).toBe("pay_1");
   expect(await within(p).findByText("succeeded")).toBeTruthy();
   expect(within(p).getByText("pay_1")).toBeTruthy();
   // inner tabs from Task D
@@ -82,7 +82,7 @@ test("clicking another row replaces the pane content", async () => {
   await screen.findByRole("complementary", { name: "Record preview" });
   fireEvent.click(rowLink("pay_2"));
   await waitFor(() =>
-    expect(search(router).peek).toBe("/dashboard/payments/pay_2"),
+    expect(search(router).peek).toBe("pay_2"),
   );
   await within(pane()!).findByText("failed");
   expect(rowLink("pay_2").closest("tr")!.hasAttribute("data-peek-row")).toBe(
@@ -169,7 +169,7 @@ test("j moves the selection and the pane follows; Enter opens the selected recor
     fireEvent.keyDown(window, { code: "KeyJ", key: "j" });
   });
   await waitFor(() =>
-    expect(search(router).peek).toBe("/dashboard/payments/pay_2"),
+    expect(search(router).peek).toBe("pay_2"),
   );
   const before = api.state.tabs.length;
   act(() => {
@@ -201,7 +201,7 @@ test("closing the pane with unsaved edits asks first", async () => {
   fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(pane()).not.toBeNull();
-  expect(search(router).peek).toBe("/dashboard/payments/pay_1");
+  expect(search(router).peek).toBe("pay_1");
   fireEvent.click(
     within(pane()!).getByRole("button", { name: "Close preview" }),
   );
@@ -236,7 +236,7 @@ test("clicking another row with unsaved edits asks first; keeping the edits keep
   });
   fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(search(router).peek).toBe("/dashboard/payments/pay_1");
+  expect(search(router).peek).toBe("pay_1");
   expect(
     (within(pane()!).getByLabelText("Note") as HTMLInputElement).value,
   ).toBe("draft");
@@ -249,7 +249,7 @@ test("clicking another row with unsaved edits asks first; keeping the edits keep
     await screen.findByRole("button", { name: "Discard and continue" }),
   );
   await waitFor(() =>
-    expect(search(router).peek).toBe("/dashboard/payments/pay_2"),
+    expect(search(router).peek).toBe("pay_2"),
   );
   await within(pane()!).findByText("failed");
 });
@@ -267,7 +267,7 @@ test("moving the selection with j/k with unsaved edits asks first and keeps the 
   });
   fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(search(router).peek).toBe("/dashboard/payments/pay_1");
+  expect(search(router).peek).toBe("pay_1");
   const current = rowLink("pay_1").closest("tr")!;
   expect(current.hasAttribute("data-nav-row")).toBe(true);
   expect(rowLink("pay_2").closest("tr")!.hasAttribute("data-nav-row")).toBe(
