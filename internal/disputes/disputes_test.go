@@ -117,7 +117,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 	base, _ := url.Parse("https://pay.example.com")
 	e.conns = connectors.New(connectors.Options{DB: db, Box: box, BaseURL: base, Now: clk.Now})
 	e.d = disputes.New(disputes.Options{DB: db, Settings: e.set, Emitter: emitter, Alerts: e.alerts, Credit: inv, CutoffErr: invoice.ErrCreditNoteCutoff,
-		Conns: e.conns, Now: clk.Now})
+		Conns: e.conns, Now: clk.Now, Core: e.core})
 	if _, err := core.Bootstrap(ctx, db, e.set); err != nil {
 		t.Fatal(err)
 	}
