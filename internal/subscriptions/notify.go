@@ -709,6 +709,16 @@ func (s *Service) ApplyReturn(ctx context.Context, providerAccountID, providerRe
 	if err != nil {
 		return Outcome{}, false, err
 	}
+	// The ref is in the customer's URL; the account must be the one the mandate
+	// or subscription was made with, or another account's connector (any org's,
+	// or a remote connector someone controls) would decide its state.
+	owner := sub.ProviderAccountID
+	if isMandate {
+		owner = m.ProviderAccountID
+	}
+	if owner != providerAccountID {
+		return Outcome{}, false, nil
+	}
 	conn, err := s.connectors.Get(ctx, providerAccountID)
 	if err != nil {
 		return Outcome{}, true, err
