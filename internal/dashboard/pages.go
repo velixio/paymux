@@ -147,6 +147,13 @@ func (d *Dashboard) orgID(ctx context.Context) (string, error) {
 	return id, nil
 }
 
+// sessionOrg is the org a signed-in user belongs to; "" when it cannot be read,
+// which authz treats as no org check (the handlers' own inOrg checks still run).
+func (d *Dashboard) sessionOrg(ctx context.Context) string {
+	org, _ := d.orgID(ctx)
+	return org
+}
+
 // inOrg reports whether an object belongs to the dashboard's org. Handlers
 // answer 404 for anything else, so ids of another org reveal nothing.
 func (d *Dashboard) inOrg(ctx context.Context, objectOrg string) bool {
