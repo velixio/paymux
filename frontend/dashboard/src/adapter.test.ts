@@ -159,3 +159,26 @@ test("binary and export endpoints keep native downloads", () => {
   expect(isDownloadPath("/dashboard/reports")).toBe(false);
   expect(isDownloadPath("/dashboard/payments/pay_1")).toBe(false);
 });
+
+describe("dashboard theme", () => {
+  const parse = (extra: string) =>
+    parseDashboard(
+      new win.DOMParser().parseFromString(
+        extra + html,
+        "text/html",
+      ) as unknown as Document,
+      "/dashboard/settings",
+    );
+  test("is read from the react root", () => {
+    expect(
+      parse('<div id="paymux-react-root" data-dashboard-theme="paddle"></div>')
+        .dashboardTheme,
+    ).toBe("paddle");
+  });
+  test("is null when the page does not carry one", () => {
+    expect(parse("").dashboardTheme).toBeNull();
+    expect(
+      parse('<div id="paymux-react-root"></div>').dashboardTheme,
+    ).toBeNull();
+  });
+});
