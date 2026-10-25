@@ -935,3 +935,22 @@ func TestNoSubscriptionsServiceMeansMandatesAreNotChecked(t *testing.T) {
 		})
 	})
 }
+
+// H-13. A settlement in another currency than the attempt it lists is not
+// booked against it: a fee in USD must not become a fee on an INR payment.
+func TestSettlementInAnotherCurrencyIsNotBooked(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		_, a := e.capturedAttempt("pay_1", 50000)
+		e.settlement(connector.SettlementSnapshot{ProviderSettlementID: "setl_usd", Currency: "USD", Amount: 49000, Fees: 800, Tax: 144, Status: "processed",
+			Items: []connector.SettlementItem{payLine("pay_1", 50000, 800, 144)}})
+		if _, err := e.rec.RunAccount(ctx, e.acct); err != nil {
+			t.Fatal(err)
+		}
+		if f := e.fees(a.ID); f.settlement != "" || f.fee != 0 {
+			t.Errorf("a USD settlement was attached to an INR attempt: %+v", f)
+		}
+		if n := e.count("SELECT COUNT(*) FROM ledger_entries WHERE kind IN ('fee','fee_tax') AND currency <> 'INR'"); n != 0 {
+			t.Errorf("%d fee entries in the wrong currency", n)
+		}
+	})
+}
