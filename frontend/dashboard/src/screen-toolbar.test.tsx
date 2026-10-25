@@ -68,9 +68,13 @@ test("status chips apply the filter, All clears it", async () => {
   const chips = within(group()).getAllByRole("button");
   expect(chips.map((c) => c.textContent)).toEqual([
     "All",
-    "succeeded",
-    "failed",
+    "Succeeded",
+    "Failed",
   ]);
+  // Each status chip carries a dot in its status colour; All has none.
+  expect(chips[0].querySelector(".pill-dot")).toBeNull();
+  expect(chips[1].querySelector(".pill-dot.tone-ok")).not.toBeNull();
+  expect(chips[2].querySelector(".pill-dot.tone-bad")).not.toBeNull();
   expect(chips[0].getAttribute("aria-pressed")).toBe("true");
   fireEvent.click(chips[1]);
   await waitFor(() =>
@@ -86,7 +90,7 @@ test("a chip keeps the other filters in the query", async () => {
   const router = await mount("/dashboard/payments?q=alice");
   fireEvent.click(
     within(screen.getByRole("group", { name: "Status" })).getByRole("button", {
-      name: "failed",
+      name: "Failed",
     }),
   );
   await waitFor(() =>
