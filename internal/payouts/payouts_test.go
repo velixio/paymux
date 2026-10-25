@@ -45,6 +45,8 @@ type env struct {
 	mu     sync.Mutex
 	events []events.Event
 	alerts []notify.Alert
+	// connErr, when set, makes loading the provider account's connector fail.
+	connErr error
 }
 
 func (e *env) Raise(_ context.Context, al notify.Alert) error {
@@ -103,6 +105,12 @@ func newEnv(t *testing.T, db *store.DB, purposes []string) *env {
 		return nil
 	})
 	e.svc = payouts.New(payouts.Options{DB: db, Box: box, Connectors: payouts.ConnectorsFunc(func(ctx context.Context, id string) (connector.Connector, error) {
+		e.mu.Lock()
+		cerr := e.connErr
+		e.mu.Unlock()
+		if cerr != nil {
+			return nil, cerr
+		}
 		live, err := conns.Get(ctx, id)
 		return live.Connector, err
 	}), Jobs: e.q, Emitter: emit, Alerts: e, Now: e.clock})
@@ -556,6 +564,167 @@ func TestProviderReportedFailureStaysFinalAfterPolling(t *testing.T) {
 		e.advance(48 * time.Hour)
 		if got := e.get(p.ID); got.Status != "failed" {
 			t.Fatalf("a provider failure moved to %s", got.Status)
+		}
+	})
+}
+
+func (e *env) count1(typ string) int {
+	n := 0
+	for _, t := range e.types() {
+		if t == typ {
+			n++
+		}
+	}
+	return n
+}
+
+// The provider confirming our own reading of a failure changes nothing for the
+// app: payout.failed was sent once already.
+func TestProviderConfirmingASynthesisedFailureSendsNoSecondFailedEvent(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, []string{"payout"})
+		e.fake.Locked(func() {
+			e.fake.PayoutFn = func(connector.PayoutRequest) (connector.PayoutSnapshot, error) {
+				return connector.PayoutSnapshot{}, errors.New("unexpected provider answer")
+			}
+		})
+		p, _ := e.create(nil)
+		e.run()
+		e.fake.Locked(func() {
+			e.fake.Payouts[p.ProviderRef] = connector.PayoutSnapshot{ProviderRef: p.ProviderRef, Status: connector.PayoutFailed,
+				RawStatus: "failed", ErrorCode: "ACCOUNT_CLOSED", ErrorMessage: "bank said no", Amount: p.Amount, Currency: p.Currency}
+		})
+		e.advance(48 * time.Hour)
+		got := e.get(p.ID)
+		if got.Status != "failed" || got.RawStatus != "failed" || got.FailureCode != "ACCOUNT_CLOSED" || got.CompletedAt.IsZero() {
+			t.Fatalf("after the provider's failure: %+v", got)
+		}
+		if n := e.count1("payout.failed"); n != 1 {
+			t.Errorf("payout.failed sent %d times: %v", n, e.types())
+		}
+	})
+}
+
+func TestSynthesisedFailureThenProcessingThenSucceededSendsOneSucceededEvent(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, []string{"payout"})
+		e.fake.Locked(func() {
+			e.fake.PayoutFn = func(connector.PayoutRequest) (connector.PayoutSnapshot, error) {
+				return connector.PayoutSnapshot{}, errors.New("unexpected provider answer")
+			}
+		})
+		p, _ := e.create(nil)
+		e.run()
+		set := func(st connector.PayoutStatus) {
+			e.fake.Locked(func() {
+				e.fake.Payouts[p.ProviderRef] = connector.PayoutSnapshot{ProviderRef: p.ProviderRef, ProviderPayoutID: "po_z", Status: st,
+					RawStatus: string(st), Amount: p.Amount, Currency: p.Currency}
+			})
+		}
+		set(connector.PayoutProcessing)
+		e.advance(2 * time.Minute)
+		if got := e.get(p.ID); got.Status != "processing" || got.FailureCode != "" || !got.CompletedAt.IsZero() {
+			t.Fatalf("after processing: %+v", got)
+		}
+		set(connector.PayoutSucceeded)
+		e.advance(48 * time.Hour)
+		if got := e.get(p.ID); got.Status != "succeeded" {
+			t.Fatalf("after succeeded: %+v", got)
+		}
+		if n := e.count1("payout.succeeded"); n != 1 {
+			t.Errorf("payout.succeeded sent %d times: %v", n, e.types())
+		}
+	})
+}
+
+// When the connector cannot even be loaded, an earlier attempt may still have
+// reached the provider: those attempts count too.
+func TestPayoutGoesToNeedsReviewWhenTheConnectorKeepsFailingAfterAnAmbiguousAttempt(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, []string{"payout"})
+		e.fake.Locked(func() {
+			e.fake.PayoutFn = func(connector.PayoutRequest) (connector.PayoutSnapshot, error) {
+				e.mu.Lock()
+				e.connErr = errors.New("the account's configuration cannot be read")
+				e.mu.Unlock()
+				return connector.PayoutSnapshot{}, fmt.Errorf("payu: POST: %w", context.DeadlineExceeded)
+			}
+		})
+		p, _ := e.create(nil)
+		e.run()
+		for i := 0; i < 20; i++ {
+			e.advance(48 * time.Hour)
+		}
+		if got := e.get(p.ID); got.Status != "needs_review" {
+			t.Fatalf("payout = %+v", got)
+		}
+		if len(e.alerts) != 1 {
+			t.Errorf("alerts = %+v", e.alerts)
+		}
+	})
+}
+
+func (e *env) needsReview() store.Payout {
+	e.t.Helper()
+	p, _ := e.create(nil)
+	e.exhaustSubmit()
+	if got := e.get(p.ID); got.Status != "needs_review" {
+		e.t.Fatalf("setup: %+v", got)
+	}
+	return p
+}
+
+func TestResolveSettlesAPayoutInReviewOnceWithAnAuditEntry(t *testing.T) {
+	op := audit.Actor{Type: audit.ActorSystem, ID: "cli"}
+	for _, status := range []string{"succeeded", "failed"} {
+		storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+			e := newEnv(t, db, []string{"payout"})
+			p := e.needsReview()
+			got, err := e.svc.Resolve(ctx, p.ID, status, "checked the bank statement", op)
+			if err != nil || got.Status != status || got.CompletedAt.IsZero() {
+				t.Fatalf("%s: %+v %v", status, got, err)
+			}
+			if status == "failed" && !strings.Contains(got.FailureMessage, "checked the bank statement") {
+				t.Errorf("failure message = %q", got.FailureMessage)
+			}
+			if n := e.count1("payout." + status); n != 1 {
+				t.Errorf("payout.%s sent %d times: %v", status, n, e.types())
+			}
+			if n := e.count("SELECT COUNT(*) FROM audit_log WHERE action = 'payout.resolve' AND target = ? AND "after" LIKE '%checked the bank statement%'", p.ID); n != 1 {
+				t.Errorf("audit rows = %d", n)
+			}
+			// Only from needs_review, and only once.
+			if _, err := e.svc.Resolve(ctx, p.ID, "failed", "again", op); !errors.Is(err, payouts.ErrInvalid) {
+				t.Errorf("second resolve: %v", err)
+			}
+			// A later provider answer does not undo a manual failure.
+			e.advance(48 * time.Hour)
+			if status == "failed" && e.get(p.ID).Status != "failed" {
+				t.Errorf("a manual failure moved to %s", e.get(p.ID).Status)
+			}
+		})
+	}
+}
+
+func TestResolveRefusesWhatIsNotInReviewOrNotSettled(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, []string{"payout"})
+		pending, _ := e.create(nil)
+		op := audit.Actor{Type: audit.ActorSystem, ID: "cli"}
+		if _, err := e.svc.Resolve(ctx, pending.ID, "failed", "why", op); !errors.Is(err, payouts.ErrInvalid) {
+			t.Errorf("pending payout: %v", err)
+		}
+		if _, err := e.svc.Resolve(ctx, "po_nope", "failed", "why", op); !errors.Is(err, payouts.ErrNotFound) {
+			t.Errorf("unknown payout: %v", err)
+		}
+		e2 := e.needsReview()
+		for name, args := range map[string][2]string{"processing": {"processing", "why"}, "no reason": {"failed", " "}} {
+			if _, err := e.svc.Resolve(ctx, e2.ID, args[0], args[1], op); !errors.Is(err, payouts.ErrInvalid) {
+				t.Errorf("%s: %v", name, err)
+			}
+		}
+		if got := e.get(e2.ID); got.Status != "needs_review" {
+			t.Errorf("a refused resolve changed the payout: %s", got.Status)
 		}
 	})
 }
