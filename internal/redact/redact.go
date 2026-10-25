@@ -252,12 +252,25 @@ var (
 	reIntl    = regexp.MustCompile(`\+\d[\d\s-]{8,14}\d`)
 	reCard    = regexp.MustCompile(`\b\d(?:[ .\-/_]?\d){12,18}\b`)
 	reKV      = regexp.MustCompile(`\b([A-Za-z][A-Za-z0-9_.-]{0,63})(\\?["']?\s*[:=]\s*\\?["']?)([^\s"',;&}\]\\]+)`)
+	// An Authorization header in text: whatever the scheme (Token, Digest,
+	// lower-case basic), the rest of the line is the credential.
+	reAuthHeader = regexp.MustCompile(`(?i)\b((?:proxy-)?authorization\s*[:=]\s*)([^\r\n]+)`)
+	// A "label:" or "label=" anywhere, for credential labels that follow
+	// another label ("upstream error: password: x").
+	reLabel = regexp.MustCompile(`\b([A-Za-z][A-Za-z0-9_.-]{0,63})(\\?["']?\s*[:=]\s*\\?["']?)`)
 )
 
 func (r *Redactor) patterns(s string) string {
 	for _, p := range credPatterns {
 		s = p.re.ReplaceAllString(s, p.with)
 	}
+	s = reAuthHeader.ReplaceAllStringFunc(s, func(m string) string {
+		sub := reAuthHeader.FindStringSubmatch(m)
+		if v := sub[2]; v == "Bearer "+Secret || v == "Basic "+Secret || strings.HasPrefix(v, Secret) {
+			return m
+		}
+		return sub[1] + Secret
+	})
 	s = reCard.ReplaceAllStringFunc(s, maskCard)
 	s = reAadhaarGrouped.ReplaceAllString(s, "[aadhaar]")
 	s = reAadhaarPlain.ReplaceAllStringFunc(s, func(m string) string {
@@ -394,7 +407,35 @@ func luhn(d []byte) bool {
 
 // kv replaces the value of "name=value" and "name: value" pairs in free text
 // whose name is a credential (and, with pii, personal data).
-func kv(s string, pii bool) string { return kvDepth(s, pii, 0) }
+func kv(s string, pii bool) string { return kvDepth(labelled(s), pii, 0) }
+
+// labelled replaces the value after each credential label, including a label
+// that reKV would take as another pair's value ("error: password: x").
+func labelled(s string) string {
+	idx := reLabel.FindAllStringSubmatchIndex(s, -1)
+	if len(idx) == 0 {
+		return s
+	}
+	var b strings.Builder
+	last := 0
+	for _, m := range idx {
+		if m[1] < last || !isCredentialName(s[m[2]:m[3]]) {
+			continue
+		}
+		end := m[1]
+		for end < len(s) && !strings.ContainsRune(" \t\r\n\"',;&}]\\", rune(s[end])) {
+			end++
+		}
+		if end == m[1] || strings.HasPrefix(s[m[1]:], "[") {
+			continue // nothing after the label, or already redacted
+		}
+		b.WriteString(s[last:m[1]])
+		b.WriteString(Secret)
+		last = end
+	}
+	b.WriteString(s[last:])
+	return b.String()
+}
 
 func kvDepth(s string, pii bool, depth int) string {
 	return reKV.ReplaceAllStringFunc(s, func(m string) string {
