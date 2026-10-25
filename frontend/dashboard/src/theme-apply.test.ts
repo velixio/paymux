@@ -137,6 +137,13 @@ test("a network error or bad JSON falls back too; nothing at all leaves the page
   );
   expect(await applyDashboardTheme("paddle")).toBeNull();
   expect(styles()).toHaveLength(0);
+  for (const body of ["null", "{}", '{"seeds":{}}']) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, status: 200, text: async () => body })),
+    );
+    expect(await applyDashboardTheme("paddle")).toBeNull();
+  }
   // An applied theme stays when a later fetch fails.
   stubFetch();
   await applyDashboardTheme("midnight");

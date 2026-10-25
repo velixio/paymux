@@ -284,6 +284,8 @@ type view struct {
 	Next         string // where the confirmation page returns to
 	NeedCode     bool   // the confirmation page asks for an authenticator code too
 	StyleNonce   string
+	// DashboardTheme names the theme the React dashboard wears; see effectiveDashboardTheme.
+	DashboardTheme string
 
 	AppName, LogoURL, Accent string
 
@@ -349,6 +351,32 @@ func (d *Dashboard) dashboardTheme(ctx context.Context) string {
 	return look.Dashboard(ctx, d.o.Settings)
 }
 
+// defaultDashboardTheme is the dashboard theme when nothing usable is chosen.
+const defaultDashboardTheme = "stripe"
+
+// dashboardThemeUsable reports whether name loads and styles the dashboard
+// (customer-page-only themes such as "default" have no dashboard block).
+func (d *Dashboard) dashboardThemeUsable(name string) bool {
+	if d.o.Themes == nil || !web.ValidThemeName(name) {
+		return false
+	}
+	th, err := d.o.Themes.Load(name)
+	return err == nil && th.Dashboard != nil
+}
+
+// effectiveDashboardTheme is the theme the dashboard wears for userID:
+// the first usable of the organisation default, then stripe. (A per-user
+// choice goes in front of the organisation default.)
+func (d *Dashboard) effectiveDashboardTheme(ctx context.Context, userID string) string {
+	_ = userID
+	for _, name := range []string{d.dashboardTheme(ctx)} {
+		if d.dashboardThemeUsable(name) {
+			return name
+		}
+	}
+	return defaultDashboardTheme
+}
+
 // themedRenderer is the renderer drawing in the org's theme.
 func (d *Dashboard) themedRenderer() *web.Renderer {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -364,6 +392,11 @@ func (d *Dashboard) renderWith(w http.ResponseWriter, status int, rend *web.Rend
 	v.DevBanner = d.o.DevSkip2FA
 	_, noncePart, _ := strings.Cut(w.Header().Get("Content-Security-Policy"), "'nonce-")
 	v.StyleNonce, _, _ = strings.Cut(noncePart, "'")
+	if v.DashboardTheme == "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		v.DashboardTheme = d.effectiveDashboardTheme(ctx, v.Self)
+	}
 	var buf bytes.Buffer
 	if err := rend.Render(&buf, page, v); err != nil {
 		d.o.Logger.Error("dashboard: render", "page", page, "err", err)

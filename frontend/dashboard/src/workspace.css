@@ -72,7 +72,7 @@ main.dash:has(#paymux-react-root) {
 }
 .navigation-caption {
   display: block;
-  color: var(--muted-foreground);
+  color: var(--sidebar-foreground);
   font-size: 10px;
   letter-spacing: 0.03em;
   padding: 0 13px 8px;
@@ -83,7 +83,7 @@ main.dash:has(#paymux-react-root) {
   gap: 11px;
   min-height: 39px;
   border-radius: 6px;
-  color: var(--muted-foreground);
+  color: var(--sidebar-foreground);
   text-decoration: none;
   padding: 8px 12px;
   font-size: 12px;
@@ -91,11 +91,11 @@ main.dash:has(#paymux-react-root) {
 }
 .navigation-item:hover {
   background: var(--muted);
-  color: var(--foreground);
+  color: var(--sidebar-foreground);
 }
 .navigation-item.selected {
   background: var(--ui-accent);
-  color: var(--accent-foreground);
+  color: var(--sidebar-foreground);
   font-weight: 600;
 }
 .navigation-item svg {

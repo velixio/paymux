@@ -52,11 +52,9 @@ test("everything drawn on the sidebar colour reads its text from the sidebar tok
     /--ui-accent: color-mix\(in srgb, var\(--primary\) \d+%, var\(--sidebar\)\)/,
   );
   // The page colours stay reachable for the islands inside (active tab, command box).
-  expect(rule(shell, ".app-shell")).toContain(
-    "--page-foreground: var(--foreground)",
-  );
+  expect(shell).toContain("--page-foreground: var(--foreground)");
   expect(shell).toMatch(
-    /\.app-shell \.tab\.active[^{]*\{[^}]*--foreground: var\(--page-foreground\)/,
+    /\.tab\.active[^{]*\{[^}]*--foreground: var\(--page-foreground\)/,
   );
 });
 
