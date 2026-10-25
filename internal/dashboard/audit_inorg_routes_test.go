@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"sort"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/paymux/paymux/internal/authz"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
 )
@@ -199,6 +201,30 @@ func TestSubscriptionOfAnotherOrgIs404(t *testing.T) {
 			if r, _ := e.post(admin, p, url.Values{"csrf": {tok}, "when": {"now"}, "amount": {"100"}}); r.StatusCode != 404 {
 				t.Errorf("POST %s: %d, want 404", p, r.StatusCode)
 			}
+		}
+	})
+}
+
+// The actor of a session carries the org, so authz refuses what belongs to
+// another one.
+func TestSessionActorCarriesTheOrg(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		c := e.roleClient("admin")
+		u, _ := url.Parse(e.srv.URL + "/dashboard/overview")
+		req := httptest.NewRequest("GET", "/dashboard/overview", nil)
+		for _, ck := range c.Jar.Cookies(u) {
+			req.AddCookie(ck)
+		}
+		s, ok := e.d.currentSession(req)
+		if !ok {
+			t.Fatal("no session")
+		}
+		if got := s.actor().OrgID; got != store.DefaultOrgID {
+			t.Fatalf("actor org = %q, want %q", got, store.DefaultOrgID)
+		}
+		if authz.CanWith(s.roles, s.actor(), authz.PaymentRead, authz.Resource{OrgID: "org_other"}) || !authz.CanWith(s.roles, s.actor(), authz.PaymentRead, authz.Resource{OrgID: store.DefaultOrgID}) {
+			t.Error("authz does not tell the orgs apart for this session")
 		}
 	})
 }
