@@ -224,10 +224,48 @@ export function derive(
     light: deriveMode(seeds, false),
     dark: deriveMode({ ...auto, ...definedDark } as Seeds, true),
   };
-  for (const mode of ["light", "dark"] as const)
+  for (const mode of ["light", "dark"] as const) {
     for (const [k, v] of Object.entries(overrides?.[mode] ?? {}))
       if (THEMEABLE.has(k)) out[mode][k] = v;
+    ensureReadable(out[mode]);
+  }
   return out;
+}
+
+/**
+ * Whatever the seeds and overrides say, text must read: each text token is
+ * nudged (it only ever moves toward black or white) against the surface it is
+ * drawn on, so a theme file, an import or a form without JavaScript cannot
+ * produce unreadable text. Backgrounds are never changed here, except a muted
+ * surface on a mid-tone page, which gives way to the page colour.
+ */
+function ensureReadable(t: Tokens) {
+  const on = (fg: string, bgs: string[]) => {
+    t[fg] = nudge(
+      t[fg],
+      bgs.map((b) => t[b]),
+    );
+  };
+  on("--foreground", ["--background"]);
+  on("--card-foreground", ["--card"]);
+  on("--popover-foreground", ["--popover"]);
+  on("--secondary-foreground", ["--secondary"]);
+  on("--destructive", ["--background"]);
+  on("--sidebar-foreground", ["--sidebar"]);
+  on("--accent-foreground", ["--ui-accent"]);
+  on("--primary-foreground", ["--primary"]);
+  on("--muted-foreground", ["--background", "--muted"]);
+  if (
+    minContrast(t["--muted-foreground"], [t["--background"], t["--muted"]]) <
+    MIN_CONTRAST
+  ) {
+    t["--muted"] = t["--background"];
+    on("--muted-foreground", ["--background"]);
+  }
+  // Selected sidebar items: the accent over the sidebar, as the stylesheet draws it.
+  t["--sidebar-accent-foreground"] = nudge(t["--sidebar-accent-foreground"], [
+    mix(t["--sidebar"], t["--primary"], 0.12),
+  ]);
 }
 
 export type ContrastRow = {

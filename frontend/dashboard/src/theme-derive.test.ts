@@ -282,13 +282,13 @@ test.each(fixtures)("%s passes every text pair after nudging", (name, l, d) => {
   }
 });
 
-test("overrides win over derived values and are not nudged", () => {
+test("overrides win over derived values (readable ones are used as written)", () => {
   const { light, dark } = derive(stripeLight, stripeDark, {
-    light: { "--border": "#123456", "--foreground": "#fefefe" },
+    light: { "--border": "#123456", "--foreground": "#101010" },
     dark: { "--ring": "#abcdef" },
   });
   expect(light["--border"]).toBe("#123456");
-  expect(light["--foreground"]).toBe("#fefefe");
+  expect(light["--foreground"]).toBe("#101010");
   expect(dark["--ring"]).toBe("#abcdef");
   expect(dark["--border"]).not.toBe("#123456");
 });

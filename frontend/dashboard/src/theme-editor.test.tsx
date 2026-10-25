@@ -122,15 +122,15 @@ test("the preview is lifted while the editor's tab is hidden, and back when show
   await waitFor(() => expect(preview()).toContain("--primary:#0d7d68"));
 });
 
-test("a theme whose colours cannot be read cannot be saved", async () => {
+test("unreadable hand-set colours are corrected, so the table and Save use the final tokens", async () => {
   handlers["/dashboard/appearance/themes/mine/edit"] = () =>
     pageHtml("Edit mine", editor('{"light":{"--foreground":"#f5f5f2"}}'));
   await mount("/dashboard/appearance/themes/mine/edit");
-  const save = await screen.findByRole("button", { name: "Save theme" });
-  await waitFor(() => expect((save as HTMLButtonElement).disabled).toBe(true));
   const table = await screen.findByRole("table", { name: /contrast/i });
-  expect(table.textContent).toContain("✗");
-  expect(screen.getByRole("alert").textContent).toMatch(/hard to read/i);
+  expect(table.textContent).not.toContain("✗");
+  const save = screen.getByRole("button", { name: "Save theme" });
+  expect((save as HTMLButtonElement).disabled).toBe(false);
+  expect(preview()).not.toContain("--foreground:#f5f5f2");
 });
 
 test("a colour the browser could not parse is ignored, not painted", async () => {
