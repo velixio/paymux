@@ -48,6 +48,21 @@ type MandateLimit struct {
 	MaxAmount int64  `json:"max_amount"`
 }
 
+// CheckoutHosts are the origins (https://host, or https://*.host) the hosted
+// payment page may load from or send the buyer to while this connector's
+// checkout runs, for both its test and live endpoints. They feed the
+// Content-Security-Policy of /pay, /l and /s. Leave it nil for a connector
+// that only redirects: its page then stays on the hub's own origin. The
+// script and form URLs of the NextAction itself are allowed without being
+// listed here.
+type CheckoutHosts struct {
+	Script  []string `json:"script,omitempty"`  // script-src: the provider SDK
+	Frame   []string `json:"frame,omitempty"`   // frame-src: the checkout frames the SDK opens
+	Form    []string `json:"form,omitempty"`    // form-action: where a form_post goes
+	Connect []string `json:"connect,omitempty"` // connect-src: the SDK's own API calls
+	Img     []string `json:"img,omitempty"`     // img-src: logos and icons the SDK shows
+}
+
 // Info describes a connector.
 type Info struct {
 	Name         string          `json:"name"`
@@ -56,6 +71,9 @@ type Info struct {
 	Capabilities []Capability    `json:"capabilities"`
 	ConfigSchema json.RawMessage `json:"config_schema"`
 	Currencies   []string        `json:"currencies"`
+	// CheckoutHosts is what the hosted payment page must allow for this
+	// connector's SDK or form post; see CheckoutHosts.
+	CheckoutHosts *CheckoutHosts `json:"checkout_hosts,omitempty"`
 	// SubscriptionCurrencies are the currencies the connector can bill a
 	// subscription in, when that is fewer than Currencies (Razorpay takes many
 	// currencies for one-time payments but subscriptions only in INR). Empty means

@@ -34,8 +34,16 @@ const configSchema = `{
 }`
 
 var info = connector.Info{
-	Version:      "0.1.0",
-	DisplayName:  "Razorpay",
+	Version:     "0.1.0",
+	DisplayName: "Razorpay",
+	// checkout.js opens the payment frames from api.razorpay.com and reports to
+	// lumberjack.razorpay.com; the same hosts serve test and live keys.
+	CheckoutHosts: &connector.CheckoutHosts{
+		Script:  []string{"https://checkout.razorpay.com"},
+		Frame:   []string{"https://api.razorpay.com", "https://checkout.razorpay.com"},
+		Connect: []string{"https://api.razorpay.com", "https://checkout.razorpay.com", "https://lumberjack.razorpay.com"},
+		Img:     []string{"https://cdn.razorpay.com"},
+	},
 	Capabilities: []connector.Capability{connector.CapRefund, connector.CapList, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapSubscriptionManager, connector.CapSettle},
 	ConfigSchema: json.RawMessage(configSchema),
 	Currencies:   []string{"INR", "USD", "EUR", "GBP", "SGD", "AED", "AUD", "CAD"},

@@ -102,6 +102,8 @@ func RegisterSchema(prefix, configSchema string) *State {
 	info := connector.Info{
 		Version: "test", DisplayName: "Fake", ConfigSchema: json.RawMessage(configSchema),
 		Currencies: []string{"INR", "USD", "BDT"},
+		// A frame host to see declared hosts reach the hosted page's policy.
+		CheckoutHosts: &connector.CheckoutHosts{Frame: []string{"https://frames.fake.example.com"}},
 		Capabilities: []connector.Capability{connector.CapRefund, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapList, connector.CapSettle,
 			connector.CapMandateManager, connector.CapSubscriptionManager, connector.CapPayout},
 		RateLimit: connector.RateLimit{RequestsPerSecond: 100, Burst: 100},

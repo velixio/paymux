@@ -83,6 +83,7 @@ func (h *Handler) page(w http.ResponseWriter, status int, name string, data web.
 	hdr.Set("Cache-Control", "no-store")
 	hdr.Set("X-Content-Type-Options", "nosniff")
 	hdr.Set("X-Frame-Options", "DENY")
+	web.SetHostedCSP(hdr, &data)
 	var buf bytes.Buffer
 	if err := h.renderer(w).Render(&buf, name, data); err != nil {
 		h.o.Logger.Error("paypage: render", "page", name, "err", err)
@@ -240,7 +241,7 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, appName string,
 			fields = append(fields, web.Field{Name: k, Value: v})
 		}
 		sort.Slice(fields, func(i, j int) bool { return fields[i].Name < fields[j].Name })
-		h.page(w, http.StatusOK, "pay_form_post", web.PayPage{AppName: appName, FormURL: a.URL, Fields: fields})
+		h.page(w, http.StatusOK, "pay_form_post", web.PayPage{AppName: appName, FormURL: a.URL, Fields: fields, Launcher: st.Connector})
 	case connector.ActionSDK:
 		h.page(w, http.StatusOK, "pay_sdk", web.PayPage{AppName: appName, ScriptURL: a.ScriptURL, Launcher: st.Connector, Options: a.Options})
 	default:

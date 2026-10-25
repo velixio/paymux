@@ -111,6 +111,8 @@ type Billing struct {
 // PayPage is the view model for pay_* templates.
 type PayPage struct {
 	AppName, LogoURL, Accent string
+	// Nonce is the CSP nonce of this response; the page's own scripts carry it.
+	Nonce string
 	// form_post
 	FormURL string
 	Fields  []Field

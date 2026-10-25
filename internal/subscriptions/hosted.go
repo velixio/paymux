@@ -248,7 +248,7 @@ func (s *Service) ServeHosted(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, co.Action.URL, http.StatusSeeOther)
 			return
 		case connector.ActionFormPost:
-			tmpl, page.FormURL = "pay_form_post", co.Action.URL
+			tmpl, page.FormURL, page.Launcher = "pay_form_post", co.Action.URL, co.Connector
 			keys := make([]string, 0, len(co.Action.Fields))
 			for k := range co.Action.Fields {
 				keys = append(keys, k)
@@ -267,6 +267,7 @@ func (s *Service) ServeHosted(w http.ResponseWriter, r *http.Request) {
 	if co.Kind != CheckoutAction {
 		page.ReturnURL = returnURL(co.Subscription)
 	}
+	web.SetHostedCSP(w.Header(), &page)
 	var buf bytes.Buffer
 	if err := pages.Render(&buf, tmpl, page); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)

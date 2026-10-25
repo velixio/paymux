@@ -2,8 +2,8 @@
 {{define "content"}}
 <p class="muted">{{t "sdk.opening"}}</p>
 <button class="btn" id="paybtn" type="button">{{t "sdk.pay_now"}}</button>
-<script src="{{.ScriptURL}}"></script>
-<script>
+<script nonce="{{.Nonce}}" src="{{.ScriptURL}}"></script>
+<script nonce="{{.Nonce}}">
 (function () {
   var options = {{.Options}};
   var launcher = {{.Launcher}};
