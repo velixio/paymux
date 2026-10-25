@@ -1,0 +1,41 @@
+{{define "title"}}Update - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css"><script src="/assets/js/update.js" defer></script>{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+<h1>Update</h1>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+{{with .Update}}
+<p class="muted">Install a newer release of Paymux from GitHub. Paymux downloads the build for this server, checks it against the release's SHA256SUMS and the cosign signature of that file, tries the new binary, replaces its own, and restarts. Running requests finish first. Database migrations run on the next start, so take a backup first (see docs/upgrades.md).</p>
+<table class="grid">
+<tbody>
+<tr><th scope="row">Running version</th><td><code>{{.Info.Current}}</code>{{if .Info.Dev}} <small class="muted">(a development build)</small>{{end}}</td></tr>
+<tr><th scope="row">Latest release</th><td>{{if .Info.Latest}}<code>{{.Info.Latest}}</code>{{if .Info.ReleaseURL}} <a href="{{.Info.ReleaseURL}}" rel="noopener noreferrer" target="_blank">release notes</a>{{end}}{{if .Info.Newer}} <span class="status status-warning">newer</span>{{else}} <small class="muted">(nothing newer)</small>{{end}}{{else}}<span class="muted">unknown</span>{{end}}</td></tr>
+<tr><th scope="row">Checked</th><td>{{if .Checked}}{{.Checked}}{{else}}never{{end}} <a href="/dashboard/update?refresh=1">Check again</a></td></tr>
+<tr><th scope="row">Binary</th><td><code>{{.Info.Exe}}</code></td></tr>
+</tbody>
+</table>
+{{with .Info.FetchError}}<p class="error" role="alert">Could not ask GitHub for the latest release: {{.}}</p>{{end}}
+
+<div id="update-status" data-state="{{.State}}" aria-live="polite">
+{{if eq .State "running"}}<p class="notice" role="status"><span data-label>Updating to {{.Status.To}}...</span></p>
+{{else if eq .State "restarting"}}<p class="notice" role="status"><span data-label>{{.Status.To}} is installed. Paymux is restarting onto it; this page reloads when it is back.</span></p>
+{{else if eq .State "failed"}}<p class="error" role="alert">The update to {{.Status.To}} failed and nothing was installed: {{.Status.Error}}</p>{{end}}
+{{if .Status.Log}}<pre data-log>{{range .Status.Log}}{{.}}
+{{end}}</pre>{{end}}
+</div>
+
+{{if .Info.Blocked}}
+<p class="error" role="alert">{{.Info.Blocked}}</p>
+{{if .Info.Latest}}<button class="btn" type="button" disabled>Update to {{.Info.Latest}}</button>{{end}}
+{{else if .Offer}}
+<form method="post" action="/dashboard/update" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<input type="hidden" name="target" value="{{.Info.Latest}}">
+{{if .NeedsTick}}<p class="muted">{{if .Info.Dev}}This is a development build, so it cannot tell whether {{.Info.Latest}} is newer.{{else}}{{.Info.Latest}} is not newer than the running version.{{end}}</p>
+<label><input type="checkbox" name="force" value="on"> Force the install (reinstall, go back to an older release, or replace a development build)</label>
+<button class="btn" type="submit">Install {{.Info.Latest}} anyway</button>
+{{else}}<button class="btn" type="submit">Update to {{.Info.Latest}}</button>{{end}}
+</form>
+{{end}}
+{{end}}
+{{template "dash_close" .}}{{end}}

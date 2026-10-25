@@ -208,7 +208,7 @@ var navItems = []navItem{
 	{"subscriptions", "Subscriptions", prefix + "/subscriptions"}, {"invoices", "Invoices", prefix + "/invoices"},
 	{"disputes", "Disputes", prefix + "/disputes"}, {"reconciliation", "Reconciliation", prefix + "/reconciliation"}, {"reports", "Reports", prefix + "/reports"}, {"alerts", "Alerts", prefix + "/alerts"}, {"audit", "Audit", prefix + "/audit"}, {"logs", "Logs", prefix + "/logs"},
 	{"apps", "Apps", prefix + "/apps"}, {"providers", "Providers", prefix + "/providers"},
-	{"settings", "Settings", prefix + "/settings"}, {"tax-entities", "Tax entities", prefix + "/tax-entities"}, {"fx", "FX rates", prefix + "/fx"}, {"appearance", "Appearance", prefix + "/appearance"}, {"users", "Users", prefix + "/users"}, {"roles", "Roles", prefix + "/roles"},
+	{"settings", "Settings", prefix + "/settings"}, {"tax-entities", "Tax entities", prefix + "/tax-entities"}, {"fx", "FX rates", prefix + "/fx"}, {"appearance", "Appearance", prefix + "/appearance"}, {"users", "Users", prefix + "/users"}, {"roles", "Roles", prefix + "/roles"}, {"update", "Update", prefix + "/update"},
 }
 
 type navItem struct{ Key, Label, Href string }
@@ -241,6 +241,7 @@ func (d *Dashboard) routes() {
 	m.HandleFunc("POST "+prefix+"/roles/{name}/delete", d.authed(authz.RoleManage, d.recent(d.roleDelete)))
 
 	d.routesPages()
+	d.updateRoutes()
 	d.routesSubscriptions()
 	m.HandleFunc("GET "+prefix+"/{section}", d.authed(authz.PaymentRead, d.section))
 }
@@ -690,9 +691,9 @@ func (d *Dashboard) shell(r *http.Request, s *session, active, title string) vie
 	u := s.User
 	v := view{Title: title, Nav: navItems, Active: active, User: &u, CSRF: s.csrf(), Self: u.ID,
 		Mode: d.mode(r, s), Path: r.URL.RequestURI(), CanLogs: s.can(authz.LogsRead)}
-	if !v.CanLogs {
-		v.Nav = slices.DeleteFunc(slices.Clone(navItems), func(n navItem) bool { return n.Key == "logs" })
-	}
+	v.Nav = slices.DeleteFunc(slices.Clone(navItems), func(n navItem) bool {
+		return n.Key == "logs" && !v.CanLogs || n.Key == "update" && (d.o.Updater == nil || !s.can(authz.SystemUpdate))
+	})
 	v.AlertsOpen, v.AlertsCritical = d.alertCounts(r)
 	v.DisputesOpen = d.disputeCount(r)
 	return v
