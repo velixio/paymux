@@ -30,7 +30,8 @@ type sessionRow struct {
 // confirm with the password and the authenticator code and comes back. The
 // closed list of such actions: creating and rotating API keys; creating users,
 // changing roles, issuing enrolment codes and allowing single sign-on for an
-// account; creating, changing and connecting provider accounts.
+// account; creating, changing and connecting provider accounts; adding webhook
+// endpoints and domains; changing org, app and appearance settings.
 func (d *Dashboard) recent(h authedHandler) authedHandler {
 	return func(w http.ResponseWriter, r *http.Request, s *session) {
 		if d.o.Now().Sub(s.AuthenticatedAt) <= recentAuthWindow {

@@ -51,8 +51,8 @@ type routeResult struct {
 func (d *Dashboard) routesSettings() {
 	m := d.mux
 	m.HandleFunc("GET "+prefix+"/settings", d.authed(authz.SettingsRead, d.settingsPage))
-	m.HandleFunc("POST "+prefix+"/settings/routing", d.authed(authz.SettingsWrite, d.routingSave))
-	m.HandleFunc("POST "+prefix+"/settings/{key}", d.authed(authz.SettingsWrite, d.orgSettingSet))
+	m.HandleFunc("POST "+prefix+"/settings/routing", d.authed(authz.SettingsWrite, d.recent(d.routingSave)))
+	m.HandleFunc("POST "+prefix+"/settings/{key}", d.authed(authz.SettingsWrite, d.recent(d.orgSettingSet)))
 }
 
 var currencyRE = regexp.MustCompile(`^[A-Z]{3}$`)
