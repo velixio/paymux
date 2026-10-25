@@ -1352,3 +1352,40 @@ table.grid .num {
 .theme-actions form {
   margin: 0;
 }
+
+.theme-form .theme-columns {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+@media (min-width: 900px) {
+  .theme-form .theme-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.theme-form fieldset {
+  min-width: 0;
+}
+.theme-form .seed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.theme-form .seed > label:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.theme-form .seed input[type="color"] {
+  width: 44px;
+  height: 30px;
+  min-width: 44px;
+  padding: 2px;
+  margin: 0;
+  flex: none;
+}
+.theme-form .seed .check {
+  white-space: nowrap;
+}

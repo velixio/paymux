@@ -83,7 +83,7 @@ var DashboardTokens = []string{
 	"--popover", "--popover-foreground", "--primary", "--primary-foreground",
 	"--secondary", "--secondary-foreground", "--muted", "--muted-foreground",
 	"--ui-accent", "--accent-foreground", "--destructive", "--border",
-	"--input", "--ring", "--sidebar", "--sidebar-foreground",
+	"--input", "--ring", "--sidebar", "--sidebar-foreground", "--sidebar-accent-foreground",
 }
 
 var hexColourRE = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)

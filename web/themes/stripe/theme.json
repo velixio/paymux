@@ -25,6 +25,7 @@
         "--accent-foreground": "#4b44d6",
         "--border": "#e3e8ee",
         "--input": "#c1c9d4",
+        "--sidebar-accent-foreground": "#4b44d6",
         "--sidebar-foreground": "#5c6478"
       },
       "dark": {
@@ -38,6 +39,7 @@
         "--accent-foreground": "#c4c1ff",
         "--border": "#262a35",
         "--input": "#3d4354",
+        "--sidebar-accent-foreground": "#c4c1ff",
         "--sidebar-foreground": "#9aa1b2"
       }
     }

@@ -18,14 +18,17 @@
 <label>Version<input class="field" name="version" value="{{.Version}}" required maxlength="32"></label>
 <label>Description<input class="field" name="description" value="{{.Description}}" maxlength="200"></label>
 
+<div class="theme-columns">
 <fieldset><legend>Light colours</legend>
 {{template "theme_seeds" .Light}}
 </fieldset>
-
+<div>
 <label class="check"><input type="checkbox" name="dark_enabled" value="1"{{if .DarkEnabled}} checked{{end}}> Choose the dark colours myself (otherwise they are worked out from the light ones)</label>
 <fieldset><legend>Dark colours</legend>
 {{template "theme_seeds" .Dark}}
 </fieldset>
+</div>
+</div>
 
 <label>Starts in
 <select class="field" name="scheme">

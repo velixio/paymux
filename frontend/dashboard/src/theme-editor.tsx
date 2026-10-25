@@ -197,7 +197,10 @@ export default function ThemeEditor({
           </button>
         </p>
         {reports && (
-          <table className="grid" aria-label="Contrast of text colours">
+          <table
+            className="operational-table theme-contrast"
+            aria-label="Contrast of text colours"
+          >
             <thead>
               <tr>
                 <th>Text</th>

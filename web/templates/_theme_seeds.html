@@ -1,11 +1,7 @@
 {{define "theme_seeds"}}
-<label>Accent<input type="color" name="{{.Prefix}}_accent" value="{{.Accent}}"></label>
-<label>Page background<input type="color" name="{{.Prefix}}_background" value="{{.Background}}"></label>
-<label class="check"><input type="checkbox" name="set_{{.Prefix}}_background" value="1"{{if .SetBackground}} checked{{end}}> use it</label>
-<label>Sidebar<input type="color" name="{{.Prefix}}_sidebar" value="{{.Sidebar}}"></label>
-<label class="check"><input type="checkbox" name="set_{{.Prefix}}_sidebar" value="1"{{if .SetSidebar}} checked{{end}}> use it</label>
-<label>Text<input type="color" name="{{.Prefix}}_text" value="{{.Text}}"></label>
-<label class="check"><input type="checkbox" name="set_{{.Prefix}}_text" value="1"{{if .SetText}} checked{{end}}> use it</label>
-<label>Sidebar text<input type="color" name="{{.Prefix}}_sidebar_text" value="{{.SidebarText}}"></label>
-<label class="check"><input type="checkbox" name="set_{{.Prefix}}_sidebar_text" value="1"{{if .SetSidebarText}} checked{{end}}> use it</label>
+<div class="seed"><label>Accent<input type="color" name="{{.Prefix}}_accent" value="{{.Accent}}"></label></div>
+<div class="seed"><label>Page background<input type="color" name="{{.Prefix}}_background" value="{{.Background}}"></label><label class="check"><input type="checkbox" name="set_{{.Prefix}}_background" value="1"{{if .SetBackground}} checked{{end}}> use it</label></div>
+<div class="seed"><label>Sidebar<input type="color" name="{{.Prefix}}_sidebar" value="{{.Sidebar}}"></label><label class="check"><input type="checkbox" name="set_{{.Prefix}}_sidebar" value="1"{{if .SetSidebar}} checked{{end}}> use it</label></div>
+<div class="seed"><label>Text<input type="color" name="{{.Prefix}}_text" value="{{.Text}}"></label><label class="check"><input type="checkbox" name="set_{{.Prefix}}_text" value="1"{{if .SetText}} checked{{end}}> use it</label></div>
+<div class="seed"><label>Sidebar text<input type="color" name="{{.Prefix}}_sidebar_text" value="{{.SidebarText}}"></label><label class="check"><input type="checkbox" name="set_{{.Prefix}}_sidebar_text" value="1"{{if .SetSidebarText}} checked{{end}}> use it</label></div>
 {{end}}

@@ -158,6 +158,8 @@ function deriveMode(s: Seeds, dark: boolean): Tokens {
   const black = "#000000";
   const onPrimary =
     contrast(white, accent) >= contrast(black, accent) ? white : black;
+  const sidebarText = nudge(sidebar_text ?? mix(fg, sidebar, 0.34), [sidebar]);
+
   return {
     "--background": bg,
     "--foreground": fg,
@@ -185,10 +187,13 @@ function deriveMode(s: Seeds, dark: boolean): Tokens {
     "--ring": accent,
     "--sidebar": sidebar,
     // Sidebar text is read against the sidebar only, so a dark sidebar can sit
-    // on a light page.
-    "--sidebar-foreground": nudge(sidebar_text ?? mix(fg, sidebar, 0.34), [
-      sidebar,
-    ]),
+    // on a light page. The accent as text on the selected item is 12% accent
+    // over the sidebar.
+    "--sidebar-accent-foreground": nudge(
+      dark ? mix(accent, fg, 0.5) : mix(accent, sidebarText, 0.15),
+      [mix(sidebar, accent, 0.12)],
+    ),
+    "--sidebar-foreground": sidebarText,
   };
 }
 
