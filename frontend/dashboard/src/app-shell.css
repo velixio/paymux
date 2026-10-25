@@ -446,10 +446,14 @@
   border-top: 3px solid var(--test-mode);
 }
 .app-shell .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   border-radius: 999px;
-  padding: 2px 9px;
+  padding: 2px 8px 2px 7px;
   font-size: 11px;
   font-weight: 500;
+  white-space: nowrap;
 }
 .app-shell .pill.pill-ok {
   background: var(--status-ok-bg);
@@ -466,6 +470,18 @@
 .app-shell .pill.pill-neutral {
   background: var(--status-neutral-bg);
   color: var(--status-neutral-fg);
+}
+.app-shell .pill.pill-info {
+  background: var(--status-info-bg);
+  color: var(--status-info-fg);
+}
+/* The dot repeats the tone in solid colour, so a status reads at a glance. */
+.app-shell .pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
 }
 .app-shell .react-workspace [hidden] {
   display: none !important;

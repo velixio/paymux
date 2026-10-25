@@ -22,7 +22,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Copy, LoaderCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { statusTone } from "./pill";
+import { statusLabel, statusTone } from "./pill";
 import { RevenueSection } from "./revenue-section";
 import { SavedFiltersBar } from "./saved-filters-bar";
 import { isRecordPath } from "./peek";
@@ -271,16 +271,28 @@ export function RenderNode({ node: n }: { node: ViewNode }): ReactNode {
         {n.attrs["data-copy"] && <Copy size={14} />} {children()}
       </Button>
     );
-  if (n.tag === "span" && /\b(status|mode|flag|badge)\b/.test(cls))
+  if (n.tag === "span" && /\b(status|mode|flag|badge)\b/.test(cls)) {
+    const text = textOf(n);
+    // A plain status word reads as a label ("Requires action") with a dot in
+    // its tone; richer content (links, counts) renders as given.
+    const plain = n.children.every((c) => c.tag === "#text");
     return (
       <Badge
         {...props}
         variant="secondary"
-        className={cn(cls, "pill", `pill-${statusTone(textOf(n))}`)}
+        className={cn(cls, "pill", `pill-${statusTone(text)}`)}
       >
-        {children()}
+        {plain ? (
+          <>
+            <span className="pill-dot" aria-hidden="true" />
+            {statusLabel(text)}
+          </>
+        ) : (
+          children()
+        )}
       </Badge>
     );
+  }
   if (n.tag === "table")
     return cls.includes("settings") ? (
       <PolicyTable node={n} />

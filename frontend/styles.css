@@ -57,6 +57,8 @@
   --status-bad-fg: #a4261d;
   --status-neutral-bg: #eef1f5;
   --status-neutral-fg: #4f566b;
+  --status-info-bg: #e5eefd;
+  --status-info-fg: #1d4fa8;
   --test-mode: #f59e0b;
   --radius: 0.625rem;
 }
@@ -88,6 +90,8 @@
   --status-bad-fg: #ff9d96;
   --status-neutral-bg: #232734;
   --status-neutral-fg: #aab1c3;
+  --status-info-bg: #16264a;
+  --status-info-fg: #9dbdfb;
   --test-mode: #f59e0b;
 }
 @layer base {
