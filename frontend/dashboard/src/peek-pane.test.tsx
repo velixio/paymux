@@ -278,3 +278,34 @@ test("moving the selection with j/k with unsaved edits asks first and keeps the 
     (within(pane()!).getByLabelText("Note") as HTMLInputElement).value,
   ).toBe("draft");
 });
+
+test("the pane header carries the record's title, status and action links; the body repeats none of them", async () => {
+  handlers["/dashboard/payments/pay_1"] = () =>
+    pageHtml(
+      "pay_1",
+      `<p><a href="/dashboard/payments">← Payments</a></p><h1>pay_1 <span class="status status-succeeded">succeeded</span> <span class="mode mode-live">live</span></h1><p class="muted">About this payment</p><p><a href="/dashboard/logs?id=pay_1">Logs for this payment</a></p><dl><dt>Amount</dt><dd>10.00 INR</dd></dl><h3>Attempts</h3><p>a</p><h3>Ledger</h3><p>l</p>`,
+    );
+  await onList();
+  fireEvent.click(rowLink("pay_1"));
+  const p = await screen.findByRole("complementary", {
+    name: "Record preview",
+  });
+  await within(p).findByText("succeeded");
+  const head = p.querySelector(".peek-head") as HTMLElement;
+  expect(
+    within(head).getByRole("link", { name: "Logs for this payment" }),
+  ).toBeTruthy();
+  expect(
+    within(head).getByRole("button", { name: "Open in tab" }),
+  ).toBeTruthy();
+  const body = p.querySelector(".peek-body") as HTMLElement;
+  expect(
+    within(body).queryByRole("link", {
+      name: /Logs for this payment|Payments/,
+    }),
+  ).toBeNull();
+  expect(body.querySelector("h1")).toBeNull();
+  expect(within(body).queryByText("pay_1")).toBeNull();
+  expect(within(body).queryByText("About this payment")).toBeNull();
+  expect(within(body).getAllByRole("tab")).toHaveLength(3);
+});

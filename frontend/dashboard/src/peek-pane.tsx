@@ -31,11 +31,12 @@ import {
   saveWidth,
   withPeek,
   isRecordPath,
+  setPeekGuard,
 } from "./peek";
-import { statusTone } from "./pill";
-import { PageContent } from "./render";
+import { PageContent, RenderNode } from "./render";
 import { queryKey, RuntimeProvider } from "./runtime";
-import { recordHeading, splitHead } from "./sections";
+import { splitHead } from "./sections";
+import { extractToolbar } from "./toolbar";
 import { useOptionalTabs } from "./tabs-context";
 import "./peek-pane.css";
 
@@ -103,10 +104,18 @@ export function PeekFrame({
     [router],
   );
   // Leaving the record with unsaved edits asks first.
-  const guarded = useCallback((run: () => void) => {
-    if (dirty.current) setConfirm(() => run);
-    else run();
+  const keep = useRef<(() => void) | null>(null);
+  const guarded = useCallback((run: () => void, onKeep?: () => void) => {
+    if (!dirty.current) return run();
+    keep.current = onKeep ?? null;
+    setConfirm(() => run);
   }, []);
+  // Anything that switches the pane to another record asks first.
+  useEffect(() => {
+    if (!record) return;
+    setPeekGuard((run) => guarded(run));
+    return () => setPeekGuard(null);
+  }, [record, guarded]);
   const close = useCallback(() => guarded(() => go(null, true)), [guarded, go]);
   const openInTab = useCallback(() => {
     if (record) guarded(() => tabs?.openHref(record, "new"));
@@ -151,7 +160,20 @@ export function PeekFrame({
     if (!record) return;
     const row = (e.target as Element).closest?.("tbody tr[data-nav-row]");
     const href = recordLink(row ?? null);
-    if (href && href !== record) go(href, true);
+    if (!href || href === record) return;
+    // Cancelling leaves the selection on the record the pane still shows.
+    guarded(
+      () => go(href, true),
+      () => {
+        const rows = [
+          ...(frame.current?.querySelectorAll<HTMLElement>("tbody tr") ?? []),
+        ];
+        const current = rows.find((tr) => recordLink(tr) === record);
+        for (const tr of rows) tr.removeAttribute("data-nav-row");
+        current?.setAttribute("data-nav-row", "");
+        current?.focus();
+      },
+    );
   };
   // Enter on the selected row opens it in a tab.
   const onKeyDown = (e: ReactKeyboardEvent) => {
@@ -190,7 +212,17 @@ export function PeekFrame({
         />
       )}
       <Dialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
-        <DialogContent>
+        <DialogContent
+          onCloseAutoFocus={(e) => {
+            // Back on the row that was selected before the cancelled move.
+            const restore = keep.current;
+            keep.current = null;
+            if (restore) {
+              e.preventDefault();
+              restore();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Discard unsaved changes?</DialogTitle>
             <DialogDescription>
@@ -205,6 +237,7 @@ export function PeekFrame({
             <Button
               onClick={() => {
                 const run = confirm;
+                keep.current = null;
                 dirty.current = false;
                 setConfirm(null);
                 run?.();
@@ -239,8 +272,10 @@ function PeekPane({
     queryFn: ({ signal }) => fetchDashboard(record, signal),
     staleTime: 0,
   });
-  const heading = data ? recordHeading(data.content) : null;
-  const body = data ? splitHead(data.content).rest : [];
+  // The record's own toolbar becomes the pane header: its title (with the
+  // status pill) and action links; the back link has no place in a pane.
+  const parts = data ? extractToolbar(data.content) : null;
+  const body = parts ? parts.rest : data ? splitHead(data.content).rest : [];
 
   const drag = useRef<{ x: number; w: number } | null>(null);
   const resize = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -254,6 +289,27 @@ function PeekPane({
     onWidth(clampWidth(width + by));
   };
 
+  const buttons = (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        className="peek-open-tab"
+        onClick={onOpenInTab}
+      >
+        <ExternalLink size={12} aria-hidden="true" /> Open in tab
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="peek-close"
+        aria-label="Close preview"
+        onClick={onClose}
+      >
+        <X size={14} aria-hidden="true" />
+      </Button>
+    </>
+  );
   return (
     <aside
       className="peek-pane"
@@ -278,51 +334,57 @@ function PeekPane({
         onPointerUp={() => (drag.current = null)}
         onKeyDown={step}
       />
-      <div className="peek-head">
-        <div className="peek-title">
-          <strong>{heading?.title || record.split("/").at(-1)}</strong>
-          {heading?.status && (
-            <span className={cn("pill", `pill-${statusTone(heading.status)}`)}>
-              {heading.status}
-            </span>
-          )}
-        </div>
-        <Button variant="outline" size="sm" onClick={onOpenInTab}>
-          <ExternalLink size={13} aria-hidden="true" /> Open in tab
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Close preview"
-          onClick={onClose}
+      {data ? (
+        <RuntimeProvider
+          page={data}
+          guard={false}
+          inPane
+          onDirtyChange={onDirty}
         >
-          <X size={16} aria-hidden="true" />
-        </Button>
-      </div>
-      <div className="react-content peek-body">
-        {data ? (
-          <RuntimeProvider
-            page={data}
-            guard={false}
-            inPane
-            onDirtyChange={onDirty}
-          >
+          <div className="peek-head">
+            <h2 className="peek-title">
+              {parts
+                ? parts.toolbar.title.map((n, i) => (
+                    <RenderNode key={i} node={n} />
+                  ))
+                : record.split("/").at(-1)}
+            </h2>
+            {parts && parts.toolbar.actions.length > 0 && (
+              <div className="peek-actions">
+                {parts.toolbar.actions.map((n, i) => (
+                  <RenderNode key={i} node={n} />
+                ))}
+              </div>
+            )}
+            {buttons}
+          </div>
+          <div className="react-content peek-body">
             <PageContent nodes={body} href={record} />
-          </RuntimeProvider>
-        ) : error ? (
-          <div className="peek-error">
-            <p>Unable to load this record.</p>
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              Try again
-            </Button>
           </div>
-        ) : (
-          <div role="status" aria-label="Loading record">
-            <Skeleton className="h-8 w-40" />
-            <Skeleton className="mt-3 h-40 w-full" />
+        </RuntimeProvider>
+      ) : (
+        <>
+          <div className="peek-head">
+            <h2 className="peek-title">{record.split("/").at(-1)}</h2>
+            {buttons}
           </div>
-        )}
-      </div>
+          <div className="react-content peek-body">
+            {error ? (
+              <div className="peek-error">
+                <p>Unable to load this record.</p>
+                <Button variant="outline" size="sm" onClick={() => refetch()}>
+                  Try again
+                </Button>
+              </div>
+            ) : (
+              <div role="status" aria-label="Loading record">
+                <Skeleton className="h-6 w-40" />
+                <Skeleton className="mt-3 h-40 w-full" />
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </aside>
   );
 }
