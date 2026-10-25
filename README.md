@@ -1,107 +1,91 @@
+<div align="center">
+
 # Paymux
 
-Paymux is a self-hosted payments hub that ships as a single binary. It sits between your apps and payment providers. Each app integrates with Paymux once. Paymux then:
+### Self-hosted payment orchestration for small teams
 
-- routes each payment to a provider;
-- receives the provider's webhooks (IPN) and checks them;
-- keeps one ledger of payments, refunds, disputes and subscriptions;
-- issues GST invoices;
-- sends your apps signed webhooks.
+**One webhook endpoint. One ledger. Every payment gateway.**<br>
+Razorpay · Stripe · Cashfree · PayU · Zoho Payments · Whop, in a single Go binary with GST invoicing built in.
+
+[![CI](https://github.com/velixio/paymux/actions/workflows/ci.yml/badge.svg)](https://github.com/velixio/paymux/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/go-1.27-00ADD8?logo=go&logoColor=white)](go.mod)
+[![SQLite or PostgreSQL](https://img.shields.io/badge/database-SQLite%20%7C%20PostgreSQL-4479A1)](#-faq)
+[![Status: beta](https://img.shields.io/badge/status-beta-orange.svg)](docs/provider-verification.md)
+
+[**Quick start**](#-quick-start-in-5-minutes) · [Why Paymux](#-why-paymux) · [Gateways](#-supported-payment-gateways) · [GST for India](#-built-for-india) · [Docs](docs/README.md) · [FAQ](#-faq)
+
+<img src="docs/design/paymux/implemented/payments-desktop.png" alt="Paymux dashboard: payments from every app and gateway in one list" width="900">
+
+</div>
+
+---
+
+## 😩 Why Paymux
+
+Payment gateways give your company **one account and one webhook URL**. The moment you run
+two or three products on it, every product receives every payment notification, and each
+app grows its own copy of the same refund screen, dispute tracking and reconciliation code.
+Your accountant still wants GST invoices.
+
+Paymux sits between your apps and your gateways and does that work once.
+
+| Without Paymux | With Paymux |
+|---|---|
+| Every app integrates every gateway | Each app integrates **once**, with a small JSON API |
+| One gateway webhook URL shared by all your sites | Paymux receives, **verifies** and forwards a signed event to the right app only |
+| Payments, refunds and disputes spread over five dashboards | **One ledger**, one dashboard |
+| Changing gateway means rewriting checkout code | **Routing rules** pick the gateway by currency, app or amount |
+| GST invoices typed by hand | Tax invoices and credit notes **issued automatically** |
 
 ```
-app A ─┐                               ┌─ Razorpay
-app B ─┼─ /v1 API ─► Paymux ◄─ webhooks ┼─ PayU India
-app C ─┘ ◄─ signed webhooks ─┘          ├─ Zoho Payments
-                                        ├─ Whop
-                                        └─ your own (Go package or HTTP service)
+ app A ─┐                                    ┌─ Razorpay
+ app B ─┼── /v1 API ──►   Paymux   ◄─ webhooks ─┼─ Stripe · Cashfree
+ app C ─┘ ◄── signed webhooks ──┘            ├─ PayU India · Zoho Payments
+                                             ├─ Whop
+                                             └─ your own gateway (Go package or HTTP service)
 ```
 
-> **Status:** under active development. Everything listed under "What is built" below works and is tested on both databases; see `docs/superpowers/plans/2026-10-17-paymux-roadmap.md` for what is next. The public SDK (`pkg/...`) and the framework hooks API are guarded by a snapshot in CI (`scripts/apisnap/pkg.txt`), so they do not change by accident.
+## ✨ What you get
 
-## What is built
+- 🔀 **Smart routing.** Rules by app, currency, country and amount, with a circuit breaker that skips a gateway that keeps failing.
+- 📒 **One trustworthy ledger.** Payments, refunds, disputes, subscriptions and payouts. A gateway webhook is only a hint: Paymux re-fetches the truth before it changes anything.
+- 🧾 **GST invoices out of the box.** CGST/SGST or IGST, LUT exports, credit notes, e-invoice JSON, digitally signed PDFs.
+- 🔁 **Subscriptions.** Gateway-managed (Razorpay, Stripe, Whop) and Paymux-managed on UPI AutoPay, card and e-mandates, with dunning and RBI pre-debit rules.
+- 🔔 **Signed webhooks to your apps** in the [Standard Webhooks](https://www.standardwebhooks.com) format, with retries, delivery history and replay.
+- 🔗 **Hosted pay pages and payment links.** Themed, translated (English, Hindi), mobile-friendly, on your own domains.
+- 🖥️ **A real dashboard.** Payments, disputes, reconciliation, invoices, reports, alerts, audit log, roles, 2FA, and an error log you can search by request id.
+- 🧩 **Extensible.** Write a connector for any gateway, add Go or JavaScript hooks, theme the pages. Your changes survive upgrades.
+- 📦 **One binary, no cluster.** SQLite out of the box, PostgreSQL when you grow. Sized for small teams: the load test holds 20 payment requests a second ([docs/performance.md](docs/performance.md)). No Kubernetes fleet required.
 
-**Payments**
+The complete list is in [docs/features.md](docs/features.md).
 
-- **Create and track payments** through a JSON API: [`/v1/payments`](docs/openapi.yaml), refunds, idempotency keys, per-key rate limits, test and live modes.
-- **Hosted pay page.** The customer sees a themed, translated page that asks for billing details only where the rules require them, then goes to the provider.
-- **Payment links.** A shareable page `/l/{slug}` creates a payment for whoever opens it: fixed price or "customer chooses" between a minimum and maximum, reusable or single-use, optional expiry. Created through the API or the dashboard, and served on custom domains too.
-- **Routing.** Rules at app level, then org level, then a catch-all; per-account accepted currencies and purposes; a circuit breaker skips accounts that keep failing.
-- **Custom domains** with on-demand TLS (Caddy asks the hub which hosts to certify) and a domain checklist.
+## 🏦 Supported payment gateways
 
-**Money you can reconcile**
+| Gateway | Payments | Refunds | Subscriptions | Disputes | Checked against the real sandbox |
+|---|:-:|:-:|:-:|:-:|---|
+| **Razorpay** | ✅ | ✅ | ✅ INR | ✅ | ✅ payments, refunds, subscriptions, webhooks |
+| **Stripe** | ✅ | ✅ | ✅ | ✅ | ✅ payments, refunds, subscriptions, webhooks |
+| **Cashfree** | ✅ | ✅ | none | none | ✅ payments, refunds, webhooks |
+| **PayU India** | ✅ | ✅ | 🟡 mandates | 🟡 chargebacks | ✅ payments, refunds. Recurring needs PayU to enable it on the merchant |
+| **Zoho Payments** | 🟡 | 🟡 | 🟡 UPI AutoPay | none | 🟡 built from the API docs, full sandbox run pending |
+| **Whop** | ✅ | ✅ | ✅ | 🟡 | ✅ payments, refunds, subscriptions, webhooks |
+| **Your own** | any | any | any | any | Go package or a small signed HTTP service |
 
-- **One ledger.** A state change, its ledger entries and its events commit in one transaction (transactional outbox). A provider webhook is only a hint: Paymux re-fetches the truth before changing anything.
-- **Disputes.** Inbox with due dates, evidence upload and accept/submit for providers that support it, manual entry for those that do not, credit notes for lost disputes.
-- **Daily reconciliation** against each provider's own records, with an items list to resolve, a "run now" button and settlements.
-- **Subscriptions.** Provider-managed billing (Razorpay, Whop) and merchant-triggered billing on UPI/card/e-mandate mandates (PayU, Zoho) with dunning, pre-debit notices by provider and by e-mail, and the RBI/NPCI limits.
+✅ working and tested · 🟡 built, one external step still open. What each gateway can do, exactly: [docs/capabilities.md](docs/capabilities.md).
 
-**India**
+## 🚀 Quick start in 5 minutes
 
-- **GST invoicing.** Tax invoices and credit notes with gapless numbering per fiscal year, CGST/SGST or IGST, LUT exports, FX rates, hosted copies, e-mail delivery and GST reports as CSV. Prices can include tax or exclude it (the amount you send is then the taxable value and Paymux adds the GST). PDFs can be digitally signed (PAdES) with a PKCS#12 certificate uploaded on the tax entity. Tax exceptions raise ops alerts, and the credit-note cutoff and the B2CL threshold are settings.
-- **State, country and address capture** on the pay page per the GST rules; a buyer abroad makes the sale an export.
-
-**Operations**
-
-- **Dashboard.** Payments, subscriptions, disputes, reconciliation, invoices, reports, apps, providers, tax entities, FX rates, settings, audit log and users. Roles (viewer, operator, admin), password plus TOTP, sessions, CSRF protection and a login lockout.
-- **First-run setup wizard.** A new hub shows a one-time setup page, protected by a code printed in the log, that creates the admin (with 2FA), names the org and optionally creates a first app with its API keys.
-- **Webhooks to your apps** in the [Standard Webhooks](https://www.standardwebhooks.com) format, with retries, an SSRF guard, delivery history and replay. Events include `payment.*`, `refund.*`, `dispute.*`, `subscription.*`, `invoice.issued`, `credit_note.issued` and `payment_link.*`.
-- **Themes and languages.** Two bundled themes (`default`, `minimal-dark`) and your own in `<data>/themes/`, applied without a restart; customer pages and the pre-debit e-mail in English and Hindi, with your own catalogs in `custom/i18n/`.
-- **Health and metrics.** `/healthz`, `/readyz`, Prometheus `/metrics`, structured logs with secret and PII redaction, ops alerts by e-mail and webhook.
-- **GST e-invoice export (offline).** B2B and export invoices, and their credit notes (`CRN`), as the government's INV-01 JSON, per document or per month, checked against a committed schema; record the IRN, acknowledgement and signed QR code the portal returns and they are printed (with a QR code) on the PDF and the hosted page.
-- **Alerts center.** Every ops alert is kept and listed in the dashboard with a count in the nav and an acknowledge button, as well as being sent by email and webhook.
-- **Phone-friendly pages.** The dashboard and the customer pages are checked at 360px wide by tests: scrolling tables, stacked navigation, full-width forms.
-- **API reference** rendered by the hub itself at `/docs` (the raw spec at `/docs/openapi.yaml`), no JavaScript.
-
-**Databases and deployment**
-
-- **SQLite or Postgres**, the same code and the same tests on both (`PAYMUX_DATABASE_URL`). SQLite backs up continuously with Litestream; Postgres with `pg_dump` or WAL archiving.
-- **Deploy kit** in [`deploy/`](deploy): Caddyfile with on-demand TLS, an nginx site for a proxy on another device (`deploy/nginx/`), a hardened systemd unit, a Litestream config and a distroless Docker image (`Dockerfile`, non-root, static). `scripts/release.sh` builds linux and darwin archives for amd64 and arm64 with `SHA256SUMS` and optional cosign signatures; GitHub Actions workflows run the CI gate and tagged releases.
-
-**Extending**
-
-- **Connectors.** A connector is a Go package against the small public SDK in `pkg/connector`, with a conformance kit and fuzz harness. Or run it **out of process** in any language: the `remote` connector speaks a signed HTTP protocol (`pkg/connector/wire`).
-- **Hooks and framework mode.** Write a small `main` that calls `framework.Main` and register Go hooks (`OnPaymentSucceeded`, `OnRefundSucceeded`, `OnDisputeOpened`, `OnSubscriptionRenewed`, `OnInvoiceIssued`, `OnRoute`) that run after commit and cannot affect money. `paymux build --with` adds modules to the stock binary without writing a `main`.
-
-## Connectors
-
-Which provider can do what, generated from each connector's declared `Info` (the full table, with currencies, methods and mandate caps, is [`docs/capabilities.md`](docs/capabilities.md)):
-
-| Connector | Refunds | Disputes (read / respond) | Reconciliation | Settlements | Provider-managed subscriptions | Mandates |
-|---|---|---|---|---|---|---|
-| Razorpay | yes | yes / yes | yes | yes | yes | - |
-| PayU India | yes | - | yes | - | - | yes |
-| Zoho Payments | yes | - | - | - | - | yes |
-| Whop (merchant of record) | yes | - | - | - | yes | - |
-| Stripe | yes | yes / yes | yes | yes | yes | - |
-| Cashfree | yes | - | - | yes | - | - |
-| Remote (your service) | per service | per service | per service | per service | per service | per service |
-
-Whop is a merchant of record, so no GST invoice is issued for its payments. The matrix is regenerated with `go run ./scripts/capmatrix -w`; CI fails when it is stale.
-
-## Documentation
-
-Start with the [complete documentation index](docs/README.md). Guides cover installation, application integration, payments and routing, signed webhooks, billing, dashboard operations, configuration, security, recovery, and troubleshooting. The [glossary](docs/glossary.md) defines the product language. The separate public site renders the same Markdown at `/docs` and `/docs/<guide>`; the payment hub’s `/docs` remains its API reference.
-
-## Quick start
-
-New here? [`docs/quickstart.md`](docs/quickstart.md) takes you from nothing to a test payment, a signed webhook, an invoice and a refund in ten minutes, with no provider account: it uses the built-in simulator. The short version follows.
-
-Building from source also requires Bun 1.4.3 or newer to compile the React dashboard. Distributed binaries do not need a JavaScript runtime. You need a Go toolchain of version 1.21 or later. `go.mod` pins `toolchain go1.27.2`, and Go downloads it automatically.
+You need [Go](https://go.dev/dl/) and [Bun](https://bun.sh) to build from source. Go fetches the pinned toolchain by itself. You do **not** need a gateway account to try it: the built-in simulator plays one.
 
 ```bash
-make build                       # → bin/paymux, bin/paymux-home and the example binaries
-make dev                         # build everything, run the hub and the website together (Ctrl-C stops both)
-cp .env.example .env             # set PAYMUX_MASTER_KEY: head -c32 /dev/urandom | base64
-./bin/paymux                     # the log prints a one-time setup code
+git clone https://github.com/velixio/paymux.git && cd paymux
+cp .env.example .env     # then set PAYMUX_MASTER_KEY:  head -c32 /dev/urandom | base64
+make build               # the hub, the website and the examples, into bin/
+./bin/paymux             # starts on :8080 and prints a one-time setup code
 ```
 
-Open `http://localhost:8080/setup`, enter the code and create the administrator (the first-run wizard also offers a first app and its API keys). Prefer the command line? This works too (with SQLite, while `serve` is stopped):
-
-```bash
-./bin/paymux app create --name "Voicestudio" --slug voicestudio --mode test   # prints an API key once
-```
-
-Create a payment:
+Open <http://localhost:8080/setup>: the first-run **setup wizard** asks for the code, creates your admin account (with 2FA) and a first app. Then take a payment:
 
 ```bash
 curl -s localhost:8080/v1/payments \
@@ -111,101 +95,92 @@ curl -s localhost:8080/v1/payments \
 # → { "id": "pay_…", "status": "created", "checkout_url": "https://…/pay/pay_…?t=…" }
 ```
 
-Send the customer to `checkout_url`. Your app then learns the outcome from a signed webhook (`paymux endpoint add --app … --url …`) or from `GET /v1/payments/{id}`. Never trust the browser redirect on its own.
+Send your customer to `checkout_url`. Your app learns the result from a **signed webhook** or from `GET /v1/payments/{id}`. Never trust the browser redirect on its own.
 
-Or create a link to share, with no code on your side:
+No code on your side? Create a shareable payment link instead:
 
 ```bash
 curl -s localhost:8080/v1/payment_links \
   -H "Authorization: Bearer pmx_test_sk_..." \
   -d '{"amount":49900,"currency":"INR","description":"Pro plan, annual","single_use":true}'
-# → { "id": "plink_…", "url": "https://…/l/k3n9x0q7vb2m", … }
 ```
 
-The full reference is served by your own hub at `/docs`.
+The full, step-by-step tour (test payment, webhook, invoice, refund) is [docs/quickstart.md](docs/quickstart.md). Your running hub also serves its API reference at `/docs`.
 
-## Configuration
+Tip: `make dev` builds everything and runs the hub and the public website together.
 
-Settings are read from environment variables, or from a `.env` file. A real environment variable takes priority over the same key in `.env`.
+## 🇮🇳 Built for India
 
-| Variable | Default | |
-|---|---|---|
-| `PAYMUX_ENV` | `production` | `production` or `development` |
-| `PAYMUX_BASE_URL` | required | Public URL of the hub |
-| `PAYMUX_LISTEN` | `:8080` | Public listener |
-| `PAYMUX_INTERNAL_LISTEN` | `127.0.0.1:9100` | `/metrics`, pprof, TLS-ask endpoint |
-| `PAYMUX_DATA_DIR` | `./data` | SQLite file, `themes/`, `custom/` templates and catalogs |
-| `PAYMUX_DATABASE_URL` | `sqlite://<data dir>/paymux.db` | Or `postgres://…` |
-| `PAYMUX_MASTER_KEY` / `_FILE` | required | 32 bytes, base64; encrypts secrets at rest |
-| `PAYMUX_TZ` | `Asia/Kolkata` | Time zone used for reconciliation and report windows |
-| `PAYMUX_TRUSTED_PROXIES` | local network | Reverse proxies whose `X-Forwarded-For` is believed (login limit, sessions, audit); `none` to believe no proxy |
-| `PAYMUX_SMTP_HOST`, `_PORT`, `_USERNAME`, `_PASSWORD`, `_FROM` | unset | Invoice and pre-debit e-mail, ops alerts |
-| `PAYMUX_OPS_EMAILS`, `PAYMUX_OPS_WEBHOOK_URL` | unset | Ops alert targets |
-| `PAYMUX_JS_HOOKS_DIR` | `<data dir>/hooks` | Folder of JavaScript hook files; hooks are off if it does not exist (see docs/extending.md) |
-| `PAYMUX_JS_HOOKS_ALLOWED_HOSTS` | unset | Hosts `fetch()` in JavaScript hooks may call, comma separated (`hooks.slack.com,*.example.com`) |
-| `PAYMUX_ALLOW_PRIVATE_WEBHOOKS` | `false` | Allow webhook URLs that resolve to private IPs |
-| `PAYMUX_DEV_SKIP_2FA` | `false` | Honoured only in development on a local host |
-| `PAYMUX_OIDC_ISSUER`, `_CLIENT_ID`, `_CLIENT_SECRET` | unset | Enable OpenID Connect single sign-on (all three together) |
-| `PAYMUX_OIDC_ALLOWED_DOMAINS` | unset | Comma-separated e-mail domains whose users may be created at first sign-in |
-| `PAYMUX_OIDC_DEFAULT_ROLE` | `viewer` | Role of those users (never `admin`) |
+- **GST invoicing.** Gapless numbering per fiscal year, CGST/SGST or IGST by place of supply, LUT exports, credit notes, tax-inclusive or tax-exclusive prices, FX rates, GST reports as CSV.
+- **E-invoice.** IRP-ready INV-01 JSON for B2B and export documents and their credit notes. Record the IRN and QR code from the portal and they are printed on the PDF.
+- **Signed PDFs.** PAdES digital signature with your DSC certificate.
+- **UPI AutoPay, cards and e-NACH** with the RBI and NPCI rules built in: pre-debit notice, the ₹15,000 limit, UPI execution windows, retry limits.
+- **Buyer details captured the GST way.** State, country, optional GSTIN; a buyer abroad makes the sale an export.
 
-Everything else is data that you edit in the dashboard or with the CLI: apps, provider accounts, routing rules, tax entities, themes, languages and policy settings. Policy settings resolve as app value, then org value, then built-in default.
+## 🔒 Security
 
-## Documentation
+- A gateway webhook is **verified first and only used as a hint**: Paymux fetches the payment from the gateway before it changes your ledger.
+- **No card data ever touches Paymux.** Customers pay on the gateway's own page.
+- Secrets are **encrypted at rest** (AES-256-GCM) under a master key you hold, with a `paymux secrets reseal` command to rotate it.
+- Dashboard: **2FA (TOTP)**, optional single sign-on, roles and custom roles, scoped API keys, login lockout, "remember me" sessions that ask for your password again before sensitive changes.
+- Outbound webhooks are **SSRF-guarded** and signed. The error log removes secrets and customer details before it stores anything.
+- Independently reviewed: over 50 findings across several review rounds are tracked, with their fixes, in [docs/security-review.md](docs/security-review.md).
+
+## 🧩 Make it yours
+
+- **Add a gateway.** A connector is a Go package against a small public SDK, with a conformance kit that tells you when it is right. Or write it in any language and run it as a signed HTTP service. See [docs/connectors.md](docs/connectors.md).
+- **React to events.** Go hooks and sandboxed JavaScript hooks run after commit and cannot move money. See [docs/extending.md](docs/extending.md).
+- **Themes and translations.** Drop your own themes or a language catalog into your data folder. No restart, no fork.
+- **Examples.** Small, tested programs in [`examples/`](examples) show an API client, a signed-webhook receiver, a framework-mode binary and a remote connector.
+
+## 📦 Run it for real
+
+- **Deploy kit** in [`deploy/`](deploy): Docker image, hardened systemd unit, Caddy (automatic HTTPS for custom domains) or nginx, Litestream for continuous SQLite backups.
+- **Operate it:** `/healthz`, `/readyz`, Prometheus `/metrics`, daily reconciliation against each gateway, an alerts center, `paymux update` with signature checks (see [upgrades](docs/runbook.md#upgrades)), `scripts/release.sh` builds checksummed release archives for Linux and macOS (amd64, arm64).
+- **Configure it** with environment variables or a `.env` file: [docs/configuration.md](docs/configuration.md). The runbook covers install, backups, restore and "the hub is down": [docs/runbook.md](docs/runbook.md).
+
+## ❓ FAQ
+
+**What is Paymux?**
+A self-hosted payment orchestration and webhook-routing hub. Your apps call one API; Paymux talks to the gateways, keeps the ledger, sends you signed events and issues invoices.
+
+**Is it a Hyperswitch alternative?**
+For small teams, yes. [Hyperswitch](https://github.com/juspay/hyperswitch) is built for payment companies at large scale. Paymux keeps the useful ideas (routing, one API, a ledger, a dashboard, extensibility) in a single binary you can run on one small server.
+
+**Can I use several gateways at once, for example Razorpay for rupees and Stripe for dollars?**
+Yes. Routing rules choose the gateway by app, currency, country and amount, and fall through to the next one when a gateway is down.
+
+**Does Paymux handle GST?**
+Yes: tax invoices, credit notes, place-of-supply rules, exports, e-invoice JSON and signed PDFs. Whop is a merchant of record, so Paymux issues no invoice for its payments.
+
+**Which databases does it support?**
+SQLite (default) and PostgreSQL, with the same code and the same tests on both.
+
+**Is Paymux production-ready?**
+It is **beta**. Razorpay, Stripe, Cashfree, PayU and Whop have been run end to end against their real sandboxes, and the security audit findings are fixed. Before you take live money, run your own test payments and read [docs/provider-verification.md](docs/provider-verification.md): the checklist of what still needs a live account, per gateway.
+
+**How do I add a gateway that is not listed?**
+Write a connector (a Go package or a small HTTP service). The SDK, the conformance kit and a worked example are in [docs/connectors.md](docs/connectors.md).
+
+## 📚 Documentation
 
 | | |
 |---|---|
-| [Runbook](docs/runbook.md) | Install (binary, systemd, Docker), first admin and 2FA, providers and webhook URLs, themes and languages, backups and restore, monitoring, what to do when the hub is down |
-| [Upgrades](docs/runbook.md#upgrades) | Verifying a release, backing up, applying migrations, rolling back |
-| [Extending](docs/extending.md) | Framework mode, hooks and their guarantees, `paymux build --with`, the public API |
-| [Writing connectors](docs/connectors.md) | The SDK, capabilities, conformance kit, fuzzing, remote connectors |
-| [Connector capabilities](docs/capabilities.md) | The matrix of connectors and what each supports |
-| [API reference](docs/openapi.yaml) | OpenAPI 3.1; rendered at `/docs` on a running hub |
-| [Performance](docs/performance.md) | Targets and the load test |
-| [Dependencies](docs/dependencies.md) | Third-party code and why |
-| [Provider verification](docs/provider-verification.md) | What was written from provider documentation and still has to be checked against a live sandbox, as a checklist per provider |
-| [Security review](docs/security-review.md) | Findings of the correctness and security audit, with severities and dispositions |
-| [Design spec](docs/superpowers/specs/2026-10-17-paymux-design.md) | The source of truth for behaviour |
+| [Quick start](docs/quickstart.md) | From nothing to a test payment, webhook, invoice and refund |
+| [Documentation index](docs/README.md) | Every guide, in reading order |
+| [API guide](docs/api-guide.md) · [Reference](docs/openapi.yaml) | Integrate your app |
+| [Webhooks](docs/webhooks.md) · [Payments](docs/payments.md) · [Billing](docs/billing.md) | The core concepts |
+| [Runbook](docs/runbook.md) · [Upgrades](docs/upgrades.md) · [Troubleshooting](docs/troubleshooting.md) | Run it in production |
+| [Features](docs/features.md) · [Access control](docs/access-control.md) · [Security](docs/security.md) | The complete lists |
+| [Writing connectors](docs/connectors.md) · [Extending](docs/extending.md) | Make it yours |
+| [Development](docs/development.md) · [Testing](docs/testing.md) | Contribute |
 
-## Access control
+## 🤝 Contributing
 
-- **Roles.** `admin`, `operator` and `viewer` are built in. Admins create custom roles on the dashboard's Roles page by ticking actions, and assign them on the Users page; the user and role management actions stay with admins. Every change is audited.
-- **API key scopes.** A key may be limited to `payments:read`, `payments:write`, `refunds:read`, `refunds:write`, `subscriptions:read`, `subscriptions:write` and `invoices:read`, `payouts:read` and `payouts:write` (`x:write` includes `x:read`). A missing scope answers 403 `insufficient_scope`; keys without scopes have all of them except the payouts ones, which must be listed: sending money out is always a deliberate grant. Create scoped keys on the app's Keys tab or with `paymux app key --app SLUG --scopes payments:read,refunds:write`; `docs/openapi.yaml` lists the scope of each operation.
-- **Payouts.** `POST /v1/payouts` sends money to a bank account or UPI id through a provider account that has the `payout` purpose and a connector that can pay out. It needs the `payout.create` action (admin only unless a custom role is given it) and the explicit `payouts:write` key scope. The beneficiary is stored encrypted and shown masked; the provider gets the payout's own reference as an idempotency token.
-- **Logs.** The dashboard's Logs page (errors, failed provider calls, rejected requests, failed jobs, with secrets and buyers' details removed) needs the `logs.read` action: admin only unless a custom role is given it. See the runbook's *Logs* section.
-- **Key rotation.** `paymux app key --app SLUG --mode live --rotate [--grace-hours 24]` (or Rotate on the Keys tab) creates a new key and lets the current keys of that mode keep working for the grace period, then stops them.
-- **Single sign-on.** With the `PAYMUX_OIDC_*` settings the login page offers an OpenID Connect sign-in (authorization code flow with PKCE, state and nonce). Users are matched by verified e-mail; someone new is created only for an allowed domain, with the default role. The identity provider's sign-in replaces TOTP; password logins still need TOTP. The redirect URI to register is `<PAYMUX_BASE_URL>/dashboard/login/oidc/callback`.
+Issues and pull requests are welcome. `make ci` runs everything CI runs: formatting, vet, the public-API snapshot, static analysis, vulnerability scan, the full test suite on SQLite and PostgreSQL, the browser tests and the Docker build. Start with [docs/development.md](docs/development.md).
 
-## Development
-
-```bash
-make test       # SQLite
-make test-pg    # Postgres (uses PAYMUX_TEST_POSTGRES_URL or starts postgres:17 in Docker)
-make ci         # gofmt, vet, API snapshot, capability matrix, staticcheck, govulncheck, both databases, cross builds, docker build
-scripts/release.sh v1.2.3   # release archives with checksums (and a cosign signature if cosign is installed)
-```
-
-**Architecture rules, enforced by `internal/seams`:**
-
-- All SQL lives in `internal/store`.
-- Connectors import only `pkg/...`.
-- `main.go` stays thin.
-- Policy values are read through `internal/settings`.
-
-## License
+## 📄 License
 
 [Apache License 2.0](LICENSE).
 
-## Public website
-
-The React marketing and developer-entry website (sources in [`frontend/home/`](frontend/home), Go server in [`cmd/paymux-home/`](cmd/paymux-home)) runs independently of the payment hub. Both frontends use TanStack Router and shadcn/ui; the dashboard also uses TanStack Query. They use Vite client builds, without TanStack Start, SSR or new APIs. The home site can deploy directly to a static host or use its separate Go serving binary.
-
-```bash
-bun install --cwd frontend --frozen-lockfile
-make build-home
-./bin/paymux-home -listen 127.0.0.1:8051
-```
-
-Routes: `/`, `/integrations`, `/docs`, `/self-hosting`; readiness: `/healthz`. Bind behind your TLS reverse proxy for public hosting. The payment hub continues to serve its own operational dashboard and API reference separately.
-
-Frontend development: `bun run --cwd frontend dev:home` serves the public site; `bun run --cwd frontend dev` serves the dashboard with a proxy to the existing hub. See [`frontend/dashboard/README.md`](frontend/dashboard/README.md) for the existing page/form adapter contract and development setup.
+<sub>Keywords: payment orchestration, payment gateway aggregator, payment router, webhook router, IPN, Razorpay, Stripe, Cashfree, PayU, Zoho Payments, Whop, GST invoice, e-invoice, UPI AutoPay, e-mandate, subscription billing, refunds, disputes, reconciliation, self-hosted, open source, Go, SQLite, PostgreSQL, Hyperswitch alternative.</sub>
