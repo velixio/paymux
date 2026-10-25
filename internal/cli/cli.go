@@ -9,6 +9,7 @@ import (
 
 	"github.com/paymux/paymux/internal/config"
 	"github.com/paymux/paymux/internal/migrations"
+	"github.com/paymux/paymux/internal/selfupdate"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/hub"
 )
@@ -45,13 +46,19 @@ Flags:
 
 // Run executes the CLI and returns the process exit code.
 func Run(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer) int {
-	return RunWith(ctx, args, lookupEnv, stdout, stderr, nil)
+	return runCLI(ctx, args, lookupEnv, stdout, stderr, nil, true)
 }
 
 // RunWith is Run for a custom binary (framework mode): "serve" calls each
 // setup function on the App, in order, before starting it, which is where
 // hooks are registered.
 func RunWith(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer, setup []func(*hub.App)) int {
+	return runCLI(ctx, args, lookupEnv, stdout, stderr, setup, false)
+}
+
+// runCLI is RunWith; stock says this is the stock paymux binary, which the
+// dashboard may update in place (a custom binary must not be replaced with it).
+func runCLI(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer, setup []func(*hub.App), stock bool) int {
 	if len(args) == 0 {
 		args = []string{"serve"}
 	}
@@ -127,7 +134,7 @@ func RunWith(ctx context.Context, args []string, lookupEnv func(string) (string,
 		case "domain":
 			return runDomain(ctx, args[1:], env, stdout, stderr)
 		}
-		return runServe(ctx, env, stderr, setup)
+		return runServe(ctx, env, stderr, setup, stock)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n%s\n", args[0], usage)
 		return 2
@@ -148,16 +155,26 @@ func envWithDotEnv(lookupEnv func(string) (string, bool)) (func(string) (string,
 	return config.WithDotEnv(lookupEnv, file), nil
 }
 
-func runServe(ctx context.Context, env func(string) (string, bool), stderr io.Writer, setup []func(*hub.App)) int {
+func runServe(ctx context.Context, env func(string) (string, bool), stderr io.Writer, setup []func(*hub.App), stock bool) int {
 	cfg, err := config.Load(env)
 	if err != nil {
 		fmt.Fprintf(stderr, "paymux serve: invalid configuration:\n%v\n", err)
 		return 1
 	}
 	app, err := hub.New(cfg)
+	// The path of this binary, found now: once an update has replaced it, the
+	// running process no longer knows where it came from.
+	exe, _ := selfupdate.ExecutablePath()
 	if err == nil {
 		for _, f := range setup {
 			f(app)
+		}
+		if stock && exe != "" {
+			repo := selfupdate.DefaultRepo
+			if v, ok := env("PAYMUX_UPDATE_REPO"); ok && v != "" {
+				repo = v
+			}
+			app.EnableSelfUpdate(repo, exe)
 		}
 		err = app.Start(ctx)
 	}
@@ -165,7 +182,7 @@ func runServe(ctx context.Context, env func(string) (string, bool), stderr io.Wr
 		fmt.Fprintf(stderr, "paymux serve: %v\n", err)
 		return 1
 	}
-	return 0
+	return finishServe(app.RestartRequested(), exe, stderr)
 }
 
 func runMigrate(ctx context.Context, env func(string) (string, bool), stdout, stderr io.Writer) int {
