@@ -275,7 +275,15 @@ func (s *Service) transition(ctx context.Context, tx store.Tx, d *store.Dispute,
 		if err := s.ledger(ctx, tx, *d, "dispute_release", d.Amount, now); err != nil {
 			return nil, err
 		}
-		dropFlag(p, FlagDisputed)
+		// Another open dispute on this payment still holds money back: the flag
+		// (which blocks refunds of ours) stays until the last one ends.
+		open, err := store.CountOtherOpenDisputes(ctx, tx, p.ID, d.ID)
+		if err != nil {
+			return nil, err
+		}
+		if open == 0 {
+			dropFlag(p, FlagDisputed)
+		}
 		switch to {
 		case state.DisputeWon:
 			evType = "dispute.won"
