@@ -296,3 +296,30 @@ func TestReservedNamesAreRefusedEverywhere(t *testing.T) {
 		}
 	})
 }
+
+func TestImportNameFromTheFormRescuesAFileWithAnInvalidName(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newThemedEnv(t, db)
+		admin := e.roleClient("admin")
+		tok := csrfOf(t, e.pageOK(admin, "/dashboard/appearance"))
+		bad := `{"name":"Not A Valid Name!","version":"1.0.0","dashboard":{"seeds":{"accent":"#0d7d68"}}}`
+		// Without a name of its own, the file is refused for its name.
+		if r, _ := e.importRaw(admin, map[string]string{"csrf": tok}, part{"theme", "t.json", bad}); r.StatusCode != 400 {
+			t.Fatalf("invalid name, no override: %d", r.StatusCode)
+		}
+		// Typing a valid one is enough.
+		r, _ := e.importRaw(admin, map[string]string{"csrf": tok, "name": "rescued"}, part{"theme", "t.json", bad})
+		if r.StatusCode != 303 {
+			t.Fatalf("with a valid name: %d", r.StatusCode)
+		}
+		if m := readManifest(t, e, "rescued"); m["name"] != "rescued" || m["version"] != "1.0.0" {
+			t.Errorf("manifest: %v", m)
+		}
+		// An invalid override is still refused, and the file's content is kept in the form.
+		r, body := e.importRaw(admin, map[string]string{"csrf": tok, "name": "Also Bad"}, part{"theme", "t.json", bad})
+		if r.StatusCode != 400 {
+			t.Errorf("invalid override: %d", r.StatusCode)
+		}
+		has(t, body, `name="theme_json"`)
+	})
+}
