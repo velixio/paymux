@@ -12,7 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchDashboard } from "./adapter";
-import { PageContent } from "./render";
+import { ScreenContent } from "./screen-toolbar";
 import { queryKey, RuntimeProvider } from "./runtime";
 import { useTableNav } from "./use-table-nav";
 import type { Tab } from "./tabs";
@@ -86,13 +86,6 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
 
   return (
     <>
-      {active &&
-        shown.data?.warnings.map((message, i) => (
-          <div className="workspace-warning" role="status" key={i}>
-            <TriangleAlert size={14} aria-hidden="true" />
-            {message}
-          </div>
-        ))}
       <section
         className="react-content"
         ref={section}
@@ -113,7 +106,7 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
             pinned={tab.pinned}
             onDirtyChange={onDirty}
           >
-            <PageContent
+            <ScreenContent
               key={
                 shown.data.href +
                 "-" +

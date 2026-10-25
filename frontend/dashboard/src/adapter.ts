@@ -11,7 +11,7 @@ export type DashboardPage = {
   title: string;
   user: string;
   mode: string;
-  nav: { href: string; label: string; active: boolean }[];
+  nav: { href: string; label: string; active: boolean; count?: number }[];
   content: ViewNode[];
   modeForm: ViewNode | null;
   logoutForm: ViewNode | null;
@@ -70,6 +70,12 @@ function node(el: Node): ViewNode | null {
     children: [...el.childNodes].map(node).filter((n): n is ViewNode => !!n),
   };
 }
+// A live count the server attached to a nav entry (data-count); none if absent.
+function navCount(a: Element): number | undefined {
+  const raw = a.getAttribute("data-count");
+  const n = raw === null || raw.trim() === "" ? NaN : Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
 export function parseDashboard(doc: Document, href: string): DashboardPage {
   const main =
     doc.querySelector(".dash-main") || doc.getElementById("paymux-server-page");
@@ -87,6 +93,7 @@ export function parseDashboard(doc: Document, href: string): DashboardPage {
       href: a.getAttribute("href")!,
       label: a.textContent!.trim(),
       active: a.hasAttribute("aria-current"),
+      count: navCount(a),
     })),
     content: [...main.childNodes].map(node).filter((n): n is ViewNode => !!n),
     modeForm: parseForm(".modeform"),

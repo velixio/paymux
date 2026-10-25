@@ -89,6 +89,19 @@ describe("existing Go page contract", () => {
       readOnly: true,
     });
   });
+  test("reads a nav count only when the server attached one", () => {
+    const d = new win.DOMParser().parseFromString(
+      '<title>Keys - Paymux</title><div id="paymux-server-page"><header class="dash-head"></header><nav class="dash-nav"><a href="/dashboard/disputes" data-count="2">Disputes</a><a href="/dashboard/apps" data-count="">Apps</a><a href="/dashboard/logs" data-count="x">Logs</a><a href="/dashboard/audit">Audit</a></nav><section class="dash-main"></section></div>',
+      "text/html",
+    );
+    const p = parseDashboard(d as unknown as Document, "/dashboard/disputes");
+    expect(p.nav.map((n) => n.count)).toEqual([
+      2,
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
   test("marks pages that show a one-time secret", () => {
     expect(page().once).toBe(false);
     const d = new win.DOMParser().parseFromString(
