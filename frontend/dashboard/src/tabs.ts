@@ -315,3 +315,46 @@ export function save(
     // Storage may be full or blocked; tabs then last for this page view only.
   }
 }
+
+// ---- links that leave the current section ----
+
+/** The section of a dashboard path: "payments" for /dashboard/payments/pay_1. */
+const sectionOf = (href: string) =>
+  new URL(href, "http://tabs.invalid").pathname.split("/")[2] ?? "";
+const isRecord = (href: string) => pathOf(href).split("/").length === 4;
+
+/**
+ * Whether a plain click on a content link should open it in a tab rather than
+ * replace the current work: it leads to another section, and the user is on
+ * a record (a record page, or the side pane over a list).
+ */
+export function leavesSection(
+  link: string,
+  current: string,
+  inPane: boolean,
+): boolean {
+  return (
+    sectionOf(link) !== sectionOf(current) && (inPane || isRecord(current))
+  );
+}
+
+/**
+ * Open href in a tab of its section: an already open, clean tab on the same
+ * page is reused (it shows href and is focused), otherwise a new tab opens.
+ */
+export function openInSection(
+  s: TabState,
+  href: string,
+  title: string,
+  now: number,
+  dirtyIds: ReadonlySet<string>,
+): TabState {
+  const same = s.tabs.find(
+    (t) =>
+      t.id !== s.activeId &&
+      pathOf(t.href) === pathOf(href) &&
+      !dirtyIds.has(t.id),
+  );
+  if (same) return activate(navigate(s, same.id, href, title), same.id, now);
+  return open(s, href, title, "new", now, dirtyIds);
+}
