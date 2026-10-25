@@ -728,3 +728,22 @@ func TestResolveRefusesWhatIsNotInReviewOrNotSettled(t *testing.T) {
 		}
 	})
 }
+
+// A payout still in flight after a poll is asked about again, not forgotten.
+func TestProcessingPayoutKeepsBeingPolledUntilTheProviderSettlesIt(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, []string{"payout"})
+		p, _ := e.create(nil)
+		e.run()
+		e.advance(10 * time.Minute) // polls answer "processing" and change nothing
+		e.fake.Locked(func() {
+			s := e.fake.Payouts[p.ProviderRef]
+			s.Status, s.RawStatus = connector.PayoutSucceeded, "processed"
+			e.fake.Payouts[p.ProviderRef] = s
+		})
+		e.advance(48 * time.Hour)
+		if got := e.get(p.ID); got.Status != "succeeded" {
+			t.Fatalf("payout = %+v", got)
+		}
+	})
+}

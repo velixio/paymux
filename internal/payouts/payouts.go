@@ -471,7 +471,7 @@ func (s *Service) handleSubmit(ctx context.Context, raw json.RawMessage) error {
 	}
 	po, err := s.payouter(ctx, p.ProviderAccountID)
 	if err != nil {
-		return err // retried: the account may be fixed meanwhile
+		return s.retry(ctx, p.ID, err) // retried: the account may be fixed meanwhile
 	}
 	// The same ProviderRef every time: the provider treats a repeat as the same payout.
 	snap, err := po.CreatePayout(ctx, connector.PayoutRequest{ProviderRef: p.ProviderRef, Amount: p.Amount, Currency: p.Currency,
@@ -480,12 +480,7 @@ func (s *Service) handleSubmit(ctx context.Context, raw json.RawMessage) error {
 	case err == nil:
 		return s.apply(ctx, p.ID, snap)
 	case errors.Is(err, connector.ErrTemporary) || isRateLimited(err) || isAmbiguous(err):
-		if n, cerr := s.countAttempt(ctx, p.ID); cerr == nil && n >= submitMaxAttempts {
-			// The provider may have the payout and we cannot tell: stop sending,
-			// ask for it by its reference, and tell an operator.
-			return s.needsReview(ctx, p.ID, err)
-		}
-		return err // retried by the queue with the same reference
+		return s.retry(ctx, p.ID, err) // retried by the queue with the same reference
 	default:
 		// The provider refused it (bad beneficiary, over a limit, bad credentials):
 		// nothing was sent, and repeating the request will not change that.
@@ -514,6 +509,17 @@ func truncate(s string, n int) string {
 		return s[:n]
 	}
 	return s
+}
+
+// retry counts a failed submit attempt and returns err for the queue to retry
+// it. When the attempts have run out the provider may have the payout (an
+// earlier attempt may have reached it) and we cannot tell: stop sending, ask
+// for it by its reference, and tell an operator.
+func (s *Service) retry(ctx context.Context, id string, err error) error {
+	if n, cerr := s.countAttempt(ctx, id); cerr == nil && n >= submitMaxAttempts {
+		return s.needsReview(ctx, id, err)
+	}
+	return err
 }
 
 // countAttempt records one more submit attempt and returns the count.
@@ -605,7 +611,19 @@ func (s *Service) handlePoll(ctx context.Context, raw json.RawMessage) error {
 	if err := payoutIsOurs(p, snap); err != nil {
 		return jobs.Permanent(err) // not ours: polling again cannot fix that; the payout stays as it is
 	}
-	return s.apply(ctx, p.ID, snap)
+	if err := s.apply(ctx, p.ID, snap); err != nil {
+		return err
+	}
+	// apply schedules the next check only when the status moves; one that is
+	// still in flight after this answer must be asked again.
+	var cur store.Payout
+	if err := s.o.DB.Read(ctx, func(q store.Querier) (err error) { cur, err = store.GetPayout(ctx, q, p.ID); return }); err != nil {
+		return err
+	}
+	if cur.Status == StatusProcessing || cur.Status == StatusNeedsReview || synthesisedFailure(cur) {
+		return s.nextPoll(ctx, p.ID, pl.N)
+	}
+	return nil
 }
 
 func (s *Service) nextPoll(ctx context.Context, id string, n int) error {
@@ -635,11 +653,16 @@ func terminal(status string) bool {
 // concluded ourselves (rawSynthesised): it is polled, and the provider's
 // answer replaces it.
 func (s *Service) apply(ctx context.Context, id string, snap connector.PayoutSnapshot) error {
-	return s.o.DB.Write(ctx, func(tx store.Tx) error {
+	return s.o.DB.Write(ctx, func(tx store.Tx) error { return s.applyTx(ctx, tx, id, snap) })
+}
+
+func (s *Service) applyTx(ctx context.Context, tx store.Tx, id string, snap connector.PayoutSnapshot) error {
+	{
 		p, err := store.GetPayoutForUpdate(ctx, tx, id)
 		if err != nil {
 			return err
 		}
+		prev := p.Status
 		next := string(snap.Status)
 		switch snap.Status {
 		case connector.PayoutPending, connector.PayoutProcessing, connector.PayoutSucceeded, connector.PayoutFailed, connector.PayoutReversed:
@@ -675,7 +698,7 @@ func (s *Service) apply(ctx context.Context, id string, snap connector.PayoutSna
 			return err
 		}
 		ev := map[string]string{StatusProcessing: EvProcessing, StatusPending: "", StatusSucceeded: EvSucceeded, StatusFailed: EvFailed, StatusReversed: EvReversed}[next]
-		if ev != "" {
+		if ev != "" && next != prev { // the provider confirming our own reading of a failure sends nothing again
 			if err := s.emit(ctx, tx, ev, p); err != nil {
 				return err
 			}
@@ -691,5 +714,46 @@ func (s *Service) apply(ctx context.Context, id string, snap connector.PayoutSna
 			return s.enqueuePoll(ctx, tx, p.ID, len(pollLadder)-1)
 		}
 		return nil
+	}
+}
+
+// Resolve settles a payout in needs_review by an operator's word, after they
+// checked with the provider: status is succeeded or failed. It goes through
+// the normal apply path (one event, the poll for a reversal) and is audited
+// with the reason.
+func (s *Service) Resolve(ctx context.Context, id, status, reason string, actor audit.Actor) (store.Payout, error) {
+	reason = strings.TrimSpace(reason)
+	if status != StatusSucceeded && status != StatusFailed {
+		return store.Payout{}, newErr(ErrInvalid, "status must be succeeded or failed")
+	}
+	if reason == "" {
+		return store.Payout{}, newErr(ErrInvalid, "a reason is required")
+	}
+	var out store.Payout
+	err := s.o.DB.Write(ctx, func(tx store.Tx) error {
+		p, err := store.GetPayoutForUpdate(ctx, tx, id)
+		if errors.Is(err, store.ErrNotFound) {
+			return newErr(ErrNotFound, "payout not found")
+		}
+		if err != nil {
+			return err
+		}
+		if p.Status != StatusNeedsReview {
+			return newErr(ErrInvalid, "payout %s is %s: only a payout in needs_review can be resolved by hand", p.ID, p.Status)
+		}
+		if err := audit.Record(ctx, tx, audit.Entry{OrgID: p.OrgID, Actor: actor, Action: "payout.resolve", Target: p.ID,
+			Before: map[string]any{"status": p.Status}, After: map[string]any{"status": status, "reason": reason}}); err != nil {
+			return err
+		}
+		snap := connector.PayoutSnapshot{ProviderRef: p.ProviderRef, Status: connector.PayoutStatus(status), RawStatus: "manual"}
+		if status == StatusFailed {
+			snap.ErrorCode, snap.ErrorMessage = "manual", truncate("resolved by an operator: "+reason, 300)
+		}
+		if err := s.applyTx(ctx, tx, p.ID, snap); err != nil {
+			return err
+		}
+		out, err = store.GetPayout(ctx, tx, p.ID)
+		return err
 	})
+	return out, err
 }
