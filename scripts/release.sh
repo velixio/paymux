@@ -76,13 +76,17 @@ for t in $TARGETS; do
   cp "$OUT/$name.tar.gz" "$OUT/paymux_${os}_${arch}.tar.gz"
 done
 
+# The install script is a release asset too (releases/latest/download/install.sh),
+# and is listed in SHA256SUMS below, so it is covered by the signature.
+cp install.sh "$OUT/install.sh"
+
 echo "==> SHA256SUMS"
 (
   cd "$OUT"
   if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum ./*.tar.gz
+    sha256sum ./*.tar.gz ./install.sh
   else
-    shasum -a 256 ./*.tar.gz
+    shasum -a 256 ./*.tar.gz ./install.sh
   fi | sed 's#  \./#  #' > SHA256SUMS
   cat SHA256SUMS
 )
