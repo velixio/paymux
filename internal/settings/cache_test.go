@@ -235,7 +235,7 @@ func TestInvalidateDropsCachedValues(t *testing.T) {
 			t.Fatal(err)
 		}
 		if v, _ := svc.ResolveOrg(ctx, store.DefaultOrgID, "theme"); string(v.Raw) != `"a"` {
-			t.Skip("the cache is off in this configuration")
+			t.Fatalf("a fresh read after SetCacheTTL(time.Hour) means the cache is not holding values: got %s, want the cached \"a\"", v.Raw)
 		}
 		svc.Invalidate()
 		if v, _ := svc.ResolveOrg(ctx, store.DefaultOrgID, "theme"); string(v.Raw) != `"b"` {
