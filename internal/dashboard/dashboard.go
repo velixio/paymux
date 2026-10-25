@@ -229,13 +229,13 @@ func (d *Dashboard) routes() {
 	m.HandleFunc("POST "+prefix+"/users/{id}/role", d.authed(authz.UserManage, d.recent(d.userRole)))
 	m.HandleFunc("POST "+prefix+"/users/{id}/enrolment", d.authed(authz.UserManage, d.recent(d.userEnrolment)))
 	m.HandleFunc("POST "+prefix+"/users/{id}/sso-link", d.authed(authz.UserManage, d.recent(d.userSSOLink)))
-	m.HandleFunc("POST "+prefix+"/users/{id}/disable", d.authed(authz.UserManage, d.userDisable))
+	m.HandleFunc("POST "+prefix+"/users/{id}/disable", d.authed(authz.UserManage, d.recent(d.userDisable)))
 
 	// Roles: admin only (role.manage is never grantable to a custom role).
 	m.HandleFunc("GET "+prefix+"/roles", d.authed(authz.RoleManage, d.rolesPage))
-	m.HandleFunc("POST "+prefix+"/roles", d.authed(authz.RoleManage, d.roleCreate))
-	m.HandleFunc("POST "+prefix+"/roles/{name}", d.authed(authz.RoleManage, d.roleUpdate))
-	m.HandleFunc("POST "+prefix+"/roles/{name}/delete", d.authed(authz.RoleManage, d.roleDelete))
+	m.HandleFunc("POST "+prefix+"/roles", d.authed(authz.RoleManage, d.recent(d.roleCreate)))
+	m.HandleFunc("POST "+prefix+"/roles/{name}", d.authed(authz.RoleManage, d.recent(d.roleUpdate)))
+	m.HandleFunc("POST "+prefix+"/roles/{name}/delete", d.authed(authz.RoleManage, d.recent(d.roleDelete)))
 
 	d.routesPages()
 	d.routesSubscriptions()

@@ -282,5 +282,5 @@ func (d *Dashboard) accountRoutes() {
 	m.HandleFunc("POST "+prefix+"/account/sessions/{id}/revoke", d.authed(selfOnly, d.sessionRevoke))
 	m.HandleFunc("GET "+prefix+"/reauth", d.authed(selfOnly, d.reauthPage))
 	m.HandleFunc("POST "+prefix+"/reauth", d.authed(selfOnly, d.reauthSubmit))
-	m.HandleFunc("POST "+prefix+"/users/{id}/sessions/revoke", d.authed(authz.UserManage, d.userSessionsRevoke))
+	m.HandleFunc("POST "+prefix+"/users/{id}/sessions/revoke", d.authed(authz.UserManage, d.recent(d.userSessionsRevoke)))
 }
