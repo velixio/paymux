@@ -24,6 +24,7 @@ import { guardPeek, isWide, peekClickTarget, peekOf } from "./peek";
 import { leavesSection } from "./tabs";
 import {
   parseDashboard,
+  parseServerHTML,
   isDownloadPath,
   preservePostedValues,
   type DashboardPage,
@@ -239,10 +240,7 @@ export function RuntimeProvider({
         setTimeout(() => URL.revokeObjectURL(url), 1000);
         return null;
       }
-      const doc = new DOMParser().parseFromString(
-        await response.text(),
-        "text/html",
-      );
+      const doc = parseServerHTML(await response.text());
       if (!doc.getElementById("paymux-server-page")) {
         location.assign(response.url);
         return null;

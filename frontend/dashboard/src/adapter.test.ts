@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "vitest";
 import { Window } from "happy-dom";
 import {
   parseDashboard,
+  parseServerHTML,
   isDownloadPath,
   attributes,
   preservePostedValues,
@@ -189,5 +190,17 @@ describe("dashboard theme", () => {
     expect(
       parse('<div id="paymux-react-root"></div>').dashboardTheme,
     ).toBeNull();
+  });
+});
+
+describe("parseServerHTML", () => {
+  test("drops inline <style> blocks: the parsed page's nonce is not the live page's, so the browser would report a CSP violation", () => {
+    const doc = parseServerHTML(
+      `<div id="paymux-server-page"><noscript><style nonce="other">#paymux-server-page{visibility:visible}</style></noscript><STYLE>:root{--accent:red}</STYLE><p>kept</p></div>`,
+    );
+    expect(doc.querySelectorAll("style").length).toBe(0);
+    expect(doc.getElementById("paymux-server-page")?.textContent).toContain(
+      "kept",
+    );
   });
 });
