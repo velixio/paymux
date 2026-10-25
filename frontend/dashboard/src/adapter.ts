@@ -11,7 +11,7 @@ export type DashboardPage = {
   title: string;
   user: string;
   mode: string;
-  nav: { href: string; label: string; active: boolean }[];
+  nav: { href: string; label: string; active: boolean; count?: number }[];
   content: ViewNode[];
   modeForm: ViewNode | null;
   logoutForm: ViewNode | null;
@@ -83,11 +83,20 @@ export function parseDashboard(doc: Document, href: string): DashboardPage {
     title: doc.title.replace(/ - Paymux$/, ""),
     user: doc.querySelector(".dash-head>.muted")?.textContent?.trim() || "",
     mode: doc.querySelector(".modeform .mode")?.textContent?.trim() || "",
-    nav: [...doc.querySelectorAll(".dash-nav a")].map((a) => ({
-      href: a.getAttribute("href")!,
-      label: a.textContent!.trim(),
-      active: a.hasAttribute("aria-current"),
-    })),
+    nav: [...doc.querySelectorAll(".dash-nav a")].map((a) => {
+      const count = Number(a.getAttribute("data-count"));
+      return {
+        href: a.getAttribute("href")!,
+        // the server's fallback badge is not part of the name
+        label: [...a.childNodes]
+          .filter((c) => !(c as Element).classList?.contains("badge"))
+          .map((c) => c.textContent)
+          .join("")
+          .trim(),
+        active: a.hasAttribute("aria-current"),
+        ...(count > 0 ? { count } : {}),
+      };
+    }),
     content: [...main.childNodes].map(node).filter((n): n is ViewNode => !!n),
     modeForm: parseForm(".modeform"),
     logoutForm: parseForm('form[action="/dashboard/logout"]'),

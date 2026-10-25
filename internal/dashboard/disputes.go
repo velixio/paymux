@@ -464,3 +464,17 @@ func (d *Dashboard) disputeCreditNote(w http.ResponseWriter, r *http.Request, s 
 			map[string]string{"reason_code": code, "credit_note_id": cn.ID})
 	}, func() string { return prefix + "/credit-notes/" + cn.ID })
 }
+
+// disputeCount is the number of disputes needing a response, for the nav; a
+// failure shows no count rather than failing the page.
+func (d *Dashboard) disputeCount(r *http.Request) (n int) {
+	org, err := d.orgID(r.Context())
+	if err != nil {
+		return 0
+	}
+	_ = d.o.DB.Read(r.Context(), func(q store.Querier) (err error) {
+		n, err = store.CountDisputesNeedingResponse(r.Context(), q, org)
+		return
+	})
+	return n
+}
