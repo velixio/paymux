@@ -53,7 +53,7 @@ Keyboard: `[` and `]` step through tabs, `g` then `1`..`9` jumps to a tab, `g w`
 - On return, a tab refetches only if its data is older than 30 seconds and it has no unsaved edits. A tab with unsaved edits is never refetched or evicted, and closing it asks first; `beforeunload` is armed while any tab is dirty.
 - A clean hidden tab is unmounted after 10 minutes without a visit (one timer per tab, no polling) and reloads when opened again.
 - Pages that show a secret only once (a new API key, the setup keys, a checkout link, an enrolment code) carry a `data-once` attribute. Such a tab unmounts as soon as it is hidden, so the secret is gone when you return; the server will not show it again.
-- Budget, measured with `bun run --cwd frontend build:dashboard` (gzip of `web/static/dashboard/main.js`): 156888 bytes before the redesign, 168255 now (+11367, limit +25600). The command bar and the revenue chart are lazy chunks (about 2.5 KB and 1.8 KB gzipped). `e2e/idle.spec.ts` checks that Overview plus four hidden tabs make no requests and run no long tasks for 60 seconds.
+- Budget, measured with `bun run --cwd frontend build:dashboard` (gzip of every JavaScript file in `web/static/dashboard`): 156.9 KB before the redesign, 176.5 KB now. Libraries are split into hashed chunks (`vendor-react` 68 KB, `vendor-ui` 45 KB, `vendor-tanstack` 36 KB gzipped) so they stay cached across updates; `main.js` itself is 22 KB. The command bar and the revenue chart are lazy chunks (about 2.5 KB and 1.8 KB gzipped). `e2e/idle.spec.ts` checks that Overview plus four hidden tabs make no requests and run no long tasks for 60 seconds.
 
 ## Revenue chart
 
