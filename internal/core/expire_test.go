@@ -77,11 +77,15 @@ func TestExpireDue(t *testing.T) {
 		}
 		// The in-flight payment can still succeed after its link expired, and an
 		// expired payment still accepts a late success.
-		e.apply(a.ID, captured(100))
+		inFlightPaid := captured(100)
+		inFlightPaid.ProviderPaymentID = "pp_inflight" // a provider payment settles one attempt
+		e.apply(a.ID, inFlightPaid)
 		if got := e.get(inFlight.ID); got.Status != "succeeded" {
 			t.Errorf("in-flight payment: %s", got.Status)
 		}
-		e.apply(abandonedAttempt.ID, captured(100))
+		latePaid := captured(100)
+		latePaid.ProviderPaymentID = "pp_late"
+		e.apply(abandonedAttempt.ID, latePaid)
 		if got := e.get(abandoned.ID); got.Status != "succeeded" || !got.HasFlag("late_success") {
 			t.Errorf("late success after expiry: %+v", got)
 		}
