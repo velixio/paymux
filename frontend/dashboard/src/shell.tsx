@@ -82,6 +82,7 @@ import { fetchDashboard, type DashboardPage } from "./adapter";
 import { PageContent, RenderNode } from "./render";
 import { queryKey, RuntimeProvider, WorkspaceLink } from "./runtime";
 import { createMatcher, isTyping, type Binding } from "./keys";
+import { TAB_KEYS, type TabAction } from "./shortcuts";
 import { ShortcutSheet } from "./shortcut-sheet";
 import { StatusBar } from "./status-bar";
 import { TabStrip } from "./tab-strip";
@@ -549,22 +550,24 @@ function TabsShell({
       const at = list.findIndex((t) => t.id === activeId);
       apiRef.current.activate(list[(at + by + list.length) % list.length].id);
     };
-    const bindings: Binding[] = [
-      { keys: ["BracketLeft"], run: () => step(-1) },
-      { keys: ["BracketRight"], run: () => step(1) },
-      ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({
-        keys: ["KeyG", `Digit${n}`],
-        run: () => {
-          const tab = now().tabs[n - 1];
-          if (tab) apiRef.current.activate(tab.id);
-        },
-      })),
-      {
-        keys: ["KeyG", "KeyW"],
-        run: () => apiRef.current.close(now().activeId),
-      },
-      { keys: ["KeyG", "KeyT"], run: () => apiRef.current.reopen() },
-    ];
+    const actions: Record<Exclude<TabAction, "go">, () => void> = {
+      previous: () => step(-1),
+      next: () => step(1),
+      close: () => apiRef.current.close(now().activeId),
+      reopen: () => apiRef.current.reopen(),
+    };
+    // Bound from TAB_KEYS, the same list the ? sheet shows.
+    const bindings: Binding[] = TAB_KEYS.flatMap((b): Binding[] =>
+      b.action === "go"
+        ? [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({
+            keys: [...b.keys, `Digit${n}`],
+            run: () => {
+              const tab = now().tabs[n - 1];
+              if (tab) apiRef.current.activate(tab.id);
+            },
+          }))
+        : [{ keys: b.keys, run: actions[b.action] }],
+    );
     const match = createMatcher(bindings);
     const onKey = (e: KeyboardEvent) => {
       // The command bar opens from anywhere with Ctrl/Cmd+K, and with / when
