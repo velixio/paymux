@@ -6,8 +6,8 @@ Thanks for helping. Paymux moves money, so changes are small, tested and reviewe
 
 1. **Branch from `main`.** One change per branch: `fix/…`, `feat/…`, `docs/…`, `chore/…`.
 2. **Commit in small steps.** Write the failing test first, then the fix. Commit messages
-   say what and why. Do not add `Co-Authored-By` or other attribution trailers: a commit
-   hook and CI reject them. Enable the hook once with `git config core.hooksPath .githooks`.
+   say what and why. Enable the commit-message hook once with
+   `git config core.hooksPath .githooks`; CI runs the same check.
 3. **Run the full gate locally:** `make ci`. It runs formatting, vet, the public-API
    snapshot, static analysis, the vulnerability scan, the whole test suite on SQLite and
    Postgres, the browser tests and the Docker build.
