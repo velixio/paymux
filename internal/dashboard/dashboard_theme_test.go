@@ -1,6 +1,10 @@
 package dashboard
 
 import (
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -72,5 +76,103 @@ func TestContentSecurityPolicyAllowsTheManifestFetchAndNoncedStyle(t *testing.T)
 		if nonce == "" {
 			t.Error("the react root carries no style nonce")
 		}
+	})
+}
+
+func themeOf(t *testing.T, e *themedEnv, c *http.Client) string {
+	t.Helper()
+	body := e.pageOK(c, "/dashboard/overview")
+	_, rest, ok := strings.Cut(body, `data-dashboard-theme="`)
+	if !ok {
+		t.Fatalf("no data-dashboard-theme: %s", body)
+	}
+	name, _, _ := strings.Cut(rest, `"`)
+	return name
+}
+
+func TestUserChoosesTheirOwnDashboardTheme(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newThemedEnv(t, db)
+		e.writeTheme("teal", tealTheme, nil)
+		e.writeTheme("pink", pinkTheme, nil) // customer-page-only: no dashboard block
+		e.setOrg("theme", `"paddle"`)
+		admin, viewer := e.roleClient("admin"), e.roleClient("viewer")
+
+		page := e.pageOK(viewer, "/dashboard/account")
+		has(t, page, `name="theme"`, `Organisation default (paddle)`, `value="midnight"`, `value="teal"`, `value="stripe"`)
+		lacks(t, page, `value="pink"`, `value="default"`)
+		tok := csrfOf(t, page)
+
+		// Viewers have no settings permission, yet may pick their own theme.
+		r, _ := e.post(viewer, "/dashboard/account/theme", url.Values{"theme": {"midnight"}, "csrf": {tok}})
+		if r.StatusCode != 303 {
+			t.Fatalf("set own theme: %d", r.StatusCode)
+		}
+		if got := themeOf(t, &e, viewer); got != "midnight" {
+			t.Errorf("viewer: %q", got)
+		}
+		if got := themeOf(t, &e, admin); got != "paddle" {
+			t.Errorf("other users keep the org default: %q", got)
+		}
+		has(t, e.pageOK(viewer, "/dashboard/account"), `value="midnight" selected`)
+
+		// Rejected: unknown, customer-page-only, malformed, no CSRF.
+		for name, c := range map[string]string{"unknown": "nope", "no dashboard block": "pink", "traversal": "../etc", "bad name": "Pink!"} {
+			if r, _ := e.post(viewer, "/dashboard/account/theme", url.Values{"theme": {c}, "csrf": {tok}}); r.StatusCode != 400 {
+				t.Errorf("%s: %d, want 400", name, r.StatusCode)
+			}
+		}
+		if r, _ := e.post(viewer, "/dashboard/account/theme", url.Values{"theme": {"teal"}}); r.StatusCode != 403 {
+			t.Errorf("missing csrf: %d", r.StatusCode)
+		}
+		if got := themeOf(t, &e, viewer); got != "midnight" {
+			t.Errorf("a rejected choice must not change anything: %q", got)
+		}
+
+		// Empty goes back to the organisation default.
+		if r, _ := e.post(viewer, "/dashboard/account/theme", url.Values{"theme": {""}, "csrf": {tok}}); r.StatusCode != 303 {
+			t.Fatalf("clear: %d", r.StatusCode)
+		}
+		if got := themeOf(t, &e, viewer); got != "paddle" {
+			t.Errorf("after clearing: %q", got)
+		}
+
+		var aud []store.AuditRow
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "user.theme", 10)
+			return
+		})
+		if len(aud) != 2 {
+			t.Errorf("want 2 audit rows (set, clear), got %+v", aud)
+		}
+	})
+}
+
+func TestAUserThemeThatNoLongerExistsFallsBackWithoutCrashing(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newThemedEnv(t, db)
+		e.writeTheme("teal", tealTheme, nil)
+		viewer := e.roleClient("viewer")
+		tok := csrfOf(t, e.pageOK(viewer, "/dashboard/account"))
+		if r, _ := e.post(viewer, "/dashboard/account/theme", url.Values{"theme": {"teal"}, "csrf": {tok}}); r.StatusCode != 303 {
+			t.Fatalf("set: %d", r.StatusCode)
+		}
+		if got := themeOf(t, &e, viewer); got != "teal" {
+			t.Fatalf("teal: %q", got)
+		}
+		// Deleted on disk outside the app: org default, else stripe.
+		if err := os.RemoveAll(filepath.Join(e.themesDir, "teal")); err != nil {
+			t.Fatal(err)
+		}
+		if got := themeOf(t, &e, viewer); got != "stripe" {
+			t.Errorf("no org default: %q", got)
+		}
+		e.setOrg("theme", `"midnight"`)
+		if got := themeOf(t, &e, viewer); got != "midnight" {
+			t.Errorf("org default: %q", got)
+		}
+		// The account page still renders, with the stale choice not offered.
+		page := e.pageOK(viewer, "/dashboard/account")
+		lacks(t, page, `value="teal"`)
 	})
 }
