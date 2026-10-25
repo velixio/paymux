@@ -966,11 +966,6 @@ components:
         description: { type: string }
         customer_id: { type: string }
         metadata: { type: object, additionalProperties: { type: string } }
-        allowed_connectors:
-          type: array
-          items: { type: string }
-          description: The connectors the subscription was restricted to when it was created. Absent when unrestricted.
-        country: { type: string, description: The buyer country given when the subscription was created. Absent when none was given. }
         return_url: { type: string }
         allowed_connectors:
           type: array
@@ -1107,6 +1102,11 @@ components:
         requires_reauthorization: { type: boolean }
         description: { type: string }
         metadata: { type: object, additionalProperties: { type: string } }
+        allowed_connectors:
+          type: array
+          items: { type: string }
+          description: The connectors the subscription was restricted to when it was created. Absent when unrestricted.
+        country: { type: string, description: The buyer country given when the subscription was created. Absent when none was given. }
         return_url: { type: string }
         mandate_id: { type: string }
         created_at: { type: string, format: date-time }
