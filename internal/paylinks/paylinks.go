@@ -706,7 +706,7 @@ func (s *Service) reuseOpenPayment(ctx context.Context, l store.PaymentLink, pay
 			return Started{}, false, newErr(ErrBusy, "this single-use link has a payment in progress; try again in a little while")
 		}
 	}
-	secret, err := s.core.ReissueClientSecret(ctx, p.ID)
+	secret, err := reissueSecret(ctx, s.core, p.ID)
 	if err != nil {
 		if p.Amount != amount {
 			return Started{}, false, newErr(ErrBusy, "this single-use link has a payment in progress; try again in a little while")
@@ -714,6 +714,12 @@ func (s *Service) reuseOpenPayment(ctx context.Context, l store.PaymentLink, pay
 		return Started{}, false, nil
 	}
 	return Started{PaymentID: p.ID, ClientSecret: secret}, true, nil
+}
+
+// reissueSecret is core's ReissueClientSecret; a variable so that a test can
+// make it fail.
+var reissueSecret = func(ctx context.Context, c *core.Service, paymentID string) (string, error) {
+	return c.ReissueClientSecret(ctx, paymentID)
 }
 
 func openStatus(status string) bool {

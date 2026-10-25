@@ -3,6 +3,7 @@ package paylinks_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -206,6 +207,28 @@ func TestVariableAmountSingleUseLinkKeepsOneWhenTheProcessingPaymentCannotBeCanc
 		}
 		if second.PaymentID != first.PaymentID || e.paymentsOfLink(l.ID) != 1 {
 			t.Fatalf("a second payable payment was made: %s vs %s (%d payments)", second.PaymentID, first.PaymentID, e.paymentsOfLink(l.ID))
+		}
+	})
+}
+
+// The same visitor, the same amount, and the secret of their open payment
+// cannot be replaced: they are told to wait, and no second payable payment is
+// made.
+func TestSingleUseLinkMakesNoSecondPaymentWhenTheSecretCannotBeReissued(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := su(t, db)
+		l := e.create(func(in *paylinks.CreateInput) { in.SingleUse = true })
+		who := paylinks.StartInput{Name: "A", Email: "a@example.com", Holder: "visitor-a"}
+		if _, err := e.links.Start(ctx, l.Slug, who); err != nil {
+			t.Fatal(err)
+		}
+		defer paylinks.FailReissue(errors.New("database is busy"))()
+		_, err := e.links.Start(ctx, l.Slug, who)
+		if !errors.Is(err, paylinks.ErrBusy) {
+			t.Fatalf("second start: %v, want ErrBusy", err)
+		}
+		if n := e.paymentsOfLink(l.ID); n != 1 {
+			t.Fatalf("%d payments on the link", n)
 		}
 	})
 }
