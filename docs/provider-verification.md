@@ -31,6 +31,38 @@ run its `sandbox_test.go` (skipped without credentials; see
 - [ ] **Amounts and currency.** The smallest unit and currency of every amount
   returned (payments, refunds, disputes, settlements) match what Paymux stored.
 
+## Sandbox run of 25 October 2026 (audit item V-1)
+
+**Setup:**
+
+- Each connector's test-mode account, copied from a development database.
+- A hub at commit `b0ef238`, running on `localhost`.
+- One-time checkouts through the hosted pay page, paid with each provider's
+  sandbox test method.
+
+**What was checked:** that a payment settles on the customer's return alone.
+The hub was not reachable from the internet, so no webhook could arrive. This
+is the check that the October audit's stricter return rule (A-3 in
+[the audit](security-audit.md)) does not hold up genuine payments: a payment
+fetched by the id in the return URL must name our reference or order.
+
+| Connector | Paid with | Result |
+|-----------|-----------|--------|
+| Stripe | card 4242, USD | Succeeded on the return; 1000 of 1000 USD received; no flags |
+| Razorpay | Netbanking, the demo bank's "Success" | Succeeded on the return; ₹100.00 received |
+| Cashfree | Net Banking simulator, OTP 111000, SUCCESS | Succeeded on the return; ₹100.00 received |
+| Zoho Payments | Net Banking, "Success Test Bank" | Succeeded on the return; ₹100.00 received (also covers A-4, the Zoho fix) |
+| PayU | Net Banking "Test bank", simulator "Simulate Success Response" | Not concluded: PayU's simulator page did not leave `pgsim01.payu.in` after the success click, so no return reached the hub |
+| Whop | card 4242, USD | Not concluded: Whop took the payment but stayed on its own return page and never redirected to the `localhost` return URL |
+
+**Not covered by this run:**
+
+- PayU and Whop. Repeat both against a hub with a public base URL, so that
+  the return and the webhook can both arrive.
+- Subscription setups and renewals (A-2: a renewal success must carry an
+  amount).
+- Refunds, disputes and payouts.
+
 ## Razorpay
 
 Live-run notes (sandbox, through the public hub URL, 2026-10): the test card for
