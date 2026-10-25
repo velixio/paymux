@@ -176,6 +176,14 @@ describe("dashboard theme", () => {
         .dashboardTheme,
     ).toBe("paddle");
   });
+  test("carries the theme's version beside its name", () => {
+    expect(
+      parse(
+        '<div id="paymux-react-root" data-dashboard-theme="paddle" data-dashboard-theme-version="abc123"></div>',
+      ).dashboardThemeVersion,
+    ).toBe("abc123");
+    expect(parse("").dashboardThemeVersion).toBeNull();
+  });
   test("is null when the page does not carry one", () => {
     expect(parse("").dashboardTheme).toBeNull();
     expect(

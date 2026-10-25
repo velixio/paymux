@@ -193,3 +193,16 @@ test("no nonce set still writes the style", async () => {
   expect(styles()).toHaveLength(1);
   expect(styles()[0].hasAttribute("nonce")).toBe(false);
 });
+
+test("a new version of the same theme is fetched again; the same version is not", async () => {
+  await applyDashboardTheme("paddle", "v1");
+  await applyDashboardTheme("paddle", "v1");
+  expect(fetched).toEqual(["/theme/paddle/dashboard.json?v=v1"]);
+  await applyDashboardTheme("paddle", "v2");
+  expect(fetched).toEqual([
+    "/theme/paddle/dashboard.json?v=v1",
+    "/theme/paddle/dashboard.json?v=v2",
+  ]);
+  await applyDashboardTheme("paddle");
+  expect(fetched.at(-1)).toBe("/theme/paddle/dashboard.json");
+});

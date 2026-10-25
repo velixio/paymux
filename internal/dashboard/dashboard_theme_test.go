@@ -176,3 +176,46 @@ func TestAUserThemeThatNoLongerExistsFallsBackWithoutCrashing(t *testing.T) {
 		lacks(t, page, `value="teal"`)
 	})
 }
+
+func versionOf(t *testing.T, e themedEnv, c *http.Client) string {
+	t.Helper()
+	body := e.pageOK(c, "/dashboard/overview")
+	_, rest, ok := strings.Cut(body, `data-dashboard-theme-version="`)
+	if !ok {
+		t.Fatalf("no data-dashboard-theme-version on the react root: %s", body)
+	}
+	v, _, _ := strings.Cut(rest, `"`)
+	return v
+}
+
+// The page names the theme's version, so the browser refetches the colours of
+// the theme it already wears after that theme was edited.
+func TestPageCarriesTheThemeVersionAndItChangesWithAnEdit(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newThemedEnv(t, db)
+		e.writeTheme("teal", tealTheme, nil)
+		e.setOrg("theme", `"teal"`)
+		admin := e.roleClient("admin")
+		before := versionOf(t, e, admin)
+		if before == "" {
+			t.Fatal("empty version")
+		}
+		if again := versionOf(t, e, admin); again != before {
+			t.Errorf("version changed without an edit: %q -> %q", before, again)
+		}
+		tok := csrfOf(t, e.pageOK(admin, "/dashboard/appearance/themes/teal/edit"))
+		f := themeForm(tok, "light_accent", "#ff0066")
+		f.Del("name")
+		if r, _ := e.post(admin, "/dashboard/appearance/themes/teal", f); r.StatusCode != 303 {
+			t.Fatalf("save: %d", r.StatusCode)
+		}
+		if after := versionOf(t, e, admin); after == before {
+			t.Errorf("version did not change after an edit: %q", after)
+		}
+		// Built-in themes have one too.
+		e.setOrg("theme", `"paddle"`)
+		if v := versionOf(t, e, admin); v == "" {
+			t.Error("no version for a built-in theme")
+		}
+	})
+}

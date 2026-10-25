@@ -112,3 +112,28 @@ test("a light theme follows the system setting when nothing is saved", async () 
   await waitFor(() => expect(css()).toContain("--primary:#0d7d68"));
   expect(document.documentElement.classList.contains("dark")).toBe(true);
 });
+
+test("editing the theme you wear shows at once, without a reload", async () => {
+  let accent = "#0d7d68";
+  handlers["/dashboard/overview"] = () =>
+    pageHtml("Overview", "<p>Overview body</p>", {
+      dashboardTheme: "paddle",
+      themeVersion: "v1",
+    });
+  handlers["/dashboard/payments"] = () =>
+    pageHtml("Payments", "<p>Payments body</p>", {
+      dashboardTheme: "paddle",
+      themeVersion: "v2",
+    });
+  handlers["/theme/paddle/dashboard.json"] = () =>
+    JSON.stringify({
+      ...JSON.parse(manifest("paddle")),
+      seeds: { ...JSON.parse(manifest("paddle")).seeds, accent },
+    });
+  await mount();
+  await waitFor(() => expect(css()).toContain("--primary:#0d7d68"));
+  accent = "#b3261e"; // the theme was edited; the next page names a newer version
+  fireEvent.click(link("Payments"));
+  await screen.findByText("Payments body");
+  await waitFor(() => expect(css()).toContain("--primary:#b3261e"));
+});
