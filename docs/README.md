@@ -32,6 +32,9 @@ These guides describe the implementation in this repository. Connector capabilit
 - [Testing and coverage](testing.md): test suites, reports, and the repository-wide 100% target.
 - [Dependency notes](dependencies.md): build and runtime dependencies.
 - [Glossary](glossary.md): canonical product terminology.
+- [Features](features.md): the complete feature list.
+- [Access control](access-control.md): roles, API key scopes, payouts, logs, key rotation and single sign-on.
+- [Development](development.md): building, testing, architecture rules and the public website.
 
 ## API reference and examples
 
