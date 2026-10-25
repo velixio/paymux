@@ -1233,3 +1233,124 @@
 .app-shell .pill-dot.tone-neutral {
   background: var(--status-neutral-fg);
 }
+
+/* The tab strip fades the side that hides more tabs, like the chip rows. */
+.app-shell .tab-strip[data-fade-end] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+}
+.app-shell .tab-strip[data-fade-start] {
+  mask-image: linear-gradient(to left, #000 calc(100% - 40px), transparent);
+}
+.app-shell .tab-strip[data-fade-start][data-fade-end] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 40px,
+    #000 calc(100% - 40px),
+    transparent
+  );
+}
+
+/* ---- polish of server content ---- */
+
+/* Amounts line up; dates are quieter than the data around them. */
+.app-shell .react-content .money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.app-shell .react-content .when {
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+/* A table with nothing in it says so in the middle, not in a corner. */
+.app-shell .react-content tr.empty-row > td {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  border-bottom: 0;
+}
+.app-shell .react-content tr.empty-row:hover > td {
+  background: transparent;
+}
+
+/* In a filter row, a link button (e.g. Export) is secondary to Filter. */
+.app-shell .react-content form.filters a.btn {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 500;
+}
+.app-shell .react-content form.filters a.btn:hover {
+  background: var(--ui-accent);
+}
+
+/* A list of choices (link + short name), e.g. connectors: a grid of cards. */
+.app-shell .react-content ul:has(> li > a + small) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  max-width: 920px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.app-shell .react-content ul:has(> li > a + small) > li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition:
+    border-color 120ms,
+    background-color 120ms;
+}
+.app-shell .react-content ul:has(> li > a + small) > li:hover {
+  border-color: var(--ring);
+  background: var(--ui-accent);
+}
+.app-shell .react-content ul:has(> li > a + small) > li > a {
+  color: var(--foreground);
+  font-weight: 600;
+  text-decoration: none;
+}
+/* The whole card is the link's click area. */
+.app-shell .react-content ul:has(> li > a + small) > li > a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.app-shell .react-content ul:has(> li > a + small) > li > small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+/* A short create form without labels (name, slug, …): one compact row. */
+.app-shell .react-content form.stack:not(:has(label)) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: 1000px;
+}
+.app-shell .react-content form.stack:not(:has(label)) > .field,
+.app-shell
+  .react-content
+  form.stack:not(:has(label))
+  > [data-slot="native-select-wrapper"] {
+  flex: 1 1 180px;
+  width: auto;
+  margin: 0;
+}
+.app-shell .react-content form.stack:not(:has(label)) > button {
+  flex: 0 0 auto;
+}
