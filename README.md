@@ -5,7 +5,7 @@
 ### Self-hosted payment orchestration for small teams
 
 **One webhook endpoint. One ledger. Every payment gateway.**<br>
-Razorpay · Stripe · Cashfree · PayU · Zoho Payments · Whop, in a single Go binary with GST invoicing built in.
+Razorpay · Stripe · Cashfree · PayU · Zoho Payments · Whop, **or any gateway you add**, in a single Go binary with GST invoicing built in.
 
 [![Release](https://img.shields.io/github/v/release/velixio/paymux?sort=semver)](https://github.com/velixio/paymux/releases/latest)
 [![CI](https://github.com/velixio/paymux/actions/workflows/ci.yml/badge.svg)](https://github.com/velixio/paymux/actions/workflows/ci.yml)
@@ -75,6 +75,13 @@ The complete list is in [docs/features.md](docs/features.md).
 | **Your own** | any | any | any | any | Go package or a small signed HTTP service |
 
 ✅ working and tested · 🟡 built, one external step still open. What each gateway can do, exactly: [docs/capabilities.md](docs/capabilities.md).
+
+**Any other gateway can be added.** Paymux is not limited to the list above. A connector can be:
+
+- **A Go package** compiled into your binary, written against a small public SDK.
+- **A small HTTP service in any language** (TypeScript, Python, PHP…) that Paymux calls over signed requests. You deploy and upgrade it on its own, with no fork of Paymux.
+
+Either way, the same conformance kit the built-in gateways pass tells you when your connector is right. Once added, it works like any other gateway: routing, refunds, subscriptions, disputes, reconciliation and the dashboard. See [docs/connectors.md](docs/connectors.md).
 
 ## 🚀 Quick start in 5 minutes
 
