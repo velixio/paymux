@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -27,7 +28,7 @@ import (
 )
 
 const updateUsage = "usage: paymux update [--check] [--version vX.Y.Z] [--repo owner/name] [--dest path] [--force]\n" +
-	"                    [--cosign-key file | --cosign-identity id --cosign-issuer url]"
+	"                    [--cosign-key file | --cosign-identity id --cosign-issuer url | --insecure-skip-signature]"
 
 const (
 	defaultUpdateRepo = "velixio/paymux"
@@ -36,6 +37,18 @@ const (
 	maxBinary         = 500 << 20
 	maxSmallAsset     = 1 << 20
 )
+
+// releaseOIDCIssuer is the issuer of the certificates GitHub Actions workflows
+// get from Sigstore for keyless signing.
+const releaseOIDCIssuer = "https://token.actions.githubusercontent.com"
+
+// releaseIdentityRegexp matches the signer identity of the release workflow of
+// repo (owner/name) on a version tag: the identity the keyless signature of
+// SHA256SUMS carries. It is anchored at both ends, so another repository, another
+// workflow or a branch does not match.
+func releaseIdentityRegexp(repo string) string {
+	return "^" + regexp.QuoteMeta("https://github.com/"+repo+"/.github/workflows/release.yml@refs/tags/") + `v[^/]+$`
+}
 
 // currentVersion is the running binary's version (replaced in tests).
 var currentVersion = func() string { return hub.Version }
@@ -138,8 +151,10 @@ func (r release) asset(name string) (releaseAsset, bool) {
 
 // runUpdate handles "paymux update": find the newest release (or the one
 // asked for), download the build for this platform, check it against the
-// release's SHA256SUMS (and its cosign signature when there is one and cosign
-// can check it), try the new binary, and replace the running one atomically.
+// release's SHA256SUMS and the cosign signature of that file, try the new
+// binary, and replace the running one atomically. The signature is checked by
+// default, against the identity of the release workflow of --repo; only
+// --insecure-skip-signature installs a release that was not verified that way.
 func runUpdate(ctx context.Context, args []string, lookup func(string) (string, bool), stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -156,10 +171,11 @@ func runUpdate(ctx context.Context, args []string, lookup func(string) (string, 
 	cosignKey := fs.String("cosign-key", "", "cosign public key to verify SHA256SUMS.sig with")
 	cosignIdentity := fs.String("cosign-identity", "", "expected signer identity for keyless cosign verification")
 	cosignIssuer := fs.String("cosign-issuer", "", "expected OIDC issuer for keyless cosign verification")
+	skipSig := fs.Bool("insecure-skip-signature", false, "install without verifying the cosign signature (the SHA-256 check still applies)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if fs.NArg() > 0 || !strings.Contains(*repo, "/") {
+	if fs.NArg() > 0 || !strings.Contains(*repo, "/") || *skipSig && (*cosignKey != "" || *cosignIdentity != "") {
 		fmt.Fprintln(stderr, updateUsage)
 		return 2
 	}
@@ -250,15 +266,17 @@ func runUpdate(ctx context.Context, args []string, lookup func(string) (string, 
 	}
 	fmt.Fprintf(stderr, "paymux update: checksum verified (%s)\n", got[:12])
 
-	// Asking for a signature check makes it mandatory: never fall back to
-	// checksums when the operator supplied a key or identity.
-	wantSig := *cosignKey != "" || *cosignIdentity != ""
+	// The signature over SHA256SUMS is checked unless the operator said not to:
+	// with --cosign-key or --cosign-identity against that, otherwise against the
+	// release workflow of --repo. There is no fallback to the checksum alone.
 	sig, signed := rel.asset("SHA256SUMS.sig")
 	switch {
-	case wantSig && !signed:
-		return fail("release %s is not signed but --cosign-key/--cosign-identity was given; refusing to install", rel.Tag)
-	case signed:
-		msg, err := u.verifySignature(sig, rel, sums, *cosignKey, *cosignIdentity, *cosignIssuer)
+	case *skipSig:
+		fmt.Fprintln(stderr, "paymux update: WARNING: the signature of this release was NOT verified (--insecure-skip-signature); only the checksum protects this download")
+	case !signed:
+		return fail("release %s is not signed (it has no SHA256SUMS.sig); refusing to install. Use --insecure-skip-signature to install it on the checksum alone", rel.Tag)
+	default:
+		msg, err := u.verifySignature(sig, rel, sums, *repo, *cosignKey, *cosignIdentity, *cosignIssuer)
 		if err != nil {
 			return fail("%v", err)
 		}
@@ -482,24 +500,18 @@ func selfTest(ctx context.Context, bin, tag string) error {
 	return nil
 }
 
-// verifySignature checks SHA256SUMS.sig with cosign when it can. The
-// signature protects the checksum file, which in turn covers the download.
-// With cosign missing, or nothing to verify against, it says so and the
-// checksum alone decides.
-func (u *updater) verifySignature(sig releaseAsset, rel release, sums []byte, key, identity, issuer string) (string, error) {
-	required := key != "" || identity != ""
+// verifySignature checks SHA256SUMS.sig with cosign. The signature protects the
+// checksum file, which in turn covers the download. It verifies against key, or
+// against the keyless identity and issuer given, or by default against the
+// release workflow of repo. Anything that stops it from verifying is an error.
+func (u *updater) verifySignature(sig releaseAsset, rel release, sums []byte, repo, key, identity, issuer string) (string, error) {
+	const skipHint = "; use --insecure-skip-signature to install on the checksum alone"
 	if identity != "" && issuer == "" {
 		return "", errors.New("--cosign-identity needs --cosign-issuer; refusing to install")
 	}
 	cosign, err := exec.LookPath("cosign")
 	if err != nil {
-		if required {
-			return "", errors.New("signature verification was requested but cosign is not installed; refusing to install")
-		}
-		return "the release is signed, but cosign is not installed: signature not verified (checksums only)", nil
-	}
-	if key == "" && identity == "" {
-		return "the release is signed, but no --cosign-key or --cosign-identity was given: signature not verified (checksums only)", nil
+		return "", errors.New("the signature of the release cannot be verified because cosign is not installed (https://docs.sigstore.dev/cosign/); refusing to install" + skipHint)
 	}
 	sigBytes, err := u.download(sig.URL, maxSmallAsset)
 	if err != nil {
@@ -518,9 +530,10 @@ func (u *updater) verifySignature(sig releaseAsset, rel release, sums []byte, ke
 		return "", err
 	}
 	args := []string{"verify-blob", "--signature", sigFile}
-	if key != "" {
+	switch {
+	case key != "":
 		args = append(args, "--key", key)
-	} else {
+	case identity != "":
 		args = append(args, "--certificate-identity", identity, "--certificate-oidc-issuer", issuer)
 		if cert, ok := rel.asset("SHA256SUMS.pem"); ok {
 			if b, err := u.download(cert.URL, maxSmallAsset); err == nil {
@@ -530,12 +543,27 @@ func (u *updater) verifySignature(sig releaseAsset, rel release, sums []byte, ke
 				}
 			}
 		}
+	default:
+		// The built-in identity: the release workflow of this repository, on a tag.
+		cert, ok := rel.asset("SHA256SUMS.pem")
+		if !ok {
+			return "", errors.New("the release has a signature but no SHA256SUMS.pem certificate to check it against; refusing to install" + skipHint)
+		}
+		b, err := u.download(cert.URL, maxSmallAsset)
+		if err != nil {
+			return "", fmt.Errorf("downloading the signing certificate: %w", err)
+		}
+		certFile := filepath.Join(dir, "SHA256SUMS.pem")
+		if err := os.WriteFile(certFile, b, 0o600); err != nil {
+			return "", err
+		}
+		args = append(args, "--certificate", certFile, "--certificate-identity-regexp", releaseIdentityRegexp(repo), "--certificate-oidc-issuer", releaseOIDCIssuer)
 	}
 	args = append(args, sumsFile)
 	cctx, cancel := context.WithTimeout(u.ctx, time.Minute)
 	defer cancel()
 	if out, err := exec.CommandContext(cctx, cosign, args...).CombinedOutput(); err != nil {
-		return "", fmt.Errorf("the SHA256SUMS signature did not verify, nothing was installed: %v: %s", err, strings.TrimSpace(string(out)))
+		return "", fmt.Errorf("the SHA256SUMS signature did not verify, nothing was installed: %v: %s (use --insecure-skip-signature only if you accept an unverified release)", err, strings.TrimSpace(string(out)))
 	}
 	return "signature verified with cosign", nil
 }

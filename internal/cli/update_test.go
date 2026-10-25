@@ -161,7 +161,7 @@ func TestUpdateCheckOnlyReports(t *testing.T) {
 
 	// Up to date: nothing to do, and nothing downloaded.
 	dest = updateEnv(t, "v1.4.0")
-	code, out, _ = runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest)
+	code, out, _ = runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest, "--insecure-skip-signature")
 	if code != 0 || !strings.Contains(strings.ToLower(out), "up to date") || f.downloads() != 0 {
 		t.Errorf("up to date: code=%d out=%q downloads=%d", code, out, f.downloads())
 	}
@@ -175,7 +175,7 @@ func TestUpdateCheckOnlyReports(t *testing.T) {
 func TestUpdateReplacesTheBinaryAtomicallyAfterVerifying(t *testing.T) {
 	f := newFakeReleases(t, "v1.4.0", "v1.4.0")
 	dest := updateEnv(t, "v1.3.2")
-	code, out, errs := runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest)
+	code, out, errs := runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest, "--insecure-skip-signature")
 	if code != 0 {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
 	}
@@ -230,7 +230,7 @@ func TestUpdateRefusesWhatItCannotVerify(t *testing.T) {
 			f := newFakeReleases(t, "v1.4.0", "v1.4.0")
 			mutate(f)
 			dest := updateEnv(t, "v1.3.2")
-			code, _, errs := runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest)
+			code, _, errs := runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest, "--insecure-skip-signature")
 			if code == 0 || errs == "" {
 				t.Fatalf("expected a refusal: code=%d err=%q", code, errs)
 			}
@@ -300,16 +300,19 @@ func TestUpdateVerifiesACosignSignatureWhenThereIsOne(t *testing.T) {
 	}
 }
 
-func TestUpdateWarnsWhenASignatureCannotBeChecked(t *testing.T) {
+// A signed release with no cosign on the machine is refused by default (see
+// TestUpdateRefusesWhenTheDefaultVerificationFails); with the escape hatch it
+// installs on the checksum, and says the signature was not verified.
+func TestUpdateWarnsWhenASignatureIsSkipped(t *testing.T) {
 	f := newFakeReleases(t, "v1.4.0", "v1.4.0")
 	f.assets["SHA256SUMS.sig"] = []byte("c2ln")
 	t.Setenv("PATH", t.TempDir()) // no cosign anywhere
 	dest := updateEnv(t, "v1.3.2")
-	code, out, errs := runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest)
+	code, out, errs := runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest, "--insecure-skip-signature")
 	if code != 0 {
-		t.Fatalf("a missing cosign must not block a checksum-verified update: %q", errs)
+		t.Fatalf("the escape hatch must allow a checksum-verified update: %q", errs)
 	}
-	if !strings.Contains(strings.ToLower(out+errs), "cosign") || !strings.Contains(strings.ToLower(out+errs), "not verified") {
+	if !strings.Contains(strings.ToLower(out+errs), "not verified") {
 		t.Errorf("no warning about the unchecked signature: out=%q err=%q", out, errs)
 	}
 }
@@ -321,7 +324,7 @@ func TestUpdateUsageAndDevBuilds(t *testing.T) {
 	if code == 0 || !strings.Contains(errs, "development build") {
 		t.Errorf("a dev build cannot say whether it is current: code=%d err=%q", code, errs)
 	}
-	if code, _, _ = runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest, "--force"); code != 0 {
+	if code, _, _ = runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest, "--insecure-skip-signature", "--force"); code != 0 {
 		t.Error("--force should update a dev build")
 	}
 	if code, _, errs = runUpdateCmd(t, "extra"); code != 2 || !strings.Contains(errs, "usage: paymux update") {
@@ -329,7 +332,7 @@ func TestUpdateUsageAndDevBuilds(t *testing.T) {
 	}
 	// A specific version, and a missing one.
 	dest = updateEnv(t, "v1.3.2")
-	if code, out, errs := runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest, "--version", "v1.4.0"); code != 0 || !strings.Contains(out, "v1.4.0") {
+	if code, out, errs := runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest, "--insecure-skip-signature", "--version", "v1.4.0"); code != 0 || !strings.Contains(out, "v1.4.0") {
 		t.Errorf("--version: code=%d out=%q err=%q", code, out, errs)
 	}
 	if code, _, errs := runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest, "--version", "v7.7.7"); code == 0 || !strings.Contains(errs, "v7.7.7") {
@@ -347,7 +350,7 @@ func TestUpdateReportsAnUnwritableDestination(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.Chmod(filepath.Dir(dest), 0o700)
-	code, _, errs := runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest)
+	code, _, errs := runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest, "--insecure-skip-signature")
 	if code == 0 || !strings.Contains(errs, filepath.Dir(dest)) {
 		t.Errorf("code=%d err=%q", code, errs)
 	}
