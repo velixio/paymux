@@ -38,15 +38,20 @@ async function save(name: string, q: string, status = "") {
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
 }
 
-test("Save filter sits above a GET filter form and stores the query without csrf or empties", async () => {
+test("Save filter and the chips end the filter row, inside the form", async () => {
   await payments();
-  const button = screen.getByRole("button", { name: "Save filter" });
-  const formEl = document.querySelector("form.filters")!;
-  expect(
-    button.compareDocumentPosition(formEl) & Node.DOCUMENT_POSITION_FOLLOWING,
-  ).toBeTruthy();
+  const formEl = document.querySelector("form.filters") as HTMLElement;
+  const button = within(formEl).getByRole("button", { name: "Save filter" });
+  expect(formEl.lastElementChild!.contains(button)).toBe(true);
+  // Saving never submits the filter form.
+  const submit = vi.fn((e: Event) => e.preventDefault());
+  formEl.addEventListener("submit", submit);
   await save("Alice succeeded", "alice", "succeeded");
   await screen.findByRole("button", { name: "Alice succeeded" });
+  expect(submit).not.toHaveBeenCalled();
+  expect(
+    within(formEl).getByRole("group", { name: "Saved filters" }),
+  ).toBeTruthy();
   expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual([
     { name: "Alice succeeded", query: "q=alice&status=succeeded" },
   ]);

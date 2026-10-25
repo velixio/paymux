@@ -120,3 +120,36 @@ test("pages without a title and sign-in pages get no toolbar", async () => {
   await mount();
   expect(document.querySelector(".screen-toolbar")).toBeNull();
 });
+
+test("the status select leaves the filter form but its value still submits", async () => {
+  handlers["/dashboard/payments"] = () =>
+    pageHtml(
+      "Payments",
+      '<h1>Payments</h1><form class="filters" method="get" action="/dashboard/payments"><select name="status" aria-label="Status"><option value="">Any status</option><option value="failed" selected>failed</option></select><input type="search" name="q" aria-label="Search"></form>',
+    );
+  await mount("/dashboard/payments?status=failed");
+  const form = q("form.filters");
+  expect(form.querySelector("select[name=status]")).toBeNull();
+  expect(
+    (form.querySelector("input[name=status]") as HTMLInputElement).value,
+  ).toBe("failed");
+  expect(screen.getByLabelText("Search")).toBeTruthy();
+});
+
+test("a plain link right after the title becomes a secondary toolbar action", async () => {
+  handlers["/dashboard/payments/pay_1"] = () =>
+    pageHtml(
+      "Payment",
+      '<p><a href="/dashboard/payments">&larr; Payments</a></p><h1>pay_1</h1><p><a href="/dashboard/logs?payment_id=pay_1">Logs for this payment</a></p><dl><dt>App</dt><dd>Demo</dd></dl>',
+    );
+  await mount("/dashboard/payments/pay_1");
+  const actions = within(q(".toolbar-actions"));
+  expect(
+    actions.getByRole("link", { name: "Logs for this payment" }),
+  ).toBeTruthy();
+  expect(
+    within(q("section.react-content")).getAllByRole("link", {
+      name: "Logs for this payment",
+    }),
+  ).toHaveLength(1);
+});

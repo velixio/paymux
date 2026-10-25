@@ -88,6 +88,21 @@ describe("extractToolbar", () => {
     expect(r2.rest).toHaveLength(1);
   });
 
+  test("a lone link in a paragraph after the title is a secondary action", () => {
+    const logs = a("/dashboard/logs?payment_id=pay_1", "Logs for this payment");
+    const r = extractToolbar([
+      h1("pay_1"),
+      el("p", {}, logs),
+      el("p", { class: "notice" }, "Saved"),
+      el("p", {}, a("/x", "later link")),
+    ])!;
+    expect(r.toolbar.actions).toEqual([logs]);
+    expect(r.rest).toHaveLength(2);
+    // A paragraph with prose around its link stays content.
+    const prose = el("p", {}, "See ", a("/x", "docs"), " for more");
+    expect(extractToolbar([h1("X"), prose])!.rest).toEqual([prose]);
+  });
+
   test("a leading back link becomes the back button", () => {
     const r = extractToolbar([
       el("p", {}, a("/dashboard/payments", "← Payments")),
@@ -111,7 +126,44 @@ describe("extractToolbar", () => {
       ],
     });
     // The form itself stays in the page.
-    expect(r.rest[0]).toBe(filters);
+    expect(r.rest[0].tag).toBe("form");
+  });
+
+  test("the form's status select is replaced by a hidden input with the current value", () => {
+    const r = extractToolbar([h1("Payments"), filters])!;
+    const form = r.rest[0];
+    const selects = (n: ViewNode): ViewNode[] =>
+      (n.tag === "select" ? [n] : []).concat(n.children.flatMap(selects));
+    expect(selects(form)).toEqual([]);
+    const hidden = form.children.find(
+      (c) => c.tag === "input" && c.attrs.name === "status",
+    )!;
+    expect(hidden.attrs).toMatchObject({ type: "hidden", value: "succeeded" });
+    // With no status chosen nothing is submitted for it.
+    const none = el(
+      "form",
+      { class: "filters", method: "get" },
+      el(
+        "select",
+        { name: "status" },
+        el("option", { value: "" }, "Any"),
+        el("option", { value: "x" }, "x"),
+      ),
+    );
+    const r2 = extractToolbar([h1("P"), none])!;
+    expect(r2.rest[0].children).toEqual([]);
+    // Other controls are untouched.
+    const withSearch = el(
+      "form",
+      { class: "filters", method: "get" },
+      filters.children[0],
+      el("input", { name: "q" }),
+    );
+    expect(
+      extractToolbar([h1("P"), withSearch])!.rest[0].children.some(
+        (c) => c.attrs.name === "q",
+      ),
+    ).toBe(true);
   });
 
   test("no chips for POST forms or forms without a status select", () => {
