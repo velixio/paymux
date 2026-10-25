@@ -49,7 +49,7 @@ const cardText = "the provider cannot change the plan of a card subscription; ca
 // payment used the method.
 func (e *env) seedManagedSub(id, method string) store.Subscription {
 	e.t.Helper()
-	a := e.seedApp("shop" + id)
+	a := e.seedApp("shop-" + strings.ReplaceAll(id, "_", "-"))
 	e.seedCustomer("cus_"+id, a.ID, "live", id+"@example.com")
 	sub := e.seedSub(id, a.ID, "cus_"+id, "live", "active", func(s *store.Subscription) {
 		s.BillingMode, s.ProviderSubscriptionID = "provider_managed", "psub_"+id
@@ -60,7 +60,7 @@ func (e *env) seedManagedSub(id, method string) store.Subscription {
 	now := e.clk.Now()
 	if err := e.db.Write(ctx, func(tx store.Tx) error {
 		return store.InsertCycle(ctx, tx, store.Cycle{ID: "cyc_" + id, SubscriptionID: id, PeriodIndex: 1, PaymentID: p.ID, AttemptID: "att_" + id,
-			Amount: 49900, State: "paid", CreatedAt: now, UpdatedAt: now})
+			Amount: 49900, State: "succeeded", CreatedAt: now, UpdatedAt: now})
 	}); err != nil {
 		e.t.Fatal(err)
 	}
