@@ -173,6 +173,12 @@ func AssetHandler(fsys fs.FS) http.Handler {
 	files := http.FileServerFS(static)
 	return http.StripPrefix("/assets/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		// Files only: no directory listings (of the bundle or of the operator's
+		// custom/static overlay).
+		if st, err := fs.Stat(static, name); r.URL.Path == "" || strings.HasSuffix(r.URL.Path, "/") || (err == nil && st.IsDir()) {
+			http.NotFound(w, r)
+			return
+		}
 		if hashedAsset.MatchString(name) {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else if data, err := fs.ReadFile(static, name); err == nil {
