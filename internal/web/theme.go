@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -51,6 +52,85 @@ type Manifest struct {
 	Description string            `json:"description,omitempty"`
 	Tokens      map[string]string `json:"tokens,omitempty"`
 	FontStack   string            `json:"font_stack,omitempty"`
+	// Dashboard themes the React dashboard (customer pages use Tokens).
+	Dashboard *DashboardTheme `json:"dashboard,omitempty"`
+}
+
+// DashboardTheme is the "dashboard" block of theme.json: a few seed colours
+// (everything else is derived in the dashboard) plus optional per-token overrides.
+type DashboardTheme struct {
+	Seeds     Seeds                        `json:"seeds"`
+	DarkSeeds *Seeds                       `json:"dark_seeds,omitempty"`
+	Scheme    string                       `json:"scheme,omitempty"`    // "", "light" or "dark"
+	Overrides map[string]map[string]string `json:"overrides,omitempty"` // "light"|"dark" -> token -> #rrggbb
+}
+
+// Seeds are the colours a dashboard theme is made from, all #rrggbb. Only
+// Accent is required.
+type Seeds struct {
+	Accent      string `json:"accent,omitempty"`
+	Background  string `json:"background,omitempty"`
+	Sidebar     string `json:"sidebar,omitempty"`
+	Text        string `json:"text,omitempty"`
+	SidebarText string `json:"sidebar_text,omitempty"`
+}
+
+// DashboardTokens are the dashboard colour tokens a theme may override. The
+// status colours (--status-*) are deliberately absent: a theme cannot change
+// what a status colour means.
+var DashboardTokens = []string{
+	"--background", "--foreground", "--card", "--card-foreground",
+	"--popover", "--popover-foreground", "--primary", "--primary-foreground",
+	"--secondary", "--secondary-foreground", "--muted", "--muted-foreground",
+	"--ui-accent", "--accent-foreground", "--destructive", "--border",
+	"--input", "--ring", "--sidebar",
+}
+
+var hexColourRE = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+func (s Seeds) validate(field string, needAccent bool) error {
+	if needAccent && s.Accent == "" {
+		return fmt.Errorf("%s.accent is required", field)
+	}
+	for _, f := range []struct{ name, v string }{
+		{"accent", s.Accent}, {"background", s.Background}, {"sidebar", s.Sidebar},
+		{"text", s.Text}, {"sidebar_text", s.SidebarText},
+	} {
+		if f.v != "" && !hexColourRE.MatchString(f.v) {
+			return fmt.Errorf("%s.%s %q must be a #rrggbb colour", field, f.name, f.v)
+		}
+	}
+	return nil
+}
+
+func (d *DashboardTheme) validate() error {
+	if err := d.Seeds.validate("dashboard.seeds", true); err != nil {
+		return err
+	}
+	if d.DarkSeeds != nil {
+		if err := d.DarkSeeds.validate("dashboard.dark_seeds", true); err != nil {
+			return err
+		}
+	}
+	switch d.Scheme {
+	case "", "light", "dark":
+	default:
+		return fmt.Errorf("dashboard.scheme %q must be light or dark", d.Scheme)
+	}
+	for mode, toks := range d.Overrides {
+		if mode != "light" && mode != "dark" {
+			return fmt.Errorf("dashboard.overrides: %q must be light or dark", mode)
+		}
+		for k, v := range toks {
+			if !slices.Contains(DashboardTokens, k) {
+				return fmt.Errorf("dashboard.overrides.%s: %s is not a themeable dashboard token", mode, k)
+			}
+			if !hexColourRE.MatchString(v) {
+				return fmt.Errorf("dashboard.overrides.%s.%s: %q must be a #rrggbb colour", mode, k, v)
+			}
+		}
+	}
+	return nil
 }
 
 var (
@@ -92,6 +172,11 @@ func ParseManifest(raw []byte, dirName string) (Manifest, error) {
 		}
 		if err := safeCSSValue(v); err != nil {
 			return Manifest{}, fmt.Errorf("theme.json: token %q: value %v", k, err)
+		}
+	}
+	if m.Dashboard != nil {
+		if err := m.Dashboard.validate(); err != nil {
+			return Manifest{}, fmt.Errorf("theme.json: %w", err)
 		}
 	}
 	if m.FontStack != "" {
@@ -337,7 +422,7 @@ var assetTypes = map[string]string{
 	".ttf": "font/ttf", ".otf": "font/otf",
 }
 
-// Handler serves /theme/<name>/theme.css and /theme/<name>/assets/....
+// Handler serves /theme/<name>/theme.css, /theme/<name>/dashboard.json and /theme/<name>/assets/....
 func (t *Themes) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -370,10 +455,32 @@ func (t *Themes) Handler() http.Handler {
 				w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
 			}
 			serveThemeBytes(w, r, th, file, typ, raw, "public, max-age=300")
+		case file == "dashboard.json":
+			serveThemeBytes(w, r, th, file, "application/json; charset=utf-8", th.dashboardJSON(), "no-cache")
 		default:
 			http.NotFound(w, r)
 		}
 	})
+}
+
+// dashboardJSON renders /theme/<name>/dashboard.json. A theme without a
+// dashboard block answers with empty seeds, so the dashboard keeps its defaults.
+func (th *Theme) dashboardJSON() []byte {
+	out := struct {
+		Name      string                       `json:"name"`
+		Scheme    string                       `json:"scheme"`
+		Seeds     Seeds                        `json:"seeds"`
+		DarkSeeds *Seeds                       `json:"dark_seeds"`
+		Overrides map[string]map[string]string `json:"overrides"`
+	}{Name: th.Name, Overrides: map[string]map[string]string{}}
+	if d := th.Dashboard; d != nil {
+		out.Scheme, out.Seeds, out.DarkSeeds = d.Scheme, d.Seeds, d.DarkSeeds
+		if d.Overrides != nil {
+			out.Overrides = d.Overrides
+		}
+	}
+	b, _ := json.Marshal(out)
+	return b
 }
 
 func serveThemeBytes(w http.ResponseWriter, r *http.Request, th *Theme, file, typ string, body []byte, cache string) {
