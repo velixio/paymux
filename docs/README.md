@@ -19,6 +19,7 @@ These guides describe the implementation in this repository. Connector capabilit
 - [Configuration reference](configuration.md): deployment variables, secrets, SMTP, SSO, and hooks.
 - [Deployment and recovery runbook](runbook.md): Linux, containers, TLS, backups, restore, and monitoring.
 - [Security](security.md): boundaries, credentials, dashboard access, domains, and outbound delivery.
+- [Security audit, October 2026](security-audit.md): confirmed findings, fixes, and open risks; its [remediation plan](security-remediation-plan.md) covers every open item.
 - [Upgrade guide](upgrades.md): backups, migrations, updater, and rollback.
 - [Troubleshooting](troubleshooting.md): symptoms, checks, and recovery paths.
 
