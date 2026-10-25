@@ -4,7 +4,7 @@ Paymux has two independently deployable programs: the **payment hub** (`paymux`)
 
 ## Requirements
 
-For a source build, install Git, Make, Bun 1.4.3 or newer, and Go with automatic toolchain downloads enabled. `go.mod` currently declares Go 1.27 and pins toolchain `go1.27.2`; use that toolchain directly if your build environment cannot download it. The build requires network access to fetch Go and frontend dependencies.
+For a source build, install Git, Make, Bun 1.4.3 or newer, and Go with automatic toolchain downloads enabled. `go.mod` declares Go 1.27.3, the minimum version; a newer installed Go builds it as it is, and an older one downloads 1.27.3 by itself. Install Go 1.27.3 or newer directly if your build environment cannot download it. The build requires network access to fetch Go and frontend dependencies.
 
 A distributed hub binary does not need Bun, Node, or a compiler at runtime. It needs a persistent database, the master key used to encrypt secrets, and a writable data directory. Production deployments also need a public HTTPS origin and a reverse proxy.
 
