@@ -2,6 +2,7 @@ import React, {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -23,6 +24,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Copy, LoaderCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { statusLabel, statusTone } from "./pill";
+import { polishNodes } from "./polish";
 import { RevenueSection } from "./revenue-section";
 import { SavedFiltersBar } from "./saved-filters-bar";
 import { isRecordPath } from "./peek";
@@ -365,10 +367,12 @@ export function PageContent({
   /** Keep the selected inner tab in the URL hash (the active workspace tab). */
   syncHash?: boolean;
 }) {
-  const split = href && isRecordPath(href) ? recordSplit(nodes) : null;
+  // Readable money, dates, status pills and empty states (presentation only).
+  const shown = useMemo(() => polishNodes(nodes), [nodes]);
+  const split = href && isRecordPath(href) ? recordSplit(shown) : null;
   if (split)
     return (
       <SectionTabs split={split} render={renderChildren} syncHash={syncHash} />
     );
-  return <>{renderChildren(nodes)}</>;
+  return <>{renderChildren(shown)}</>;
 }
