@@ -32,7 +32,7 @@ func TestHostedCSPBase(t *testing.T) {
 	if strings.Contains(p, "unsafe-eval") || strings.Contains(directive(t, p, "script-src"), "unsafe-inline") {
 		t.Errorf("script policy too loose: %s", p)
 	}
-	if web.NewNonce() == web.NewNonce() || len(web.NewNonce()) < 20 {
+	if a, b := web.NewNonce(), web.NewNonce(); a == b || len(a) < 20 {
 		t.Error("nonces must be random and long")
 	}
 }
