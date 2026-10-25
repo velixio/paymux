@@ -179,6 +179,12 @@ func (w *whop) do(ctx context.Context, method, path string, query url.Values, in
 		}
 		return nil
 	}
+	return classify(resp, raw)
+}
+
+// classify maps an error response to a typed SDK error, keeping the *apiError in
+// the chain.
+func classify(resp *http.Response, raw []byte) error {
 	var env struct {
 		Error struct {
 			Message string `json:"message"`
@@ -200,6 +206,10 @@ func (w *whop) do(ctx context.Context, method, path string, query url.Values, in
 		return fmt.Errorf("%w: %w", connector.ErrRateLimited{RetryAfter: after}, ae)
 	case resp.StatusCode >= 500:
 		return fmt.Errorf("%w: %w", connector.ErrTemporary, ae)
+	case resp.StatusCode >= 400:
+		// 400, 409, 422 and the like: the provider says the request is invalid or
+		// not allowed. The caller's to fix, with the provider's message.
+		return fmt.Errorf("%w: %w", connector.ErrRejected, ae)
 	}
 	return ae
 }

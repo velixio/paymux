@@ -18,6 +18,7 @@ var (
 	ErrInvalidCredentials = errors.New("connector: invalid credentials")
 	ErrTemporary          = errors.New("connector: temporary failure")
 	ErrUnsupported        = errors.New("connector: unsupported")
+	ErrRejected           = errors.New("connector: rejected by the provider")
 	ErrInvalidSignature   = errors.New("connector: webhook signature missing, wrong or stale")
 	ErrUnsigned           = errors.New("connector: webhook event type is not signed by the provider")
 	ErrInvalidReturn      = errors.New("connector: return signature invalid")
@@ -237,6 +238,8 @@ type Info struct {
 	Capabilities             []Capability     `json:"capabilities"`
 	ConfigSchema             json.RawMessage  `json:"config_schema"`
 	Currencies               []string         `json:"currencies"`
+	SubscriptionCurrencies   []string         `json:"subscription_currencies,omitempty"`
+	SubscriptionFixedMethods []string         `json:"subscription_fixed_methods,omitempty"`
 	Methods                  []string         `json:"methods"`
 	MerchantOfRecord         bool             `json:"merchant_of_record"`
 	SubscriptionModes        []BillingMode    `json:"subscription_modes"`
@@ -252,6 +255,8 @@ type Info struct {
 }
 
 func List() []Info
+
+func (i Info) CanChangeSubscriptionAmount(method string) bool
 
 func (i Info) Has(c Capability) bool
 
@@ -752,6 +757,7 @@ const (
 	CodeUnsigned           = "unsigned"
 	CodeInvalidReturn      = "invalid_return"
 	CodeMandateLimit       = "mandate_limit"
+	CodeRejected           = "rejected"
 	CodeNotRefundable      = "not_refundable"
 	CodeRateLimited        = "rate_limited"
 	CodeInternal           = "internal"

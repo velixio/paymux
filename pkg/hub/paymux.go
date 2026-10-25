@@ -285,7 +285,11 @@ func (a *App) Start(ctx context.Context) error {
 	if err := registerProviderEventPurge(q, db, set); err != nil {
 		return err
 	}
-	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv, Subscriptions: subs, PaymentLinks: links, Payouts: payoutSvc})
+	var redactMessage func(string) string
+	if dbl != nil && dbl.red != nil {
+		redactMessage = dbl.red.Text // knows every account's secrets
+	}
+	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv, Subscriptions: subs, PaymentLinks: links, Payouts: payoutSvc, Redact: redactMessage})
 	if err != nil {
 		return err
 	}

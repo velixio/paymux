@@ -230,6 +230,10 @@ func TestPreDebitAnswers(t *testing.T) {
 		if (err == nil) != c.ok || errors.Is(err, connector.ErrTemporary) != c.temp {
 			t.Errorf("%s: err = %v", name, err)
 		}
+		// A refusal that is not temporary is the provider saying "not allowed".
+		if !c.ok && !c.temp && !errors.Is(err, connector.ErrRejected) {
+			t.Errorf("%s: a refused notice must be ErrRejected: %v", name, err)
+		}
 	}
 }
 
@@ -305,6 +309,9 @@ func TestRevokeCommandPerMode(t *testing.T) {
 		err := mandateConn(t, f).RevokeMandate(ctx, ref)
 		if (err == nil) != c.ok {
 			t.Errorf("%s: err = %v", c.name, err)
+		}
+		if !c.ok && !errors.Is(err, connector.ErrRejected) {
+			t.Errorf("%s: a refused cancellation must be ErrRejected: %v", c.name, err)
 		}
 		if len(f.calls(c.revokeCmd)) != 1 {
 			t.Errorf("%s: commands %v, want %s", c.name, f.commands(), c.revokeCmd)

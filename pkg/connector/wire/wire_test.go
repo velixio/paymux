@@ -90,6 +90,7 @@ func TestErrorsRoundTripThroughTheWire(t *testing.T) {
 		"unsigned":    {connector.ErrUnsigned, 422, connector.ErrUnsigned},
 		"return":      {connector.ErrInvalidReturn, 422, connector.ErrInvalidReturn},
 		"limit":       {connector.ErrMandateLimit, 422, connector.ErrMandateLimit},
+		"rejected":    {fmt.Errorf("razorpay: HTTP 400: bad plan: %w", connector.ErrRejected), 422, connector.ErrRejected},
 		"internal":    {errors.New("boom"), 500, connector.ErrTemporary},
 	} {
 		status, e := FromError(tc.err)

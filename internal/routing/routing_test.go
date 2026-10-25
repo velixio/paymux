@@ -175,3 +175,32 @@ func TestBreaker(t *testing.T) {
 		t.Fatal("tripped on failures outside the 5-minute window")
 	}
 }
+
+// A connector may take more currencies for one-time payments than for
+// subscriptions (Razorpay subscriptions are INR only): for the subscription
+// purpose the account is eligible only for its SubscriptionCurrencies, so the
+// request falls through to the next target, or finds no route, at creation and not
+// at the customer's checkout.
+func TestSubscriptionCurrenciesLimitTheSubscriptionPurposeOnly(t *testing.T) {
+	accounts := []Account{
+		{ID: "pa_rzp", Connector: "razorpay", Currencies: []string{"INR", "USD"}, SubscriptionCurrencies: []string{"INR"}, Purposes: []string{PurposeOneTime, PurposeSubscription}},
+		{ID: "pa_stripe", Connector: "stripe", Currencies: []string{"INR", "USD"}, Purposes: []string{PurposeOneTime, PurposeSubscription}},
+	}
+	cfg := Config{CatchAll: Rule{Name: "all", Action: Route("razorpay", "stripe")}}
+	for _, c := range []struct {
+		cur, purpose string
+		want         []string
+	}{
+		{"USD", PurposeSubscription, []string{"pa_stripe"}},
+		{"INR", PurposeSubscription, []string{"pa_rzp", "pa_stripe"}},
+		{"USD", PurposeOneTime, []string{"pa_rzp", "pa_stripe"}},
+	} {
+		r, err := Choose(cfg, Request{Currency: c.cur, Purpose: c.purpose}, accounts, nil)
+		if err != nil || !reflect.DeepEqual(ids(r), c.want) {
+			t.Errorf("%s %s: %v %v, want %v", c.cur, c.purpose, ids(r), err, c.want)
+		}
+	}
+	if _, err := Choose(cfg, Request{Currency: "USD", Purpose: PurposeSubscription, AllowedConnectors: []string{"razorpay"}}, accounts, nil); !errors.Is(err, ErrNoRoute) {
+		t.Errorf("a USD subscription restricted to Razorpay must find no route, got %v", err)
+	}
+}

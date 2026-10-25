@@ -239,6 +239,14 @@ func (s *Service) Update(ctx context.Context, sc core.Scope, id string, in Updat
 				if mode != ProrationNone {
 					return newErr(ErrUnsupported, "proration is not available for provider-managed subscriptions: the provider bills them and applies the new amount from the next cycle")
 				}
+				// Some providers keep the plan of a subscription paid by a given
+				// method (Razorpay: cards and UPI): say so up front, with what to do,
+				// instead of asking the provider to refuse.
+				if conn, err := s.connectors.Get(ctx, sub.ProviderAccountID); err == nil {
+					if method := s.lastPaymentMethod(ctx, q, sub.ID); !conn.Info().CanChangeSubscriptionAmount(method) {
+						return newErr(ErrUnsupported, "the provider cannot change the plan of a %s subscription; cancel it and start a new one", method)
+					}
+				}
 				providerID = sub.ProviderAccountID
 			}
 			return nil
@@ -489,4 +497,22 @@ func (s *Service) IssueCheckoutLink(ctx context.Context, sc core.Scope, id strin
 			After: map[string]any{"status": sub.Status, "requires_reauthorization": sub.RequiresReauthorization}})
 	})
 	return out, err
+}
+
+// lastPaymentMethod is the payment method of the subscription's most recent
+// attempt that has one ("" when none is known yet).
+func (s *Service) lastPaymentMethod(ctx context.Context, q store.Queryer, subID string) string {
+	cycles, err := store.ListCycles(ctx, q, subID)
+	if err != nil {
+		return ""
+	}
+	for i := len(cycles) - 1; i >= 0; i-- {
+		if cycles[i].AttemptID == "" {
+			continue
+		}
+		if att, err := store.GetAttempt(ctx, q, cycles[i].AttemptID); err == nil && att.Method != "" {
+			return att.Method
+		}
+	}
+	return ""
 }

@@ -158,6 +158,7 @@ Paymux must respect:
   `merchant_triggered` (Paymux schedules each debit on a mandate).
 * `MandateLimits`: per-method caps on a single debit.
 * `PreDebitPerAttempt`: the provider needs a notice per debit, not once per mandate.
+* `SubscriptionCurrencies`: the currencies the connector can bill a subscription in, when fewer than `Currencies` (Razorpay: INR only). Routing never sends a subscription in another currency to it, so a customer is not left at a checkout that fails.
 * `PreDebitMinHours`: the least time the provider wants between a notice and its debit, when that is longer than the RBI's 24 hours (PayU: 48). Paymux never debits sooner.
 * `MandateSetupAmount` and `RefundsVerificationDebit`: the verification debit a
   mandate registration makes when nothing is due (default 100 minor units).
@@ -234,15 +235,18 @@ Return the typed errors from `pkg/connector/errors.go` (wrap with `%w`):
 | `ErrInvalidCredentials` | 401/403 from the provider; the account is flagged. |
 | `ErrTemporary` | network error, 5xx, anything worth retrying. Jobs back off and retry. |
 | `ErrRateLimited{RetryAfter}` | retry after the delay. |
-| `ErrUnsupported` | this provider cannot do it (for example amount updates). |
+| `ErrUnsupported` | this provider cannot do it (for example amount updates). The API answers 422 `unsupported` with the message. |
+| `ErrRejected` | the provider says the request is invalid or not allowed: its 400, 409 and 422-style answers ("currency not supported", "only offers can be updated"). Classify them after the specific errors above (not found, invalid credentials, rate limited, not refundable, unsupported) and before the 5xx case. The API answers 422 `provider_rejected` with the provider's message, scrubbed by the log redactor (known secrets, key shapes, personal data) and cut to 300 characters, so keep the provider's text in the error. Not retried. |
 | `ErrNotRefundable{Reason}` | the provider refuses this refund; not retried. |
 | `ErrMandateLimit` | the debit exceeds the mandate limit. |
 | `ErrInvalidReturn` | `HandleReturn` signature check failed. |
 | `ErrInvalidSignature` | see below. |
 | `ErrUnsigned` | see below. |
 
-Anything else is treated as a permanent failure of that call, so classify
-network and 5xx problems as `ErrTemporary` explicitly.
+Anything else is treated as a permanent failure of that call and shown to an API
+caller as an internal error (500, no message), so classify the provider's 4xx
+answers as `ErrRejected` (or a more specific error) and network and 5xx problems
+as `ErrTemporary` explicitly.
 
 ### `ErrInvalidSignature` versus `ErrUnsigned`
 

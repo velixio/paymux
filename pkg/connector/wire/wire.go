@@ -108,6 +108,7 @@ const (
 	CodeUnsigned           = "unsigned"
 	CodeInvalidReturn      = "invalid_return"
 	CodeMandateLimit       = "mandate_limit"
+	CodeRejected           = "rejected"
 	CodeNotRefundable      = "not_refundable"
 	CodeRateLimited        = "rate_limited"
 	CodeInternal           = "internal"
@@ -154,6 +155,8 @@ func FromError(err error) (int, Error) {
 		e.Code = CodeInvalidReturn
 	case errors.Is(err, connector.ErrMandateLimit):
 		e.Code = CodeMandateLimit
+	case errors.Is(err, connector.ErrRejected):
+		e.Code = CodeRejected
 	default:
 		e.Code = CodeInternal
 	}
@@ -194,6 +197,8 @@ func (e Error) Err() error {
 		return wrap(connector.ErrInvalidReturn)
 	case CodeMandateLimit:
 		return wrap(connector.ErrMandateLimit)
+	case CodeRejected:
+		return wrap(connector.ErrRejected)
 	case CodeNotRefundable:
 		return connector.ErrNotRefundable{Reason: e.Reason}
 	case CodeRateLimited:

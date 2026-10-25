@@ -279,6 +279,26 @@ func TestInfoDeclaresProviderManaged(t *testing.T) {
 	if !i.Has(connector.CapSubscriptionManager) || len(i.SubscriptionModes) != 1 || i.SubscriptionModes[0] != connector.ProviderManaged {
 		t.Errorf("info = %+v", i)
 	}
+	// Razorpay takes several currencies for payments but bills subscriptions in INR only.
+	if len(i.SubscriptionCurrencies) != 1 || i.SubscriptionCurrencies[0] != "INR" {
+		t.Errorf("subscription currencies = %v, want [INR]", i.SubscriptionCurrencies)
+	}
+}
+
+// Seen live: a USD subscription was created at Razorpay and the customer's
+// checkout then failed with "Currency is not supported". Routing keeps USD away,
+// and the connector refuses it too, before any request is made.
+func TestSubscriptionInAnotherCurrencyIsRefusedBeforeAnyRequest(t *testing.T) {
+	f := newFake("")
+	m, _ := newSubConn(t, f)
+	_, err := m.CreateSubscriptionCheckout(context.Background(), connector.SubscriptionRequest{
+		SubscriptionID: "s1", ProviderRef: "ref1", Amount: 4900, Currency: "USD", Interval: "month", IntervalCount: 1})
+	if err == nil || !strings.Contains(err.Error(), "INR") {
+		t.Fatalf("err = %v", err)
+	}
+	if n := len(f.callsTo("POST", "/v1/plans")) + len(f.callsTo("POST", "/v1/subscriptions")); n != 0 {
+		t.Errorf("%d requests were made for a USD subscription", n)
+	}
 }
 
 func TestPaymentEntityCarriesItsSubscription(t *testing.T) {
@@ -320,5 +340,49 @@ func TestUPISubscriptionCannotBeRepriced(t *testing.T) {
 	err := m.UpdateSubscriptionAmount(context.Background(), connector.SubscriptionRef{ProviderSubscriptionID: "sub_Nx5"}, 79900)
 	if !errors.Is(err, connector.ErrUnsupported) {
 		t.Errorf("err = %v", err)
+	}
+}
+
+// Seen live: PATCH /v1/subscriptions/{id} answered 400 "Only offers can be updated
+// for subscriptions when payment mode is domestic card." and Paymux answered 500.
+// Razorpay cannot change the plan of a card (or UPI) subscription: that is
+// ErrUnsupported, with a message that says what to do instead.
+func TestPlanChangeOfACardOrUPISubscriptionIsUnsupported(t *testing.T) {
+	ref := connector.SubscriptionRef{ProviderSubscriptionID: "sub_Nx5"}
+	for name, msg := range map[string]string{
+		"card": "Only offers can be updated for subscriptions when payment mode is domestic card.",
+		"upi":  "Subscription cannot be updated when payment mode is UPI",
+	} {
+		f := newFake("")
+		f.subStatus = "active"
+		f.patchSubErr = msg
+		m, _ := newSubConn(t, f)
+		err := m.UpdateSubscriptionAmount(context.Background(), ref, 79900)
+		if !errors.Is(err, connector.ErrUnsupported) || errors.Is(err, connector.ErrRejected) {
+			t.Errorf("%s: err = %v, want ErrUnsupported", name, err)
+			continue
+		}
+		if !strings.Contains(err.Error(), "cancel it and start a new one") || !strings.Contains(err.Error(), name) {
+			t.Errorf("%s: the message does not say what to do: %v", name, err)
+		}
+	}
+	// Any other refusal of the change is the provider's answer, ErrRejected.
+	f := newFake("")
+	f.subStatus = "active"
+	f.patchSubErr = "The plan id is invalid"
+	m, _ := newSubConn(t, f)
+	if err := m.UpdateSubscriptionAmount(context.Background(), ref, 79900); !errors.Is(err, connector.ErrRejected) {
+		t.Errorf("other refusal: %v", err)
+	}
+}
+
+// The connector says up front which payment methods keep their plan, so the
+// dashboard can hide the button and the engine need not ask the provider.
+func TestInfoSaysWhichSubscriptionsCannotChangeAmount(t *testing.T) {
+	i := newConn(t, newFake("")).Info()
+	for method, want := range map[string]bool{"card": false, "upi": false, "emandate": true, "": true} {
+		if got := i.CanChangeSubscriptionAmount(method); got != want {
+			t.Errorf("CanChangeSubscriptionAmount(%q) = %v, want %v", method, got, want)
+		}
 	}
 }

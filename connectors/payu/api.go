@@ -103,6 +103,8 @@ func (c *client) call(ctx context.Context, command, var1 string, extra map[strin
 		return connector.ErrRateLimited{RetryAfter: after}
 	case resp.StatusCode >= 500:
 		return fmt.Errorf("%w: HTTP %d", connector.ErrTemporary, resp.StatusCode)
+	case resp.StatusCode >= 400:
+		return fmt.Errorf("payu: HTTP %d: %w", resp.StatusCode, connector.ErrRejected)
 	case resp.StatusCode != 200:
 		return fmt.Errorf("payu: HTTP %d", resp.StatusCode)
 	}

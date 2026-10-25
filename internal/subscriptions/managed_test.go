@@ -3,6 +3,7 @@ package subscriptions_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -322,6 +323,55 @@ func TestHostedCheckoutRefusesToBeFramed(t *testing.T) {
 		_, _, hdr = fetch(t, srv.URL+"/s/sub_nosuch?t=x")
 		if hdr.Get("X-Frame-Options") != "DENY" {
 			t.Errorf("404 headers = %v", hdr)
+		}
+	})
+}
+
+// F-B: where the provider keeps the plan of a subscription paid by a method (Razorpay
+// cards and UPI), the change is refused as unsupported with a message that says
+// what to do, before the provider is asked. A method that may change goes through.
+func TestAmountChangeIsRefusedUpFrontWhereTheProviderKeepsThePlan(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, t0)
+		sub := managed(t, e)
+		for _, name := range []string{"event_subscription_activated", "event_subscription_charged"} {
+			for _, n := range rzp(t, name) {
+				if n.Subscription != nil {
+					e.r.mu.Lock()
+					if e.r.subTruth == nil {
+						e.r.subTruth = map[string]connector.SubscriptionSnapshot{}
+					}
+					e.r.subTruth[n.Subscription.ProviderSubscriptionID] = *n.Subscription
+					e.r.mu.Unlock()
+				}
+				if err := e.notify("pa_managed", n); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		// The renewal was paid by UPI (the fixture's payment method).
+		e.r.mu.Lock()
+		e.r.fixedMethods = []string{"upi"}
+		e.r.mu.Unlock()
+		_, err := e.subs.UpdateAmount(ctx, e.scope, sub.ID, 79900)
+		if !errors.Is(err, subscriptions.ErrUnsupported) {
+			t.Fatalf("err = %v, want ErrUnsupported", err)
+		}
+		if !strings.Contains(err.Error(), "upi") || !strings.Contains(err.Error(), "cancel") {
+			t.Errorf("the message does not say what to do: %v", err)
+		}
+		if len(e.r.updated) != 0 {
+			t.Errorf("the provider was asked anyway: %v", e.r.updated)
+		}
+		if got := e.sub(sub.ID); got.PendingAmount != 0 {
+			t.Errorf("the refused change was recorded: %+v", got)
+		}
+		// Another method's plan can change.
+		e.r.mu.Lock()
+		e.r.fixedMethods = []string{"card"}
+		e.r.mu.Unlock()
+		if _, err := e.subs.UpdateAmount(ctx, e.scope, sub.ID, 79900); err != nil || len(e.r.updated) != 1 {
+			t.Errorf("a method that may change: %v updated=%v", err, e.r.updated)
 		}
 	})
 }
