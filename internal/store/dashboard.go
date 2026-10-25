@@ -284,13 +284,15 @@ type LedgerTotal struct {
 }
 
 // LedgerTotals sums charge and refund ledger entries of one org and mode since
-// the given time, per app and currency.
+// the given time, per app and currency. The extra charge of a double payment
+// (an attempt marked duplicate), and its refund, are not part of the sale.
 func LedgerTotals(ctx context.Context, q Queryer, orgID, mode string, since time.Time) ([]LedgerTotal, error) {
 	rows, err := q.QueryContext(ctx, `SELECT p.app_id, l.currency,
 			COALESCE(SUM(CASE WHEN l.kind = 'charge' THEN l.amount ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN l.kind = 'refund' THEN -l.amount ELSE 0 END), 0)
 		FROM ledger_entries l JOIN payments p ON p.id = l.payment_id
 		WHERE l.org_id = ? AND p.org_id = ? AND l.mode = ? AND l.occurred_at >= ? AND l.kind IN ('charge','refund')
+			AND NOT EXISTS (SELECT 1 FROM payment_attempts x WHERE x.id = l.attempt_id AND x.duplicate = 1)
 		GROUP BY p.app_id, l.currency ORDER BY p.app_id, l.currency`, orgID, orgID, mode, ms(since))
 	if err != nil {
 		return nil, err
@@ -349,7 +351,8 @@ func LedgerSeries(ctx context.Context, q Queryer, f SeriesFilter) ([]SeriesRow, 
 			COALESCE(SUM(CASE WHEN l.kind = 'refund' THEN -l.amount ELSE 0 END), 0)
 		FROM `+from+`
 		WHERE l.org_id = ? AND l.mode = ? AND l.occurred_at >= ? AND l.occurred_at < ?
-			AND l.kind IN ('charge','refund')`+appClause+`
+			AND l.kind IN ('charge','refund')
+			AND NOT EXISTS (SELECT 1 FROM payment_attempts x WHERE x.id = l.attempt_id AND x.duplicate = 1)`+appClause+`
 		GROUP BY slot, l.currency ORDER BY slot, l.currency`, args...)
 	if err != nil {
 		return nil, err
