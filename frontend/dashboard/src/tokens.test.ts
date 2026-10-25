@@ -161,6 +161,20 @@ test("server-rendered banners match the in-app warning strip", () => {
   }
 });
 
+test("the server page stays hidden while the workspace loads, with a fallback", () => {
+  const dash = read("../../../web/static/css/dash.css");
+  const rule =
+    dash.match(
+      /#paymux-react-root \+ #paymux-server-page\s*\{([^}]*)\}/,
+    )?.[1] ?? "";
+  expect(rule).toContain("visibility: hidden");
+  // Shown anyway after 2 s when the script is blocked or slow.
+  expect(rule).toMatch(/animation: paymux-server-reveal 0s 2s forwards/);
+  expect(dash).toMatch(
+    /@keyframes paymux-server-reveal\s*\{\s*to\s*\{\s*visibility: visible;/,
+  );
+});
+
 test("dashboard stylesheets use no fixed colours outside the tokens", () => {
   for (const f of ["./workspace.css", "./app-shell.css"]) {
     const fixed = read(f)
