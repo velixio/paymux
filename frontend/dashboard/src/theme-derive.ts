@@ -16,7 +16,7 @@ export type Overrides = Partial<Record<"light" | "dark", Tokens>>;
 export const TEXT_PAIRS: [string, string][] = [
   ["--foreground", "--background"],
   ["--muted-foreground", "--background"],
-  ["--muted-foreground", "--sidebar"],
+  ["--sidebar-foreground", "--sidebar"],
   ["--accent-foreground", "--ui-accent"],
   ["--primary-foreground", "--primary"],
 ];
@@ -147,23 +147,9 @@ function fillSeeds(s: Seeds): Full {
   };
 }
 
-/** Moves the sidebar toward the page until one text colour can read on both. */
-function reachable(sidebar: string, bg: string): string {
-  const ok = (c: string) =>
-    ["#000000", "#ffffff"].some((e) => minContrast(e, [bg, c]) >= MIN_CONTRAST);
-  for (let t = 0; t <= 1; t += 0.05) {
-    const c = mix(sidebar, bg, t);
-    if (ok(c)) return c;
-  }
-  /* v8 ignore next -- t = 1 is the page colour itself, which always passes */
-  return bg;
-}
-
 function deriveMode(s: Seeds, dark: boolean): Tokens {
-  const filled = fillSeeds(s);
-  const { accent, background: bg, text, sidebar_text } = filled;
-  const sidebar = reachable(filled.sidebar, bg);
-  const fg = nudge(text, [bg, sidebar]);
+  const { accent, background: bg, sidebar, text, sidebar_text } = fillSeeds(s);
+  const fg = nudge(text, [bg]);
   const muted = mix(bg, fg, 0.03);
   const secondary = mix(bg, fg, 0.055);
   const uiAccent = mix(bg, accent, dark ? 0.2 : 0.12);
@@ -198,6 +184,11 @@ function deriveMode(s: Seeds, dark: boolean): Tokens {
     "--input": mix(bg, fg, 0.25),
     "--ring": accent,
     "--sidebar": sidebar,
+    // Sidebar text is read against the sidebar only, so a dark sidebar can sit
+    // on a light page.
+    "--sidebar-foreground": nudge(sidebar_text ?? mix(fg, sidebar, 0.34), [
+      sidebar,
+    ]),
   };
 }
 
