@@ -325,7 +325,18 @@ func (s *Service) syncAttempt(ctx context.Context, attemptID string, hint connec
 	if err != nil {
 		return core.ApplyResult{}, err
 	}
-	if !snapshotIsOurs(a, snap) {
+	ours := snapshotIsOurs(a, snap)
+	hinted := (a.ProviderPaymentID == "" && hint.ProviderPaymentID != "") || (a.ProviderOrderID == "" && hint.ProviderOrderID != "")
+	if ours && hinted {
+		// An id came from outside (a return URL, a notification) and nothing
+		// signs it: not contradicting the attempt is not enough, the payment
+		// must name it, and must not already be another attempt's.
+		ours, err = s.hintedSnapshotIsOurs(ctx, a, snap)
+		if err != nil {
+			return core.ApplyResult{}, err
+		}
+	}
+	if !ours {
 		// The provider answered for an id that was handed to us (a return
 		// URL's payment_id, a notification) with a payment that belongs to
 		// something else. It is not applied: nothing about this attempt is known.
@@ -347,6 +358,33 @@ func snapshotIsOurs(a store.Attempt, snap connector.PaymentSnapshot) bool {
 		return false
 	}
 	return true
+}
+
+// hintedSnapshotIsOurs is snapshotIsOurs for a payment fetched by an id the
+// attempt did not already hold: the snapshot must carry the attempt's own
+// reference or order (what the attempt stored, never a hint), and its payment
+// id must not be bound to another attempt of the account.
+func (s *Service) hintedSnapshotIsOurs(ctx context.Context, a store.Attempt, snap connector.PaymentSnapshot) (bool, error) {
+	named := (snap.ProviderRef != "" && snap.ProviderRef == a.ProviderRef) ||
+		(snap.ProviderOrderID != "" && snap.ProviderOrderID == a.ProviderOrderID)
+	if !named {
+		return false, nil
+	}
+	if snap.ProviderPaymentID == "" {
+		return true, nil
+	}
+	var other store.Attempt
+	err := s.o.DB.Read(ctx, func(q store.Querier) (err error) {
+		other, err = store.FindAttempt(ctx, q, a.ProviderAccountID, "", "", snap.ProviderPaymentID)
+		return
+	})
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return true, nil
+	case err != nil:
+		return false, err
+	}
+	return other.ID == a.ID, nil
 }
 
 func firstNonEmpty(a, b string) string {
