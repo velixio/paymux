@@ -88,6 +88,7 @@ import { StatusBar } from "./status-bar";
 import { TabStrip } from "./tab-strip";
 import { TabView } from "./tab-view";
 import { TabsContext, useTabs, type TabsApi } from "./tabs-context";
+import { withPeek } from "./peek";
 import * as tabs from "./tabs";
 import type { TabState } from "./tabs";
 
@@ -404,7 +405,13 @@ function TabsShell({
     if (isAuthHref(href)) return;
     const s = stateRef.current;
     const active = s.tabs.find((t) => t.id === s.activeId);
-    if (active && tabs.tabKey(active.href) === tabs.tabKey(href)) return;
+    if (active && tabs.tabKey(active.href) === tabs.tabKey(href)) {
+      // Same page, e.g. the side pane opened or closed (?peek=): the tab
+      // remembers it, so returning to this tab brings the pane back.
+      if (active.href !== href)
+        commit(tabs.navigate(s, active.id, href, active.title));
+      return;
+    }
     const asked = intent.current;
     intent.current = null;
     const how =
@@ -490,6 +497,21 @@ function TabsShell({
         intent.current = { href: to, how };
         void go(to, { ignoreBlocker: how === "new" });
       },
+      retarget(id, to) {
+        const t = stateRef.current.tabs.find((x) => x.id === id);
+        if (t) commit(tabs.navigate(stateRef.current, id, to, t.title));
+      },
+      openInSection(to) {
+        const next = tabs.openInSection(
+          stateRef.current,
+          to,
+          titleFor(to, page),
+          Date.now(),
+          dirtyRef.current,
+        );
+        commit(next);
+        follow(next);
+      },
       activate(id) {
         const next = tabs.activate(stateRef.current, id, Date.now());
         commit(next);
@@ -532,7 +554,7 @@ function TabsShell({
       pin: (id, v) => commit(tabs.setPinned(stateRef.current, id, v)),
       move: (id, i) => commit(tabs.move(stateRef.current, id, i)),
     };
-  }, [state, dirtyIds, router, go, commit, client]);
+  }, [state, dirtyIds, router, go, commit, client, page]);
 
   // One keyboard listener for tab shortcuts: [ and ] step through tabs, g 1..9
   // jump, g w closes, g t reopens. Shifted bindings, when added, must come
@@ -807,15 +829,18 @@ export function DashboardApp({ slot }: { slot?: React.ReactNode }) {
   const loc = useLocation();
   const router = useRouter();
   const href = hrefOf(loc);
+  // The side pane (?peek=) does not change the page's data; this key matches
+  // the one the tab views use.
+  const dataHref = withPeek(href, null);
   // The last page shown keeps the shell mounted while another one loads.
   const shown = useRef<DashboardPage | null>(null);
   const inShell = !!shown.current && !shown.current.auth;
   const { data, error, refetch } = useQuery({
-    queryKey: queryKey(href),
-    queryFn: ({ signal }) => fetchDashboard(href, signal),
+    queryKey: queryKey(dataHref),
+    queryFn: ({ signal }) => fetchDashboard(dataHref, signal),
     // Used once: later visits to this URL fetch fresh data.
     initialData: () => {
-      if (seed?.href !== href) return undefined;
+      if (seed?.href !== dataHref) return undefined;
       const page = seed.page;
       seed = null;
       return page;
@@ -828,7 +853,7 @@ export function DashboardApp({ slot }: { slot?: React.ReactNode }) {
   const page = shown.current;
   const { dark, setDark } = useChrome(page);
   useEffect(() => {
-    if (data && data.href !== href) {
+    if (data && data.href !== dataHref) {
       const url = new URL(data.href, window.location.origin);
       router.navigate({
         to: url.pathname,
@@ -836,7 +861,7 @@ export function DashboardApp({ slot }: { slot?: React.ReactNode }) {
         replace: true,
       });
     }
-  }, [data, href, router]);
+  }, [data, dataHref, router]);
   if (!page)
     return error ? (
       <div className="workspace-load-error">

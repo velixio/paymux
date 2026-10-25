@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { fetchDashboard } from "./adapter";
 import { ScreenContent } from "./screen-toolbar";
 import { PeekFrame } from "./peek-pane";
+import { withPeek } from "./peek";
 import { queryKey, RuntimeProvider } from "./runtime";
 import { useTableNav } from "./use-table-nav";
 import type { Tab } from "./tabs";
@@ -33,7 +34,9 @@ type BodyProps = {
 };
 
 function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
-  const href = tab.href;
+  // The page's data does not depend on the side pane (?peek=), so the pane
+  // opening or moving never refetches or redraws the list under it.
+  const href = withPeek(tab.href, null);
   const { data, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: queryKey(href),
     queryFn: ({ signal }) => fetchDashboard(href, signal),
@@ -114,7 +117,7 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
                 shown.data.content.map((n) => n.attrs.id || n.tag).join("")
               }
               nodes={shown.data.content}
-              href={tab.href}
+              href={href}
               syncHash={active}
             />
           </RuntimeProvider>

@@ -121,9 +121,23 @@ export function PeekFrame({
     return () => setPeekGuard(null);
   }, [record, guarded]);
   const close = useCallback(() => guarded(() => go(null, true)), [guarded, go]);
+  // Moving a record into a tab takes it out of the pane: the list tab forgets
+  // ?peek= so returning to it shows the list alone.
+  const moveToTab = useCallback(
+    (href: string) => {
+      if (!tabs) return;
+      const here = router.state.location;
+      tabs.retarget(
+        tabs.state.activeId,
+        withPeek(here.pathname + here.searchStr, null),
+      );
+      tabs.openHref(href, "new");
+    },
+    [tabs, router],
+  );
   const openInTab = useCallback(() => {
-    if (record) guarded(() => tabs?.openHref(record, "new"));
-  }, [record, guarded, tabs]);
+    if (record) guarded(() => moveToTab(record));
+  }, [record, guarded, moveToTab]);
 
   // The clicked row stays highlighted.
   useEffect(() => {
@@ -190,7 +204,7 @@ export function PeekFrame({
     if (!href) return;
     e.preventDefault();
     e.stopPropagation();
-    guarded(() => tabs?.openHref(href, "new"));
+    guarded(() => moveToTab(href));
   };
 
   return (

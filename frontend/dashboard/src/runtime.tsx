@@ -21,6 +21,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LoaderCircle } from "lucide-react";
 import { useOptionalTabs } from "./tabs-context";
 import { guardPeek, isWide, peekClickTarget, peekOf } from "./peek";
+import { leavesSection } from "./tabs";
 import {
   parseDashboard,
   isDownloadPath,
@@ -118,6 +119,28 @@ export function WorkspaceLink({
             });
           if (replace) guardPeek(navigate);
           else navigate();
+          return;
+        }
+        // On a record (its page, or the side pane), a content link to another
+        // section opens in a tab of that section instead of replacing the
+        // work here. The sidebar and same-section links navigate in place.
+        if (
+          tabs &&
+          !event.defaultPrevented &&
+          !event.altKey &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.shiftKey &&
+          event.button === 0 &&
+          event.currentTarget.closest(".react-content, .peek-pane") &&
+          leavesSection(
+            url.pathname + url.search,
+            here.pathname + here.searchStr,
+            !!event.currentTarget.closest(".peek-pane"),
+          )
+        ) {
+          event.preventDefault();
+          tabs.openInSection(url.pathname + url.search);
           return;
         }
         if (["#routing", "#route-test"].includes(url.hash)) {
