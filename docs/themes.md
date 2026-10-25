@@ -51,7 +51,7 @@ All colours are `#rrggbb`. Everything else, such as hover and selected states, b
 
 ### Readability is enforced
 
-Derived text colours are adjusted, a step at a time toward black or white, until each pair reaches a contrast ratio of **4.5:1**: text on the page, muted text, sidebar text on the sidebar, highlighted text on its tint, and button text on a button. The button text turns dark on a very light accent (yellow, for example). Values you set in `overrides` are used as written and are not adjusted, so check them in the editor.
+Derived text colours are adjusted, a step at a time toward black or white, until each pair reaches a contrast ratio of **4.5:1**: text on the page, muted text, sidebar text on the sidebar, highlighted text on its tint, and button text on a button. The button text turns dark on a very light accent (yellow, for example). Text tokens you set in `overrides` get the same treatment: they are applied first and then nudged to 4.5:1 against the surface they sit on, so an override cannot make text unreadable. Surface colours (backgrounds, cards, borders, the sidebar and so on) are used as written, and the one exception is the muted background, which gives way to the page colour when muted text cannot read on it. Check the result in the editor.
 
 **Status colours** (paid, failed, pending and so on) are the same in every theme, so a status means the same thing everywhere.
 

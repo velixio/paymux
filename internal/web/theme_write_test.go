@@ -428,3 +428,28 @@ func TestDeleteMovesTheDirectoryAsideFirstAndTheLoaderIgnoresDotDirectories(t *t
 		t.Error("a dot directory loads")
 	}
 }
+
+// A themes directory that cannot be searched is an I/O problem, not a missing
+// or an existing theme: the cause reaches the caller.
+func TestWritesReportAnUnsearchableThemesDirectoryAsItIs(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	th, dir := newWritable(t)
+	if err := th.Create(tealManifest("teal"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o600); err != nil { // listable, not searchable
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	err := th.Update("teal", func(m *Manifest) error { m.Version = "2"; return nil })
+	if err == nil || errors.Is(err, ErrThemeMissing) || !errors.Is(err, os.ErrPermission) {
+		t.Errorf("Update: want a permission error, got %v", err)
+	}
+	err = th.Create(tealManifest("other"), nil)
+	if err == nil || errors.Is(err, ErrThemeExists) || !errors.Is(err, os.ErrPermission) {
+		t.Errorf("Create: want a permission error, got %v", err)
+	}
+}
