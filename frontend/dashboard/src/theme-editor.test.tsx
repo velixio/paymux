@@ -68,22 +68,23 @@ test("previews the theme live on the whole dashboard, and shows contrast", async
   fireEvent.change(input("light_accent"), { target: { value: "#ff0066" } });
   await waitFor(() => expect(preview()).toContain("--primary:#ff0066"));
   // A seed whose box is unchecked is not used.
-  fireEvent.change(input("light_text"), { target: { value: "#ff0000" } });
+  fireEvent.change(input("light_text"), { target: { value: "#222222" } });
   await waitFor(() => expect(preview()).toContain("--primary:#ff0066"));
-  expect(preview()).not.toContain("#ff0000");
+  expect(preview()).not.toContain("#222222");
   fireEvent.click(input("set_light_text"));
-  await waitFor(() => expect(preview()).toContain("#ff0000"));
+  await waitFor(() => expect(preview()).toContain("--foreground:#222222"));
 });
 
 test("switches the preview between light and dark", async () => {
   await mount("/dashboard/appearance/themes/mine/edit");
   await waitFor(() => expect(preview()).toContain("--background:#f5f5f2"));
   fireEvent.click(screen.getByRole("button", { name: "Preview dark" }));
-  await waitFor(() => expect(preview()).toContain("--background:#14161a"));
-  // Dark seeds are only used once "choose myself" is on; otherwise derived.
-  expect(preview()).not.toContain("--primary:#34c9a9");
+  // Until "choose myself" is on, the dark look is worked out from the light seeds.
+  await waitFor(() => expect(preview()).not.toContain("--background:#f5f5f2"));
+  expect(preview()).not.toContain("#14161a");
   fireEvent.click(input("dark_enabled"));
   await waitFor(() => expect(preview()).toContain("--primary:#34c9a9"));
+  expect(preview()).toContain("--background:#14161a");
   fireEvent.click(screen.getByRole("button", { name: "Preview light" }));
   await waitFor(() => expect(preview()).toContain("--background:#f5f5f2"));
 });
@@ -109,6 +110,16 @@ test("a theme whose colours cannot be read cannot be saved", async () => {
   expect(screen.getByRole("alert").textContent).toMatch(/hard to read/i);
 });
 
+test("a colour the browser could not parse is ignored, not painted", async () => {
+  await mount("/dashboard/appearance/themes/mine/edit");
+  await waitFor(() => expect(preview()).toContain("--primary:#0d7d68"));
+  // (A colour input would sanitise this itself; a text input shows the guard.)
+  input("light_accent").type = "text";
+  fireEvent.change(input("light_accent"), { target: { value: "nope" } });
+  await new Promise((r) => setTimeout(r, 20));
+  expect(preview()).toContain("--primary:#0d7d68");
+});
+
 test("leaving with unsaved changes asks first; saving does not", async () => {
   await mount("/dashboard/appearance/themes/mine/edit");
   await waitFor(() => expect(preview()).not.toBe(""));
@@ -123,6 +134,8 @@ test("leaving with unsaved changes asks first; saving does not", async () => {
   expect(leave()).toBe(true);
   // Submitting is leaving on purpose.
   const form = document.querySelector("form")!;
+  // (Keep the runtime's own submit handler out of this: it would post the form.)
+  form.addEventListener("submit", (e) => e.stopPropagation());
   act(() => {
     form.dispatchEvent(
       new Event("submit", { bubbles: true, cancelable: true }),
@@ -131,10 +144,12 @@ test("leaving with unsaved changes asks first; saving does not", async () => {
   expect(leave()).toBe(false);
 });
 
-test("a colour the browser could not parse is ignored, not painted", async () => {
-  await mount("/dashboard/appearance/themes/mine/edit");
-  await waitFor(() => expect(preview()).toContain("--primary:#0d7d68"));
-  fireEvent.change(input("light_accent"), { target: { value: "nope" } });
-  await new Promise((r) => setTimeout(r, 20));
-  expect(preview()).toContain("--primary:#0d7d68");
-});
+test.each(["{bad", "null", "7"])(
+  "an unreadable overrides attribute (%s) is treated as none",
+  async (raw) => {
+    handlers["/dashboard/appearance/themes/mine/edit"] = () =>
+      pageHtml("Edit mine", editor(raw));
+    await mount("/dashboard/appearance/themes/mine/edit");
+    await waitFor(() => expect(preview()).toContain("--primary:#0d7d68"));
+  },
+);

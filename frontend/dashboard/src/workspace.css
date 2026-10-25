@@ -1574,3 +1574,23 @@ main.dash:has(#paymux-react-root) {
 .theme-actions form {
   margin: 0;
 }
+
+.theme-editor-tools {
+  margin-top: 16px;
+}
+.theme-editor-tools [aria-pressed="true"] {
+  font-weight: 600;
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.theme-form fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+.theme-form input[type="color"] {
+  margin-left: 8px;
+  vertical-align: middle;
+}

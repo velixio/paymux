@@ -36,6 +36,7 @@ import { attributes, textOf, type ViewNode } from "./adapter";
 import { useRuntime, WorkspaceLink } from "./runtime";
 
 const ThemePreview = lazy(() => import("./theme-preview"));
+const ThemeEditor = lazy(() => import("./theme-editor"));
 // <code> values inside table cells and definition lists get a copy button.
 const CellContext = createContext(false);
 function CopyCode({ node }: { node: ViewNode }) {
@@ -311,6 +312,15 @@ export function RenderNode({ node: n }: { node: ViewNode }): ReactNode {
       >
         {children()}
       </Table>
+    );
+  if ("data-theme-editor" in n.attrs)
+    // The form is plain and complete; the editor adds live preview and contrast.
+    return (
+      <Suspense fallback={<div className="theme-editor">{children()}</div>}>
+        <ThemeEditor overrides={n.attrs["data-overrides"]}>
+          {children()}
+        </ThemeEditor>
+      </Suspense>
     );
   if ("data-theme-preview" in n.attrs) {
     // The card's colours are drawn from the seeds it carries; without JS (or

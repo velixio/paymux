@@ -215,6 +215,8 @@ func TestAdminEditsACustomThemeAndEverythingElseIsKept(t *testing.T) {
 		page := e.pageOK(admin, "/dashboard/appearance/themes/mine/edit")
 		has(t, page, `action="/dashboard/appearance/themes/mine"`, `value="#0d7d68"`, `value="#121417"`, `name="set_light_sidebar" value="1" checked`)
 		lacks(t, page, `name="name"`) // a name is changed by Rename, not here
+		// The lazy editor previews the theme with its hand-set colours too.
+		has(t, page, `data-theme-editor`, `data-overrides=`, `#112233`)
 		tok := csrfOf(t, page)
 
 		f := themeForm(tok, "version", "1.1.0", "light_accent", "#ff0066", "light_sidebar", "#121417", "set_light_sidebar", "1")

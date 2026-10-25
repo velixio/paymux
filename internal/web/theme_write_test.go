@@ -210,8 +210,9 @@ func TestConcurrentUpdatesNeverLeaveAHalfWrittenFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
-	stop := make(chan struct{})
+	stop, readerDone := make(chan struct{}), make(chan struct{})
 	go func() {
+		defer close(readerDone)
 		for {
 			select {
 			case <-stop:
@@ -239,6 +240,7 @@ func TestConcurrentUpdatesNeverLeaveAHalfWrittenFile(t *testing.T) {
 	}
 	wg.Wait()
 	close(stop)
+	<-readerDone // the reader must not report after the test is over
 	noStrays(t, dir)
 }
 

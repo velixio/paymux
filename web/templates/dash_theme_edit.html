@@ -9,7 +9,7 @@
 {{end}}
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 {{with .ThemeForm}}
-<div data-theme-editor>
+<div data-theme-editor{{if .OverridesJSON}} data-overrides="{{.OverridesJSON}}"{{end}}>
 <form method="post" action="{{if .Creating}}/dashboard/appearance/themes{{else}}/dashboard/appearance/themes/{{.Name}}{{end}}" class="stack theme-form">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 {{if .From}}<input type="hidden" name="from" value="{{.From}}">{{end}}

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/paymux/paymux/internal/authz"
+	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/web"
 )
@@ -30,7 +31,8 @@ type themeFormView struct {
 	Scheme                     string
 	Light, Dark                seedForm
 	DarkEnabled                bool
-	Overrides                  int // hand-set colours the form does not edit
+	Overrides                  int    // hand-set colours the form does not edit
+	OverridesJSON              string // the same colours, for the live preview
 }
 
 // Starting colours for a seed that is not set, so the colour pickers have a value.
@@ -76,6 +78,10 @@ func themeFormOf(th *web.Theme) *themeFormView {
 			f.Dark = seedFormOf("dark", darkDefaults, dt.DarkSeeds)
 		}
 		f.Overrides = len(dt.Overrides["light"]) + len(dt.Overrides["dark"])
+		if len(dt.Overrides) > 0 {
+			raw, _ := json.Marshal(dt.Overrides)
+			f.OverridesJSON = string(raw)
+		}
 	}
 	return f
 }
@@ -250,9 +256,10 @@ func (d *Dashboard) themeSave(w http.ResponseWriter, r *http.Request, s *session
 	}
 	version, desc, _, dash, view := readThemeForm(r)
 	view.Creating, view.Name, view.From = false, th.Name, ""
-	view.Overrides = 0
+	view.Overrides, view.OverridesJSON = 0, ""
 	if th.Dashboard != nil {
-		view.Overrides = len(th.Dashboard.Overrides["light"]) + len(th.Dashboard.Overrides["dark"])
+		old := themeFormOf(th)
+		view.Overrides, view.OverridesJSON = old.Overrides, old.OverridesJSON
 	}
 	var before, after *web.DashboardTheme
 	before = th.Dashboard
@@ -314,9 +321,11 @@ func (d *Dashboard) themeRefs(r *http.Request, name string) (themeRefs, error) {
 			return err
 		}
 		for _, a := range apps {
-			if v, found, err := store.GetAppSetting(ctx, q, a.ID, "theme"); err != nil {
+			v, err := d.o.Settings.Resolve(ctx, a.ID, "theme")
+			if err != nil {
 				return err
-			} else if found && v == string(quoted) {
+			}
+			if v.Source == settings.SourceApp && string(v.Raw) == string(quoted) {
 				refs.Apps = append(refs.Apps, a.Name)
 			}
 		}
