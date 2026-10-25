@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { fetchDashboard } from "./adapter";
+import { fetchDashboard, type ViewNode } from "./adapter";
 import { isTyping } from "./keys";
 import {
   clampWidth,
@@ -67,6 +67,10 @@ const store = () => {
  * Wraps a workspace tab's page. With ?peek=<record> in the URL (and room for
  * it) the record shows in a pane at the right, beside the list.
  */
+// Status-like spans in a record title render as pills (see render.tsx).
+const isPill = (n: ViewNode) =>
+  n.tag === "span" && /\b(status|flag|badge)\b/.test(n.attrs.class ?? "");
+
 export function PeekFrame({
   active,
   children,
@@ -292,12 +296,14 @@ function PeekPane({
   const buttons = (
     <>
       <Button
-        variant="outline"
-        size="sm"
+        variant="ghost"
+        size="icon"
         className="peek-open-tab"
+        aria-label="Open in tab"
+        title="Open in tab"
         onClick={onOpenInTab}
       >
-        <ExternalLink size={12} aria-hidden="true" /> Open in tab
+        <ExternalLink size={14} aria-hidden="true" />
       </Button>
       <Button
         variant="ghost"
@@ -343,11 +349,17 @@ function PeekPane({
         >
           <div className="peek-head">
             <h2 className="peek-title">
-              {parts
-                ? parts.toolbar.title.map((n, i) => (
-                    <RenderNode key={i} node={n} />
-                  ))
-                : record.split("/").at(-1)}
+              {/* The id truncates; status pills beside it never shrink. */}
+              <span className="peek-title-text">
+                {parts
+                  ? parts.toolbar.title
+                      .filter((n) => !isPill(n))
+                      .map((n, i) => <RenderNode key={i} node={n} />)
+                  : record.split("/").at(-1)}
+              </span>
+              {parts?.toolbar.title.filter(isPill).map((n, i) => (
+                <RenderNode key={`pill-${i}`} node={n} />
+              ))}
             </h2>
             {parts && parts.toolbar.actions.length > 0 && (
               <div className="peek-actions">

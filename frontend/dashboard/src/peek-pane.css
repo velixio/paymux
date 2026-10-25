@@ -56,7 +56,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1 1 120px;
+  flex: 1 1 0;
   min-width: 0;
   margin: 0;
   font-size: 14px;
@@ -90,15 +90,27 @@
 .peek-actions > button:hover {
   background: var(--ui-accent);
 }
-.peek-head .peek-open-tab[data-slot="button"] {
-  height: 28px;
-  gap: 5px;
-  padding: 0 10px;
-  font-size: 12px;
+/* The id gives way first; pills and the two buttons keep their size, so
+   nothing overlaps at the narrowest pane width. */
+.peek-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.peek-title > :not(.peek-title-text) {
+  flex-shrink: 0;
+}
+.peek-head .peek-open-tab[data-slot="button"],
 .peek-head .peek-close[data-slot="button"] {
+  flex-shrink: 0;
   width: 28px;
   height: 28px;
+  color: var(--muted-foreground);
+}
+.peek-head .peek-open-tab[data-slot="button"]:hover,
+.peek-head .peek-close[data-slot="button"]:hover {
+  color: var(--foreground);
 }
 .peek-body.react-content {
   flex: 1;
