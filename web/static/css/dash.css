@@ -1,23 +1,38 @@
 /* Dashboard shell. Extends app.css tokens. */
 :root {
-  --color-banner: #b91c1c;
+  --color-warn: #8a5a00;
   --color-line: #d1d5db;
   --color-nav: #f3f4f6;
   --color-ok: #166534;
 }
 @media (prefers-color-scheme: dark) {
   :root {
+    --color-warn: #f2c66b;
     --color-line: #374151;
     --color-nav: #111827;
     --color-ok: #86efac;
   }
 }
-.dev-banner {
-  background: var(--color-banner);
-  color: #fff;
-  font-weight: 600;
-  text-align: center;
-  padding: 8px 12px;
+/* Same quiet strip as the React workspace, so a reload does not flash. */
+.dev-banner,
+.banner-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  color: var(--color-muted);
+  font-size: 12px;
+  padding: 8px 30px;
+  border-bottom: 1px solid var(--color-line);
+}
+.dev-banner::before,
+.banner-warning::before {
+  content: "";
+  flex-shrink: 0;
+  width: 12px;
+  height: 11px;
+  background: var(--color-warn);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 main.dash {
   max-width: none;
@@ -245,12 +260,6 @@ table.settings pre {
   margin: 0;
   white-space: pre-wrap;
   max-width: 380px;
-}
-.banner-warning {
-  background: #b45309;
-  color: #fff;
-  padding: 8px 14px;
-  text-align: center;
 }
 fieldset {
   border: 1px solid var(--color-line);
