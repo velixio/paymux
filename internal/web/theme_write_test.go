@@ -325,3 +325,106 @@ func TestWritesNeedADataDirectory(t *testing.T) {
 		t.Error("create without a data directory")
 	}
 }
+
+func TestLoadDoesNotCacheAResultComputedBeforeAnInvalidate(t *testing.T) {
+	th, dir := newWritable(t)
+	writeTheme(t, dir, "mine", map[string]string{"theme.json": `{"name":"mine","version":"1.0.0"}`})
+	// An edit lands (and invalidates) while another request is still loading.
+	th.loadHook = func() {
+		th.loadHook = nil
+		writeTheme(t, dir, "mine", map[string]string{"theme.json": `{"name":"mine","version":"2.0.0"}`})
+		th.Invalidate()
+	}
+	first, err := th.Load("mine")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = first // may be the old version: it was computed before the edit
+	second, err := th.Load("mine")
+	if err != nil || second.Version != "2.0.0" {
+		t.Fatalf("the stale result was cached: %v %+v", err, second)
+	}
+}
+
+func TestUpdateAndRenameRepairADirectoryWhoseManifestNamesAnotherTheme(t *testing.T) {
+	th, dir := newWritable(t)
+	// What a crash between the two steps of an older rename left behind.
+	writeTheme(t, dir, "green", map[string]string{"theme.json": `{"name":"teal","version":"1.0.0","dashboard":{"seeds":{"accent":"#0d7d68"}}}`})
+	if _, err := th.Load("green"); err == nil {
+		t.Fatal("a mismatched manifest should not load")
+	}
+	if err := th.Update("green", func(m *Manifest) error { m.Version = "1.1.0"; return nil }); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, err := th.Load("green")
+	if err != nil || got.Name != "green" || got.Version != "1.1.0" {
+		t.Fatalf("after repair: %+v %v", got, err)
+	}
+	writeTheme(t, dir, "blue", map[string]string{"theme.json": `{"name":"other","version":"1.0.0"}`})
+	if err := th.Rename("blue", "navy"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if got, err := th.Load("navy"); err != nil || got.Name != "navy" {
+		t.Fatalf("after rename: %+v %v", got, err)
+	}
+}
+
+func TestRenameNeverLeavesALoadableHalfStateBehind(t *testing.T) {
+	th, dir := newWritable(t)
+	if err := th.Create(tealManifest("teal"), nil); err != nil {
+		t.Fatal(err)
+	}
+	// While the directory is being renamed, whatever a request loads must not
+	// be remembered: the manifest inside still names the old theme.
+	th.renameHook = func() {
+		th.renameHook = nil
+		_, _ = th.Load("green") // computed in the window between the two steps
+	}
+	if err := th.Rename("teal", "green"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := th.Load("green")
+	if err != nil || got.Name != "green" {
+		t.Fatalf("green after rename: %+v %v", got, err)
+	}
+	noStrays(t, dir)
+}
+
+func TestDeleteMovesTheDirectoryAsideFirstAndTheLoaderIgnoresDotDirectories(t *testing.T) {
+	th, dir := newWritable(t)
+	if err := th.Create(tealManifest("teal"), nil); err != nil {
+		t.Fatal(err)
+	}
+	seen := false
+	th.deleteHook = func() {
+		th.deleteHook = nil
+		// Mid-delete the theme is already gone under its own name.
+		if _, err := os.Stat(filepath.Join(dir, "teal")); err == nil {
+			t.Error("the directory is still there under its name while it is being removed")
+		}
+		if _, err := th.Load("teal"); err == nil {
+			t.Error("a half-deleted theme loads")
+		}
+		seen = true
+	}
+	if err := th.Delete("teal"); err != nil {
+		t.Fatal(err)
+	}
+	if !seen {
+		t.Fatal("hook not run")
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		t.Errorf("left behind: %s", e.Name())
+	}
+	// A leftover from a crash is neither listed nor loadable.
+	writeTheme(t, dir, ".del-teal-1", map[string]string{"theme.json": `{"name":"teal","version":"1.0.0"}`})
+	for _, i := range th.List() {
+		if strings.HasPrefix(i.Name, ".") {
+			t.Errorf("listed %q", i.Name)
+		}
+	}
+	if _, err := th.Load(".del-teal-1"); err == nil {
+		t.Error("a dot directory loads")
+	}
+}
