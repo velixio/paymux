@@ -66,7 +66,7 @@ test("a plain click on a row link opens the record in a pane; the list stays", a
     name: "Record preview",
   });
   expect(search(router).peek).toBe("pay_1");
-  expect(await within(p).findByText("succeeded")).toBeTruthy();
+  expect(await within(p).findByText("Succeeded")).toBeTruthy();
   expect(within(p).getByText("pay_1")).toBeTruthy();
   // inner tabs from Task D
   expect(
@@ -90,7 +90,7 @@ test("clicking another row replaces the pane content", async () => {
   await screen.findByRole("complementary", { name: "Record preview" });
   fireEvent.click(rowLink("pay_2"));
   await waitFor(() => expect(search(router).peek).toBe("pay_2"));
-  await within(pane()!).findByText("failed");
+  await within(pane()!).findByText("Failed");
   expect(rowLink("pay_2").closest("tr")!.hasAttribute("data-peek-row")).toBe(
     true,
   );
@@ -138,7 +138,7 @@ test("a reload with ?peek restores the pane", async () => {
   const p = await screen.findByRole("complementary", {
     name: "Record preview",
   });
-  await within(p).findByText("failed");
+  await within(p).findByText("Failed");
   expect(
     api.state.tabs.filter((t) => t.href.startsWith("/dashboard/payments")),
   ).toHaveLength(1);
@@ -253,7 +253,7 @@ test("clicking another row with unsaved edits asks first; keeping the edits keep
     await screen.findByRole("button", { name: "Discard and continue" }),
   );
   await waitFor(() => expect(search(router).peek).toBe("pay_2"));
-  await within(pane()!).findByText("failed");
+  await within(pane()!).findByText("Failed");
 });
 
 test("moving the selection with j/k with unsaved edits asks first and keeps the current row selected", async () => {
@@ -292,7 +292,7 @@ test("the pane header carries the record's title, status and action links; the b
   const p = await screen.findByRole("complementary", {
     name: "Record preview",
   });
-  await within(p).findByText("succeeded");
+  await within(p).findByText("Succeeded");
   const head = p.querySelector(".peek-head") as HTMLElement;
   expect(
     within(head).getByRole("link", { name: "Logs for this payment" }),
@@ -323,7 +323,7 @@ test("Open in tab is an icon button, and the status pill sits outside the trunca
   const p = await screen.findByRole("complementary", {
     name: "Record preview",
   });
-  await within(p).findByText("succeeded");
+  await within(p).findByText("Succeeded");
   const head = p.querySelector(".peek-head") as HTMLElement;
   const open = within(head).getByRole("button", { name: "Open in tab" });
   // No visible label: only the arrow icon, named for screen readers.
@@ -332,7 +332,7 @@ test("Open in tab is an icon button, and the status pill sits outside the trunca
   // The id truncates on its own; the pill is its sibling, never clipped.
   const text = head.querySelector(".peek-title-text") as HTMLElement;
   expect(text.textContent?.trim()).toBe("pay_1");
-  const pill = within(head).getByText("succeeded");
+  const pill = within(head).getByText("Succeeded");
   expect(text.contains(pill)).toBe(false);
   expect(pill.closest(".peek-title")).not.toBeNull();
 });

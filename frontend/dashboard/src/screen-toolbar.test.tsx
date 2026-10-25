@@ -105,7 +105,7 @@ test("record pages get a back button and keep the status pill beside the title",
   const bar = within(q(".screen-toolbar"));
   const back = bar.getByRole("link", { name: "Back to Payments" });
   expect(back.getAttribute("href")).toBe("/dashboard/payments");
-  expect(bar.getByText("paid").className).toContain("pill");
+  expect(bar.getByText("Paid").className).toContain("pill");
   expect(bar.queryByText("live")).toBeNull();
   expect(screen.getByText("Demo")).toBeTruthy();
 });
