@@ -548,6 +548,9 @@ type session struct {
 	User    store.UserRow
 	CSRFKey []byte
 	roles   authz.Resolver
+	// OrgID is the org the user belongs to: the dashboard's own (users have no org
+	// of their own while there is one org).
+	OrgID string
 	// Remember is true for a sign-in that was asked to last longer; AuthenticatedAt
 	// is when the user last gave the password and the second factor.
 	Remember        bool
@@ -632,14 +635,14 @@ func (d *Dashboard) currentSession(r *http.Request) (*session, bool) {
 			d.o.Logger.Warn("dashboard: touch session", "err", err)
 		}
 	}
-	return &session{ID: s.ID, User: u, CSRFKey: s.CSRFKey, roles: d.roles, Remember: s.Remember, AuthenticatedAt: s.AuthenticatedAt}, true
+	return &session{ID: s.ID, User: u, CSRFKey: s.CSRFKey, roles: d.roles, OrgID: d.sessionOrg(r.Context()), Remember: s.Remember, AuthenticatedAt: s.AuthenticatedAt}, true
 }
 
 type authedHandler func(w http.ResponseWriter, r *http.Request, s *session)
 
 // actor is the session's user as an authz actor.
 func (s *session) actor() authz.Actor {
-	return authz.Actor{Kind: authz.KindUser, ID: s.User.ID, Role: authz.Role(s.User.Role)}
+	return authz.Actor{Kind: authz.KindUser, ID: s.User.ID, Role: authz.Role(s.User.Role), OrgID: s.OrgID}
 }
 
 // can reports whether the session's user may perform action.
