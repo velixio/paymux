@@ -150,7 +150,15 @@ function fillSeeds(s: Seeds): Full {
 function deriveMode(s: Seeds, dark: boolean): Tokens {
   const { accent, background: bg, sidebar, text, sidebar_text } = fillSeeds(s);
   const fg = nudge(text, [bg]);
-  const muted = mix(bg, fg, 0.03);
+  // The muted surface is a faint tint of the page. On a mid-tone page neither
+  // black nor white can read on both, so there the tint is dropped.
+  const tint = mix(bg, fg, 0.03);
+  let mutedFg = nudge(mix(fg, bg, 0.34), [bg, tint]);
+  let muted = tint;
+  if (minContrast(mutedFg, [bg, tint]) < MIN_CONTRAST) {
+    muted = bg;
+    mutedFg = nudge(mix(fg, bg, 0.34), [bg]);
+  }
   const secondary = mix(bg, fg, 0.055);
   const uiAccent = mix(bg, accent, dark ? 0.2 : 0.12);
 
@@ -172,11 +180,8 @@ function deriveMode(s: Seeds, dark: boolean): Tokens {
     "--secondary": secondary,
     "--secondary-foreground": nudge(mix(fg, bg, dark ? 0 : 0.12), [secondary]),
     "--muted": muted,
-    "--muted-foreground": nudge(sidebar_text ?? mix(fg, bg, 0.34), [
-      bg,
-      sidebar,
-      muted,
-    ]),
+    // Read against the page only: the sidebar text has its own token.
+    "--muted-foreground": mutedFg,
     "--ui-accent": uiAccent,
     "--accent-foreground": nudge(mix(accent, fg, dark ? 0.5 : 0.15), [
       uiAccent,
