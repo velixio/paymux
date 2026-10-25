@@ -11,24 +11,27 @@ import (
 // Dispute is a row of disputes.
 type Dispute struct {
 	ID, OrgID, AppID, Mode, PaymentID, AttemptID, ProviderAccountID, ProviderDisputeID string
-	Amount                                                                             int64
-	Currency, Reason, Status, Stage                                                    string
-	DueBy                                                                              time.Time
-	Source                                                                             string
-	Evidence                                                                           string // JSON: notes and blob ids
-	Version                                                                            int64
-	CreatedAt, UpdatedAt                                                               time.Time
+	Amount                                                                             int64 // the provider's
+	// AmountHeld is what the dispute holds back from the payment: Amount, capped
+	// so that the open disputes of an attempt never hold more than it received.
+	AmountHeld                      int64
+	Currency, Reason, Status, Stage string
+	DueBy                           time.Time
+	Source                          string
+	Evidence                        string // JSON: notes and blob ids
+	Version                         int64
+	CreatedAt, UpdatedAt            time.Time
 }
 
 const disputeCols = `id, org_id, app_id, mode, payment_id, attempt_id, provider_account_id, provider_dispute_id, amount,
-	currency, COALESCE(reason,''), status, COALESCE(stage,''), due_by, source, evidence, version, created_at, updated_at`
+	currency, COALESCE(reason,''), status, COALESCE(stage,''), due_by, source, evidence, version, created_at, updated_at, amount_held`
 
 func scanDispute(row interface{ Scan(...any) error }) (Dispute, error) {
 	var d Dispute
 	var due sql.NullInt64
 	var created, updated int64
 	err := row.Scan(&d.ID, &d.OrgID, &d.AppID, &d.Mode, &d.PaymentID, &d.AttemptID, &d.ProviderAccountID, &d.ProviderDisputeID,
-		&d.Amount, &d.Currency, &d.Reason, &d.Status, &d.Stage, &due, &d.Source, &d.Evidence, &d.Version, &created, &updated)
+		&d.Amount, &d.Currency, &d.Reason, &d.Status, &d.Stage, &due, &d.Source, &d.Evidence, &d.Version, &created, &updated, &d.AmountHeld)
 	if err != nil {
 		return Dispute{}, notFound(err)
 	}
@@ -50,11 +53,11 @@ func InsertDispute(ctx context.Context, tx Tx, d Dispute) error {
 		d.Evidence = "{}"
 	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO disputes (id, org_id, app_id, mode, payment_id, attempt_id, provider_account_id,
-		provider_dispute_id, amount, currency, reason, status, stage, due_by, source, evidence, version, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		provider_dispute_id, amount, currency, reason, status, stage, due_by, source, evidence, version, created_at, updated_at, amount_held)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		d.ID, d.OrgID, d.AppID, d.Mode, d.PaymentID, d.AttemptID, d.ProviderAccountID, d.ProviderDisputeID, d.Amount,
 		d.Currency, nullIfEmpty(d.Reason), d.Status, nullIfEmpty(d.Stage), nullMSTime(d.DueBy), d.Source, d.Evidence,
-		d.Version, ms(d.CreatedAt), ms(d.UpdatedAt))
+		d.Version, ms(d.CreatedAt), ms(d.UpdatedAt), d.AmountHeld)
 	if IsUniqueViolation(err) {
 		return ErrConflict
 	}
@@ -75,9 +78,9 @@ func FindDispute(ctx context.Context, q Queryer, accountID, providerDisputeID st
 // UpdateDispute writes the mutable fields of d if its stored version is
 // d.Version, then bumps the version.
 func UpdateDispute(ctx context.Context, tx Tx, d *Dispute, now time.Time) error {
-	res, err := tx.ExecContext(ctx, `UPDATE disputes SET status = ?, stage = ?, reason = ?, due_by = ?, evidence = ?, amount = ?,
+	res, err := tx.ExecContext(ctx, `UPDATE disputes SET status = ?, stage = ?, reason = ?, due_by = ?, evidence = ?, amount = ?, amount_held = ?,
 		version = version + 1, updated_at = ? WHERE id = ? AND version = ?`,
-		d.Status, nullIfEmpty(d.Stage), nullIfEmpty(d.Reason), nullMSTime(d.DueBy), d.Evidence, d.Amount, ms(now), d.ID, d.Version)
+		d.Status, nullIfEmpty(d.Stage), nullIfEmpty(d.Reason), nullMSTime(d.DueBy), d.Evidence, d.Amount, d.AmountHeld, ms(now), d.ID, d.Version)
 	if err != nil {
 		return err
 	}
@@ -114,6 +117,24 @@ func CountOtherOpenDisputes(ctx context.Context, q Queryer, paymentID, exceptID 
 	var n int
 	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM disputes WHERE payment_id = ? AND id <> ? AND status IN ('needs_response','under_review')`,
 		paymentID, exceptID).Scan(&n)
+	return n, err
+}
+
+// SumOpenHolds is what the open disputes of an attempt, other than exceptID,
+// hold back from it.
+func SumOpenHolds(ctx context.Context, q Queryer, attemptID, exceptID string) (int64, error) {
+	var n int64
+	err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount_held), 0) FROM disputes WHERE attempt_id = ? AND id <> ?
+		AND status IN ('needs_response','under_review')`, attemptID, exceptID).Scan(&n)
+	return n, err
+}
+
+// SumLostHolds is what the lost or accepted disputes of an attempt, other than
+// exceptID, took from it.
+func SumLostHolds(ctx context.Context, q Queryer, attemptID, exceptID string) (int64, error) {
+	var n int64
+	err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount_held), 0) FROM disputes WHERE attempt_id = ? AND id <> ?
+		AND status IN ('lost','accepted')`, attemptID, exceptID).Scan(&n)
 	return n, err
 }
 

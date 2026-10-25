@@ -5,5 +5,5 @@
 {{range .Fields}}<input type="hidden" name="{{.Name}}" value="{{.Value}}">
 {{end}}<noscript><button class="btn" type="submit">{{t "redirect.continue"}}</button></noscript>
 </form>
-<script>document.getElementById("pay").submit();</script>
+<script nonce="{{.Nonce}}">document.getElementById("pay").submit();</script>
 {{end}}

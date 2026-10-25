@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -48,9 +49,27 @@ const configSchema = `{
   }
 }`
 
+// zohoHosts is every Zoho data centre's domain as a wildcard origin.
+func zohoHosts() []string {
+	var out []string
+	for _, d := range dataCenters {
+		out = append(out, "https://*."+d)
+	}
+	slices.Sort(out)
+	return out
+}
+
 var info = connector.Info{
-	Version:      "0.1.0",
-	DisplayName:  "Zoho Payments",
+	Version:     "0.1.0",
+	DisplayName: "Zoho Payments",
+	// The widget script comes from the Zoho CDN; the widget then frames and calls
+	// Zoho's own domain of the account's data centre (every one is listed).
+	CheckoutHosts: &connector.CheckoutHosts{
+		Script:  []string{"https://static.zohocdn.com"},
+		Frame:   zohoHosts(),
+		Connect: zohoHosts(),
+		Img:     []string{"https://static.zohocdn.com"},
+	},
 	Capabilities: []connector.Capability{connector.CapRefund, connector.CapMandateManager, connector.CapOAuth},
 	ConfigSchema: json.RawMessage(configSchema),
 	Currencies:   []string{"INR"},

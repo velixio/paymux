@@ -20,7 +20,7 @@ provider sandbox or production data.
   strength of something the customer controls. The fifth let a client that
   hangs up run an idempotent request (a payout, a refund) a second time.
 - **Fourteen medium- and low-severity issues were confirmed.** Thirteen are
-  fixed. One (A-13) is documented and left open, with its test skipped.
+  fixed. One (A-13) was first left open, and is fixed by the remediation plan.
 - **No critical issue was confirmed.** A-1 would be critical in a multi-org
   hub, but the store only ever creates one org today.
 - **No confirmed critical or high issue remains unresolved.** The hypotheses
@@ -97,7 +97,7 @@ to the fixed tree.
 | A-10 | stderr logs carried secrets that the database log redacts | Medium | Fixed |
 | A-11 | CSV formula injection in the GST report files | Medium | Fixed |
 | A-12 | Key delegation (F29) did not require the cancel power for keys that can cancel | Low | Fixed |
-| A-13 | The sum of dispute holds on a payment can exceed what was received | Low | Open (test skipped) |
+| A-13 | The sum of dispute holds on a payment can exceed what was received | Low | Fixed (capped holds) |
 | A-14 | Open redirect through the dashboard's `next` (`/dashboard/../\evil`) | Low | Fixed |
 | A-15 | Redactor gaps: non-Bearer `Authorization`, chained labels, `key`/`sig`/`auth`/`pass`/`totp` names | Low | Fixed |
 | A-16 | The custom-domain activation check had its own, weaker private-address guard | Low | Fixed |
@@ -332,17 +332,23 @@ to the fixed tree.
   `TestActionsForScopes` was updated.
 - **Regression test:** `TestAuditAuthzKeyScopesNeedCancelPower`.
 
-### A-13: dispute holds can add up to more than was received (open)
+### A-13: dispute holds can add up to more than was received (fixed)
 
 - **Severity:** Low. Only provider-supplied data can cause it. **Status:**
-  Open.
+  Fixed. A dispute keeps the provider's amount; its hold (`amount_held`) is
+  capped at what the attempt has left after its other open disputes, release
+  and loss move the held amount, and the payment gets the `dispute_overlap`
+  flag and an ops alert. A dispute that is lost takes what is left of the
+  attempt after the disputes still open and those already lost; if that is
+  more than it held (an earlier dispute ended in our favour), its hold is
+  topped up first, so release and loss still net per dispute and the ledger
+  never goes below minus the amount received.
 - **Where:** `internal/disputes/disputes.go`, `upsert`. F11 checks each
   dispute against the amount received, not the sum of the open holds.
 - **Why it is not fixed:** refusing the second dispute would drop a real
   chargeback. Capping its hold needs the matching release and loss entries to
   be capped too, a change to ledger semantics that needs a design decision.
-- **Test:** `TestAuditLedgerDisputeHoldsCannotExceedReceived` is skipped with
-  a reference to this entry.
+- **Test:** `TestAuditLedgerDisputeHoldsCannotExceedReceived`.
 - **Recommended fix:** record the dispute, cap its hold at what remains, store
   the capped amount for its release, and alert.
 
@@ -480,7 +486,7 @@ Go 1.27.3 on linux/amd64. PostgreSQL 17 ran in a throwaway local container.
 **Red check.** Every `audit_*_test.go` file was copied onto the baseline and
 run there. All confirming tests fail. The exceptions are expected:
 `TestAuditLedgerConcurrentRefundsNeverOverRefund` and `TestAuditOutboundGuard`
-are regression guards that pass on both trees, and A-13's test is skipped.
+are regression guards that pass on both trees, and A-13's test now passes on the fixed tree.
 
 **After the fixes**, the Go steps of `scripts/ci.sh`:
 

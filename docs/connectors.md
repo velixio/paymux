@@ -155,6 +155,14 @@ without building a connector. It states what the provider can do and the rules
 Paymux must respect:
 
 * `Currencies`, `Methods`: what the account may be routed.
+* `CheckoutHosts`: the https origins (`https://host`, or `https://*.host`) that
+  an `sdk` or `form_post` checkout needs on the hosted payment page, by CSP
+  directive (`Script`, `Frame`, `Form`, `Connect`, `Img`), for both the test
+  and the live endpoints. The page sends a nonce-based
+  `Content-Security-Policy-Report-Only` built from them; the script and form
+  URLs of the `NextAction` itself are allowed without being listed. Leave it
+  nil for a connector that only redirects. Entries that are not plain https
+  origins are dropped.
 * `MerchantOfRecord`: true when the provider sells to the customer (Whop). No
   GST invoice is issued for its payments.
 * `SubscriptionModes`: `provider_managed` (the provider bills and retries) and/or

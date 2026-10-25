@@ -227,6 +227,15 @@ func (a *App) Start(ctx context.Context) error {
 	alerts := notify.NewAlerts(notify.AlertsOptions{Mailer: mailer, Emails: a.cfg.OpsEmails, WebhookURL: a.cfg.OpsWebhookURL,
 		Recorder: alertCenter, Logger: a.log})
 	a.registerHookJob(q, alerts)
+	// A live account holding sandbox credentials (or a test one holding live
+	// credentials) is disabled and reported; Get refuses it in any case. The hub
+	// keeps running without it.
+	conns.SetAlerter(alerts)
+	if n, err := conns.DisableSandboxOnLive(ctx); err != nil {
+		a.log.Error("could not check the provider accounts against their modes", "err", err.Error())
+	} else if n > 0 {
+		a.log.Error("provider accounts disabled: their stored config does not belong to their mode", "accounts", n)
+	}
 	inv.SetAlerter(alerts) // tax exceptions (pos_defaulted, export_igst, fx_pending, credit-note cutoff)
 	// A payment that succeeds issues its invoice and spends the single-use
 	// payment link it came from, in the same transaction.

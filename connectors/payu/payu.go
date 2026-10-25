@@ -40,12 +40,14 @@ const configSchema = `{
 }`
 
 var info = connector.Info{
-	Version:      "0.1.0",
-	DisplayName:  "PayU India",
-	Capabilities: []connector.Capability{connector.CapRefund, connector.CapList, connector.CapMandateManager, connector.CapDisputeRead, connector.CapDisputeRespond},
-	ConfigSchema: json.RawMessage(configSchema),
-	Currencies:   []string{"INR"},
-	Methods:      []string{"card", "upi", "netbanking", "wallet", "emi"},
+	Version:     "0.1.0",
+	DisplayName: "PayU India",
+	// The checkout is a form post to paymentURL: secure.payu.in live, test.payu.in test.
+	CheckoutHosts: &connector.CheckoutHosts{Form: []string{"https://secure.payu.in", "https://test.payu.in"}},
+	Capabilities:  []connector.Capability{connector.CapRefund, connector.CapList, connector.CapMandateManager, connector.CapDisputeRead, connector.CapDisputeRespond},
+	ConfigSchema:  json.RawMessage(configSchema),
+	Currencies:    []string{"INR"},
+	Methods:       []string{"card", "upi", "netbanking", "wallet", "emi"},
 	// Recurring: standing instructions on cards, UPI AutoPay and net-banking
 	// e-mandates; Paymux triggers every debit. PayU wants a pre-debit notice
 	// for every debit attempt, retries included. The e-NACH ceiling is Rs 1 crore.

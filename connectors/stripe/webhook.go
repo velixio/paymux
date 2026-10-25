@@ -53,17 +53,58 @@ func (s *stripe) VerifyWebhook(_ context.Context, req connector.WebhookRequest) 
 	want := m.Sum(nil)
 	for _, sig := range sigs {
 		if got, err := hex.DecodeString(sig); err == nil && hmac.Equal(got, want) {
-			return nil
+			// Signed by this account's webhook secret, but is it from the
+			// environment of its key? A mismatch is not a bad signature: the
+			// event is genuine and does not belong here.
+			var ev struct {
+				Livemode *bool `json:"livemode"`
+			}
+			_ = json.Unmarshal(req.Body, &ev)
+			return s.checkLivemode(ev.Livemode)
 		}
 	}
 	return connector.ErrInvalidSignature
 }
 
+// checkLivemode refuses an event whose livemode flag is not the environment of
+// the account's secret key (sk_live_/rk_live_ or sk_test_/rk_test_), or that
+// has none: a test-mode event must never book a payment of a live account,
+// nor the reverse. The key is what the connector knows of its mode; a live
+// account holding a test key is refused earlier, when it is loaded.
+func (s *stripe) checkLivemode(livemode *bool) error {
+	want := keyLivemode(s.cfg.SecretKey)
+	if want == nil {
+		return nil // not a key Stripe issues; nothing to compare with
+	}
+	name := func(live bool) string { return map[bool]string{true: "live", false: "test"}[live] }
+	switch {
+	case livemode == nil:
+		return fmt.Errorf("stripe: event without a livemode flag refused (the account's key is a %s key)", name(*want))
+	case *livemode != *want:
+		return fmt.Errorf("stripe: %s-mode event refused: the account's key is a %s key", name(*livemode), name(*want))
+	}
+	return nil
+}
+
+// keyLivemode says which Stripe environment a secret key belongs to; nil if
+// it cannot tell.
+func keyLivemode(key string) *bool {
+	t, f := true, false
+	switch {
+	case strings.HasPrefix(key, "sk_live_"), strings.HasPrefix(key, "rk_live_"):
+		return &t
+	case strings.HasPrefix(key, "sk_test_"), strings.HasPrefix(key, "rk_test_"):
+		return &f
+	}
+	return nil
+}
+
 type event struct {
-	ID      string `json:"id"`
-	Type    string `json:"type"`
-	Created int64  `json:"created"`
-	Data    struct {
+	ID       string `json:"id"`
+	Livemode *bool  `json:"livemode"`
+	Type     string `json:"type"`
+	Created  int64  `json:"created"`
+	Data     struct {
 		Object json.RawMessage `json:"object"`
 	} `json:"data"`
 }
@@ -113,6 +154,9 @@ func (s *stripe) ParseWebhook(_ context.Context, req connector.WebhookRequest) (
 	}
 	if ev.ID == "" || ev.Type == "" {
 		return nil, fmt.Errorf("stripe: webhook without an event id or type")
+	}
+	if err := s.checkLivemode(ev.Livemode); err != nil {
+		return nil, err
 	}
 	n := connector.Notification{EventID: ev.ID, EventType: ev.Type, OccurredAt: ms(ev.Created)}
 	obj := ev.Data.Object
