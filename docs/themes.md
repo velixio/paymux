@@ -36,16 +36,16 @@ A theme is a folder `<data>/themes/<name>/` with a `theme.json`. Dashboard colou
 }
 ```
 
-| Field | Meaning |
-|---|---|
-| `seeds.accent` | Required. Buttons, links, charts and the selected item. |
-| `seeds.background` | The page. Default white. |
-| `seeds.sidebar` | The sidebar, title bar and status bar. It may be dark on a light page (Paddle does this). |
-| `seeds.text` | Page text. |
-| `seeds.sidebar_text` | Text on the sidebar. |
-| `dark_seeds` | The same fields for dark mode. Any you leave out are worked out from the light ones, with lightness inverted and the hue kept. |
-| `scheme` | `""` (follow the device), `light` or `dark`: the look a person gets before they have chosen. |
-| `overrides` | Advanced: set single tokens by hand, for `light` and `dark`. Only dashboard colour tokens are accepted (no `--status-*`), and values are `#rrggbb`. |
+| Field                | Meaning                                                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `seeds.accent`       | Required. Buttons, links, charts and the selected item.                                                                                             |
+| `seeds.background`   | The page. Default white.                                                                                                                            |
+| `seeds.sidebar`      | The sidebar, title bar and status bar. It may be dark on a light page (Paddle does this).                                                           |
+| `seeds.text`         | Page text.                                                                                                                                          |
+| `seeds.sidebar_text` | Text on the sidebar.                                                                                                                                |
+| `dark_seeds`         | The same fields for dark mode. Any you leave out are worked out from the light ones, with lightness inverted and the hue kept.                      |
+| `scheme`             | `""` (follow the device), `light` or `dark`: the look a person gets before they have chosen.                                                        |
+| `overrides`          | Advanced: set single tokens by hand, for `light` and `dark`. Only dashboard colour tokens are accepted (no `--status-*`), and values are `#rrggbb`. |
 
 All colours are `#rrggbb`. Everything else, such as hover and selected states, borders, muted text and the focus ring, is **derived** from the seeds in the browser.
 
