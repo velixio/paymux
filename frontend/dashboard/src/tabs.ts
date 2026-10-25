@@ -188,20 +188,29 @@ export function closeOthers(s: TabState, id: string): TabState {
 export function closeRight(s: TabState, id: string): TabState {
   const i = s.tabs.findIndex((t) => t.id === id);
   if (i < 0) return s;
-  return remove(s, s.tabs.slice(i + 1), id);
+  // Pinned tabs stay, as in a browser.
+  return remove(
+    s,
+    s.tabs.slice(i + 1).filter((t) => !t.pinned),
+    id,
+  );
 }
 
-export function reopen(s: TabState, now: number): TabState {
+export function reopen(
+  s: TabState,
+  now: number,
+  dirtyIds: ReadonlySet<string> = new Set(),
+): TabState {
   const [tab, ...closed] = s.closed;
   if (!tab) return s;
   const same = s.tabs.find((t) => tabKey(t.href) === tabKey(tab.href));
   if (same) return activate({ ...s, closed }, same.id, now);
   const back: Tab = { ...tab, lastActive: now };
-  return {
-    tabs: settle([...s.tabs, back]),
-    activeId: back.id,
-    closed,
-  };
+  // The reopened tab counts towards the cap like any newly opened one.
+  return evict(
+    { tabs: settle([...s.tabs, back]), activeId: back.id, closed },
+    dirtyIds,
+  );
 }
 
 export function duplicate(s: TabState, id: string, now: number): TabState {

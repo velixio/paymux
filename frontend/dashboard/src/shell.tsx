@@ -520,7 +520,11 @@ function TabsShell({
           void client.invalidateQueries({ queryKey: queryKey(tab.href) });
       },
       reopen() {
-        const next = tabs.reopen(stateRef.current, Date.now());
+        const next = tabs.reopen(
+          stateRef.current,
+          Date.now(),
+          dirtyRef.current,
+        );
         commit(next);
         follow(next);
       },
