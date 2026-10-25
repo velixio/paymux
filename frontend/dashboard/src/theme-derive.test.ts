@@ -348,3 +348,70 @@ test("a dark sidebar without sidebar_text gets a readable derived text colour", 
   expectPasses("no sidebar_text light", light);
   expectPasses("no sidebar_text dark", dark);
 });
+
+// A small deterministic generator, so a failure names a seed set that can be replayed.
+function rng(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const randHex = (r: () => number) =>
+  "#" +
+  Math.floor(r() * 0x1000000)
+    .toString(16)
+    .padStart(6, "0");
+const randSeeds = (r: () => number): Seeds => {
+  const s: Seeds = { accent: randHex(r) };
+  if (r() < 0.8) s.background = randHex(r);
+  if (r() < 0.6) s.sidebar = randHex(r);
+  if (r() < 0.6) s.text = randHex(r);
+  if (r() < 0.4) s.sidebar_text = randHex(r);
+  return s;
+};
+
+const INNER_PAIRS: [string, string][] = [
+  ["--card-foreground", "--card"],
+  ["--popover-foreground", "--popover"],
+  ["--secondary-foreground", "--secondary"],
+  ["--muted-foreground", "--muted"],
+  ["--destructive", "--background"],
+];
+
+test("whatever the seeds, every text pair reads at 4.5:1 in light and dark", () => {
+  const r = rng(20261026);
+  for (let i = 0; i < 3000; i++) {
+    const light = randSeeds(r);
+    const dark = r() < 0.5 ? randSeeds(r) : undefined;
+    const { light: l, dark: d } = derive(light, dark);
+    for (const [mode, t] of [
+      ["light", l],
+      ["dark", d],
+    ] as const) {
+      for (const row of contrastReport(t))
+        expect(
+          row.ok,
+          `${JSON.stringify(light)} / ${JSON.stringify(dark)} ${mode} ${row.pair.join(" on ")} = ${row.ratio.toFixed(2)}`,
+        ).toBe(true);
+      for (const [fg, bg] of INNER_PAIRS)
+        expect(
+          contrast(t[fg], t[bg]),
+          `${JSON.stringify(light)} ${mode} ${fg} on ${bg}`,
+        ).toBeGreaterThanOrEqual(4.5);
+    }
+  }
+});
+
+test("a dark sidebar on a light page does not push page text to white", () => {
+  const { light } = derive({
+    accent: "#635bff",
+    background: "#f5f5f2",
+    sidebar: "#000000",
+  });
+  expect(
+    contrast(light["--muted-foreground"], light["--background"]),
+  ).toBeGreaterThanOrEqual(4.5);
+  expect(light["--muted-foreground"]).not.toBe("#ffffff");
+});
