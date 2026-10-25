@@ -49,7 +49,7 @@ func (s *Service) MarkExtraSale(ctx context.Context, tx store.Tx, p store.Paymen
 	}
 	refs := map[string]string{"payment": p.ID, "attempt": a.ID, "app": p.AppID}
 	if action == "auto_refund" && a.AmountReceived > 0 {
-		if _, err := s.insertRefund(ctx, tx, p, a, a.AmountReceived, reason, "system", audit.System); err != nil {
+		if _, err := s.insertRefund(ctx, tx, p, a, a.AmountReceived, reason, "system", "", audit.System); err != nil {
 			return err
 		}
 		queueAlert(ctx, notify.Alert{Severity: notify.SeverityInfo, Kind: "payment.link_reused_refunded",
