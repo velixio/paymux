@@ -1,0 +1,58 @@
+# Weekly, grouped: each ecosystem gets at most one pull request a week, however
+# many dependencies moved, so the updates never flood the review queue. Every
+# update still goes through the whole CI gate, and the SHA-pin test in
+# docs/workflows_test.go keeps updated actions pinned (Dependabot rewrites the
+# SHA and the tag comment together).
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    groups:
+      go-modules:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: npm
+    directories:
+      - /frontend
+      - /examples/webhook-receiver-js
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    groups:
+      npm:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(ci)"
+
+  # The base images of the Dockerfile (tag and digest). The CI postgres service
+  # in ci.yml is not covered by Dependabot: bump its digest by hand.
+  - package-ecosystem: docker
+    directory: /deploy/docker
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 1
+    groups:
+      docker-images:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(docker)"

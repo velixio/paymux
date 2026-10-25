@@ -20,6 +20,10 @@
 # from main's newest. The bun and Playwright caches are keyed on the lock file and
 # saved the same way. Release runs (a tag) only restore.
 #
+# Secrets scanning (`secrets`) runs gitleaks over the whole history; its reviewed
+# false positives (test fixtures) are in .gitleaksignore, each with its reason. It
+# is a CI-only job: scripts/ci.sh does not run it.
+#
 # Also callable from other workflows (release.yml runs it before building anything).
 name: CI
 
@@ -43,8 +47,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      # TODO(review): pin these actions to commit SHAs before the first run.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (v4)
+        with:
+          persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 (v2)
         with:
           bun-version: 1.4.3
@@ -95,7 +100,7 @@ jobs:
         shard: [1, 2, 3]
     services:
       postgres:
-        image: postgres:17
+        image: postgres:17@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe
         env:
           POSTGRES_PASSWORD: paymux
           POSTGRES_DB: paymux
@@ -114,6 +119,8 @@ jobs:
       PAYMUX_REQUIRE_PG: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (v4)
+        with:
+          persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 (v2)
         with:
           bun-version: 1.4.3
@@ -165,6 +172,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (v4)
+        with:
+          persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 (v2)
         with:
           bun-version: 1.4.3
@@ -204,6 +213,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (v4)
+        with:
+          persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 (v2)
         with:
           bun-version: 1.4.3
@@ -243,6 +254,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (v4)
+        with:
+          persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 (v2)
         with:
           bun-version: 1.4.3
@@ -287,10 +300,27 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ steps.browsers.outputs.cache-primary-key }}
 
+  # gitleaks over the full history. Findings that are test fixtures are listed in
+  # .gitleaksignore with the reason; anything else fails the gate.
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (v4)
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # the whole history is scanned
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
   # The aggregator: see the comment at the top. Its name is a required status check.
   ci:
     if: ${{ always() }}
-    needs: [checks, test, smoke, build, dashboard-browser]
+    needs: [checks, test, smoke, build, dashboard-browser, secrets]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -307,6 +337,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (v4)
+        with:
+          persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 (v2)
         with:
           bun-version: 1.4.3
