@@ -132,3 +132,13 @@ test("warning strip and mode labels take their colours from the tokens", () => {
   expect(rule(".workspace-warning")).toContain("var(--status-warn-bg)");
   expect(rule(".live-label")).toContain("var(--status-ok-bg)");
 });
+
+test("dashboard stylesheets use no fixed colours outside the tokens", () => {
+  for (const f of ["./workspace.css", "./app-shell.css"]) {
+    const fixed = read(f)
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("--"))
+      .filter((line) => /#[0-9a-f]{6}\b/i.test(line));
+    expect(fixed, f).toEqual([]);
+  }
+});
