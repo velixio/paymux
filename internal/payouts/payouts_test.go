@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +21,7 @@ import (
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/fakeconn"
 	"github.com/paymux/paymux/internal/jobs"
+	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/payouts"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/store"
@@ -42,6 +44,14 @@ type env struct {
 	now    time.Time
 	mu     sync.Mutex
 	events []events.Event
+	alerts []notify.Alert
+}
+
+func (e *env) Raise(_ context.Context, al notify.Alert) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.alerts = append(e.alerts, al)
+	return nil
 }
 
 func (e *env) clock() time.Time { e.mu.Lock(); defer e.mu.Unlock(); return e.now }
@@ -95,7 +105,7 @@ func newEnv(t *testing.T, db *store.DB, purposes []string) *env {
 	e.svc = payouts.New(payouts.Options{DB: db, Box: box, Connectors: payouts.ConnectorsFunc(func(ctx context.Context, id string) (connector.Connector, error) {
 		live, err := conns.Get(ctx, id)
 		return live.Connector, err
-	}), Jobs: e.q, Emitter: emit, Now: e.clock})
+	}), Jobs: e.q, Emitter: emit, Alerts: e, Now: e.clock})
 	e.svc.RegisterJobs(e.q)
 	err = db.Write(ctx, func(tx store.Tx) error {
 		if err := store.SeedOrg(ctx, tx, "Paymux", t0); err != nil {
@@ -414,3 +424,138 @@ type timeoutErr struct{}
 func (timeoutErr) Error() string   { return "i/o timeout" }
 func (timeoutErr) Timeout() bool   { return true }
 func (timeoutErr) Temporary() bool { return true }
+
+// ambiguous makes every submit end in a timeout, and runs the queue until the
+// submit job has used its attempts.
+func (e *env) exhaustSubmit() {
+	e.t.Helper()
+	e.fake.Locked(func() {
+		e.fake.PayoutFn = func(connector.PayoutRequest) (connector.PayoutSnapshot, error) {
+			return connector.PayoutSnapshot{}, fmt.Errorf("payu: POST: %w", context.DeadlineExceeded)
+		}
+	})
+	e.run()
+	for i := 0; i < 20; i++ {
+		e.advance(48 * time.Hour)
+	}
+}
+
+// A payout whose submit job dies after repeated ambiguous errors must not sit
+// in pending, unseen: it goes to needs_review with an alert, and the provider
+// is asked about it by our reference.
+func TestPayoutWithAnUnknownOutcomeGoesToNeedsReviewAndIsResolvedByPolling(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, []string{"payout"})
+		p, _ := e.create(nil)
+		e.exhaustSubmit()
+		got := e.get(p.ID)
+		if got.Status != "needs_review" {
+			t.Fatalf("after the attempts ran out: %+v", got)
+		}
+		if len(e.alerts) != 1 || e.alerts[0].Kind != "payout.needs_review" || e.alerts[0].Refs["payout"] != p.ID {
+			t.Fatalf("alerts = %+v", e.alerts)
+		}
+		calls := len(e.fake.PayoutCalls)
+		e.advance(48 * time.Hour)
+		if len(e.fake.PayoutCalls) != calls {
+			t.Error("a payout in needs_review was submitted again")
+		}
+		// The provider did take it after all.
+		e.fake.Locked(func() {
+			e.fake.Payouts[p.ProviderRef] = connector.PayoutSnapshot{ProviderRef: p.ProviderRef, ProviderPayoutID: "po_x",
+				Status: connector.PayoutSucceeded, RawStatus: "processed", Amount: p.Amount, Currency: p.Currency}
+		})
+		e.advance(48 * time.Hour)
+		if got := e.get(p.ID); got.Status != "succeeded" || got.ProviderPayoutID != "po_x" {
+			t.Fatalf("after the provider answered: %+v", got)
+		}
+		n := 0
+		for _, ty := range e.types() {
+			if ty == "payout.succeeded" {
+				n++
+			}
+		}
+		if n != 1 || !slices.Contains(e.types(), "payout.needs_review") {
+			t.Errorf("events = %v", e.types())
+		}
+	})
+}
+
+func TestPayoutIsNotSentAgainWhileOneToTheSameBeneficiaryNeedsReview(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, []string{"payout"})
+		first, _ := e.create(nil)
+		e.exhaustSubmit()
+		if e.get(first.ID).Status != "needs_review" {
+			t.Fatal("setup: not in needs_review")
+		}
+		if _, err := e.create(nil); !errors.Is(err, payouts.ErrNeedsReview) {
+			t.Fatalf("same beneficiary and amount: %v", err)
+		}
+		if _, err := e.create(func(in *payouts.CreateInput) { in.Amount++ }); err != nil {
+			t.Errorf("another amount: %v", err)
+		}
+		if _, err := e.create(func(in *payouts.CreateInput) { in.Beneficiary.AccountNumber = "999999999999" }); err != nil {
+			t.Errorf("another beneficiary: %v", err)
+		}
+		forced, err := e.create(func(in *payouts.CreateInput) {
+			in.Force, in.Actor = true, audit.Actor{Type: audit.ActorAPIKey, ID: "key_1"}
+		})
+		if err != nil {
+			t.Fatalf("forced: %v", err)
+		}
+		if n := e.count("SELECT COUNT(*) FROM audit_log WHERE action = 'payout.force_create' AND target = ? AND actor_id = 'key_1'", forced.ID); n != 1 {
+			t.Errorf("audit rows for the force = %d", n)
+		}
+	})
+}
+
+// Our own failure (the provider's refusal as we read it) is a guess until the
+// provider says so: a later "processed" is the truth.
+func TestSynthesisedFailureIsNotTerminalUntilTheProviderConfirms(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, []string{"payout"})
+		e.fake.Locked(func() {
+			e.fake.PayoutFn = func(connector.PayoutRequest) (connector.PayoutSnapshot, error) {
+				return connector.PayoutSnapshot{}, errors.New("unexpected provider answer")
+			}
+		})
+		p, _ := e.create(nil)
+		e.run()
+		if got := e.get(p.ID); got.Status != "failed" {
+			t.Fatalf("setup: %+v", got)
+		}
+		e.fake.Locked(func() {
+			e.fake.Payouts[p.ProviderRef] = connector.PayoutSnapshot{ProviderRef: p.ProviderRef, ProviderPayoutID: "po_y",
+				Status: connector.PayoutSucceeded, RawStatus: "processed", Amount: p.Amount, Currency: p.Currency}
+		})
+		e.advance(48 * time.Hour)
+		if got := e.get(p.ID); got.Status != "succeeded" || got.FailureCode != "" {
+			t.Fatalf("after the provider's processed: %+v", got)
+		}
+	})
+}
+
+// A failure the provider itself reported stays final.
+func TestProviderReportedFailureStaysFinalAfterPolling(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, []string{"payout"})
+		p, _ := e.create(nil)
+		e.run()
+		e.fake.Locked(func() {
+			s := e.fake.Payouts[p.ProviderRef]
+			s.Status, s.RawStatus, s.ErrorCode = connector.PayoutFailed, "failed", "ACCOUNT_CLOSED"
+			e.fake.Payouts[p.ProviderRef] = s
+		})
+		e.advance(2 * time.Minute)
+		e.fake.Locked(func() {
+			s := e.fake.Payouts[p.ProviderRef]
+			s.Status, s.RawStatus = connector.PayoutSucceeded, "processed"
+			e.fake.Payouts[p.ProviderRef] = s
+		})
+		e.advance(48 * time.Hour)
+		if got := e.get(p.ID); got.Status != "failed" {
+			t.Fatalf("a provider failure moved to %s", got.Status)
+		}
+	})
+}
