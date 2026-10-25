@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -121,5 +122,24 @@ func TestUpdateInsecureSkipSignature(t *testing.T) {
 	key := filepath.Join(t.TempDir(), "cosign.pub")
 	if code, _, _ = runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest, "--insecure-skip-signature", "--cosign-key", key); code != 2 {
 		t.Errorf("--insecure-skip-signature with --cosign-key: code=%d, want 2", code)
+	}
+}
+
+// Releases also carry version-less archives (paymux_linux_amd64.tar.gz) for the
+// stable "latest" download links. The updater must keep to the versioned name:
+// it is the one the release workflow's SHA256SUMS lists next to the tag.
+func TestUpdateUsesTheVersionedArchiveNotTheStableAlias(t *testing.T) {
+	f := newFakeReleases(t, "v1.4.0", "v1.4.0")
+	stable := tarGz(t, "paymux", newScript("v6.6.6")) // a decoy: it would fail the version check
+	name := "paymux_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz"
+	f.assets[name] = stable
+	f.assets["SHA256SUMS"] = append(f.assets["SHA256SUMS"], []byte(sum(stable)+"  "+name+"\n")...)
+	dest := updateEnv(t, "v1.3.2")
+	code, out, errs := runUpdateCmd(t, "--api-url", f.srv.URL, "--dest", dest, "--insecure-skip-signature")
+	if code != 0 {
+		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
+	}
+	if b, _ := os.ReadFile(dest); !bytes.Equal(b, newScript("v1.4.0")) {
+		t.Errorf("installed %q, want the versioned archive's binary", b)
 	}
 }

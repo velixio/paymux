@@ -120,6 +120,41 @@ func TestReleaseScriptBuildsChecksumsAndStampsTheVersion(t *testing.T) {
 	}
 }
 
+// Every archive is also published under a name without the version, so that
+// .../releases/latest/download/paymux_linux_amd64.tar.gz always works. The copy
+// is listed in SHA256SUMS, hence covered by the signature and the attestation.
+func TestReleaseScriptAlsoWritesVersionlessArchives(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds a binary")
+	}
+	target := hostTarget()
+	if target == "" {
+		t.Skip("release.sh does not build for this platform")
+	}
+	out := t.TempDir()
+	if text, err := runRelease(t, []string{"TARGETS=" + target, "OUT=" + out, "PAYMUX_NO_COSIGN=1"}, "v9.8.7-test"); err != nil {
+		t.Fatalf("release.sh: %v\n%s", err, text)
+	}
+	osName, arch, _ := strings.Cut(target, "/")
+	versioned, err := os.ReadFile(filepath.Join(out, "paymux_9.8.7-test_"+osName+"_"+arch+".tar.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stableName := "paymux_" + osName + "_" + arch + ".tar.gz"
+	stable, err := os.ReadFile(filepath.Join(out, stableName))
+	if err != nil {
+		t.Fatalf("no version-less archive: %v", err)
+	}
+	if string(stable) != string(versioned) {
+		t.Error("the version-less archive differs from the versioned one")
+	}
+	h := sha256.Sum256(stable)
+	sums, _ := os.ReadFile(filepath.Join(out, "SHA256SUMS"))
+	if !strings.Contains(string(sums), hex.EncodeToString(h[:])+"  "+stableName+"\n") {
+		t.Errorf("SHA256SUMS does not cover %s:\n%s", stableName, sums)
+	}
+}
+
 func TestReleaseScriptSignsWithCosignWhenInstalled(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds a binary")
