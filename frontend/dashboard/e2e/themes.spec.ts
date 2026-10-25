@@ -66,16 +66,28 @@ test("editing a theme previews it live and leaving restores the page", async ({
   page,
 }) => {
   await login(page);
-  await page.goto("/dashboard/appearance/themes/harbour/edit");
-  const before = await primary(page);
+  await page.goto("/dashboard/appearance/themes/new?from=stripe");
+  await page.locator('input[name="name"]').fill("inkwell");
+  await page.getByRole("button", { name: "Create theme" }).click();
+  await expect(page.locator('[data-theme-card="inkwell"]')).toBeVisible();
+
+  await page.goto("/dashboard/appearance/themes/inkwell/edit");
+  const preview = page.locator("style#paymux-theme-preview");
   await page.locator('input[name="light_accent"]').fill("#123456");
-  await expect(page.locator("style#paymux-theme-preview")).toBeAttached();
-  await expect
-    .poll(() => page.locator("style#paymux-theme-preview").textContent())
-    .toContain("#123456");
+  await expect.poll(() => preview.textContent()).toContain("--primary:#123456");
   await expect(page.getByRole("table", { name: /contrast/i })).toBeVisible();
+  // The whole dashboard wears it while editing.
+  await expect.poll(() => primary(page)).toBe("#123456");
+
+  // Leaving with unsaved edits asks first; staying keeps the preview.
   await page.getByRole("link", { name: "Back to Appearance" }).click();
-  await expect(page.locator("style#paymux-theme-preview")).toHaveCount(0);
-  expect(await primary(page)).not.toBe("#123456");
-  void before;
+  await expect(page.getByText("Discard unsaved changes?")).toBeVisible();
+  await page.getByRole("button", { name: "Keep editing" }).click();
+  await expect(preview).toHaveCount(1);
+
+  // Discarding leaves, and the page gets its own colours back.
+  await page.getByRole("link", { name: "Back to Appearance" }).click();
+  await page.getByRole("button", { name: "Discard and leave" }).click();
+  await expect(preview).toHaveCount(0);
+  await expect.poll(() => primary(page)).not.toBe("#123456");
 });
