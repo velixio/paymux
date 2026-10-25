@@ -1,12 +1,14 @@
 package dashboard
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/paymux/paymux/internal/authz"
+	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/web"
 )
 
@@ -137,6 +139,8 @@ func (d *Dashboard) routesThemeEditor() {
 	m.HandleFunc("POST "+prefix+"/appearance/themes", d.authed(authz.SettingsWrite, d.recent(d.themeCreate)))
 	m.HandleFunc("GET "+prefix+"/appearance/themes/{name}/edit", d.authed(authz.SettingsWrite, d.themeEditPage))
 	m.HandleFunc("POST "+prefix+"/appearance/themes/{name}", d.authed(authz.SettingsWrite, d.recent(d.themeSave)))
+	m.HandleFunc("POST "+prefix+"/appearance/themes/{name}/rename", d.authed(authz.SettingsWrite, d.recent(d.themeRename)))
+	m.HandleFunc("POST "+prefix+"/appearance/themes/{name}/delete", d.authed(authz.SettingsWrite, d.recent(d.themeDelete)))
 }
 
 func (d *Dashboard) renderThemeForm(w http.ResponseWriter, r *http.Request, s *session, status int, f *themeFormView, msg string) {
@@ -276,6 +280,132 @@ func (d *Dashboard) themeSave(w http.ResponseWriter, r *http.Request, s *session
 	}
 	if err := d.record(r.Context(), r, s, "theme.update", th.Name, before, after); err != nil {
 		d.o.Logger.Warn("dashboard: audit of theme update", "err", err)
+	}
+	http.Redirect(w, r, prefix+"/appearance", http.StatusSeeOther)
+}
+
+// themeRefs says what refers to a theme by name: whether it is the
+// organisation default, who chose it for themselves, and which apps use it for
+// their customer pages.
+type themeRefs struct {
+	OrgDefault bool
+	Users      []string // emails
+	Apps       []string // app names
+}
+
+func (x themeRefs) any() bool { return x.OrgDefault || len(x.Users) > 0 || len(x.Apps) > 0 }
+
+func (d *Dashboard) themeRefs(r *http.Request, name string) (themeRefs, error) {
+	ctx := r.Context()
+	var refs themeRefs
+	org, err := d.orgID(ctx)
+	if err != nil {
+		return refs, err
+	}
+	refs.OrgDefault = d.dashboardTheme(ctx) == name
+	quoted, _ := json.Marshal(name)
+	err = d.o.DB.Read(ctx, func(q store.Querier) error {
+		var err error
+		if refs.Users, err = store.ThemeUsers(ctx, q, org, name); err != nil {
+			return err
+		}
+		apps, err := store.ListApps(ctx, q, org)
+		if err != nil {
+			return err
+		}
+		for _, a := range apps {
+			if v, found, err := store.GetAppSetting(ctx, q, a.ID, "theme"); err != nil {
+				return err
+			} else if found && v == string(quoted) {
+				refs.Apps = append(refs.Apps, a.Name)
+			}
+		}
+		return nil
+	})
+	return refs, err
+}
+
+// refused answers a rename or delete that cannot go ahead, on the Appearance
+// page with the reason.
+func (d *Dashboard) refused(w http.ResponseWriter, r *http.Request, s *session, msg string) {
+	d.renderAppearance(w, r, s, http.StatusBadRequest, msg)
+}
+
+func (d *Dashboard) themeRename(w http.ResponseWriter, r *http.Request, s *session) {
+	th, ok := d.customTheme(w, r)
+	if !ok {
+		return
+	}
+	old, to := th.Name, strings.TrimSpace(r.PostForm.Get("new_name"))
+	if old == to {
+		d.refused(w, r, s, "That is already its name.")
+		return
+	}
+	refs, err := d.themeRefs(r, old)
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	if len(refs.Apps) > 0 {
+		d.refused(w, r, s, "Apps use "+old+" for their customer pages: "+strings.Join(refs.Apps, ", ")+". Change their theme first, then rename it.")
+		return
+	}
+	if err := d.o.Themes.Rename(old, to); err != nil {
+		d.refused(w, r, s, themeErrMessage(err))
+		return
+	}
+	ctx := r.Context()
+	org, err := d.orgID(ctx)
+	if err == nil {
+		err = d.o.DB.Write(ctx, func(tx store.Tx) error { return store.RenameThemeRefs(ctx, tx, org, old, to) })
+	}
+	if err != nil {
+		_ = d.o.Themes.Rename(to, old) // leave things as they were
+		d.fail(w, err)
+		return
+	}
+	// The organisation default was rewritten behind the settings cache's back.
+	d.o.Settings.Invalidate()
+	if err := d.record(ctx, r, s, "theme.rename", old, map[string]string{"name": old}, map[string]string{"name": to}); err != nil {
+		d.o.Logger.Warn("dashboard: audit of theme rename", "err", err)
+	}
+	http.Redirect(w, r, prefix+"/appearance", http.StatusSeeOther)
+}
+
+func (d *Dashboard) themeDelete(w http.ResponseWriter, r *http.Request, s *session) {
+	th, ok := d.customTheme(w, r)
+	if !ok {
+		return
+	}
+	refs, err := d.themeRefs(r, th.Name)
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	if refs.any() {
+		var in []string
+		if refs.OrgDefault {
+			in = append(in, "it is the organisation default")
+		}
+		if len(refs.Users) > 0 {
+			in = append(in, "chosen by "+strings.Join(refs.Users, ", "))
+		}
+		if len(refs.Apps) > 0 {
+			in = append(in, "used for the customer pages of "+strings.Join(refs.Apps, ", "))
+		}
+		d.refused(w, r, s, th.Name+" is in use and was not deleted: "+strings.Join(in, "; ")+".")
+		return
+	}
+	if err := d.o.Themes.Delete(th.Name); err != nil {
+		if errors.Is(err, web.ErrThemeMissing) {
+			http.NotFound(w, r)
+			return
+		}
+		d.fail(w, err)
+		return
+	}
+	if err := d.record(r.Context(), r, s, "theme.delete", th.Name, map[string]string{"version": th.Version}, nil); err != nil {
+		d.o.Logger.Warn("dashboard: audit of theme delete", "err", err)
 	}
 	http.Redirect(w, r, prefix+"/appearance", http.StatusSeeOther)
 }

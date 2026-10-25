@@ -23,6 +23,16 @@
 <input type="hidden" name="theme" value="{{.Name}}">
 <button class="btn small" type="submit">Set as default</button>
 </form>{{end}}</p>
+{{if and $.CanManage .Custom}}<div class="theme-manage">
+<form class="inline" method="post" action="/dashboard/appearance/themes/{{.Name}}/rename">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<input class="field" name="new_name" aria-label="New name for {{.Name}}" placeholder="new-name" maxlength="40" pattern="[a-z0-9][a-z0-9-]*" required>
+<button class="btn small" type="submit">Rename</button>
+</form>
+<form class="inline" method="post" action="/dashboard/appearance/themes/{{.Name}}/delete">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<button class="btn small" type="submit">Delete</button>
+</form></div>{{end}}
 {{if .Tokens}}<details><summary class="muted">Customer-page tokens</summary>{{range .Tokens}}<small><code>{{.Name}}: {{.Value}}</code></small><br>{{end}}</details>{{end}}{{end}}
 </li>
 {{else}}<li class="muted">No themes installed.</li>{{end}}

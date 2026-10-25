@@ -261,6 +261,11 @@ func TestAdminEditsACustomThemeAndEverythingElseIsKept(t *testing.T) {
 	})
 }
 
+// tealAs is the teal theme under another name (the name inside must match its directory).
+func tealAs(name string) string {
+	return strings.Replace(tealTheme, `"teal"`, `"`+name+`"`, 1)
+}
+
 func jsonEqual(a, b any) bool {
 	x, _ := json.Marshal(a)
 	y, _ := json.Marshal(b)
@@ -297,7 +302,7 @@ func TestBuiltInThemesAreReadOnlyAndNamesCannotEscape(t *testing.T) {
 func TestThemeWritesNeedARecentSignIn(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newThemedEnv(t, db)
-		e.writeTheme("mine", tealTheme, nil)
+		e.writeTheme("mine", tealAs("mine"), nil)
 		c := staleAdmin(t, e.env)
 		tok := csrfOf(t, e.pageOK(c, "/dashboard/settings"))
 		for path, form := range map[string]url.Values{
@@ -327,7 +332,7 @@ func TestCardsOfferRenameAndDeleteForCustomThemesOnly(t *testing.T) {
 func TestRenameMakesEveryReferenceFollowAtOnce(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newThemedEnv(t, db)
-		e.writeTheme("mine", tealTheme, nil)
+		e.writeTheme("mine", tealAs("mine"), nil)
 		e.setOrg("theme", `"mine"`)
 		admin, viewer := e.roleClient("admin"), e.roleClient("viewer")
 		// Prime the settings cache: the rename must not leave the old value in it.
@@ -371,8 +376,8 @@ func TestRenameMakesEveryReferenceFollowAtOnce(t *testing.T) {
 func TestRenameRefusals(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newThemedEnv(t, db)
-		e.writeTheme("mine", tealTheme, nil)
-		e.writeTheme("other", strings.Replace(tealTheme, `"teal"`, `"other"`, 1), nil)
+		e.writeTheme("mine", tealAs("mine"), nil)
+		e.writeTheme("other", tealAs("other"), nil)
 		alpha := e.seedApp("alpha")
 		admin := e.roleClient("admin")
 		tok := csrfOf(t, e.pageOK(admin, "/dashboard/appearance"))
@@ -413,8 +418,8 @@ func TestRenameRefusals(t *testing.T) {
 func TestDeleteIsRefusedWhileInUseAndListsWho(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newThemedEnv(t, db)
-		e.writeTheme("mine", tealTheme, nil)
-		e.writeTheme("spare", strings.Replace(tealTheme, `"teal"`, `"spare"`, 1), nil)
+		e.writeTheme("mine", tealAs("mine"), nil)
+		e.writeTheme("spare", tealAs("spare"), nil)
 		admin, viewer := e.roleClient("admin"), e.roleClient("viewer")
 		tok := csrfOf(t, e.pageOK(admin, "/dashboard/appearance"))
 		del := func(name string) (int, string) {
@@ -464,7 +469,7 @@ func TestDeleteIsRefusedWhileInUseAndListsWho(t *testing.T) {
 func TestRenameAndDeleteNeedARecentSignIn(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newThemedEnv(t, db)
-		e.writeTheme("mine", tealTheme, nil)
+		e.writeTheme("mine", tealAs("mine"), nil)
 		c := staleAdmin(t, e.env)
 		tok := csrfOf(t, e.pageOK(c, "/dashboard/settings"))
 		for path, form := range map[string]url.Values{
