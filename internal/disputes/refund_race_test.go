@@ -10,56 +10,102 @@ import (
 	"github.com/paymux/paymux/pkg/connector"
 )
 
+func (e *env) refundStatus(id string) (st string) {
+	e.t.Helper()
+	_ = e.db.Read(ctx, func(q store.Querier) error {
+		r, err := store.GetRefund(ctx, q, id)
+		st = r.Status
+		return err
+	})
+	return
+}
+
+func (e *env) refundJob(refundID string) (state string, attempts int) {
+	e.t.Helper()
+	if err := e.db.Read(ctx, func(q store.Querier) error {
+		return q.QueryRowContext(ctx, "SELECT state, attempts FROM jobs WHERE dedupe_key = ?", "refund.submit:"+refundID).Scan(&state, &attempts)
+	}); err != nil {
+		e.t.Fatal(err)
+	}
+	return
+}
+
+func (e *env) newRefund(paymentID string, amount int64) store.Refund {
+	e.t.Helper()
+	r, err := e.core.CreateRefund(ctx, core.CreateRefundInput{Scope: e.scope, Actor: audit.System, InitiatedBy: "api", PaymentID: paymentID, Amount: amount})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return r
+}
+
+func (e *env) setJob(refundID, state string, attempts int) {
+	e.t.Helper()
+	if err := e.db.Write(ctx, func(tx store.Tx) error {
+		_, err := tx.ExecContext(ctx, "UPDATE jobs SET state = ?, attempts = ? WHERE dedupe_key = ?", state, attempts, "refund.submit:"+refundID)
+		return err
+	}); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func (e *env) countEmitted(typ string) (n int) {
+	for _, ty := range e.emitted() {
+		if ty == typ {
+			n++
+		}
+	}
+	return
+}
+
 // R-A7. A refund of ours waits for its submit job; a dispute opens meanwhile.
-// The dispute fails the refunds that have not been sent, in its own
-// transaction, so the job finds nothing to send. One already with the provider
-// (its id is known) is left alone.
-func TestDisputeOpeningFailsThePendingUnsentRefunds(t *testing.T) {
+// A refund whose job has never been claimed is failed in the dispute's own
+// transaction and its job cancelled, so nothing is ever sent.
+func TestDisputeOpeningFailsARefundWhoseSubmitJobNeverRan(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
 		p, _ := e.paid("pay_1")
-		mk := func(amount int64) store.Refund {
-			r, err := e.core.CreateRefund(ctx, core.CreateRefundInput{Scope: e.scope, Actor: audit.System, InitiatedBy: "api", PaymentID: p.ID, Amount: amount})
-			if err != nil {
-				t.Fatal(err)
-			}
-			return r
+		r := e.newRefund(p.ID, 10000)
+		if st, n := e.refundJob(r.ID); st != "pending" || n != 0 {
+			t.Fatalf("setup: job %s/%d", st, n)
 		}
-		unsent, sent := mk(10000), mk(5000)
-		if err := e.db.Write(ctx, func(tx store.Tx) error {
-			_, err := tx.ExecContext(ctx, "UPDATE refunds SET provider_refund_id = 're_1' WHERE id = ?", sent.ID)
-			return err
-		}); err != nil {
-			t.Fatal(err)
+		e.apply(e.snap("dsp_a", "pay_1", connector.DisputeNeedsResponse, time.Time{}))
+		if got := e.refundStatus(r.ID); got != "failed" {
+			t.Errorf("the unsent refund is %s, want failed", got)
 		}
+		if st, n := e.refundJob(r.ID); st == "pending" || st == "running" || n != 0 {
+			t.Errorf("the refund job is %s after %d attempts: it must not run", st, n)
+		}
+		if n := e.countEmitted("refund.failed"); n != 1 {
+			t.Errorf("refund.failed sent %d times: %v", n, e.emitted())
+		}
+	})
+}
+
+// A refund whose job has been tried (an ambiguous error, a lost answer) or is
+// running may already be with the provider: it is left as it is. Failing it
+// would be final, and a later provider success could not move it.
+func TestDisputeOpeningLeavesARefundThatMayBeWithTheProvider(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p, _ := e.paid("pay_1")
+		retried := e.newRefund(p.ID, 10000)
+		running := e.newRefund(p.ID, 5000)
+		done := e.newRefund(p.ID, 2000)
+		e.setJob(retried.ID, "pending", 1) // tried once, waiting to retry
+		e.setJob(running.ID, "running", 1)
+		e.setJob(done.ID, "done", 1)
 
 		e.apply(e.snap("dsp_a", "pay_1", connector.DisputeNeedsResponse, time.Time{}))
 
-		status := func(id string) (st string) {
-			_ = e.db.Read(ctx, func(q store.Querier) error {
-				r, err := store.GetRefund(ctx, q, id)
-				st = r.Status
-				return err
-			})
-			return
-		}
-		if got := status(unsent.ID); got != "failed" {
-			t.Errorf("the unsent refund is %s, want failed", got)
-		}
-		if got := status(sent.ID); got != "pending" {
-			t.Errorf("a refund already with the provider is %s, want pending", got)
-		}
-		n := 0
-		for _, ty := range e.emitted() {
-			if ty == "refund.failed" {
-				n++
+		for name, r := range map[string]store.Refund{"retried": retried, "running": running, "done": done} {
+			if got := e.refundStatus(r.ID); got != "pending" {
+				t.Errorf("%s refund is %s, want pending", name, got)
 			}
 		}
-		if n != 1 {
-			t.Errorf("refund.failed sent %d times: %v", n, e.emitted())
+		if st, n := e.refundJob(retried.ID); st != "pending" || n != 1 {
+			t.Errorf("the retried job was touched: %s/%d", st, n)
 		}
-		// The failure carries its reason.
-		if c := e.count("SELECT COUNT(*) FROM refunds WHERE id = ? AND status = 'failed'", unsent.ID); c != 1 {
-			t.Errorf("refund rows failed = %d", c)
+		if n := e.countEmitted("refund.failed"); n != 0 {
+			t.Errorf("refund.failed sent %d times", n)
 		}
 	})
 }
