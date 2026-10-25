@@ -135,9 +135,25 @@ export default function ThemeEditor({
   );
   const ok = !reports || [...reports.light, ...reports.dark].every((r) => r.ok);
 
+  // A hidden tab keeps its form (and unsaved edits) but not its preview: the
+  // page shows what the visible tab says.
+  const [shown, setShown] = useState(true);
+  useEffect(() => {
+    const tab = rootEl.closest<HTMLElement>("[data-tab]");
+    if (!tab) return;
+    const update = () => setShown(!tab.hidden);
+    update();
+    const watch = new MutationObserver(update);
+    watch.observe(tab, { attributes: true, attributeFilter: ["hidden"] });
+    return () => watch.disconnect();
+  }, [rootEl]);
+
   // The dashboard wears the theme being edited, in the mode being previewed.
   useEffect(() => {
-    if (!derived) return;
+    if (!derived || !shown) {
+      document.getElementById(STYLE_ID)?.remove();
+      return;
+    }
     let tag = document.getElementById(STYLE_ID);
     if (!tag) {
       tag = document.createElement("style");
@@ -148,7 +164,7 @@ export default function ThemeEditor({
     if (nonce) tag.setAttribute("nonce", nonce);
     tag.textContent = // More specific than the theme's own style, so the preview wins whichever mode the page is in.
       tokenBlock("html:root:root,html.dark.dark", derived[mode]);
-  }, [derived, mode]);
+  }, [derived, mode, shown]);
   useEffect(() => () => document.getElementById(STYLE_ID)?.remove(), []);
 
   // Saving is off while any text would be hard to read.
