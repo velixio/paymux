@@ -56,8 +56,16 @@ const configSchema = `{
 }`
 
 var info = connector.Info{
-	Version:      "0.1.0",
-	DisplayName:  "Cashfree",
+	Version:     "0.1.0",
+	DisplayName: "Cashfree",
+	// The v3 SDK (sdk.cashfree.com) opens payments.cashfree.com in live mode and
+	// sandbox.cashfree.com (payments-test.cashfree.com for the checkout page) in test mode.
+	CheckoutHosts: &connector.CheckoutHosts{
+		Script:  []string{"https://sdk.cashfree.com"},
+		Frame:   []string{"https://sdk.cashfree.com", "https://payments.cashfree.com", "https://sandbox.cashfree.com", "https://payments-test.cashfree.com"},
+		Connect: []string{"https://sdk.cashfree.com", "https://api.cashfree.com", "https://sandbox.cashfree.com", "https://payments.cashfree.com", "https://payments-test.cashfree.com"},
+		Form:    []string{"https://payments.cashfree.com", "https://sandbox.cashfree.com", "https://payments-test.cashfree.com"},
+	},
 	Capabilities: []connector.Capability{connector.CapRefund, connector.CapSettle},
 	ConfigSchema: json.RawMessage(configSchema),
 	Currencies:   []string{"INR"},
