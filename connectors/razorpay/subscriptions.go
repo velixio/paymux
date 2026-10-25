@@ -273,8 +273,16 @@ func (r *razorpay) UpdateSubscriptionAmount(ctx context.Context, ref connector.S
 	}
 	body := map[string]any{"plan_id": planID, "schedule_change_at": "cycle_end"}
 	err = r.api.do(ctx, "PATCH", "/v1/subscriptions/"+url.PathEscape(ref.ProviderSubscriptionID), nil, body, nil, nil)
-	if err != nil && strings.Contains(err.Error(), "payment mode is UPI") {
-		return fmt.Errorf("razorpay: a UPI subscription cannot be re-priced: %w", connector.ErrUnsupported)
+	if err != nil {
+		// Razorpay: "Only offers can be updated for subscriptions when payment
+		// mode is domestic card." (400, seen live); "Subscription cannot be updated
+		// when payment mode is UPI". The plan of such a subscription cannot change.
+		msg := err.Error()
+		for _, m := range []struct{ marker, name string }{{"payment mode is domestic card", "card"}, {"payment mode is UPI", "upi"}} {
+			if strings.Contains(msg, m.marker) {
+				return fmt.Errorf("razorpay cannot change the plan of a %s subscription; cancel it and start a new one: %w", m.name, connector.ErrUnsupported)
+			}
+		}
 	}
 	return err
 }

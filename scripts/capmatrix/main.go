@@ -167,6 +167,9 @@ func Render(infos []connector.Info) string {
 		if len(in.SubscriptionCurrencies) > 0 {
 			notes = append(notes, "subscriptions in "+strings.Join(in.SubscriptionCurrencies, ", ")+" only")
 		}
+		if len(in.SubscriptionFixedMethods) > 0 {
+			notes = append(notes, "no amount change for "+strings.Join(in.SubscriptionFixedMethods, ", ")+" subscriptions")
+		}
 		if in.PreDebitMinHours > 24 {
 			notes = append(notes, fmt.Sprintf("notice at least %d hours before the debit", in.PreDebitMinHours))
 		}

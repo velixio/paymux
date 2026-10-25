@@ -239,6 +239,7 @@ type Info struct {
 	ConfigSchema             json.RawMessage  `json:"config_schema"`
 	Currencies               []string         `json:"currencies"`
 	SubscriptionCurrencies   []string         `json:"subscription_currencies,omitempty"`
+	SubscriptionFixedMethods []string         `json:"subscription_fixed_methods,omitempty"`
 	Methods                  []string         `json:"methods"`
 	MerchantOfRecord         bool             `json:"merchant_of_record"`
 	SubscriptionModes        []BillingMode    `json:"subscription_modes"`
@@ -254,6 +255,8 @@ type Info struct {
 }
 
 func List() []Info
+
+func (i Info) CanChangeSubscriptionAmount(method string) bool
 
 func (i Info) Has(c Capability) bool
 

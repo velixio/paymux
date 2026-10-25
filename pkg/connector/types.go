@@ -5,6 +5,7 @@ package connector
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 )
 
@@ -61,11 +62,17 @@ type Info struct {
 	// the same as Currencies. Routing never sends a subscription in another
 	// currency to the connector, so the customer is not left at a checkout that
 	// fails.
-	SubscriptionCurrencies []string      `json:"subscription_currencies,omitempty"`
-	Methods                []string      `json:"methods"`
-	MerchantOfRecord       bool          `json:"merchant_of_record"`
-	SubscriptionModes      []BillingMode `json:"subscription_modes"`
-	PreDebitPerAttempt     bool          `json:"pre_debit_per_attempt"`
+	SubscriptionCurrencies []string `json:"subscription_currencies,omitempty"`
+	// SubscriptionFixedMethods are the payment methods whose provider-managed
+	// subscriptions keep their plan: the provider refuses UpdateSubscriptionAmount
+	// for them (Razorpay: cards, seen live, and UPI), so the only way to change the
+	// amount is to cancel and start a new subscription. Paymux refuses the change
+	// up front, and a dashboard can hide the button (CanChangeSubscriptionAmount).
+	SubscriptionFixedMethods []string      `json:"subscription_fixed_methods,omitempty"`
+	Methods                  []string      `json:"methods"`
+	MerchantOfRecord         bool          `json:"merchant_of_record"`
+	SubscriptionModes        []BillingMode `json:"subscription_modes"`
+	PreDebitPerAttempt       bool          `json:"pre_debit_per_attempt"`
 	// PreDebitMinHours is the least time the provider wants between a pre-debit
 	// notice and the debit it announces, when that is longer than the RBI's 24
 	// hours (PayU asks for 48 for cards and most UPI AutoPay mandates). 0 means 24.
@@ -94,6 +101,12 @@ type Info struct {
 	// TestOnly marks a connector that only makes sense in test mode (a
 	// simulator): Paymux refuses to link it to a live-mode account.
 	TestOnly bool `json:"test_only,omitempty"`
+}
+
+// CanChangeSubscriptionAmount reports whether a provider-managed subscription
+// paid by method can have its amount changed. An unknown (empty) method may.
+func (i Info) CanChangeSubscriptionAmount(method string) bool {
+	return method == "" || !slices.Contains(i.SubscriptionFixedMethods, method)
 }
 
 // Has reports whether the capability is declared.

@@ -342,3 +342,47 @@ func TestUPISubscriptionCannotBeRepriced(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// Seen live: PATCH /v1/subscriptions/{id} answered 400 "Only offers can be updated
+// for subscriptions when payment mode is domestic card." and Paymux answered 500.
+// Razorpay cannot change the plan of a card (or UPI) subscription: that is
+// ErrUnsupported, with a message that says what to do instead.
+func TestPlanChangeOfACardOrUPISubscriptionIsUnsupported(t *testing.T) {
+	ref := connector.SubscriptionRef{ProviderSubscriptionID: "sub_Nx5"}
+	for name, msg := range map[string]string{
+		"card": "Only offers can be updated for subscriptions when payment mode is domestic card.",
+		"upi":  "Subscription cannot be updated when payment mode is UPI",
+	} {
+		f := newFake("")
+		f.subStatus = "active"
+		f.patchSubErr = msg
+		m, _ := newSubConn(t, f)
+		err := m.UpdateSubscriptionAmount(context.Background(), ref, 79900)
+		if !errors.Is(err, connector.ErrUnsupported) || errors.Is(err, connector.ErrRejected) {
+			t.Errorf("%s: err = %v, want ErrUnsupported", name, err)
+			continue
+		}
+		if !strings.Contains(err.Error(), "cancel it and start a new one") || !strings.Contains(err.Error(), name) {
+			t.Errorf("%s: the message does not say what to do: %v", name, err)
+		}
+	}
+	// Any other refusal of the change is the provider's answer, ErrRejected.
+	f := newFake("")
+	f.subStatus = "active"
+	f.patchSubErr = "The plan id is invalid"
+	m, _ := newSubConn(t, f)
+	if err := m.UpdateSubscriptionAmount(context.Background(), ref, 79900); !errors.Is(err, connector.ErrRejected) {
+		t.Errorf("other refusal: %v", err)
+	}
+}
+
+// The connector says up front which payment methods keep their plan, so the
+// dashboard can hide the button and the engine need not ask the provider.
+func TestInfoSaysWhichSubscriptionsCannotChangeAmount(t *testing.T) {
+	i := newConn(t, newFake("")).Info()
+	for method, want := range map[string]bool{"card": false, "upi": false, "emandate": true, "": true} {
+		if got := i.CanChangeSubscriptionAmount(method); got != want {
+			t.Errorf("CanChangeSubscriptionAmount(%q) = %v, want %v", method, got, want)
+		}
+	}
+}

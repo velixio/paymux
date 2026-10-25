@@ -14,7 +14,7 @@ func infos() []connector.Info {
 			Currencies: []string{"INR", "USD"}, Methods: []string{"card", "upi"}, SubscriptionModes: []connector.BillingMode{connector.ProviderManaged}},
 		{Name: "alpha", DisplayName: "Alpha | Pay", MerchantOfRecord: true, Capabilities: []connector.Capability{connector.CapRefund, connector.CapMandateManager},
 			Currencies: []string{"INR"}, SubscriptionModes: []connector.BillingMode{connector.MerchantTriggered},
-			MandateLimits: []connector.MandateLimit{{Method: "upi", Currency: "INR", MaxAmount: 1500000}}, PreDebitPerAttempt: true, PreDebitMinHours: 48, SubscriptionCurrencies: []string{"INR"}},
+			MandateLimits: []connector.MandateLimit{{Method: "upi", Currency: "INR", MaxAmount: 1500000}}, PreDebitPerAttempt: true, PreDebitMinHours: 48, SubscriptionCurrencies: []string{"INR"}, SubscriptionFixedMethods: []string{"card", "upi"}},
 		{Name: "remote", DisplayName: "Remote connector (HTTP)"},
 	}
 }
@@ -85,7 +85,7 @@ func TestRenderIsSortedAndStable(t *testing.T) {
 
 func TestRenderDetailsTable(t *testing.T) {
 	out := Render(infos())
-	for _, want := range []string{"INR, USD", "card, upi", "provider_managed", "merchant_triggered", "upi INR up to 15000.00", "pre-debit notice per attempt", "notice at least 48 hours before the debit", "subscriptions in INR only"} {
+	for _, want := range []string{"INR, USD", "card, upi", "provider_managed", "merchant_triggered", "upi INR up to 15000.00", "pre-debit notice per attempt", "notice at least 48 hours before the debit", "subscriptions in INR only", "no amount change for card, upi subscriptions"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("details lack %q:\n%s", want, out)
 		}

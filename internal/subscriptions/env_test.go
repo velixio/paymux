@@ -27,31 +27,32 @@ const supplierGSTIN = "27AAPFU0939F1ZV"
 
 // rec records what the fake connectors were asked to do.
 type rec struct {
-	mu          sync.Mutex
-	charges     []connector.ChargeRequest
-	chargeTimes []time.Time
-	notices     []connector.PreDebitRequest
-	noticeTimes []time.Time
-	now         func() time.Time
-	revoked     []string
-	mandateReqs []connector.MandateRequest
-	subReqs     []connector.SubscriptionRequest
-	canceled    []string
-	updated     []int64
-	mandates    map[string]connector.MandateSnapshot
-	chargeFn    func(connector.ChargeRequest) (connector.PaymentSnapshot, error)
-	chargeDelay time.Duration
-	noticeErr   error
-	revokeErr   error // what RevokeMandate answers
-	payFn       func(connector.PaymentRef) (connector.PaymentSnapshot, error)
-	perAttempt  bool
-	nsub        int
-	fetchCalls  []string                                  // ids FetchMandate was asked for
-	noReverse   bool                                      // the provider does not reverse the verification debit itself
-	minCharge   map[string]int64                          // Info.MinChargeMinor of the test connectors
-	noticeHours int                                       // Info.PreDebitMinHours of the test connectors
-	callIDs     []callIDs                                 // the log scope ids each provider call ran under
-	subTruth    map[string]connector.SubscriptionSnapshot // what the provider's API says of a subscription (default: active)
+	mu           sync.Mutex
+	charges      []connector.ChargeRequest
+	chargeTimes  []time.Time
+	notices      []connector.PreDebitRequest
+	noticeTimes  []time.Time
+	now          func() time.Time
+	revoked      []string
+	mandateReqs  []connector.MandateRequest
+	subReqs      []connector.SubscriptionRequest
+	canceled     []string
+	updated      []int64
+	mandates     map[string]connector.MandateSnapshot
+	chargeFn     func(connector.ChargeRequest) (connector.PaymentSnapshot, error)
+	chargeDelay  time.Duration
+	noticeErr    error
+	revokeErr    error // what RevokeMandate answers
+	payFn        func(connector.PaymentRef) (connector.PaymentSnapshot, error)
+	perAttempt   bool
+	nsub         int
+	fetchCalls   []string                                  // ids FetchMandate was asked for
+	noReverse    bool                                      // the provider does not reverse the verification debit itself
+	minCharge    map[string]int64                          // Info.MinChargeMinor of the test connectors
+	noticeHours  int                                       // Info.PreDebitMinHours of the test connectors
+	fixedMethods []string                                  // Info.SubscriptionFixedMethods of the test connectors
+	callIDs      []callIDs                                 // the log scope ids each provider call ran under
+	subTruth     map[string]connector.SubscriptionSnapshot // what the provider's API says of a subscription (default: active)
 }
 
 // callIDs are the identifiers (package logctx) a provider call ran under.
@@ -74,7 +75,7 @@ func (b base) Info() connector.Info {
 	return connector.Info{Name: b.name, Version: "1", DisplayName: b.name, Currencies: []string{"INR"}, SubscriptionModes: b.modes,
 		MandateLimits: b.limits, PreDebitPerAttempt: b.r.perAttempt, MandateSetupAmount: 100,
 		RefundsVerificationDebit: !b.r.noReverse, MinChargeMinor: b.r.minCharge, PreDebitMinHours: b.r.noticeHours,
-		SubscriptionCurrencies: b.subCur}
+		SubscriptionCurrencies: b.subCur, SubscriptionFixedMethods: b.r.fixedMethods}
 }
 func (b base) CreateCheckout(context.Context, connector.CheckoutRequest) (connector.CheckoutResult, error) {
 	return connector.CheckoutResult{}, connector.ErrUnsupported

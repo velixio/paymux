@@ -42,8 +42,12 @@ var info = connector.Info{
 	// Seen live: a USD subscription was created and the checkout then failed with
 	// "Currency is not supported". Subscriptions are billed in INR only.
 	SubscriptionCurrencies: []string{"INR"},
-	Methods:                []string{"card", "upi", "netbanking", "wallet", "emi"},
-	SubscriptionModes:      []connector.BillingMode{connector.ProviderManaged},
+	// PATCH /v1/subscriptions refuses a plan change for cards ("Only offers can be
+	// updated for subscriptions when payment mode is domestic card", seen live) and
+	// for UPI.
+	SubscriptionFixedMethods: []string{"card", "upi"},
+	Methods:                  []string{"card", "upi", "netbanking", "wallet", "emi"},
+	SubscriptionModes:        []connector.BillingMode{connector.ProviderManaged},
 	// The smallest INR order is Rs 1. (The minimums of Razorpay's other
 	// currencies are not stated here: they default to one minor unit.)
 	MinChargeMinor: map[string]int64{"INR": 100},
