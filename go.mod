@@ -1,8 +1,6 @@
 module github.com/paymux/paymux
 
-go 1.27
-
-toolchain go1.27.3
+go 1.27.3
 
 require (
 	github.com/dop251/goja v0.0.0-20261016120441-313b6b662e53
