@@ -1,0 +1,35 @@
+# gitleaks findings that are test fixtures, documentation placeholders or recorded
+# provider payloads, not credentials. Each entry is a finding's fingerprint
+# (commit:file:rule:line) with the reason it is not a secret. Anything new is
+# still reported: add an entry here only after checking that the value is fake.
+
+# a placeholder bearer token (pmx_test_sk_...) and a plain curl in the quick start
+2f5fe864ba8adea740414771713cff5b59cafa10:README.md:curl-auth-header:107
+# a placeholder bearer token (pmx_test_sk_...) and a plain curl in the quick start
+e84669929f5e4999cfc62d37c04f76d2b3f4ce95:README.md:curl-auth-header:45
+# a made-up webhook signing secret for a signature test
+008a915b5e7668774555a88d77e95d57e24f5c8b:connectors/razorpay/remote_test.go:generic-api-key:21
+# a made-up restricted key for a config-validation test
+66365e8a758abedbf8c67ef1f5557d850bcf5e54:connectors/stripe/stripe_test.go:stripe-access-token:32
+# an idempotency key (a random UUID) inside a recorded Stripe event fixture, not a credential
+1876dfa73f2a6c5c4d4717dd404e9e9d5798a46b:connectors/stripe/testdata/event_invoice_paid_api2026.json:generic-api-key:166
+# a made-up webhook signing secret for a signature test
+d99dc262e925c91feeb4fd8110d6970f198f659b:examples/remote-connector/main_test.go:generic-api-key:18
+# a made-up Stripe-shaped key in a test of mode detection
+d14a784b34baeac1a30e8f56913e84a089244e7c:internal/connectors/audit_pay_mode_test.go:stripe-access-token:25
+# a made-up provider api_key used to test known-secret scrubbing
+001d652ad4891be515bf78f904b4a1729a7733bd:internal/connectors/knownsecrets_test.go:generic-api-key:23
+# made-up secrets the test asserts are redacted from the stored request
+4ab986a0df5ff6a568a08670e05b21b4b2967dbd:internal/httpapi/rejected_internal_test.go:generic-api-key:34
+# made-up secrets the test asserts are redacted from the stored request
+4ab986a0df5ff6a568a08670e05b21b4b2967dbd:internal/httpapi/rejected_internal_test.go:stripe-access-token:54
+# the Standard Webhooks specification's published test-vector secret
+680dc006eb3741bdbb0bfafeb79cfa0a752035b9:internal/outbound/stdwebhooks/stdwebhooks_test.go:generic-api-key:16
+# a made-up Slack webhook URL the redaction test must mask
+89090768bb55d359f80edb4c0519d8cfd51f1a33:internal/redact/pii_test.go:slack-webhook-url:91
+# made-up tokens the redaction test must mask; the sk_*_4eC39Hq... key is the example printed in Stripe's public documentation
+0ffa463c67a3dc3a0bc391de771940255a98df26:internal/redact/redact_test.go:jwt:140
+# made-up tokens the redaction test must mask; the sk_*_4eC39Hq... key is the example printed in Stripe's public documentation
+0ffa463c67a3dc3a0bc391de771940255a98df26:internal/redact/redact_test.go:stripe-access-token:143
+# a made-up JWT the log-scan test must find redacted (header and payload are the documentation example)
+5212ca1db53892a712e8e6e432b903b15ffe32ac:paymux_logscan_test.go:jwt:35

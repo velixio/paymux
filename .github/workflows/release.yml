@@ -18,13 +18,17 @@ jobs:
     needs: ci
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # A protected environment ("release"): its required reviewers must approve
+    # before this job starts, so a pushed tag alone cannot publish or sign anything.
+    environment: release
     permissions:
       contents: write # create the release and upload the assets
-      id-token: write # keyless cosign signing
+      id-token: write # keyless cosign signing and the build provenance
+      attestations: write # the build provenance attestation
     steps:
-      # TODO(review): pin these actions to commit SHAs before the first run.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (v4)
         with:
+          persist-credentials: false
           fetch-depth: 0 # the tag and history, for the release notes and SOURCE_DATE_EPOCH
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 (v2)
         with:
@@ -39,6 +43,10 @@ jobs:
           TAG: ${{ github.ref_name }}
           OUT: dist/release
         run: ./scripts/release.sh "$TAG"
+      - name: Attest the build provenance of the archives
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/release/*.tar.gz
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
