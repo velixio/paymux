@@ -417,3 +417,45 @@ test("a reload uses the server-rendered page: no request, no loading state", asy
   expect(calls["/dashboard/payments"] ?? 0).toBe(0);
   expect(seen).not.toContain(true);
 });
+
+test("on a record, a link to another section opens in a tab and the record stays", async () => {
+  handlers["/dashboard/payments/pay_1"] = () =>
+    pageHtml(
+      "pay_1",
+      `<p><a href="/dashboard/payments">Back to payments</a></p><p><a href="/dashboard/logs?id=pay_1">Logs for this payment</a></p><p>Payment body</p>`,
+    );
+  handlers["/dashboard/logs"] = () => pageHtml("Logs", "<p>Logs body</p>");
+  await mount("/dashboard/payments/pay_1");
+  const before = api.state.tabs.length;
+  fireEvent.click(screen.getByRole("link", { name: "Logs for this payment" }));
+  await waitFor(() => expect(api.state.tabs).toHaveLength(before + 1));
+  expect(tabByHref("/dashboard/payments/pay_1")).toBeTruthy();
+  expect(api.state.tabs.find((t) => t.id === api.state.activeId)!.href).toBe(
+    "/dashboard/logs?id=pay_1",
+  );
+  await waitFor(() => expect(sectionOf("Logs body")).not.toBeNull());
+});
+
+test("on a record, a same-section link and the sidebar still navigate in place", async () => {
+  handlers["/dashboard/payments/pay_1"] = () =>
+    pageHtml(
+      "pay_1",
+      `<p><a href="/dashboard/payments">Back to payments</a></p><p>Payment body</p>`,
+    );
+  await mount("/dashboard/payments/pay_1");
+  const before = api.state.tabs.length;
+  fireEvent.click(screen.getByRole("link", { name: "Back to payments" }));
+  await waitFor(() =>
+    expect(api.state.tabs.find((t) => t.id === api.state.activeId)!.href).toBe(
+      "/dashboard/payments",
+    ),
+  );
+  expect(api.state.tabs).toHaveLength(before);
+  fireEvent.click(link("Apps"));
+  await waitFor(() =>
+    expect(api.state.tabs.find((t) => t.id === api.state.activeId)!.href).toBe(
+      "/dashboard/apps",
+    ),
+  );
+  expect(api.state.tabs).toHaveLength(before);
+});

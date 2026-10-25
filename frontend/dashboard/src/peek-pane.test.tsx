@@ -81,9 +81,7 @@ test("clicking another row replaces the pane content", async () => {
   fireEvent.click(rowLink("pay_1"));
   await screen.findByRole("complementary", { name: "Record preview" });
   fireEvent.click(rowLink("pay_2"));
-  await waitFor(() =>
-    expect(search(router).peek).toBe("pay_2"),
-  );
+  await waitFor(() => expect(search(router).peek).toBe("pay_2"));
   await within(pane()!).findByText("failed");
   expect(rowLink("pay_2").closest("tr")!.hasAttribute("data-peek-row")).toBe(
     true,
@@ -168,9 +166,7 @@ test("j moves the selection and the pane follows; Enter opens the selected recor
   act(() => {
     fireEvent.keyDown(window, { code: "KeyJ", key: "j" });
   });
-  await waitFor(() =>
-    expect(search(router).peek).toBe("pay_2"),
-  );
+  await waitFor(() => expect(search(router).peek).toBe("pay_2"));
   const before = api.state.tabs.length;
   act(() => {
     fireEvent.keyDown(document.activeElement!, { code: "Enter", key: "Enter" });
@@ -248,9 +244,7 @@ test("clicking another row with unsaved edits asks first; keeping the edits keep
   fireEvent.click(
     await screen.findByRole("button", { name: "Discard and continue" }),
   );
-  await waitFor(() =>
-    expect(search(router).peek).toBe("pay_2"),
-  );
+  await waitFor(() => expect(search(router).peek).toBe("pay_2"));
   await within(pane()!).findByText("failed");
 });
 
@@ -333,4 +327,32 @@ test("Open in tab is an icon button, and the status pill sits outside the trunca
   const pill = within(head).getByText("succeeded");
   expect(text.contains(pill)).toBe(false);
   expect(pill.closest(".peek-title")).not.toBeNull();
+});
+
+test("in the pane, a link to another section opens in a tab; the list keeps its pane", async () => {
+  handlers["/dashboard/payments/pay_1"] = () =>
+    pageHtml(
+      "pay_1",
+      `<h1>pay_1</h1><p><a href="/dashboard/logs?id=pay_1">Logs for this payment</a></p><dl><dt>Amount</dt><dd>10.00 INR</dd></dl>`,
+    );
+  handlers["/dashboard/logs"] = () => pageHtml("Logs", "<p>Logs body</p>");
+  const router = await onList();
+  fireEvent.click(rowLink("pay_1"));
+  const p = await screen.findByRole("complementary", {
+    name: "Record preview",
+  });
+  const listTab = api.state.activeId;
+  const before = api.state.tabs.length;
+  fireEvent.click(
+    await within(p).findByRole("link", { name: "Logs for this payment" }),
+  );
+  await waitFor(() => expect(api.state.tabs).toHaveLength(before + 1));
+  expect(api.state.tabs.find((t) => t.id === api.state.activeId)!.href).toBe(
+    "/dashboard/logs?id=pay_1",
+  );
+  // The list tab still shows the payment in its pane.
+  expect(api.state.tabs.find((t) => t.id === listTab)!.href).toContain(
+    "peek=pay_1",
+  );
+  expect(router).toBeTruthy();
 });
