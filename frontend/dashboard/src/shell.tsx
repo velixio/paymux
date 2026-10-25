@@ -929,6 +929,17 @@ export function createDashboardRouter(
   return createRouter({
     routeTree: root.addChildren([catchAll]),
     history,
+    // Query values are plain strings, as the server reads them. The default
+    // codec JSON-encodes them ("1" would become %221%22), which changes the
+    // URL (and the page's cache key) on every navigation.
+    parseSearch: (search) =>
+      Object.fromEntries(new URLSearchParams(search.replace(/^\?/, ""))),
+    stringifySearch: (search) => {
+      const q = new URLSearchParams(
+        Object.entries(search).map(([k, v]) => [k, String(v)]),
+      ).toString();
+      return q ? "?" + q : "";
+    },
     defaultPreload: "intent",
     scrollRestoration: true,
   });

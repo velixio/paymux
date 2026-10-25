@@ -28,5 +28,9 @@ func TestReauthAfterAWriteSaysTheChangeWasNotSaved(t *testing.T) {
 		if p := e.pageOK(c, "/dashboard/reauth?next=%2Fdashboard%2Foverview"); strings.Contains(p, "was not saved") {
 			t.Errorf("a plain confirmation page claims a change was lost")
 		}
+
+		// The dashboard's router rewrites the query it was given and quotes the
+		// value (unsaved=%221%22); the notice still shows.
+		has(t, e.pageOK(c, "/dashboard/reauth?next=%2Fdashboard%2Foverview&unsaved=%221%22"), "was not saved")
 	})
 }

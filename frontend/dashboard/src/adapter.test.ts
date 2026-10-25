@@ -203,4 +203,20 @@ describe("parseServerHTML", () => {
       "kept",
     );
   });
+  test("the confirm-it-is-you page is an authentication page even though the person is signed in", () => {
+    // The server renders it with the dashboard header (a user is present), but
+    // it has no tab: it must show on its own, not behind the last page.
+    const d = new win.DOMParser().parseFromString(
+      html.replace("Settings - Paymux", "Confirm it is you - Paymux"),
+      "text/html",
+    );
+    const p = parseDashboard(
+      d as unknown as Document,
+      "/dashboard/reauth?next=%2Fdashboard%2Fappearance",
+    );
+    expect(p.auth).toBe(true);
+    expect(
+      parseDashboard(d as unknown as Document, "/dashboard/settings").auth,
+    ).toBe(false);
+  });
 });
