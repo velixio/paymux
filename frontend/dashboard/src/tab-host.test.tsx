@@ -459,3 +459,17 @@ test("on a record, a same-section link and the sidebar still navigate in place",
   );
   expect(api.state.tabs).toHaveLength(before);
 });
+
+test("status pills show a readable label, a tone class and a dot", async () => {
+  handlers["/dashboard/payments"] = () =>
+    pageHtml(
+      "Payments",
+      `<table><tbody><tr><td><span class="status status-requires_action">requires_action</span></td><td><span class="status status-pending">pending</span></td></tr></tbody></table>`,
+    );
+  await mount("/dashboard/payments");
+  const pill = await screen.findByText("Requires action");
+  expect(pill.closest(".pill")!.classList.contains("pill-warn")).toBe(true);
+  expect(pill.closest(".pill")!.querySelector(".pill-dot")).not.toBeNull();
+  const pending = screen.getByText("Pending");
+  expect(pending.closest(".pill")!.classList.contains("pill-info")).toBe(true);
+});
