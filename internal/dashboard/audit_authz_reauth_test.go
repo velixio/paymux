@@ -112,21 +112,30 @@ func TestAuditAuthzUserAndKeyRevocationNeedRecentSignIn(t *testing.T) {
 func reauthConfigRoutes(app store.App, sinkURL string) []struct {
 	what, path string
 	form       url.Values
+	loose      bool // a fresh sign-in must pass the guard; the stub form need not be valid
 } {
 	a := "/dashboard/apps/" + app.ID
 	return []struct {
 		what, path string
 		form       url.Values
+		loose      bool
 	}{
-		{"endpoint add", a + "/endpoints", url.Values{"url": {sinkURL}, "events": {"payment.succeeded"}}},
-		{"endpoint disable", a + "/endpoints/whe_none/disable", url.Values{}},
-		{"domain add", a + "/domains", url.Values{"host": {"pay.alpha.example"}}},
-		{"org setting", "/dashboard/settings/payment_ttl", url.Values{"value": {"45"}}},
-		{"org routing", "/dashboard/settings/routing", routingForm()},
-		{"app setting", a + "/settings/payment_ttl", url.Values{"value": {"45"}}},
-		{"app setting reset", a + "/settings/payment_ttl/reset", url.Values{}},
-		{"theme", "/dashboard/appearance/theme", url.Values{"theme": {"pink"}}},
-		{"app appearance", "/dashboard/appearance/apps/" + app.ID, url.Values{"theme": {"pink"}, "language": {""}}},
+		{"endpoint add", a + "/endpoints", url.Values{"url": {sinkURL}, "events": {"payment.succeeded"}}, false},
+		{"endpoint disable", a + "/endpoints/whe_none/disable", url.Values{}, true},
+		{"domain add", a + "/domains", url.Values{"host": {"pay.alpha.example"}}, false},
+		{"org setting", "/dashboard/settings/payment_ttl", url.Values{"value": {"45"}}, false},
+		{"org routing", "/dashboard/settings/routing", routingForm(), false},
+		{"app setting", a + "/settings/payment_ttl", url.Values{"value": {"45"}}, false},
+		{"app setting reset", a + "/settings/payment_ttl/reset", url.Values{}, false},
+		{"branding", a + "/branding", url.Values{"display_name": {"Alpha"}}, true},
+		{"app tax", a + "/tax", url.Values{}, true},
+		{"fx", "/dashboard/fx", url.Values{}, true},
+		{"tax entity create", "/dashboard/tax-entities", url.Values{}, true},
+		{"tax entity update", "/dashboard/tax-entities/ten_none", url.Values{}, true},
+		{"tax entity dsc set", "/dashboard/tax-entities/ten_none/dsc", url.Values{}, true},
+		{"tax entity dsc remove", "/dashboard/tax-entities/ten_none/dsc/remove", url.Values{}, true},
+		{"theme", "/dashboard/appearance/theme", url.Values{"theme": {"pink"}}, false},
+		{"app appearance", "/dashboard/appearance/apps/" + app.ID, url.Values{"theme": {"pink"}, "language": {""}}, false},
 	}
 }
 
@@ -166,7 +175,7 @@ func TestAuditAuthzConfigWritesWorkWithRecentSignIn(t *testing.T) {
 				f[k] = v
 			}
 			r, body := e.post(c, rt.path, f)
-			if strings.HasPrefix(r.Header.Get("Location"), "/dashboard/reauth") || r.StatusCode >= 400 && rt.what != "endpoint disable" {
+			if strings.HasPrefix(r.Header.Get("Location"), "/dashboard/reauth") || r.StatusCode >= 400 && !rt.loose {
 				t.Errorf("POST %s (%s) with a fresh sign-in: %d %q\n%.300s", rt.path, rt.what, r.StatusCode, r.Header.Get("Location"), body)
 			}
 		}
