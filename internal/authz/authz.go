@@ -39,6 +39,7 @@ const (
 	PayoutCreate          Action = "payout.create"  // sends money out: admin only unless a role is given it
 	LogsRead              Action = "logs.read"      // the Logs page: errors and failed provider calls; admin only unless a role is given it
 	SettingsAdmin         Action = "settings.admin" // the sign-in policy and the e-invoice trust anchor; the built-in admin only
+	SystemUpdate          Action = "system.update"  // installs a new release of the hub from the dashboard; the built-in admin only
 )
 
 // AllActions lists every action.
