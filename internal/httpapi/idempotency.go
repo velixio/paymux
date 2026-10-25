@@ -62,9 +62,9 @@ func (a *API) idempotent(w http.ResponseWriter, r *http.Request, pr core.Princip
 	}
 
 	rec := &recorder{header: http.Header{}, status: http.StatusOK}
-	stored := false
+	keep := false
 	defer func() {
-		if stored {
+		if keep {
 			return
 		}
 		// The handler panicked or failed with a server error: free the key.
@@ -77,16 +77,22 @@ func (a *API) idempotent(w http.ResponseWriter, r *http.Request, pr core.Princip
 	h(rec, r, pr, body)
 
 	if rec.status < 500 {
+		// The handler's effect (a payout, a refund) may have committed, so the
+		// key is never freed from here on: a client that hung up must not be
+		// able to run the request again. Storing the response therefore does
+		// not use the request's context, and if it still fails the reservation
+		// stays in progress (a retry gets 409) rather than being released.
+		keep = true
 		sealed, err := a.box.Seal(rec.buf.Bytes(), aad)
 		if err == nil {
-			err = a.db.Write(r.Context(), func(tx store.Tx) error {
-				return store.CompleteIdempotencyKey(r.Context(), tx, pr.AppID, pr.Mode, key, owner, rec.status, sealed)
+			ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+			err = a.db.Write(ctx, func(tx store.Tx) error {
+				return store.CompleteIdempotencyKey(ctx, tx, pr.AppID, pr.Mode, key, owner, rec.status, sealed)
 			})
+			cancel()
 		}
 		if err != nil {
 			a.log.Error("store idempotent response", "err", err) // the response is still returned
-		} else {
-			stored = true
 		}
 	}
 	for k, v := range rec.header {
