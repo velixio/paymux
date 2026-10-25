@@ -184,3 +184,18 @@ test("dashboard stylesheets use no fixed colours outside the tokens", () => {
     expect(fixed, f).toEqual([]);
   }
 });
+
+test("loading placeholders are neutral and wait 150 ms before showing", () => {
+  // A fast load never paints a placeholder, so reloads do not blink.
+  expect(read("../../components/ui/skeleton.tsx")).toContain("bg-muted");
+  expect(read("../../components/ui/skeleton.tsx")).not.toContain("bg-accent");
+  const work = read("./workspace.css");
+  const rule =
+    work.match(
+      /\.workspace-loading,\s*\.revenue-chart-loading\s*\{([^}]*)\}/,
+    )?.[1] ?? "";
+  expect(rule).toMatch(/animation: paymux-delayed-show 0s 150ms both/);
+  expect(work).toMatch(
+    /@keyframes paymux-delayed-show\s*\{\s*from\s*\{\s*opacity: 0;/,
+  );
+});
