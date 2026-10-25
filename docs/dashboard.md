@@ -67,6 +67,8 @@ Use **Reconciliation** to compare hub records with a provider and inspect unreso
 
 Use **Logs** (permission `logs.read`: admins, or a custom role you give it) to investigate a failure: the errors and warnings kept in the database, failed provider calls with their redacted request and response, rejected API and webhook requests and failed jobs. Filter by time, level, kind, connector, account, request id, payment id, any other id and text; follow an id to the rows that share it; export the filtered rows as JSON lines. Payments, attempts, refunds and subscriptions link to their own logs. See the runbook's *Logs* section.
 
+Use **Update** (admins only) to install a newer release: it shows the running and the latest version with a link to the release notes, then downloads, verifies (checksum and cosign signature, always) and installs it and restarts Paymux onto the new binary. The button is disabled, with the reason, when `cosign` is missing or the binary cannot be replaced (then update with your package manager or image). An older or the same release needs the *Force* box. Take a backup first; the migrations run on the restart. Details and limits are in [Upgrades](upgrades.md#updating-from-the-dashboard).
+
 Use **Alerts** to triage retained operational alerts. Acknowledgement records that someone reviewed the alert; it does not repair the underlying condition. Review the audit log for administrative changes.
 
 ## Tabs, revenue chart and shortcuts

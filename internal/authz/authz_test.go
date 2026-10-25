@@ -29,6 +29,7 @@ func TestRoleMatrix(t *testing.T) {
 		{PayoutCreate, true, false, false},
 		{LogsRead, true, false, false},
 		{SettingsAdmin, true, false, false},
+		{SystemUpdate, true, false, false},
 	}
 	if len(rows) != len(AllActions) {
 		t.Fatalf("matrix has %d rows for %d actions", len(rows), len(AllActions))

@@ -33,6 +33,9 @@ type Page struct {
 	// payment detail
 	Pay *payDetail
 
+	// the Update page
+	Update *updateView
+
 	// apps
 	Apps   []appRow
 	App    *appView

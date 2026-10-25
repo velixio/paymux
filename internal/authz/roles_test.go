@@ -49,7 +49,7 @@ func TestCustomRolesResolveThroughTheResolver(t *testing.T) {
 
 func TestGrantableExcludesAdminOnlyActions(t *testing.T) {
 	g := Grantable()
-	if slices.Contains(g, UserManage) || slices.Contains(g, RoleManage) || slices.Contains(g, SettingsAdmin) || len(g) != len(AllActions)-3 {
+	if slices.Contains(g, UserManage) || slices.Contains(g, RoleManage) || slices.Contains(g, SettingsAdmin) || slices.Contains(g, SystemUpdate) || len(g) != len(AllActions)-4 {
 		t.Errorf("grantable = %v", g)
 	}
 	if !ValidAction(PaymentRead) || ValidAction("payment.explode") {

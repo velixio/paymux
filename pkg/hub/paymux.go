@@ -47,6 +47,7 @@ import (
 	"github.com/paymux/paymux/internal/reconcile"
 	"github.com/paymux/paymux/internal/routing"
 	"github.com/paymux/paymux/internal/secrets"
+	"github.com/paymux/paymux/internal/selfupdate"
 	"github.com/paymux/paymux/internal/server"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
@@ -94,6 +95,9 @@ type App struct {
 	addr, iaddr string
 	logDB       *store.DB // the database log (dblogs.go)
 	logRec      *dblog.Recorder
+	selfUpdate  *selfUpdateConfig
+	restart     bool
+	cancelRun   context.CancelFunc
 }
 
 // WithVerifiers overrides how inbound webhooks find the Verifier of a provider
@@ -141,10 +145,48 @@ func (a *App) Addr() string { a.mu.Lock(); defer a.mu.Unlock(); return a.addr }
 // InternalAddr is the bound address of the internal listener, or "".
 func (a *App) InternalAddr() string { a.mu.Lock(); defer a.mu.Unlock(); return a.iaddr }
 
+// EnableSelfUpdate turns on the dashboard's Update page for the stock paymux
+// binary: it installs releases of repo (owner/name) over the binary at exe and
+// then restarts the process, so Start returns and the caller starts exe again
+// (see RestartRequested). A custom binary built on this package does not call
+// it: replacing it with the stock paymux would be wrong.
+func (a *App) EnableSelfUpdate(repo, exe string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.selfUpdate = &selfUpdateConfig{repo: repo, exe: exe}
+}
+
+// RestartRequested reports that Start returned because an update was installed
+// and the process should start the new binary.
+func (a *App) RestartRequested() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.restart
+}
+
+// requestRestart makes Start stop gracefully, as on a shutdown signal, and
+// marks the stop as a restart.
+func (a *App) requestRestart() {
+	a.mu.Lock()
+	a.restart = true
+	cancel := a.cancelRun
+	a.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+type selfUpdateConfig struct{ repo, exe string }
+
 // Start opens the store, migrates, starts the job queue and both listeners,
 // and blocks until ctx is cancelled (returning nil after a graceful stop) or
 // something fails.
 func (a *App) Start(ctx context.Context) error {
+	ctx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
+	a.mu.Lock()
+	a.cancelRun = cancelRun
+	a.mu.Unlock()
 	db, err := store.Open(ctx, a.cfg.DatabaseURL, a.cfg.DataDir, a.log)
 	if err != nil {
 		return err
@@ -402,7 +444,15 @@ func (a *App) Start(ctx context.Context) error {
 
 	// Operator dashboard and the shared static assets.
 	dashLogs, dashRedact := dbl.dashboardLogs()
-	dash, err := dashboard.New(dashboard.Options{LogDB: dashLogs, LogRedact: dashRedact, DB: db, Box: box, Renderer: renderer, Themes: themes, MasterKey: a.cfg.MasterKey,
+	var updater dashboard.Updater
+	a.mu.Lock()
+	su := a.selfUpdate
+	a.mu.Unlock()
+	if su != nil {
+		updater = selfupdate.New(selfupdate.Config{Repo: su.repo, Exe: su.exe, Current: func() string { return Version },
+			Restart: a.requestRestart, Logger: a.log})
+	}
+	dash, err := dashboard.New(dashboard.Options{Updater: updater, LogDB: dashLogs, LogRedact: dashRedact, DB: db, Box: box, Renderer: renderer, Themes: themes, MasterKey: a.cfg.MasterKey,
 		BaseURL: a.cfg.BaseURL, DevSkip2FA: a.cfg.DevSkip2FA, Logger: a.log,
 		TrustedProxies: a.cfg.TrustedProxies, Core: svc, Settings: set, Outbound: out, Invoice: inv, Connectors: conns, Disputes: disp, Recon: rec, Jobs: q,
 		Subscriptions: subs, PaymentLinks: links, Alerts: alertCenter, Location: a.cfg.Location,

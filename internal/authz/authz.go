@@ -39,17 +39,19 @@ const (
 	PayoutCreate          Action = "payout.create"  // sends money out: admin only unless a role is given it
 	LogsRead              Action = "logs.read"      // the Logs page: errors and failed provider calls; admin only unless a role is given it
 	SettingsAdmin         Action = "settings.admin" // the sign-in policy and the e-invoice trust anchor; the built-in admin only
+	SystemUpdate          Action = "system.update"  // installs a new release of the hub from the dashboard; the built-in admin only
 )
 
 // AllActions lists every action.
 var AllActions = []Action{PaymentCreate, PaymentRead, PaymentCancel, RefundCreate, RefundRead, DisputeManage,
 	WebhookReplay, InvoiceReissue, SettingsRead, SettingsWrite, AppCreate, APIKeyCreate, ProviderAccountManage,
-	UserManage, AuditRead, RoleManage, PayoutCreate, LogsRead, SettingsAdmin}
+	UserManage, AuditRead, RoleManage, PayoutCreate, LogsRead, SettingsAdmin, SystemUpdate}
 
 // adminOnly actions can never be granted to a custom role: whoever holds them
 // can create users and roles, so they could give themselves everything, or
-// (SettingsAdmin) stretch every session or swap the e-invoice trust anchor.
-var adminOnly = []Action{UserManage, RoleManage, SettingsAdmin}
+// (SettingsAdmin) stretch every session or swap the e-invoice trust anchor,
+// or (SystemUpdate) replace the hub's own binary.
+var adminOnly = []Action{UserManage, RoleManage, SettingsAdmin, SystemUpdate}
 
 // Grantable lists the actions a custom role may be given.
 func Grantable() []Action {

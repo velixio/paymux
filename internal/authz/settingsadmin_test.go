@@ -22,3 +22,21 @@ func TestSettingsAdminIsNeverGrantable(t *testing.T) {
 		t.Error("a custom role keeps settings.write")
 	}
 }
+
+// system.update installs a new binary of the hub: the built-in admin only,
+// never grantable to a custom role.
+func TestSystemUpdateIsNeverGrantable(t *testing.T) {
+	if !ValidAction(SystemUpdate) || slices.Contains(Grantable(), SystemUpdate) {
+		t.Fatal("system.update must be a valid action and not grantable")
+	}
+	r := fixedRoles{"clerk": {SettingsRead, SettingsWrite, SystemUpdate}}
+	user := func(role Role) Actor { return Actor{Kind: KindUser, ID: "u", Role: role} }
+	for role, want := range map[Role]bool{RoleAdmin: true, RoleOperator: false, RoleViewer: false, "clerk": false} {
+		if got := CanWith(r, user(role), SystemUpdate, Resource{}); got != want {
+			t.Errorf("%s: %v, want %v", role, got, want)
+		}
+	}
+	if CanWith(nil, Actor{Kind: KindAPIKey, AppID: "a"}, SystemUpdate, Resource{AppID: "a"}) {
+		t.Error("an API key can update the hub")
+	}
+}

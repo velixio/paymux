@@ -94,6 +94,45 @@ are strict and there is no repair step. If one fails, fix the rows it names
   (`ledger_entries_no_update` and `ledger_entries_no_delete` on SQLite,
   `ledger_entries_no_change` on PostgreSQL) first and recreate them.
 
+## Updating from the dashboard
+
+Admins can update a server from **Update** in the dashboard menu (action
+`system.update`: the built-in admin only, never given to a custom role). The
+page shows the running version, the latest GitHub release with a link to its
+notes (asked of GitHub's API and remembered for five minutes; *Check again*
+asks again) and an **Update to vX** button. It runs the same steps as `paymux
+update` (download, SHA-256 against `SHA256SUMS`, cosign signature of that file
+against this repository's release workflow, a trial run of the new binary, an
+atomic replace that keeps `<binary>.prev`) and then restarts Paymux onto the new
+binary: the hub stops accepting connections, lets running requests and jobs
+finish like on `SIGTERM`, and starts the new binary in place with the same
+arguments and environment. Pending migrations run on that start, so take a
+backup first (above).
+
+What it will not do:
+
+- **Install without the signature check.** There is no equivalent of
+  `--insecure-skip-signature` here. If `cosign` is not on the server's `PATH`,
+  the button is disabled and the page says why; update with the command line
+  (where you can choose) instead.
+- **Install where it cannot replace itself.** The directory of the binary must
+  accept a new file. On a read-only file system, under systemd `ProtectSystem=`,
+  in a container image whose binary belongs to another user, or when the binary
+  was not found, the page says so and tells you to update with your package
+  manager or image. Only the stock `paymux` binary offers the page; a custom
+  binary built on the Go package never replaces itself with it.
+- **Go back or repeat.** An older or the same release, or a development build,
+  is installed only with the *Force* box ticked.
+- **Run twice.** One update runs at a time; the page follows it (status line and
+  log), and reloads when Paymux is back. If the install fails nothing has been
+  replaced and the page shows the error (with secrets removed).
+
+Starting an update needs a recent sign-in (a password and code within the last
+12 hours) and the dashboard's CSRF token. Each start and each result is in the
+audit log as `system.update.start` and `system.update`, with who did it, the
+version it started from, the version it went to, whether it was forced and
+whether it worked.
+
 ## `paymux update`
 
 ```sh
@@ -128,7 +167,7 @@ host, if you hit rate limits) and then:
 5. replaces the binary atomically (a rename in the same directory), keeping the
    old one as `<binary>.prev` for a rollback, and prints how to restart.
 
-It never restarts the server itself and does not touch the database; pending
+The command never restarts the server itself (the dashboard's update does, above) and does not touch the database; pending
 migrations run on the next start (see above). A development build (version
 `dev`) cannot tell whether it is current, so it needs `--force`. The directory
 of the binary must be writable by you; otherwise run it as a user who can, or
