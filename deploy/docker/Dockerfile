@@ -33,14 +33,16 @@ ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath \
       -ldflags "-s -w -X github.com/paymux/paymux/pkg/hub.Version=${VERSION}" \
       -o /out/paymux ./cmd/paymux \
- && mkdir -p /out/data
+ && mkdir -p /out/data \
+ && chmod 0700 /out/data
 
 # ---- run ---------------------------------------------------------------------
 # distroless static: no shell, no package manager, only the binary and CA certificates.
 FROM gcr.io/distroless/static-debian12:nonroot
 
 COPY --from=build /out/paymux /paymux
-# The data directory is owned by the non-root user (65532) so SQLite can write to it.
+# The data directory is owned by the non-root user (65532) so SQLite can write to it,
+# and closed to everyone else (mode 0700): it holds the databases.
 COPY --from=build --chown=65532:65532 /out/data /data
 
 ENV PAYMUX_DATA_DIR=/data \
