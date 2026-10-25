@@ -9,6 +9,7 @@ import (
 
 	"github.com/paymux/paymux/internal/auth"
 	"github.com/paymux/paymux/internal/authz"
+	"github.com/paymux/paymux/internal/store"
 )
 
 // The account pages belong to whoever is signed in: their sessions, their
@@ -151,12 +152,48 @@ func (d *Dashboard) renderAccount(w http.ResponseWriter, r *http.Request, s *ses
 		v.Sessions = append(v.Sessions, sessionRow{ID: x.ID, Created: d.fmtTime(x.CreatedAt), LastSeen: d.fmtTime(x.LastSeenAt), Expires: d.fmtTime(x.ExpiresAt),
 			Network: x.IPHint, Device: ua, Remembered: x.Remember, Current: x.ID == s.ID})
 	}
+	v.OrgThemeName = d.orgDashboardTheme(r.Context())
+	own := d.userTheme(r.Context(), s.User.ID)
+	for _, ti := range d.installedThemes() {
+		if d.dashboardThemeUsable(ti.Name) {
+			v.ThemeChoices = append(v.ThemeChoices, themeChoice{Name: ti.Name, Selected: ti.Name == own})
+			v.UserHasTheme = v.UserHasTheme || ti.Name == own
+		}
+	}
 	d.render(w, status, "dash_account", v)
+}
+
+// themeChoice is one entry of the account page's theme picker.
+type themeChoice struct {
+	Name     string
+	Selected bool
+}
+
+// accountThemeSet saves the signed-in user's own dashboard theme ("" goes back
+// to the organisation default). Everyone may set their own; it is not a setting
+// of the organisation, so it needs no permission.
+func (d *Dashboard) accountThemeSet(w http.ResponseWriter, r *http.Request, s *session) {
+	name := r.PostForm.Get("theme")
+	if name != "" && !d.dashboardThemeUsable(name) {
+		d.renderAccount(w, r, s, http.StatusBadRequest, "That theme is not installed or cannot be used.")
+		return
+	}
+	ctx := r.Context()
+	before := d.userTheme(ctx, s.User.ID)
+	if err := d.o.DB.Write(ctx, func(tx store.Tx) error { return store.SetUserTheme(ctx, tx, s.User.ID, name) }); err != nil {
+		d.fail(w, err)
+		return
+	}
+	if err := d.record(ctx, r, s, "user.theme", s.User.ID, map[string]string{"theme": before}, map[string]string{"theme": name}); err != nil {
+		d.o.Logger.Warn("dashboard: audit of theme choice", "err", err)
+	}
+	http.Redirect(w, r, prefix+"/account?n=theme", http.StatusSeeOther)
 }
 
 var accountNotices = map[string]string{
 	"revoked": "That session was signed out.",
 	"others":  "Every other session was signed out.",
+	"theme":   "Your theme was saved.",
 }
 
 func (d *Dashboard) sessionRevoke(w http.ResponseWriter, r *http.Request, s *session) {
@@ -279,6 +316,7 @@ func (d *Dashboard) userSessionsRevoke(w http.ResponseWriter, r *http.Request, s
 func (d *Dashboard) accountRoutes() {
 	m := d.mux
 	m.HandleFunc("GET "+prefix+"/account", d.authed(selfOnly, d.accountPage))
+	m.HandleFunc("POST "+prefix+"/account/theme", d.authed(selfOnly, d.accountThemeSet))
 	m.HandleFunc("POST "+prefix+"/account/password", d.authed(selfOnly, d.passwordChange))
 	m.HandleFunc("POST "+prefix+"/account/sessions/revoke-others", d.authed(selfOnly, d.sessionsRevokeOthers))
 	m.HandleFunc("POST "+prefix+"/account/sessions/{id}/revoke", d.authed(selfOnly, d.sessionRevoke))

@@ -286,6 +286,10 @@ type view struct {
 	StyleNonce   string
 	// DashboardTheme names the theme the React dashboard wears; see effectiveDashboardTheme.
 	DashboardTheme string
+	// The account page's theme picker.
+	OrgThemeName string
+	ThemeChoices []themeChoice
+	UserHasTheme bool // the user's own choice is set and still usable
 
 	AppName, LogoURL, Accent string
 
@@ -364,17 +368,38 @@ func (d *Dashboard) dashboardThemeUsable(name string) bool {
 	return err == nil && th.Dashboard != nil
 }
 
-// effectiveDashboardTheme is the theme the dashboard wears for userID:
-// the first usable of the organisation default, then stripe. (A per-user
-// choice goes in front of the organisation default.)
+// effectiveDashboardTheme is the theme the dashboard wears for userID: the
+// first usable of the user's own choice, the organisation default and stripe.
+// A name that no longer loads (deleted on disk, broken) is skipped.
 func (d *Dashboard) effectiveDashboardTheme(ctx context.Context, userID string) string {
-	_ = userID
-	for _, name := range []string{d.dashboardTheme(ctx)} {
-		if d.dashboardThemeUsable(name) {
-			return name
-		}
+	if own := d.userTheme(ctx, userID); own != "" && d.dashboardThemeUsable(own) {
+		return own
+	}
+	return d.orgDashboardTheme(ctx)
+}
+
+// orgDashboardTheme is the organisation default, or stripe when that is not a
+// usable dashboard theme.
+func (d *Dashboard) orgDashboardTheme(ctx context.Context) string {
+	if org := d.dashboardTheme(ctx); d.dashboardThemeUsable(org) {
+		return org
 	}
 	return defaultDashboardTheme
+}
+
+// userTheme is the theme a user chose for themselves, "" for none (or unknown).
+func (d *Dashboard) userTheme(ctx context.Context, userID string) string {
+	if userID == "" || d.o.DB == nil {
+		return ""
+	}
+	var name string
+	if err := d.o.DB.Read(ctx, func(q store.Querier) (err error) {
+		name, err = store.UserTheme(ctx, q, userID)
+		return
+	}); err != nil {
+		return ""
+	}
+	return name
 }
 
 // themedRenderer is the renderer drawing in the org's theme.
