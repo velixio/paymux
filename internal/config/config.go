@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/mail"
 	"net/netip"
 	"net/url"
@@ -483,3 +484,39 @@ func validHookHost(h string) bool {
 // IsLocalHost reports whether h names this machine (localhost or a loopback
 // address).
 func IsLocalHost(h string) bool { return isLocalHost(h) }
+
+// DatabaseTLSWarning returns a message when databaseURL is a PostgreSQL URL
+// whose server is not on this machine and whose sslmode does not verify the
+// server's certificate and name: sslmode missing (then PGSSLMODE, which the
+// driver reads, decides), disable, allow, prefer or require. All of those can
+// be talked into plain text or onto a forged server by anyone on the path.
+// verify-ca and verify-full are accepted. The message carries no credentials.
+func DatabaseTLSWarning(databaseURL string, getenv func(string) string) string {
+	if !strings.HasPrefix(databaseURL, "postgres://") && !strings.HasPrefix(databaseURL, "postgresql://") {
+		return ""
+	}
+	u, err := url.Parse(databaseURL)
+	if err != nil {
+		return ""
+	}
+	q := u.Query()
+	host := u.Hostname()
+	if host == "" {
+		host = q.Get("host") // a socket directory, or a host given as a parameter
+	}
+	if host == "" || strings.HasPrefix(host, "/") || strings.EqualFold(host, "localhost") || net.ParseIP(host).IsLoopback() {
+		return "" // this machine: a socket directory, localhost or a loopback address
+	}
+	mode := strings.ToLower(q.Get("sslmode"))
+	if mode == "" && getenv != nil {
+		mode = strings.ToLower(getenv("PGSSLMODE"))
+	}
+	if mode == "verify-full" || mode == "verify-ca" {
+		return ""
+	}
+	if mode == "" {
+		mode = "unset (the driver then tries TLS but accepts plain text)"
+	}
+	return "the PostgreSQL connection to " + host + " does not verify the server's certificate (sslmode " + mode +
+		"); use sslmode=verify-full in PAYMUX_DATABASE_URL, with the CA in sslrootcert if it is a private one"
+}

@@ -83,7 +83,7 @@ The image is distroless, runs as user 65532 and contains only the binary. There 
 
 ### Postgres instead of SQLite
 
-Set `PAYMUX_DATABASE_URL=postgres://user:password@host:5432/paymux?sslmode=require`. Migrations run at start. Use Postgres when you want more than one hub process, managed backups or point-in-time recovery. The hub logs the URL with the password masked.
+Set `PAYMUX_DATABASE_URL=postgres://user:password@host:5432/paymux?sslmode=verify-full`. `verify-full` checks the server's certificate and host name; `require` encrypts but accepts any certificate, so a party on the path can impersonate the database. For a private CA add `&sslrootcert=/path/ca.pem`. Paymux logs a warning at startup when the host is not on this machine and `sslmode` is missing, `disable`, `allow`, `prefer` or `require`. Migrations run at start. Use Postgres when you want more than one hub process, managed backups or point-in-time recovery. The hub logs the URL with the password masked.
 
 ## First admin and 2FA
 

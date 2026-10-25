@@ -17,7 +17,7 @@ Configuration examples below use placeholder domains and credentials. Copy `.env
 | `PAYMUX_LISTEN` | `:8080` | Public listener for API, checkout, dashboard, and provider webhooks. |
 | `PAYMUX_INTERNAL_LISTEN` | `127.0.0.1:9100` | Private metrics, profiling, and custom-domain TLS authorization listener. |
 | `PAYMUX_DATA_DIR` | `./data` | Database default location, custom files, and hooks default directory. |
-| `PAYMUX_DATABASE_URL` | SQLite under the data directory | `sqlite://...` or `postgres://...`. |
+| `PAYMUX_DATABASE_URL` | SQLite under the data directory | `sqlite://...` or `postgres://...`. For a PostgreSQL server that is not on the same machine use `?sslmode=verify-full` (add `&sslrootcert=` for a private CA); any other mode logs a warning at startup. |
 | `PAYMUX_MASTER_KEY` | Exactly one key source required | Base64 encoding of 32 random bytes. |
 | `PAYMUX_MASTER_KEY_FILE` | Exactly one key source required | File containing the same base64 key; alternative to the direct variable. |
 | `PAYMUX_MASTER_KEY_OLD` | none | Earlier master keys, base64, comma separated. Only for a key rotation: values sealed under them can still be read. See the runbook, *Rotating the master key*. |
