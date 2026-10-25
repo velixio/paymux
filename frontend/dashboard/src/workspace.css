@@ -150,7 +150,7 @@ main.dash:has(#paymux-react-root) {
 .ownership-dot {
   width: 6px;
   height: 6px;
-  background: #26845b;
+  background: var(--status-ok-fg);
   border-radius: 50%;
 }
 .react-workspace {
@@ -439,8 +439,8 @@ main.dash:has(#paymux-react-root) {
 }
 .react-content .status-created,
 .react-content .status-pending {
-  background: #fff3d5;
-  color: #805608;
+  background: var(--status-warn-bg);
+  color: var(--status-warn-fg);
 }
 .react-content .flag {
   font-size: 10px;
@@ -688,8 +688,8 @@ main.dash:has(#paymux-react-root) {
   font-size: 13px;
 }
 .react-content .notice {
-  background: #e8f5ee;
-  color: #17613f;
+  background: var(--status-ok-bg);
+  color: var(--status-ok-fg);
   border-radius: 6px;
   padding: 12px 16px;
   font-size: 13px;
@@ -1114,17 +1114,17 @@ main.dash:has(#paymux-react-root) {
 
 /* Logs page: level badges, wrapped messages and JSON, and stacked rows on a phone. */
 .react-content .status-error {
-  background: #fceeed;
-  color: #a13631;
+  background: var(--status-bad-bg);
+  color: var(--status-bad-fg);
 }
 .react-content .status-warn {
-  background: #fff3d5;
-  color: #805608;
+  background: var(--status-warn-bg);
+  color: var(--status-warn-fg);
 }
 .react-content .status-info,
 .react-content .status-debug {
-  background: #e8eefc;
-  color: #274690;
+  background: var(--ui-accent);
+  color: var(--accent-foreground);
 }
 .react-content .log-msg {
   overflow-wrap: anywhere;
