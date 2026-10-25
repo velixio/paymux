@@ -1354,3 +1354,11 @@
 .app-shell .react-content form.stack:not(:has(label)) > button {
   flex: 0 0 auto;
 }
+
+/* These containers clip overflow; an outside ring would show as stray bars. */
+.app-shell .react-sidebar :focus-visible,
+.app-shell .tab-strip :focus-visible,
+.app-shell .toolbar-chips :focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
