@@ -1,29 +1,16 @@
 package cli
 
 import (
-	"archive/tar"
-	"bufio"
-	"compress/gzip"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
-	"os/exec"
-	"path"
-	"path/filepath"
-	"regexp"
-	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/paymux/paymux/internal/selfupdate"
 	"github.com/paymux/paymux/pkg/hub"
 )
 
@@ -31,123 +18,16 @@ const updateUsage = "usage: paymux update [--check] [--version vX.Y.Z] [--repo o
 	"                    [--cosign-key file | --cosign-identity id --cosign-issuer url | --insecure-skip-signature]"
 
 const (
-	defaultUpdateRepo = "velixio/paymux"
-	defaultAPIBase    = "https://api.github.com"
-	maxArchive        = 300 << 20
-	maxBinary         = 500 << 20
-	maxSmallAsset     = 1 << 20
+	defaultUpdateRepo = selfupdate.DefaultRepo
+	defaultAPIBase    = selfupdate.DefaultAPI
 )
 
-// releaseOIDCIssuer is the issuer of the certificates GitHub Actions workflows
-// get from Sigstore for keyless signing.
-const releaseOIDCIssuer = "https://token.actions.githubusercontent.com"
-
-// releaseIdentityRegexp matches the signer identity of the release workflow of
-// repo (owner/name) on a version tag: the identity the keyless signature of
-// SHA256SUMS carries. It is anchored at both ends, so another repository, another
-// workflow or a branch does not match.
-func releaseIdentityRegexp(repo string) string {
-	return "^" + regexp.QuoteMeta("https://github.com/"+repo+"/.github/workflows/release.yml@refs/tags/") + `v[^/]+$`
-}
+// releaseIdentityRegexp, compareVersions: the shared implementations.
+func releaseIdentityRegexp(repo string) string { return selfupdate.ReleaseIdentityRegexp(repo) }
+func compareVersions(a, b string) int          { return selfupdate.CompareVersions(a, b) }
 
 // currentVersion is the running binary's version (replaced in tests).
 var currentVersion = func() string { return hub.Version }
-
-// compareVersions orders two release tags ("v1.2.3", "1.2.3-rc.1"): -1, 0 or
-// 1. A pre-release sorts before its release.
-func compareVersions(a, b string) int {
-	ac, ap := splitVersion(a)
-	bc, bp := splitVersion(b)
-	for i := 0; i < max(len(ac), len(bc)); i++ {
-		var x, y int
-		if i < len(ac) {
-			x = ac[i]
-		}
-		if i < len(bc) {
-			y = bc[i]
-		}
-		if x != y {
-			if x < y {
-				return -1
-			}
-			return 1
-		}
-	}
-	switch {
-	case ap == "" && bp == "":
-		return 0
-	case ap == "":
-		return 1
-	case bp == "":
-		return -1
-	}
-	as, bs := strings.Split(ap, "."), strings.Split(bp, ".")
-	for i := 0; i < max(len(as), len(bs)); i++ {
-		if i >= len(as) {
-			return -1
-		}
-		if i >= len(bs) {
-			return 1
-		}
-		xn, xerr := strconv.Atoi(as[i])
-		yn, yerr := strconv.Atoi(bs[i])
-		switch {
-		case xerr == nil && yerr == nil && xn != yn:
-			if xn < yn {
-				return -1
-			}
-			return 1
-		case xerr == nil && yerr != nil:
-			return -1
-		case xerr != nil && yerr == nil:
-			return 1
-		case xerr != nil && yerr != nil && as[i] != bs[i]:
-			if as[i] < bs[i] {
-				return -1
-			}
-			return 1
-		}
-	}
-	return 0
-}
-
-func splitVersion(v string) (core []int, pre string) {
-	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
-	v, _, _ = strings.Cut(v, "+")
-	v, pre, _ = strings.Cut(v, "-")
-	for _, p := range strings.Split(v, ".") {
-		n, _ := strconv.Atoi(p)
-		core = append(core, n)
-	}
-	return core, pre
-}
-
-func parsableVersion(v string) bool {
-	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
-	return v != "" && v[0] >= '0' && v[0] <= '9'
-}
-
-type releaseAsset struct {
-	Name string `json:"name"`
-	URL  string `json:"browser_download_url"`
-	Size int64  `json:"size"`
-}
-
-type release struct {
-	Tag        string         `json:"tag_name"`
-	Draft      bool           `json:"draft"`
-	Prerelease bool           `json:"prerelease"`
-	Assets     []releaseAsset `json:"assets"`
-}
-
-func (r release) asset(name string) (releaseAsset, bool) {
-	for _, a := range r.Assets {
-		if a.Name == name {
-			return a, true
-		}
-	}
-	return releaseAsset{}, false
-}
 
 // runUpdate handles "paymux update": find the newest release (or the one
 // asked for), download the build for this platform, check it against the
@@ -184,11 +64,11 @@ func runUpdate(ctx context.Context, args []string, lookup func(string) (string, 
 		return 1
 	}
 	token, _ := lookup("GITHUB_TOKEN")
-	u := &updater{ctx: ctx, api: strings.TrimRight(*apiURL, "/"), token: token, client: &http.Client{Timeout: 10 * time.Minute}}
+	u := &selfupdate.Client{API: strings.TrimRight(*apiURL, "/"), Token: token, HTTP: &http.Client{Timeout: 10 * time.Minute}}
 
 	cur := currentVersion()
-	dev := !parsableVersion(cur)
-	rel, err := u.fetchRelease(*repo, *target)
+	dev := !selfupdate.Parsable(cur)
+	rel, err := u.FetchRelease(ctx, *repo, *target)
 	if err != nil {
 		return fail("%v", err)
 	}
@@ -213,103 +93,17 @@ func runUpdate(ctx context.Context, args []string, lookup func(string) (string, 
 
 	exe := *dest
 	if exe == "" {
-		if exe, err = os.Executable(); err != nil {
+		if exe, err = selfupdate.ExecutablePath(); err != nil {
 			return fail("cannot find the running binary: %v (use --dest)", err)
 		}
-		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-			exe = resolved
-		}
 	}
-	exe, err = filepath.Abs(exe)
+	res, err := u.Install(ctx, rel, selfupdate.InstallOptions{Repo: *repo, Dest: exe, Current: cur,
+		CosignKey: *cosignKey, CosignIdentity: *cosignIdentity, CosignIssuer: *cosignIssuer, SkipSignature: *skipSig,
+		Logf: func(format string, a ...any) { fmt.Fprintf(stderr, "paymux update: "+format+"\n", a...) }})
 	if err != nil {
 		return fail("%v", err)
 	}
-	dir := filepath.Dir(exe)
-
-	ver := strings.TrimPrefix(rel.Tag, "v")
-	archiveName := fmt.Sprintf("paymux_%s_%s_%s.tar.gz", ver, runtime.GOOS, runtime.GOARCH)
-	archive, ok := rel.asset(archiveName)
-	if !ok {
-		var names []string
-		for _, a := range rel.Assets {
-			names = append(names, a.Name)
-		}
-		return fail("release %s has no build for %s/%s (looked for %s; it has %s)", rel.Tag, runtime.GOOS, runtime.GOARCH, archiveName, strings.Join(names, ", "))
-	}
-	sumsAsset, ok := rel.asset("SHA256SUMS")
-	if !ok {
-		return fail("release %s has no SHA256SUMS, so the download cannot be verified; refusing to install it", rel.Tag)
-	}
-
-	fmt.Fprintf(stderr, "paymux update: %s -> %s (%s)\n", cur, rel.Tag, archiveName)
-	sums, err := u.download(sumsAsset.URL, maxSmallAsset)
-	if err != nil {
-		return fail("downloading SHA256SUMS: %v", err)
-	}
-	want, ok := parseSums(string(sums))[archiveName]
-	if !ok {
-		return fail("SHA256SUMS has no entry for %s; refusing to install it", archiveName)
-	}
-
-	tmpArchive, err := os.CreateTemp(dir, ".paymux-update-*")
-	if err != nil {
-		return fail("cannot write to %s: %v (run as a user who can, or install elsewhere with --dest)", dir, err)
-	}
-	defer os.Remove(tmpArchive.Name())
-	got, err := u.downloadTo(archive.URL, tmpArchive, maxArchive)
-	tmpArchive.Close()
-	if err != nil {
-		return fail("downloading %s: %v", archiveName, err)
-	}
-	if got != want {
-		return fail("checksum mismatch for %s: SHA256SUMS says %s, the download is %s; nothing was installed", archiveName, want, got)
-	}
-	fmt.Fprintf(stderr, "paymux update: checksum verified (%s)\n", got[:12])
-
-	// The signature over SHA256SUMS is checked unless the operator said not to:
-	// with --cosign-key or --cosign-identity against that, otherwise against the
-	// release workflow of --repo. There is no fallback to the checksum alone.
-	sig, signed := rel.asset("SHA256SUMS.sig")
-	switch {
-	case *skipSig:
-		fmt.Fprintln(stderr, "paymux update: WARNING: the signature of this release was NOT verified (--insecure-skip-signature); only the checksum protects this download")
-	case !signed:
-		return fail("release %s is not signed (it has no SHA256SUMS.sig); refusing to install. Use --insecure-skip-signature to install it on the checksum alone", rel.Tag)
-	default:
-		msg, err := u.verifySignature(sig, rel, sums, *repo, *cosignKey, *cosignIdentity, *cosignIssuer)
-		if err != nil {
-			return fail("%v", err)
-		}
-		fmt.Fprintf(stderr, "paymux update: %s\n", msg)
-	}
-
-	tmpBin, err := os.CreateTemp(dir, ".paymux-update-*")
-	if err != nil {
-		return fail("cannot write to %s: %v", dir, err)
-	}
-	defer os.Remove(tmpBin.Name())
-	if err := extractBinary(tmpArchive.Name(), "paymux", tmpBin); err != nil {
-		tmpBin.Close()
-		return fail("%s: %v", archiveName, err)
-	}
-	if err := tmpBin.Close(); err != nil {
-		return fail("%v", err)
-	}
-	if err := os.Chmod(tmpBin.Name(), 0o755); err != nil {
-		return fail("%v", err)
-	}
-	if err := selfTest(ctx, tmpBin.Name(), rel.Tag); err != nil {
-		return fail("the downloaded binary failed its check, nothing was installed: %v", err)
-	}
-
-	prev := exe + ".prev"
-	_ = os.Remove(prev)
-	if err := os.Link(exe, prev); err != nil {
-		prev = "" // not fatal: the old binary is just not kept
-	}
-	if err := os.Rename(tmpBin.Name(), exe); err != nil {
-		return fail("replacing %s: %v", exe, err)
-	}
+	exe, prev := res.Exe, res.Prev
 	fmt.Fprintf(stdout, "updated paymux %s -> %s (%s)\n", cur, rel.Tag, exe)
 	if prev != "" {
 		fmt.Fprintf(stdout, "the previous binary is kept at %s; to go back, move it over %s\n", prev, exe)
@@ -322,248 +116,4 @@ func runUpdate(ctx context.Context, args []string, lookup func(string) (string, 
 	}
 	fmt.Fprintln(stdout, "pending database migrations are applied on the next start; see docs/upgrades.md (take a backup first)")
 	return 0
-}
-
-type updater struct {
-	ctx    context.Context
-	api    string
-	token  string
-	client *http.Client
-}
-
-func (u *updater) get(rawURL string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(u.ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "paymux-update")
-	req.Header.Set("Accept", "application/vnd.github+json, application/octet-stream")
-	if pu, err := url.Parse(rawURL); err == nil {
-		if au, err := url.Parse(u.api); err == nil && pu.Host == au.Host && u.token != "" {
-			req.Header.Set("Authorization", "Bearer "+u.token) // never to other hosts
-		}
-	}
-	return u.client.Do(req)
-}
-
-func (u *updater) fetchRelease(repo, tag string) (release, error) {
-	endpoint := u.api + "/repos/" + repo + "/releases/latest"
-	if tag != "" {
-		endpoint = u.api + "/repos/" + repo + "/releases/tags/" + url.PathEscape(tag)
-	}
-	res, err := u.get(endpoint)
-	if err != nil {
-		return release{}, fmt.Errorf("asking %s for the release: %w", u.api, err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode == http.StatusNotFound {
-		if tag != "" {
-			return release{}, fmt.Errorf("release %s not found in %s", tag, repo)
-		}
-		return release{}, fmt.Errorf("no release found in %s", repo)
-	}
-	if res.StatusCode != http.StatusOK {
-		return release{}, fmt.Errorf("the releases API answered %s", res.Status)
-	}
-	var rel release
-	if err := json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&rel); err != nil {
-		return release{}, fmt.Errorf("reading the release: %w", err)
-	}
-	if rel.Tag == "" || rel.Draft {
-		return release{}, errors.New("the release has no usable tag")
-	}
-	return rel, nil
-}
-
-func (u *updater) checkURL(raw string) error {
-	pu, err := url.Parse(raw)
-	if err != nil {
-		return err
-	}
-	au, _ := url.Parse(u.api)
-	if pu.Scheme != "https" && !(au != nil && au.Scheme == "http" && pu.Scheme == "http") {
-		return fmt.Errorf("refusing to download from %q: not https", raw)
-	}
-	return nil
-}
-
-func (u *updater) download(raw string, limit int64) ([]byte, error) {
-	if err := u.checkURL(raw); err != nil {
-		return nil, err
-	}
-	res, err := u.get(raw)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s", res.Status)
-	}
-	b, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(b)) > limit {
-		return nil, fmt.Errorf("larger than the %d byte limit", limit)
-	}
-	return b, nil
-}
-
-// downloadTo streams a download into f and returns its SHA-256.
-func (u *updater) downloadTo(raw string, f *os.File, limit int64) (string, error) {
-	if err := u.checkURL(raw); err != nil {
-		return "", err
-	}
-	res, err := u.get(raw)
-	if err != nil {
-		return "", err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("%s", res.Status)
-	}
-	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(res.Body, limit+1))
-	if err != nil {
-		return "", err
-	}
-	if n > limit {
-		return "", fmt.Errorf("larger than the %d byte limit", limit)
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-// parseSums reads sha256sum output: "<hex>  <name>" (or "<hex> *<name>").
-func parseSums(s string) map[string]string {
-	out := map[string]string{}
-	sc := bufio.NewScanner(strings.NewReader(s))
-	for sc.Scan() {
-		hash, name, ok := strings.Cut(strings.TrimSpace(sc.Text()), " ")
-		name = strings.TrimPrefix(strings.TrimSpace(name), "*")
-		if ok && len(hash) == 64 && name != "" {
-			out[name] = strings.ToLower(hash)
-		}
-	}
-	return out
-}
-
-// extractBinary copies the regular file called name out of a .tar.gz.
-func extractBinary(archive, name string, dst io.Writer) error {
-	f, err := os.Open(archive)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	gz, err := gzip.NewReader(f)
-	if err != nil {
-		return fmt.Errorf("not a gzip archive: %w", err)
-	}
-	tr := tar.NewReader(gz)
-	for {
-		h, err := tr.Next()
-		if errors.Is(err, io.EOF) {
-			return fmt.Errorf("the archive has no %q file", name)
-		}
-		if err != nil {
-			return err
-		}
-		if h.Typeflag != tar.TypeReg || path.Base(h.Name) != name {
-			continue
-		}
-		n, err := io.Copy(dst, io.LimitReader(tr, maxBinary+1))
-		if err != nil {
-			return err
-		}
-		if n > maxBinary {
-			return fmt.Errorf("%q is larger than %d bytes", name, maxBinary)
-		}
-		return nil
-	}
-}
-
-// selfTest runs the new binary's "version" command and requires it to report
-// the release it was published as.
-func selfTest(ctx context.Context, bin, tag string) error {
-	cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(cctx, bin, "version").Output()
-	if err != nil {
-		return fmt.Errorf("running it: %w", err)
-	}
-	fields := strings.Fields(string(out))
-	if len(fields) < 2 || fields[0] != "paymux" {
-		return fmt.Errorf("unexpected output %q", strings.TrimSpace(string(out)))
-	}
-	if strings.TrimPrefix(fields[1], "v") != strings.TrimPrefix(tag, "v") {
-		return fmt.Errorf("it reports version %s, but the release is %s", fields[1], tag)
-	}
-	return nil
-}
-
-// verifySignature checks SHA256SUMS.sig with cosign. The signature protects the
-// checksum file, which in turn covers the download. It verifies against key, or
-// against the keyless identity and issuer given, or by default against the
-// release workflow of repo. Anything that stops it from verifying is an error.
-func (u *updater) verifySignature(sig releaseAsset, rel release, sums []byte, repo, key, identity, issuer string) (string, error) {
-	const skipHint = "; use --insecure-skip-signature to install on the checksum alone"
-	if identity != "" && issuer == "" {
-		return "", errors.New("--cosign-identity needs --cosign-issuer; refusing to install")
-	}
-	cosign, err := exec.LookPath("cosign")
-	if err != nil {
-		return "", errors.New("the signature of the release cannot be verified because cosign is not installed (https://docs.sigstore.dev/cosign/); refusing to install" + skipHint)
-	}
-	sigBytes, err := u.download(sig.URL, maxSmallAsset)
-	if err != nil {
-		return "", fmt.Errorf("downloading the signature: %w", err)
-	}
-	dir, err := os.MkdirTemp("", "paymux-cosign-")
-	if err != nil {
-		return "", err
-	}
-	defer os.RemoveAll(dir)
-	sumsFile, sigFile := filepath.Join(dir, "SHA256SUMS"), filepath.Join(dir, "SHA256SUMS.sig")
-	if err := os.WriteFile(sumsFile, sums, 0o600); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(sigFile, sigBytes, 0o600); err != nil {
-		return "", err
-	}
-	args := []string{"verify-blob", "--signature", sigFile}
-	switch {
-	case key != "":
-		args = append(args, "--key", key)
-	case identity != "":
-		args = append(args, "--certificate-identity", identity, "--certificate-oidc-issuer", issuer)
-		if cert, ok := rel.asset("SHA256SUMS.pem"); ok {
-			if b, err := u.download(cert.URL, maxSmallAsset); err == nil {
-				certFile := filepath.Join(dir, "SHA256SUMS.pem")
-				if os.WriteFile(certFile, b, 0o600) == nil {
-					args = append(args, "--certificate", certFile)
-				}
-			}
-		}
-	default:
-		// The built-in identity: the release workflow of this repository, on a tag.
-		cert, ok := rel.asset("SHA256SUMS.pem")
-		if !ok {
-			return "", errors.New("the release has a signature but no SHA256SUMS.pem certificate to check it against; refusing to install" + skipHint)
-		}
-		b, err := u.download(cert.URL, maxSmallAsset)
-		if err != nil {
-			return "", fmt.Errorf("downloading the signing certificate: %w", err)
-		}
-		certFile := filepath.Join(dir, "SHA256SUMS.pem")
-		if err := os.WriteFile(certFile, b, 0o600); err != nil {
-			return "", err
-		}
-		args = append(args, "--certificate", certFile, "--certificate-identity-regexp", releaseIdentityRegexp(repo), "--certificate-oidc-issuer", releaseOIDCIssuer)
-	}
-	args = append(args, sumsFile)
-	cctx, cancel := context.WithTimeout(u.ctx, time.Minute)
-	defer cancel()
-	if out, err := exec.CommandContext(cctx, cosign, args...).CombinedOutput(); err != nil {
-		return "", fmt.Errorf("the SHA256SUMS signature did not verify, nothing was installed: %v: %s (use --insecure-skip-signature only if you accept an unverified release)", err, strings.TrimSpace(string(out)))
-	}
-	return "signature verified with cosign", nil
 }
