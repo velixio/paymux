@@ -257,8 +257,12 @@ export function tokenBlock(selector: string, tokens: Tokens): string {
   return `${selector}{${decls}}`;
 }
 
-/** The stylesheet for a theme: light tokens on :root, dark tokens on .dark. */
+/**
+ * The stylesheet for a theme: light tokens on the root, dark tokens on .dark.
+ * The selectors are one element more specific than the defaults in styles.css,
+ * which the page links after this style, so the theme wins wherever it sits.
+ */
 export function themeCss(m: ThemeSpec): string {
   const { light, dark } = derive(m.seeds, m.dark_seeds, m.overrides);
-  return tokenBlock(":root", light) + tokenBlock(".dark", dark);
+  return tokenBlock("html:root", light) + tokenBlock("html.dark", dark);
 }

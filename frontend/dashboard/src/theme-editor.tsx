@@ -146,7 +146,8 @@ export default function ThemeEditor({
     }
     const nonce = getNonce();
     if (nonce) tag.setAttribute("nonce", nonce);
-    tag.textContent = tokenBlock(":root,.dark", derived[mode]);
+    tag.textContent = // More specific than the theme's own style, so the preview wins whichever mode the page is in.
+      tokenBlock("html:root:root,html.dark.dark", derived[mode]);
   }, [derived, mode]);
   useEffect(() => () => document.getElementById(STYLE_ID)?.remove(), []);
 

@@ -108,6 +108,20 @@ test("the page's own tokens come back when the editor is left", async () => {
   );
 });
 
+test("the preview is lifted while the editor's tab is hidden, and back when shown", async () => {
+  await mount("/dashboard/appearance/themes/mine/edit");
+  await waitFor(() => expect(preview()).toContain("--primary:#0d7d68"));
+  // Alt-click opens the page in another tab; the editor's tab stays open, hidden.
+  fireEvent.click(link("Payments"), { altKey: true });
+  await screen.findByText("Payments body");
+  await waitFor(() =>
+    expect(document.querySelector("style#paymux-theme-preview")).toBeNull(),
+  );
+  expect(document.querySelector("form")).not.toBeNull(); // still mounted, unsaved work kept
+  fireEvent.click(screen.getByRole("tab", { name: /Edit mine/ }));
+  await waitFor(() => expect(preview()).toContain("--primary:#0d7d68"));
+});
+
 test("a theme whose colours cannot be read cannot be saved", async () => {
   handlers["/dashboard/appearance/themes/mine/edit"] = () =>
     pageHtml("Edit mine", editor('{"light":{"--foreground":"#f5f5f2"}}'));

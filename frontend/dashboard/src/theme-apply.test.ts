@@ -64,7 +64,9 @@ test("writes :root and .dark token blocks into one nonce'd style tag", async () 
   const tag = styles()[0];
   expect(tag.getAttribute("nonce")).toBe("n0nce");
   const css = tag.textContent!;
-  expect(css).toMatch(/^:root\{[^}]*--primary:#0d7d68;[^}]*\}\.dark\{[^}]*\}$/);
+  expect(css).toMatch(
+    /^html:root\{[^}]*--primary:#0d7d68;[^}]*\}html\.dark\{[^}]*\}$/,
+  );
   expect(css).toContain("--sidebar:#121417");
   expect(css).not.toContain("--status-");
 });
