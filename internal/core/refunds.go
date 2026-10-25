@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 
 	"github.com/paymux/paymux/internal/audit"
@@ -37,6 +38,9 @@ type CreateRefundInput struct {
 	// Amount is in minor units; 0 means everything still refundable.
 	Amount int64
 	Reason string
+	// IdempotencyKey is the request's Idempotency-Key. The refund is stored
+	// with it: a repeat returns the refund the key made first.
+	IdempotencyKey string
 }
 
 // CreateRefund checks the refundable balance of an attempt under a lock on
@@ -64,6 +68,21 @@ func (s *Service) CreateRefund(ctx context.Context, in CreateRefundInput) (store
 		}
 		if p.AppID != in.Scope.AppID || p.Mode != in.Scope.Mode {
 			return newErr(ErrNotFound, "payment not found")
+		}
+		if in.IdempotencyKey != "" {
+			// Under the payment lock, so two requests with one key cannot both pass.
+			prev, err := store.FindRefundByKey(ctx, tx, in.Scope.AppID, in.Scope.Mode, in.IdempotencyKey)
+			switch {
+			case err == nil:
+				if prev.PaymentID != p.ID || in.Amount != 0 && prev.Amount != in.Amount ||
+					in.AttemptID != "" && prev.AttemptID != in.AttemptID {
+					return newErr(ErrConflict, "this Idempotency-Key already made a different refund")
+				}
+				r = prev
+				return nil
+			case !errors.Is(err, store.ErrNotFound):
+				return err
+			}
 		}
 		// The card network has taken (or is holding) this money back; a refund of
 		// ours as well would pay the customer twice. Refunds the provider made
@@ -106,7 +125,7 @@ func (s *Service) CreateRefund(ctx context.Context, in CreateRefundInput) (store
 		if amount <= 0 || amount > remaining {
 			return newErr(ErrRefundExceeds, "refund of %d exceeds the refundable balance of %d", in.Amount, max(remaining, 0))
 		}
-		r, err = s.insertRefund(ctx, tx, p, *target, amount, in.Reason, in.InitiatedBy, in.Actor)
+		r, err = s.insertRefund(ctx, tx, p, *target, amount, in.Reason, in.InitiatedBy, in.IdempotencyKey, in.Actor)
 		return err
 	})
 	return r, err
@@ -116,11 +135,11 @@ func (s *Service) CreateRefund(ctx context.Context, in CreateRefundInput) (store
 // enqueues refund.submit and audits it. The caller holds the payment lock and
 // has validated the amount.
 func (s *Service) insertRefund(ctx context.Context, tx store.Tx, p store.Payment, a store.Attempt, amount int64,
-	reason, initiatedBy string, actor audit.Actor) (store.Refund, error) {
+	reason, initiatedBy, idempotencyKey string, actor audit.Actor) (store.Refund, error) {
 	now := s.nowUTC()
 	r := store.Refund{ID: ids.New("ref"), OrgID: p.OrgID, AppID: p.AppID, Mode: p.Mode, PaymentID: p.ID, AttemptID: a.ID,
 		Amount: amount, Currency: a.CurrencyReceived, Status: string(state.RefundPending), Reason: reason,
-		ProviderRef: ids.ProviderRef(), InitiatedBy: initiatedBy, Actor: actor.ID, CreatedAt: now, UpdatedAt: now}
+		ProviderRef: ids.ProviderRef(), InitiatedBy: initiatedBy, Actor: actor.ID, CreatedAt: now, UpdatedAt: now, IdempotencyKey: idempotencyKey}
 	if err := store.InsertRefund(ctx, tx, r); err != nil {
 		return store.Refund{}, err
 	}

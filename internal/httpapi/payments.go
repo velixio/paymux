@@ -162,7 +162,8 @@ func (a *API) createRefund(w http.ResponseWriter, r *http.Request, pr core.Princ
 		return
 	}
 	ref, err := a.core.CreateRefund(r.Context(), core.CreateRefundInput{Scope: scope(pr), Actor: auditActor(pr),
-		InitiatedBy: "api", PaymentID: r.PathValue("id"), AttemptID: req.AttemptID, Amount: req.Amount, Reason: req.Reason})
+		InitiatedBy: "api", PaymentID: r.PathValue("id"), AttemptID: req.AttemptID, Amount: req.Amount, Reason: req.Reason,
+		IdempotencyKey: r.Header.Get("Idempotency-Key")})
 	if err != nil {
 		a.failCore(w, r, err)
 		return

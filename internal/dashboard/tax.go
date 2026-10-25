@@ -69,15 +69,15 @@ func (d *Dashboard) routesTax() {
 	m.HandleFunc("GET "+prefix+"/reports/file", d.authed(authz.PaymentRead, d.reportFile))
 	m.HandleFunc("GET "+prefix+"/reports/zip", d.authed(authz.PaymentRead, d.reportZip))
 	m.HandleFunc("GET "+prefix+"/tax-entities", d.authed(authz.SettingsRead, d.taxEntitiesPage))
-	m.HandleFunc("POST "+prefix+"/tax-entities", d.authed(authz.SettingsWrite, d.taxEntityCreate))
+	m.HandleFunc("POST "+prefix+"/tax-entities", d.authed(authz.SettingsWrite, d.recent(d.taxEntityCreate)))
 	m.HandleFunc("GET "+prefix+"/tax-entities/{id}", d.authed(authz.SettingsRead, d.taxEntityPage))
 	m.HandleFunc("GET "+prefix+"/tax-entities/{id}/logo", d.authed(authz.SettingsRead, d.taxEntityLogo))
-	m.HandleFunc("POST "+prefix+"/tax-entities/{id}", d.authed(authz.SettingsWrite, d.taxEntityUpdate))
-	m.HandleFunc("POST "+prefix+"/tax-entities/{id}/dsc", d.authed(authz.SettingsWrite, d.taxEntityDSCSet))
-	m.HandleFunc("POST "+prefix+"/tax-entities/{id}/dsc/remove", d.authed(authz.SettingsWrite, d.taxEntityDSCRemove))
-	m.HandleFunc("POST "+prefix+"/apps/{id}/tax", d.authed(authz.SettingsWrite, d.appTaxSave))
+	m.HandleFunc("POST "+prefix+"/tax-entities/{id}", d.authed(authz.SettingsWrite, d.recent(d.taxEntityUpdate)))
+	m.HandleFunc("POST "+prefix+"/tax-entities/{id}/dsc", d.authed(authz.SettingsWrite, d.recent(d.taxEntityDSCSet)))
+	m.HandleFunc("POST "+prefix+"/tax-entities/{id}/dsc/remove", d.authed(authz.SettingsWrite, d.recent(d.taxEntityDSCRemove)))
+	m.HandleFunc("POST "+prefix+"/apps/{id}/tax", d.authed(authz.SettingsWrite, d.recent(d.appTaxSave)))
 	m.HandleFunc("GET "+prefix+"/fx", d.authed(authz.SettingsRead, d.fxPage))
-	m.HandleFunc("POST "+prefix+"/fx", d.authed(authz.SettingsWrite, d.fxSave))
+	m.HandleFunc("POST "+prefix+"/fx", d.authed(authz.SettingsWrite, d.recent(d.fxSave)))
 }
 
 func (d *Dashboard) today() string { return d.o.Now().In(tax.IST).Format("2006-01-02") }

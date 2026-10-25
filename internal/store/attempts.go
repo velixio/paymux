@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -80,13 +81,18 @@ func ListAttempts(ctx context.Context, q Queryer, paymentID string) ([]Attempt, 
 	return out, rows.Err()
 }
 
-// UpdateAttempt writes the mutable fields of a.
+// UpdateAttempt writes the mutable fields of a. Capturing it with a provider
+// payment that another captured, non-duplicate attempt of the account already
+// holds is ErrConflict.
 func UpdateAttempt(ctx context.Context, tx Tx, a Attempt, now time.Time) error {
 	_, err := tx.ExecContext(ctx, `UPDATE payment_attempts SET status = ?, method = ?, failure_code = ?, failure_message = ?,
 		provider_payment_id = ?, provider_order_id = ?, amount_received = ?, currency_received = ?, duplicate = ?, updated_at = ? WHERE id = ?`,
 		a.Status, nullIfEmpty(a.Method), nullIfEmpty(a.FailureCode), nullIfEmpty(a.FailureMessage),
 		nullIfEmpty(a.ProviderPaymentID), nullIfEmpty(a.ProviderOrderID), a.AmountReceived, nullIfEmpty(a.CurrencyReceived), boolInt(a.Duplicate),
 		ms(now), a.ID)
+	if IsUniqueViolation(err) {
+		return fmt.Errorf("%w: the provider payment settles another attempt", ErrConflict)
+	}
 	return err
 }
 

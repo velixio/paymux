@@ -51,6 +51,25 @@ know until you restart them. Migrations are written to be additive for that
 reason: they add columns and tables and avoid renaming or dropping what the
 previous release reads.
 
+## Upgrades that can refuse to start
+
+A few migrations add a uniqueness rule that data from an earlier release could
+already break. They fail, with the database error, and change nothing; they
+never drop or rewrite rows. Paymux has no released users yet, so these checks
+are strict and there is no repair step. If one fails, fix the rows it names
+(or restore the backup) and start again.
+
+- **0031, one provider payment settles one attempt.** A unique index over
+  `payment_attempts (provider_account_id, provider_payment_id)` for captured,
+  non-duplicate attempts. It fails if two such attempts share a provider
+  payment id. List them before upgrading:
+
+  ```sql
+  SELECT provider_account_id, provider_payment_id, COUNT(*) FROM payment_attempts
+  WHERE status = 'captured' AND duplicate = 0 AND provider_payment_id IS NOT NULL
+  GROUP BY 1, 2 HAVING COUNT(*) > 1;
+  ```
+
 ## `paymux update`
 
 ```sh

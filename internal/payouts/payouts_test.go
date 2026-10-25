@@ -747,3 +747,36 @@ func TestProcessingPayoutKeepsBeingPolledUntilTheProviderSettlesIt(t *testing.T)
 		}
 	})
 }
+
+// R-A5 / H-1. Concurrent requests with one Idempotency-Key make one payout and
+// all answer with it; the key cannot be reused for another payout.
+func TestPayoutIdempotencyKeyMakesOnePayout(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, []string{"payout"})
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		ids := map[string]bool{}
+		for i := 0; i < 12; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				p, err := e.create(func(in *payouts.CreateInput) { in.IdempotencyKey = "k-1" })
+				if err != nil {
+					t.Errorf("create: %v", err)
+					return
+				}
+				mu.Lock()
+				ids[p.ID] = true
+				mu.Unlock()
+			}()
+		}
+		wg.Wait()
+		if len(ids) != 1 || e.count("SELECT COUNT(*) FROM payouts") != 1 {
+			t.Fatalf("one key made %d payouts", len(ids))
+		}
+		_, err := e.create(func(in *payouts.CreateInput) { in.IdempotencyKey = "k-1"; in.Amount = 1 })
+		if !errors.Is(err, payouts.ErrKeyReuse) {
+			t.Errorf("the key reused for another amount: %v", err)
+		}
+	})
+}

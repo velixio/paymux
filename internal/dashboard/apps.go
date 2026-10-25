@@ -68,6 +68,7 @@ type settingRow struct {
 	Pattern, Min, Max, Step, Aux             string
 	Options                                  []enumOpt
 	Checked                                  bool
+	Locked                                   bool // admin-only setting shown to someone who may not change it
 }
 
 // settingsTable is what the shared settings partial renders: the rows, the
@@ -108,12 +109,12 @@ func (d *Dashboard) routesApps() {
 	m.HandleFunc("POST "+prefix+"/apps/{id}/keys", d.authed(authz.APIKeyCreate, d.recent(d.keyCreate)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/keys/rotate", d.authed(authz.APIKeyCreate, d.recent(d.keyRotate)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/keys/{kid}/revoke", d.authed(authz.APIKeyCreate, d.recent(d.keyRevoke)))
-	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints", d.authed(authz.SettingsWrite, d.endpointCreate))
-	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints/{eid}/disable", d.authed(authz.SettingsWrite, d.endpointDisable))
-	m.HandleFunc("POST "+prefix+"/apps/{id}/branding", d.authed(authz.SettingsWrite, d.brandingSave))
+	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints", d.authed(authz.SettingsWrite, d.recent(d.endpointCreate)))
+	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints/{eid}/disable", d.authed(authz.SettingsWrite, d.recent(d.endpointDisable)))
+	m.HandleFunc("POST "+prefix+"/apps/{id}/branding", d.authed(authz.SettingsWrite, d.recent(d.brandingSave)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/providers", d.authed(authz.ProviderAccountManage, d.recent(d.providersSave)))
-	m.HandleFunc("POST "+prefix+"/apps/{id}/settings/{key}", d.authed(authz.SettingsWrite, d.appSettingSet))
-	m.HandleFunc("POST "+prefix+"/apps/{id}/settings/{key}/reset", d.authed(authz.SettingsWrite, d.appSettingReset))
+	m.HandleFunc("POST "+prefix+"/apps/{id}/settings/{key}", d.authed(authz.SettingsWrite, d.recent(d.appSettingSet)))
+	m.HandleFunc("POST "+prefix+"/apps/{id}/settings/{key}/reset", d.authed(authz.SettingsWrite, d.recent(d.appSettingReset)))
 }
 
 func (d *Dashboard) appsPage(w http.ResponseWriter, r *http.Request, s *session) {

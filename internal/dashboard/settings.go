@@ -51,8 +51,8 @@ type routeResult struct {
 func (d *Dashboard) routesSettings() {
 	m := d.mux
 	m.HandleFunc("GET "+prefix+"/settings", d.authed(authz.SettingsRead, d.settingsPage))
-	m.HandleFunc("POST "+prefix+"/settings/routing", d.authed(authz.SettingsWrite, d.routingSave))
-	m.HandleFunc("POST "+prefix+"/settings/{key}", d.authed(authz.SettingsWrite, d.orgSettingSet))
+	m.HandleFunc("POST "+prefix+"/settings/routing", d.authed(authz.SettingsWrite, d.recent(d.routingSave)))
+	m.HandleFunc("POST "+prefix+"/settings/{key}", d.authed(authz.SettingsWrite, d.recent(d.orgSettingSet)))
 }
 
 var currencyRE = regexp.MustCompile(`^[A-Z]{3}$`)
@@ -77,6 +77,11 @@ func (d *Dashboard) renderSettings(w http.ResponseWriter, r *http.Request, s *se
 		return
 	}
 	rows = slices.DeleteFunc(rows, func(sr settingRow) bool { return sr.Key == "routing" }) // has its own editor
+	if !s.can(authz.SettingsAdmin) {
+		for i := range rows {
+			rows[i].Locked = settings.AdminOnly(rows[i].Key)
+		}
+	}
 	v.Table = &settingsTable{Rows: rows, Base: prefix + "/settings", CanWrite: s.can(authz.SettingsWrite)}
 
 	rv, err := d.routingFor(ctx, org)
@@ -416,6 +421,19 @@ func (d *Dashboard) routingSave(w http.ResponseWriter, r *http.Request, s *sessi
 }
 
 func (d *Dashboard) orgSettingSet(w http.ResponseWriter, r *http.Request, s *session) {
+	if settings.AdminOnly(r.PathValue("key")) {
+		// Sign-in policy and trust anchors: admin only, behind a recent sign-in.
+		if !s.can(authz.SettingsAdmin) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		d.recent(d.orgSettingWrite)(w, r, s)
+		return
+	}
+	d.orgSettingWrite(w, r, s)
+}
+
+func (d *Dashboard) orgSettingWrite(w http.ResponseWriter, r *http.Request, s *session) {
 	org, err := d.orgID(r.Context())
 	if err != nil {
 		d.fail(w, err)

@@ -3,7 +3,9 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -194,6 +196,9 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 			}
 		}
 		if err := store.UpdateAttempt(ctx, tx, a, now); err != nil {
+			if errors.Is(err, store.ErrConflict) {
+				return errProviderPaymentBound
+			}
 			return err
 		}
 		if s.onPaymentSucceeded != nil && prevStatus != string(state.PaymentSucceeded) &&
@@ -205,10 +210,35 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 		res.Payment, res.Attempt = p, a
 		return nil
 	})
+	if errors.Is(err, errProviderPaymentBound) {
+		// Another attempt of the account settled this provider payment first, in
+		// a transaction that committed after our read check. Nothing of ours was
+		// written: the snapshot is not this attempt's, as when that check rejects it.
+		slog.Warn("core: the provider payment already settles another attempt; snapshot ignored", "attempt", attemptID,
+			"provider_payment", snap.ProviderPaymentID)
+		return s.unchanged(ctx, attemptID)
+	}
 	if err == nil {
 		s.raise(ctx, alerts)
 	}
 	return res, err
+}
+
+// errProviderPaymentBound means the unique index on a captured attempt's
+// provider payment refused the write.
+var errProviderPaymentBound = errors.New("core: provider payment already bound to another attempt")
+
+// unchanged reports an attempt and its payment as they are stored.
+func (s *Service) unchanged(ctx context.Context, attemptID string) (ApplyResult, error) {
+	var res ApplyResult
+	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+		if res.Attempt, err = store.GetAttempt(ctx, q, attemptID); err != nil {
+			return err
+		}
+		res.Payment, err = store.GetPayment(ctx, q, res.Attempt.PaymentID)
+		return
+	})
+	return res, mapStoreErr(err, "attempt")
 }
 
 func firstNonEmpty(a, b string) string {
@@ -266,7 +296,7 @@ func (s *Service) handleDuplicate(ctx context.Context, tx store.Tx, p *store.Pay
 	if action == "auto_refund" {
 		// A full refund of the EXTRA attempt only. The duplicate is not a
 		// supply, so it gets no invoice and its refund no credit note.
-		_, err := s.insertRefund(ctx, tx, *p, extra, snap.Amount, "duplicate_payment", "system", audit.System)
+		_, err := s.insertRefund(ctx, tx, *p, extra, snap.Amount, "duplicate_payment", "system", "", audit.System)
 		if err == nil {
 			*alerts = append(*alerts, notify.Alert{Severity: notify.SeverityInfo, Kind: "payment.duplicate_refunded",
 				Message: fmt.Sprintf("Payment %s was paid twice; the extra %d %s is being refunded automatically.", p.ID, snap.Amount, snap.Currency),

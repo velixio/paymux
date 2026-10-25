@@ -20,7 +20,27 @@ node --test examples/webhook-receiver-js/receiver.test.mjs                  # op
 
 The Go receiver example (`examples/webhook-receiver-go`) is tested by `go test ./...`. The Python and Node examples are for customers and need their interpreters, which the project does not: `scripts/ci.sh` runs them when `python3` or `node` is installed and skips them, with a message, when it is not. The smoke test (`bash scripts/smoke.sh`) is a Go program, `scripts/smoke`; it needs only the Go toolchain and, for the PostgreSQL run, `psql`.
 
-The full CI gate is `bash scripts/ci.sh`. It also runs static analysis, API/capability snapshot checks, database tests, smoke checks, and release/build checks. See the Makefile for database-specific targets.
+## The CI gate
+
+`bash scripts/ci.sh` is the full gate, in sequence: commit-message trailers, gofmt, the React checks, both browser suites, the example receivers, vet, the API snapshot and capability matrix, staticcheck, govulncheck, the race tests on SQLite and PostgreSQL, the smoke test, the cross builds and the docker build. It is what to run locally before a pull request. See the Makefile for database-specific targets.
+
+The same script runs one group at a time, which is how GitHub runs it, as parallel jobs:
+
+| Command | What it runs |
+|---|---|
+| `scripts/ci.sh checks` | trailers, gofmt, React typecheck / docs check / vitest / build, optional Python and Node examples, vet, API snapshot, capability matrix, the shard map, staticcheck, govulncheck |
+| `scripts/ci.sh test N/M` | shard N of M of the race test suite (`make test` and `make test-pg` for the shard's packages; with `PAYMUX_TEST_POSTGRES_URL` set, one run covers both databases) |
+| `scripts/ci.sh smoke` | the smoke test of the real binary on SQLite |
+| `scripts/ci.sh build` | the linux/amd64 and arm64 cross builds and the docker build |
+| `scripts/ci.sh browser` | the dashboard browser tests |
+| `scripts/ci.sh website` | the public website browser tests (GitHub runs them as the `public-browser` job) |
+| `scripts/ci.sh shards [M]` | prints which package runs in which shard |
+
+**Shards.** The race suite is the long pole, so it is split by package into three shards that run in parallel, each with its own PostgreSQL service container (`PAYMUX_TEST_POSTGRES_URL`, `PAYMUX_REQUIRE_PG=1`), so every shard exercises both databases. The split is deterministic, heaviest package first onto the lightest shard, using the measured seconds in `scripts/ci-shards.txt` (a package that is not listed counts as one second). The `checks` group fails if a package would be in no shard or in two, so a new package cannot go untested. When the balance drifts, re-measure (`go test -race -json ./...`, the per-package `Elapsed`), update `scripts/ci-shards.txt` and look at `scripts/ci.sh shards`.
+
+**The `ci` job and why its name matters.** Branch protection on `main` requires the status checks `ci` and `public-browser`. The gate is several jobs, so `ci` in `.github/workflows/ci.yml` is an aggregator: it `needs` all of them, runs `if: always()`, and fails unless every needed job's result is `success`. Do not rename `ci` or `public-browser` (a renamed required check is never reported and blocks every merge), and add any new job of the gate to the `needs` list of `ci`. `release.yml` calls the whole workflow before it builds anything.
+
+**Caches.** setup-go's own cache is keyed on `go.sum` only, so it is saved once and then goes stale as the code changes. The jobs restore the newest Go build and module cache of their own kind (`actions/cache/restore`, key = `go.sum` hash + run id, found through `restore-keys` prefixes) and only a push to `main` saves a new one (`actions/cache/save`), so pull requests start from main's newest cache and never fill the repository's 10 GB budget. The bun download cache and the Playwright browsers are keyed on `frontend/bun.lock` and saved on `main` the same way. Release (tag) runs only restore.
 
 ## Go coverage across the repository
 

@@ -33,8 +33,8 @@ func (d *Dashboard) routesAppearance() {
 	m := d.mux
 	m.HandleFunc("GET "+prefix+"/appearance", d.authed(authz.SettingsRead, d.appearancePage))
 	m.HandleFunc("GET "+prefix+"/appearance/preview/{name}", d.authed(authz.SettingsRead, d.themePreview))
-	m.HandleFunc("POST "+prefix+"/appearance/theme", d.authed(authz.SettingsWrite, d.themeSet))
-	m.HandleFunc("POST "+prefix+"/appearance/apps/{id}", d.authed(authz.SettingsWrite, d.appAppearanceSet))
+	m.HandleFunc("POST "+prefix+"/appearance/theme", d.authed(authz.SettingsWrite, d.recent(d.themeSet)))
+	m.HandleFunc("POST "+prefix+"/appearance/apps/{id}", d.authed(authz.SettingsWrite, d.recent(d.appAppearanceSet)))
 }
 
 // usableThemes maps the names of themes that load cleanly.

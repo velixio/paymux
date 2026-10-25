@@ -25,7 +25,6 @@
 ## Safety checklist
 
 - [ ] No secrets, tokens or real customer data in the diff, tests, fixtures or docs
-- [ ] No `Co-Authored-By` or other attribution trailers in the commit messages (a commit hook and CI reject them)
 - [ ] Docs updated where behaviour changed (`docs/`), and the docs link test passes
 - [ ] Breaking changes and upgrade steps are noted in `docs/upgrades.md`
 

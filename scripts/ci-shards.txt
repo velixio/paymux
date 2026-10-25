@@ -1,0 +1,38 @@
+# Seconds each package's race tests took (SQLite and PostgreSQL, 20 cores, measured with
+# `go test -race -json ./...`), used by scripts/ci.sh to balance the test shards.
+# A package that is not listed counts as 1 second. Refresh when the balance drifts:
+# run `bash scripts/ci.sh shards` for the plan and re-measure with `go test -race -json`.
+
+internal/dashboard 115
+pkg/hub 79
+internal/subscriptions 78
+internal/store 56
+internal/invoice 48
+internal/checkout 41
+internal/core 37
+internal/cli 37
+internal/httpapi 31
+internal/paypage 27
+internal/dblog 27
+internal/paylinks 24
+pkg/jsvm 19
+internal/reconcile 19
+internal/disputes 19
+internal/jobs 17
+internal/connectors 16
+internal/payouts 14
+internal/outbound 13
+internal/settings 13
+scripts 12
+internal/inbound 10
+internal/redact 6
+connectors/simulator 5
+internal/housekeeping 5
+internal/invoice/render 5
+internal/reseal 4
+internal/alertcenter 3
+internal/auth 3
+internal/oidc 3
+pkg/framework 2
+internal/apidocs 2
+internal/audit 2
