@@ -73,7 +73,10 @@ export default defineConfig({
               name: "vendor-react",
               test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/,
             },
-            { name: "vendor-tanstack", test: /node_modules[\\/]@tanstack[\\/]/ },
+            {
+              name: "vendor-tanstack",
+              test: /node_modules[\\/]@tanstack[\\/]/,
+            },
             {
               name: "vendor-ui",
               test: /node_modules[\\/](radix-ui|@radix-ui|@floating-ui|lucide-react|tailwind-merge|class-variance-authority|clsx)[\\/]/,
