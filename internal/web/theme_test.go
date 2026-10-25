@@ -51,7 +51,7 @@ func TestBundledThemesLoad(t *testing.T) {
 	for _, i := range th.List() {
 		names = append(names, i.Name)
 	}
-	if strings.Join(names, ",") != "default,minimal-dark" {
+	if strings.Join(names, ",") != "default,midnight,minimal-dark,paddle,stripe" {
 		t.Fatalf("list: %v", names)
 	}
 }
@@ -424,5 +424,41 @@ func TestDashboardJSONEndpoint(t *testing.T) {
 		if w.Header().Get("X-Content-Type-Options") != "nosniff" {
 			t.Error("nosniff header missing")
 		}
+	}
+}
+
+func TestBundledDashboardThemesLoadAndLeaveCustomerPagesAlone(t *testing.T) {
+	th := NewThemes(Bundled(), "")
+	for _, name := range []string{"stripe", "paddle", "midnight"} {
+		got, err := th.Load(name)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !got.Bundled || got.Dashboard == nil || got.Dashboard.Seeds.Accent == "" {
+			t.Fatalf("%s: want a bundled theme with dashboard seeds, got %+v", name, got.Manifest)
+		}
+		// A dashboard-only theme must not touch the customer pages: no tokens,
+		// no font stack, no stylesheets, so its theme.css is an empty :root.
+		if len(got.Tokens) != 0 || got.FontStack != "" {
+			t.Errorf("%s: customer-page tokens or font stack set", name)
+		}
+		css := string(got.CSS())
+		_, body, _ := strings.Cut(css, "\n")
+		if strings.TrimSpace(body) != ":root{}" {
+			t.Errorf("%s: customer-page CSS should be an empty :root, got %q", name, body)
+		}
+	}
+	// The customer-page theme stays as it was.
+	d, err := th.Load("default")
+	if err != nil || d.Dashboard != nil || d.Tokens["--color-accent"] != "#2563eb" {
+		t.Fatalf("default theme changed: %v %+v", err, d)
+	}
+	m, _ := th.Load("midnight")
+	if m.Dashboard.Scheme != "dark" || m.Dashboard.Seeds.Accent == m.Dashboard.DarkSeeds.Accent {
+		t.Errorf("midnight: want scheme dark and separate light seeds, got %+v", m.Dashboard)
+	}
+	p, _ := th.Load("paddle")
+	if p.Dashboard.Seeds.Sidebar != "#121417" || p.Dashboard.Seeds.SidebarText == "" {
+		t.Errorf("paddle: want a dark sidebar with light text, got %+v", p.Dashboard.Seeds)
 	}
 }
