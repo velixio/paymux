@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { textOf, type ViewNode } from "./adapter";
-import { extractToolbar } from "./toolbar";
+import { extractToolbar, overflowEdges } from "./toolbar";
 
 const t = (text: string): ViewNode => ({
   tag: "#text",
@@ -199,5 +199,20 @@ describe("extractToolbar", () => {
       extractToolbar([el("p", { class: "notice" }, "hi"), h1("X")]),
     ).toBeNull();
     expect(extractToolbar([])).toBeNull();
+  });
+});
+
+describe("overflowEdges", () => {
+  test("nothing hidden when everything fits", () => {
+    expect(overflowEdges(0, 300, 300)).toEqual({ start: false, end: false });
+  });
+  test("more to the right at the start", () => {
+    expect(overflowEdges(0, 600, 300)).toEqual({ start: false, end: true });
+  });
+  test("both sides in the middle", () => {
+    expect(overflowEdges(120, 600, 300)).toEqual({ start: true, end: true });
+  });
+  test("only the left at the end, allowing for sub-pixel rounding", () => {
+    expect(overflowEdges(299.5, 600, 300)).toEqual({ start: true, end: false });
   });
 });
