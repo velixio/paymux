@@ -31,8 +31,9 @@ test("a payment opens in the side pane, survives reload and closes with Escape",
     .first()
     .click();
   await expect(pane(page)).toBeVisible();
+  // A readable address: just the id, no encoded path.
   await expect(page).toHaveURL(
-    /\/dashboard\/payments\?peek=%2Fdashboard%2Fpayments%2Fpay_/,
+    /\/dashboard\/payments\?peek=pay_[A-Za-z0-9_]+$/,
   );
   await expect(openTabs(page)).toHaveCount(tabsBefore); // same tab
   await expect(visible(page).locator("tbody tr").first()).toBeVisible(); // the list stays
