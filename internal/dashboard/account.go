@@ -47,14 +47,15 @@ func (d *Dashboard) recent(h authedHandler) authedHandler {
 			http.Redirect(w, r, prefix+"/login", http.StatusSeeOther)
 			return
 		}
-		back := r.URL.RequestURI()
+		back, unsaved := r.URL.RequestURI(), ""
 		if r.Method != http.MethodGet {
+			unsaved = "&unsaved=1"      // the confirmation page says the change was not made
 			back = prefix + "/overview" // the form that was posted is not replayed
 			if ref, err := url.Parse(r.Referer()); err == nil && ref.Path != "" {
 				back = ref.Path
 			}
 		}
-		http.Redirect(w, r, prefix+"/reauth?next="+url.QueryEscape(safeNext(back, prefix+"/overview")), http.StatusSeeOther)
+		http.Redirect(w, r, prefix+"/reauth?next="+url.QueryEscape(safeNext(back, prefix+"/overview"))+unsaved, http.StatusSeeOther)
 	}
 }
 
@@ -65,6 +66,7 @@ func (d *Dashboard) reauthPage(w http.ResponseWriter, r *http.Request, s *sessio
 func (d *Dashboard) renderReauth(w http.ResponseWriter, r *http.Request, s *session, status int, msg, next string) {
 	v := d.shell(r, s, "", "Confirm it is you")
 	v.Error, v.Next = msg, safeNext(next, prefix+"/overview")
+	v.Unsaved = r.URL.Query().Get("unsaved") == "1" || r.PostForm.Get("unsaved") == "1"
 	v.NeedCode = !d.o.DevSkip2FA && s.User.TOTPLastStep >= 0
 	d.render(w, status, "dash_reauth", v)
 }
