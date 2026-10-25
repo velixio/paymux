@@ -142,11 +142,20 @@ test("server-rendered banners match the in-app warning strip", () => {
   // The server page shows until React mounts (and on sign-in), so a reload
   // must not flash a different banner.
   const dash = read("../../../web/static/css/dash.css");
+  const rules = [
+    ...dash
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .matchAll(/(?:^|\n)([^{}]+)\{([^}]*)\}/g),
+  ];
   for (const selector of [".dev-banner", ".banner-warning"]) {
+    // The top-level rule whose selector list names exactly this class.
     const rule =
-      dash.match(
-        new RegExp(`\\n${selector.replace(".", "\\.")}\\s*\\{([^}]*)\\}`),
-      )?.[1] ?? "";
+      rules.find(([, sel]) =>
+        sel
+          .split(",")
+          .map((s) => s.trim())
+          .includes(selector),
+      )?.[2] ?? "";
     expect(rule, selector).toContain("background: var(--surface)");
     expect(rule, selector).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   }
