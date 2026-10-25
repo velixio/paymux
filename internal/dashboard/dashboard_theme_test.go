@@ -52,7 +52,8 @@ func TestPageCarriesTheEffectiveDashboardTheme(t *testing.T) {
 func TestContentSecurityPolicyAllowsTheManifestFetchAndNoncedStyle(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newThemedEnv(t, db)
-		r, _ := e.get(e.roleClient("admin"), "/dashboard/overview")
+		admin := e.roleClient("admin")
+		r, _ := e.get(admin, "/dashboard/overview")
 		csp := r.Header.Get("Content-Security-Policy")
 		// Same-origin fetch of /theme/<name>/dashboard.json falls under default-src 'self',
 		// and the <style> the page writes carries the response's nonce.
@@ -65,7 +66,7 @@ func TestContentSecurityPolicyAllowsTheManifestFetchAndNoncedStyle(t *testing.T)
 			t.Errorf("a connect-src would need to allow /theme/: %s", csp)
 		}
 		// The nonce in the page is the one in the header.
-		body := e.pageOK(e.roleClient("admin"), "/dashboard/overview")
+		body := e.pageOK(admin, "/dashboard/overview")
 		_, rest, _ := strings.Cut(body, `data-style-nonce="`)
 		nonce, _, _ := strings.Cut(rest, `"`)
 		if nonce == "" {
