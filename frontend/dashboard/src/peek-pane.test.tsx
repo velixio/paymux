@@ -309,3 +309,28 @@ test("the pane header carries the record's title, status and action links; the b
   expect(within(body).queryByText("About this payment")).toBeNull();
   expect(within(body).getAllByRole("tab")).toHaveLength(3);
 });
+
+test("Open in tab is an icon button, and the status pill sits outside the truncating title", async () => {
+  handlers["/dashboard/payments/pay_1"] = () =>
+    pageHtml(
+      "pay_1",
+      `<p><a href="/dashboard/payments">← Payments</a></p><h1>pay_1 <span class="status status-succeeded">succeeded</span></h1><dl><dt>Amount</dt><dd>10.00 INR</dd></dl>`,
+    );
+  await onList();
+  fireEvent.click(rowLink("pay_1"));
+  const p = await screen.findByRole("complementary", {
+    name: "Record preview",
+  });
+  await within(p).findByText("succeeded");
+  const head = p.querySelector(".peek-head") as HTMLElement;
+  const open = within(head).getByRole("button", { name: "Open in tab" });
+  // No visible label: only the arrow icon, named for screen readers.
+  expect(open.textContent?.trim()).toBe("");
+  expect(open.getAttribute("title")).toBe("Open in tab");
+  // The id truncates on its own; the pill is its sibling, never clipped.
+  const text = head.querySelector(".peek-title-text") as HTMLElement;
+  expect(text.textContent?.trim()).toBe("pay_1");
+  const pill = within(head).getByText("succeeded");
+  expect(text.contains(pill)).toBe(false);
+  expect(pill.closest(".peek-title")).not.toBeNull();
+});
