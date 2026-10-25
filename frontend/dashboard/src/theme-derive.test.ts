@@ -415,3 +415,90 @@ test("a dark sidebar on a light page does not push page text to white", () => {
   ).toBeGreaterThanOrEqual(4.5);
   expect(light["--muted-foreground"]).not.toBe("#ffffff");
 });
+
+test("overrides cannot make text unreadable: the final tokens always pass", () => {
+  const { light, dark } = derive(
+    { accent: "#635bff", background: "#ffffff" },
+    undefined,
+    {
+      light: {
+        "--foreground": "#ffffff",
+        "--primary-foreground": "#635bff",
+        "--sidebar-foreground": "#f7f8fa",
+      },
+      dark: {
+        "--muted-foreground": "#0f1117",
+        "--accent-foreground": "#24224a",
+      },
+    },
+  );
+  for (const [mode, t] of [
+    ["light", light],
+    ["dark", dark],
+  ] as const) {
+    for (const row of contrastReport(t))
+      expect(
+        row.ok,
+        `${mode} ${row.pair.join(" on ")} = ${row.ratio.toFixed(2)}`,
+      ).toBe(true);
+    for (const [fg, bg] of INNER_PAIRS)
+      expect(
+        contrast(t[fg], t[bg]),
+        `${mode} ${fg} on ${bg}`,
+      ).toBeGreaterThanOrEqual(4.5);
+  }
+  // Overrides of backgrounds are still used as given.
+  expect(
+    derive({ accent: "#635bff" }, undefined, {
+      light: { "--background": "#102030" },
+    }).light["--background"],
+  ).toBe("#102030");
+});
+
+test("random overrides never get through unreadable", () => {
+  const r = rng(77);
+  const names = [
+    "--foreground",
+    "--background",
+    "--card",
+    "--card-foreground",
+    "--primary",
+    "--primary-foreground",
+    "--muted",
+    "--muted-foreground",
+    "--secondary",
+    "--secondary-foreground",
+    "--ui-accent",
+    "--accent-foreground",
+    "--sidebar",
+    "--sidebar-foreground",
+    "--popover",
+    "--popover-foreground",
+    "--destructive",
+  ];
+  for (let i = 0; i < 1500; i++) {
+    const pick = () =>
+      Object.fromEntries(
+        names.filter(() => r() < 0.3).map((n) => [n, randHex(r)]),
+      );
+    const { light, dark } = derive(randSeeds(r), undefined, {
+      light: pick(),
+      dark: pick(),
+    });
+    for (const [mode, t] of [
+      ["light", light],
+      ["dark", dark],
+    ] as const) {
+      for (const row of contrastReport(t))
+        expect(
+          row.ok,
+          `#${i} ${mode} ${row.pair.join(" on ")} = ${row.ratio.toFixed(2)}`,
+        ).toBe(true);
+      for (const [fg, bg] of INNER_PAIRS)
+        expect(
+          contrast(t[fg], t[bg]),
+          `#${i} ${mode} ${fg} on ${bg}`,
+        ).toBeGreaterThanOrEqual(4.5);
+    }
+  }
+});
