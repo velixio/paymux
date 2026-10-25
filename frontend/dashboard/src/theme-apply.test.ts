@@ -6,9 +6,9 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   applyDashboardTheme,
   clearThemeCache,
-  themeCss,
   type Manifest,
 } from "./theme-apply";
+import { themeCss } from "./theme-derive";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 // What GET /theme/<name>/dashboard.json serves for a bundled theme.
