@@ -129,7 +129,12 @@ test("warning strip and mode labels take their colours from the tokens", () => {
     // A fixed hex colour would ignore the palette and dark mode.
     expect(rule(selector), selector).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   }
-  expect(rule(".workspace-warning")).toContain("var(--status-warn-bg)");
+  // The strip sits on the page like the rest of the shell; only its icon
+  // carries the warning colour.
+  expect(rule(".workspace-warning")).toContain("background: var(--card)");
+  expect(rule(".workspace-warning svg")).toContain(
+    "color: var(--status-warn-fg)",
+  );
   expect(rule(".live-label")).toContain("var(--status-ok-bg)");
 });
 
