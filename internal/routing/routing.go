@@ -78,8 +78,11 @@ type Account struct {
 	ID         string
 	Connector  string
 	Currencies []string // accepted_currencies
-	Purposes   []string // enabled_purposes
-	Disabled   bool
+	// SubscriptionCurrencies, when set, limits the currencies the account takes
+	// for the subscription purpose (a connector may take more for one-time payments).
+	SubscriptionCurrencies []string
+	Purposes               []string // enabled_purposes
+	Disabled               bool
 }
 
 // Request describes what needs routing.
@@ -127,6 +130,7 @@ func (w When) matches(r Request) bool {
 func eligible(a Account, r Request) bool {
 	return !a.Disabled &&
 		slices.Contains(a.Currencies, r.Currency) &&
+		(r.Purpose != PurposeSubscription || len(a.SubscriptionCurrencies) == 0 || slices.Contains(a.SubscriptionCurrencies, r.Currency)) &&
 		(r.Purpose == "" || slices.Contains(a.Purposes, r.Purpose)) &&
 		(len(r.AllowedConnectors) == 0 || slices.Contains(r.AllowedConnectors, a.Connector))
 }

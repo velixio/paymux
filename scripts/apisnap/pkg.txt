@@ -237,6 +237,7 @@ type Info struct {
 	Capabilities             []Capability     `json:"capabilities"`
 	ConfigSchema             json.RawMessage  `json:"config_schema"`
 	Currencies               []string         `json:"currencies"`
+	SubscriptionCurrencies   []string         `json:"subscription_currencies,omitempty"`
 	Methods                  []string         `json:"methods"`
 	MerchantOfRecord         bool             `json:"merchant_of_record"`
 	SubscriptionModes        []BillingMode    `json:"subscription_modes"`

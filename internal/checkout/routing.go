@@ -125,8 +125,12 @@ func appRoutingConfig(src ruleSource, app store.App) (routing.Config, error) {
 func RoutingAccounts(pas []store.ProviderAccount) []routing.Account {
 	accounts := make([]routing.Account, 0, len(pas))
 	for _, pa := range pas {
-		accounts = append(accounts, routing.Account{ID: pa.ID, Connector: pa.Connector, Currencies: pa.AcceptedCurrencies,
-			Purposes: pa.EnabledPurposes, Disabled: pa.Status != "active"})
+		a := routing.Account{ID: pa.ID, Connector: pa.Connector, Currencies: pa.AcceptedCurrencies,
+			Purposes: pa.EnabledPurposes, Disabled: pa.Status != "active"}
+		if _, info, ok := connector.Lookup(pa.Connector); ok {
+			a.SubscriptionCurrencies = info.SubscriptionCurrencies // a connector may bill subscriptions in fewer currencies
+		}
+		accounts = append(accounts, a)
 	}
 	return accounts
 }

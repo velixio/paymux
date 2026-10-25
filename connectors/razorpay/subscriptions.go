@@ -180,6 +180,9 @@ func (r *razorpay) CreateSubscriptionCheckout(ctx context.Context, req connector
 	if req.Amount <= 0 || req.IntervalCount < 1 || req.ProviderRef == "" {
 		return connector.CheckoutResult{}, errors.New("razorpay: subscription needs provider_ref, a positive amount and interval_count >= 1")
 	}
+	if req.Currency != "INR" {
+		return connector.CheckoutResult{}, fmt.Errorf("razorpay: subscriptions are billed in INR only, not %s: %w", req.Currency, connector.ErrUnsupported)
+	}
 	planID, err := r.planFor(ctx, planInfo{Amount: req.Amount, Currency: req.Currency, Period: period, Interval: req.IntervalCount})
 	if err != nil {
 		return connector.CheckoutResult{}, err

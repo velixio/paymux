@@ -179,6 +179,13 @@ func (s *Service) chooseRoute(ctx context.Context, q store.Queryer, appID, mode 
 		usable = append(usable, a)
 	}
 	accounts := checkout.RoutingAccounts(usable)
+	for i := range accounts {
+		// The live connector knows best (a remote connector's currencies come from
+		// discovery): a subscription is never routed to an account whose connector
+		// cannot bill it in the currency, so the failure is here and not at the
+		// customer's checkout.
+		accounts[i].SubscriptionCurrencies = conns[accounts[i].ID].Info().SubscriptionCurrencies
+	}
 	res, err := routing.Choose(cfg, routing.Request{Currency: in.Currency, Amount: in.Amount, Purpose: routing.PurposeSubscription,
 		Metadata: in.Metadata}, accounts, nil)
 	var rej *routing.RejectedError

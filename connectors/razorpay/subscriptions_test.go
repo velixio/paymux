@@ -279,6 +279,26 @@ func TestInfoDeclaresProviderManaged(t *testing.T) {
 	if !i.Has(connector.CapSubscriptionManager) || len(i.SubscriptionModes) != 1 || i.SubscriptionModes[0] != connector.ProviderManaged {
 		t.Errorf("info = %+v", i)
 	}
+	// Razorpay takes several currencies for payments but bills subscriptions in INR only.
+	if len(i.SubscriptionCurrencies) != 1 || i.SubscriptionCurrencies[0] != "INR" {
+		t.Errorf("subscription currencies = %v, want [INR]", i.SubscriptionCurrencies)
+	}
+}
+
+// Seen live: a USD subscription was created at Razorpay and the customer's
+// checkout then failed with "Currency is not supported". Routing keeps USD away,
+// and the connector refuses it too, before any request is made.
+func TestSubscriptionInAnotherCurrencyIsRefusedBeforeAnyRequest(t *testing.T) {
+	f := newFake("")
+	m, _ := newSubConn(t, f)
+	_, err := m.CreateSubscriptionCheckout(context.Background(), connector.SubscriptionRequest{
+		SubscriptionID: "s1", ProviderRef: "ref1", Amount: 4900, Currency: "USD", Interval: "month", IntervalCount: 1})
+	if err == nil || !strings.Contains(err.Error(), "INR") {
+		t.Fatalf("err = %v", err)
+	}
+	if n := len(f.callsTo("POST", "/v1/plans")) + len(f.callsTo("POST", "/v1/subscriptions")); n != 0 {
+		t.Errorf("%d requests were made for a USD subscription", n)
+	}
 }
 
 func TestPaymentEntityCarriesItsSubscription(t *testing.T) {

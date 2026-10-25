@@ -158,6 +158,7 @@ Paymux must respect:
   `merchant_triggered` (Paymux schedules each debit on a mandate).
 * `MandateLimits`: per-method caps on a single debit.
 * `PreDebitPerAttempt`: the provider needs a notice per debit, not once per mandate.
+* `SubscriptionCurrencies`: the currencies the connector can bill a subscription in, when fewer than `Currencies` (Razorpay: INR only). Routing never sends a subscription in another currency to it, so a customer is not left at a checkout that fails.
 * `PreDebitMinHours`: the least time the provider wants between a notice and its debit, when that is longer than the RBI's 24 hours (PayU: 48). Paymux never debits sooner.
 * `MandateSetupAmount` and `RefundsVerificationDebit`: the verification debit a
   mandate registration makes when nothing is due (default 100 minor units).

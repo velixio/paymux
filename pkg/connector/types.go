@@ -49,16 +49,23 @@ type MandateLimit struct {
 
 // Info describes a connector.
 type Info struct {
-	Name               string          `json:"name"`
-	Version            string          `json:"version"`
-	DisplayName        string          `json:"display_name"`
-	Capabilities       []Capability    `json:"capabilities"`
-	ConfigSchema       json.RawMessage `json:"config_schema"`
-	Currencies         []string        `json:"currencies"`
-	Methods            []string        `json:"methods"`
-	MerchantOfRecord   bool            `json:"merchant_of_record"`
-	SubscriptionModes  []BillingMode   `json:"subscription_modes"`
-	PreDebitPerAttempt bool            `json:"pre_debit_per_attempt"`
+	Name         string          `json:"name"`
+	Version      string          `json:"version"`
+	DisplayName  string          `json:"display_name"`
+	Capabilities []Capability    `json:"capabilities"`
+	ConfigSchema json.RawMessage `json:"config_schema"`
+	Currencies   []string        `json:"currencies"`
+	// SubscriptionCurrencies are the currencies the connector can bill a
+	// subscription in, when that is fewer than Currencies (Razorpay takes many
+	// currencies for one-time payments but subscriptions only in INR). Empty means
+	// the same as Currencies. Routing never sends a subscription in another
+	// currency to the connector, so the customer is not left at a checkout that
+	// fails.
+	SubscriptionCurrencies []string      `json:"subscription_currencies,omitempty"`
+	Methods                []string      `json:"methods"`
+	MerchantOfRecord       bool          `json:"merchant_of_record"`
+	SubscriptionModes      []BillingMode `json:"subscription_modes"`
+	PreDebitPerAttempt     bool          `json:"pre_debit_per_attempt"`
 	// PreDebitMinHours is the least time the provider wants between a pre-debit
 	// notice and the debit it announces, when that is longer than the RBI's 24
 	// hours (PayU asks for 48 for cards and most UPI AutoPay mandates). 0 means 24.

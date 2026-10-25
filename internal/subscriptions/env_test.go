@@ -66,13 +66,15 @@ type base struct {
 	name   string
 	modes  []connector.BillingMode
 	limits []connector.MandateLimit
+	subCur []string // Info.SubscriptionCurrencies
 	r      *rec
 }
 
 func (b base) Info() connector.Info {
 	return connector.Info{Name: b.name, Version: "1", DisplayName: b.name, Currencies: []string{"INR"}, SubscriptionModes: b.modes,
 		MandateLimits: b.limits, PreDebitPerAttempt: b.r.perAttempt, MandateSetupAmount: 100,
-		RefundsVerificationDebit: !b.r.noReverse, MinChargeMinor: b.r.minCharge, PreDebitMinHours: b.r.noticeHours}
+		RefundsVerificationDebit: !b.r.noReverse, MinChargeMinor: b.r.minCharge, PreDebitMinHours: b.r.noticeHours,
+		SubscriptionCurrencies: b.subCur}
 }
 func (b base) CreateCheckout(context.Context, connector.CheckoutRequest) (connector.CheckoutResult, error) {
 	return connector.CheckoutResult{}, connector.ErrUnsupported
@@ -272,7 +274,7 @@ func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 	conns := map[string]connector.Connector{
 		"pa_upi":     mandateConn{base{name: "payu", modes: mandateMod, limits: allMethods, r: e.r}},
 		"pa_enach":   mandateConn{base{name: "zoho", modes: mandateMod, limits: []connector.MandateLimit{{Method: "emandate", Currency: "INR"}}, r: e.r}},
-		"pa_managed": managedConn{base{name: "razorpay", modes: managedMod, r: e.r}},
+		"pa_managed": managedConn{base{name: "razorpay", modes: managedMod, subCur: []string{"INR"}, r: e.r}},
 		"pa_whop":    managedConn{base{name: "whop", modes: managedMod, r: e.r}},
 	}
 	e.subs = subscriptions.New(subscriptions.Options{DB: db, Core: e.core, Settings: e.set, Jobs: e.q, Emitter: emitter, BaseURL: "https://pay.example.com", Mailer: e.mailer,

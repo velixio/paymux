@@ -34,13 +34,16 @@ const configSchema = `{
 }`
 
 var info = connector.Info{
-	Version:           "0.1.0",
-	DisplayName:       "Razorpay",
-	Capabilities:      []connector.Capability{connector.CapRefund, connector.CapList, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapSubscriptionManager, connector.CapSettle},
-	ConfigSchema:      json.RawMessage(configSchema),
-	Currencies:        []string{"INR", "USD", "EUR", "GBP", "SGD", "AED", "AUD", "CAD"},
-	Methods:           []string{"card", "upi", "netbanking", "wallet", "emi"},
-	SubscriptionModes: []connector.BillingMode{connector.ProviderManaged},
+	Version:      "0.1.0",
+	DisplayName:  "Razorpay",
+	Capabilities: []connector.Capability{connector.CapRefund, connector.CapList, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapSubscriptionManager, connector.CapSettle},
+	ConfigSchema: json.RawMessage(configSchema),
+	Currencies:   []string{"INR", "USD", "EUR", "GBP", "SGD", "AED", "AUD", "CAD"},
+	// Seen live: a USD subscription was created and the checkout then failed with
+	// "Currency is not supported". Subscriptions are billed in INR only.
+	SubscriptionCurrencies: []string{"INR"},
+	Methods:                []string{"card", "upi", "netbanking", "wallet", "emi"},
+	SubscriptionModes:      []connector.BillingMode{connector.ProviderManaged},
 	// The smallest INR order is Rs 1. (The minimums of Razorpay's other
 	// currencies are not stated here: they default to one minor unit.)
 	MinChargeMinor: map[string]int64{"INR": 100},
