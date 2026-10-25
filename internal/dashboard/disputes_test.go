@@ -11,6 +11,7 @@ import (
 	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/fakeconn"
+	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/store/storetest"
 	"github.com/paymux/paymux/pkg/connector"
@@ -400,5 +401,30 @@ func TestDisputesOfAnotherOrgAreInvisible(t *testing.T) {
 		if r, _ := e.post(op, "/dashboard/disputes", url.Values{"payment_id": {"pay_foreign"}, "amount": {"1"}, "csrf": {tok}}); r.StatusCode != 404 && r.StatusCode != 400 {
 			t.Errorf("manual entry against another org's payment: %d", r.StatusCode)
 		}
+	})
+}
+
+func TestNavLinksCarryOpenDisputeAndAlertCounts(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		alpha, _ := e.taxApp("alpha", supplierGSTIN)
+		pa, st := e.disputeAccount(alpha, true)
+		c := e.roleClient("viewer")
+		body := e.pageOK(c, "/dashboard/overview")
+		lacks(t, body, "data-count")
+
+		now := e.clk.Now()
+		pay := func() store.Payment { return e.payVia(alpha, 50000, "INR", intraB2C, pa.ID) }
+		e.openDispute(st, pa, pay(), "dsp_a", connector.DisputeNeedsResponse, now.Add(24*time.Hour))
+		e.openDispute(st, pa, pay(), "dsp_b", connector.DisputeNeedsResponse, now.Add(48*time.Hour))
+		e.openDispute(st, pa, pay(), "dsp_c", connector.DisputeUnderReview, now.Add(72*time.Hour)) // waiting on the provider
+		e.otherOrg()
+		for _, page := range []string{"/dashboard/overview", "/dashboard/payments"} {
+			body = e.pageOK(c, page)
+			has(t, body, `href="/dashboard/disputes" data-count="2"`)
+			lacks(t, body, `href="/dashboard/alerts" data-count`)
+		}
+		e.raise(notify.SeverityWarning, "domain.failed", "pay.shop.example.org failed", map[string]string{"domain": "d1"})
+		has(t, e.pageOK(c, "/dashboard/overview"), `href="/dashboard/alerts" data-count="1"`)
 	})
 }
