@@ -124,6 +124,7 @@ type PayPage struct {
 	Billing                        Billing
 	IndiaStates                    []StateOption
 	StateRequired, AddressRequired bool
+	CountryRequired                bool
 	// result
 	Title, Message, ReturnURL string
 	// payment link page

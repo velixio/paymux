@@ -35,7 +35,7 @@ var simLink = regexp.MustCompile(`/sim/([0-9A-Za-z]+)\?pa=(pa_[0-9a-z]+)`)
 // hosted simulator page; it returns the page path and the reference.
 func openSim(t *testing.T, e *env) (path, ref, pa string, payID string) {
 	t.Helper()
-	c := e.create(core.CreatePaymentInput{Amount: 49900, Currency: "USD"})
+	c := e.create(core.CreatePaymentInput{Amount: 49900})
 	r := e.do("GET", c.path(), "", nil)
 	loc := r.header.Get("Location")
 	m := simLink.FindStringSubmatch(loc)

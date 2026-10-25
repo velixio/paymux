@@ -166,7 +166,11 @@ func (e *env) create(in core.CreatePaymentInput) created {
 	e.t.Helper()
 	in.Scope = e.scope
 	if in.Currency == "" {
+		// A dollar payment from a known buyer: the pay page does not stop to ask the country.
 		in.Currency = "USD"
+		if in.Customer == nil {
+			in.Customer = &core.CustomerInput{Billing: store.Billing{Country: "US"}}
+		}
 	}
 	if in.Amount == 0 {
 		in.Amount = 1000

@@ -24,7 +24,7 @@ var csrfRE = regexp.MustCompile(`name="csrf" value="([0-9a-f]+)"`)
 
 var noBilling = &core.CustomerInput{ExternalRef: "u2", Name: "Ravi", Email: "ravi@example.com"}
 
-const gstin29 = "29AAAAA0000A1Z5"
+const gstin29 = "29AAAAA0000A1ZY"
 
 type page struct {
 	status int
@@ -97,7 +97,7 @@ func TestHostedCheckoutAsksForBillingBeforeTheProviderIsCalled(t *testing.T) {
 		for name, fields := range map[string]url.Values{
 			"no state":    {"name": {"Ravi"}},
 			"bad state":   {"name": {"Ravi"}, "state_code": {"99"}},
-			"bad gstin":   {"name": {"Ravi"}, "gstin": {"29AAAAA0000A1Z6"}, "legal_name": {"X"}, "state_code": {"29"}},
+			"bad gstin":   {"name": {"Ravi"}, "gstin": {"29AAAAA0000A1Z5"}, "legal_name": {"X"}, "state_code": {"29"}},
 			"bad country": {"name": {"Ravi"}, "country": {"USA"}},
 		} {
 			if r := answer(t, target, fields); r.status != 400 || !strings.Contains(r.body, `name="state_code"`) {

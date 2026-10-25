@@ -8,7 +8,7 @@ import (
 	"github.com/paymux/paymux/internal/store"
 )
 
-const gstin29 = "29AAAAA0000A1Z5"
+const gstin29 = "29AAAAA0000A1ZY"
 
 func form(kv ...string) url.Values {
 	f := url.Values{}
@@ -37,7 +37,7 @@ func TestNeedForIndianAndForeignBuyers(t *testing.T) {
 		"abroad paying in rupees":    {"state_required", "INR", true, 50000, cust("US", ""), true, billingform.Need{}},
 		"dollars, country unknown":   {"state_required", "USD", true, 1500, cust("", ""), true, billingform.Need{Show: true, CountryRequired: true}},
 		"dollars, country known":     {"state_required", "USD", true, 1500, cust("US", ""), true, billingform.Need{}},
-		"dollars, an Indian buyer":   {"state_required", "USD", true, 1500, cust("IN", ""), true, billingform.Need{}},
+		"dollars, an Indian buyer":   {"state_required", "USD", true, 1500, cust("IN", ""), true, billingform.Need{Show: true, StateRequired: true}},
 		"dollars, setting off":       {"off", "USD", true, 1500, cust("", ""), true, billingform.Need{}},
 		"dollars, invoicing off":     {"state_required", "USD", false, 1500, cust("", ""), true, billingform.Need{}},
 		"dollars, optional mode":     {"optional", "USD", true, 1500, cust("", ""), true, billingform.Need{Show: true, CountryRequired: true}},
@@ -65,7 +65,7 @@ func TestParse(t *testing.T) {
 		"bad state":          {form("name", "A", "state_code", "99"), "INR", india, "billing.err.state_invalid", nil},
 		"gstin gives state":  {form("name", "A", "gstin", gstin29, "legal_name", "Acme"), "INR", india, "", func(t *testing.T, b store.Billing) { must(t, b.StateCode == "29" && b.GSTIN == gstin29, b) }},
 		"gstin needs a name": {form("name", "A", "gstin", gstin29), "INR", india, "billing.err.legal_name", nil},
-		"gstin checksum":     {form("name", "A", "gstin", "29AAAAA0000A1Z6", "legal_name", "X", "state_code", "29"), "INR", india, "billing.err.gstin", nil},
+		"gstin checksum":     {form("name", "A", "gstin", "29AAAAA0000A1Z5", "legal_name", "X", "state_code", "29"), "INR", india, "billing.err.gstin", nil},
 		"gstin vs state":     {form("name", "A", "gstin", gstin29, "legal_name", "X", "state_code", "27"), "INR", india, "billing.err.gst_state", nil},
 		"abroad": {form("name", "A", "country", "us", "state_code", "29", "gstin", gstin29), "INR", india, "", func(t *testing.T, b store.Billing) {
 			must(t, b.Country == "US" && b.StateCode == "" && b.GSTIN == "", b)
