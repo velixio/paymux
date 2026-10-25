@@ -80,11 +80,27 @@ The complete list is in [docs/features.md](docs/features.md).
 
 You do **not** need a gateway account to try it: the built-in simulator plays one.
 
-**Download a release.** Linux and macOS archives (amd64, arm64) are on the [releases page](https://github.com/velixio/paymux/releases/latest). `SHA256SUMS` is signed with [cosign](https://docs.sigstore.dev/cosign/) by the release workflow itself:
+### Download
+
+Prebuilt binaries of the latest release. Each link always points at the newest version.
+
+| Platform | Download |
+|---|---|
+| Linux, x86-64 | [paymux_linux_amd64.tar.gz](https://github.com/velixio/paymux/releases/latest/download/paymux_linux_amd64.tar.gz) |
+| Linux, ARM64 | [paymux_linux_arm64.tar.gz](https://github.com/velixio/paymux/releases/latest/download/paymux_linux_arm64.tar.gz) |
+| macOS, Intel | [paymux_darwin_amd64.tar.gz](https://github.com/velixio/paymux/releases/latest/download/paymux_darwin_amd64.tar.gz) |
+| macOS, Apple silicon | [paymux_darwin_arm64.tar.gz](https://github.com/velixio/paymux/releases/latest/download/paymux_darwin_arm64.tar.gz) |
+
+**Install it with one command.** The script picks the right binary, checks its checksum and, when `cosign` is installed, its signature, then installs it ([options](docs/installation.md#use-a-release-binary)):
 
 ```bash
-v=0.1.0; f=paymux_${v}_linux_amd64.tar.gz
-base=https://github.com/velixio/paymux/releases/download/v$v
+curl -fsSL https://github.com/velixio/paymux/releases/latest/download/install.sh | sh
+```
+
+**Or verify a download by hand.** `SHA256SUMS` is signed with [cosign](https://docs.sigstore.dev/cosign/) by the release workflow itself:
+
+```bash
+f=paymux_linux_amd64.tar.gz; base=https://github.com/velixio/paymux/releases/latest/download
 curl -LO $base/$f -LO $base/SHA256SUMS -LO $base/SHA256SUMS.sig -LO $base/SHA256SUMS.pem
 cosign verify-blob --certificate SHA256SUMS.pem --signature SHA256SUMS.sig \
   --certificate-identity-regexp '^https://github\.com/velixio/paymux/\.github/workflows/release\.yml@refs/tags/v' \
@@ -94,7 +110,9 @@ sha256sum --ignore-missing -c SHA256SUMS && tar xzf $f
 
 Later, `paymux update` installs a newer release and checks the same signature.
 
-**Or build from source.** You need [Go](https://go.dev/dl/) and [Bun](https://bun.sh). Go fetches the pinned toolchain by itself.
+### Build from source
+
+You need [Go](https://go.dev/dl/) and [Bun](https://bun.sh). Go fetches the pinned toolchain by itself.
 
 ```bash
 git clone https://github.com/velixio/paymux.git && cd paymux

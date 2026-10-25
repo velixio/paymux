@@ -32,6 +32,26 @@ Its only runtime responsibilities are serving static pages and `/healthz`. It re
 
 Download the archive matching your operating system and CPU from the repository's releases. Verify its checksum against `SHA256SUMS` before unpacking. Signature verification, when signing artifacts are supplied, is described in the [upgrade guide](upgrades.md).
 
+### The install script
+
+Each release also publishes `install.sh`, covered by the release's `SHA256SUMS` and signature like the archives:
+
+```sh
+curl -fsSL https://github.com/velixio/paymux/releases/latest/download/install.sh | sh
+```
+
+It supports Linux and macOS on amd64 and arm64. It downloads the archive for the machine and `SHA256SUMS`, always checks the checksum, checks the cosign signature of `SHA256SUMS` against the release workflow of the repository when `cosign` is installed (the same check as `paymux update`), unpacks only the `paymux` binary, runs its `version`, and installs it. Without `cosign` it installs on the checksum alone, prints a warning and the `cosign verify-blob` command to run yourself. The checksum comes from the same release page as the archive, so it detects a damaged download, not a tampered release; only the signature does that.
+
+| Setting | Meaning |
+|---|---|
+| `PAYMUX_VERSION=v0.1.0` | Install that release (the `v` is optional) instead of the latest. |
+| `PAYMUX_INSTALL_DIR` | Where to put `paymux`. Default `/usr/local/bin`. |
+| `PAYMUX_USE_SUDO=1` | Use `sudo` if the install directory is not writable. Without it the script stops and says so; it never calls `sudo` on its own. |
+| `PAYMUX_REQUIRE_SIGNATURE=1` | Fail, instead of warning, when the signature cannot be verified (no `cosign`, or an unsigned release). Recommended for automation. |
+| `PAYMUX_REPO`, `PAYMUX_DOWNLOAD_BASE`, `PAYMUX_COSIGN` | A fork or mirror, and the cosign program to use. |
+
+To read the script before running it, download `install.sh` from the release page and check it against `SHA256SUMS`. The stable links `https://github.com/velixio/paymux/releases/latest/download/paymux_<os>_<arch>.tar.gz` (`linux` or `darwin`, `amd64` or `arm64`) always point at the newest release.
+
 Do not copy a version-specific download URL from an old guide: select the release you intend to run. `paymux version` reports the installed version.
 
 ## Initialize the hub
