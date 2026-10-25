@@ -19,6 +19,8 @@ import {
   storageName,
   tabByHref,
 } from "./host.test.helpers";
+import { parseDashboard } from "./adapter";
+import { seedInitialPage } from "./shell";
 
 beforeEach(resetHost);
 afterEach(() => {
@@ -388,4 +390,25 @@ test("copy button copies code text", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Copy sk_abc" }));
   await waitFor(() => expect(writeText).toHaveBeenCalledWith("sk_abc"));
   expect(screen.queryByRole("button", { name: "Copy not_in_cell" })).toBeNull();
+});
+
+test("a reload uses the server-rendered page: no request, no loading state", async () => {
+  const doc = new DOMParser().parseFromString(
+    pageHtml("Payments", "<p>Payments body</p>"),
+    "text/html",
+  );
+  seedInitialPage(
+    "/dashboard/payments",
+    parseDashboard(doc, "/dashboard/payments"),
+  );
+  const seen: boolean[] = [];
+  const watch = new MutationObserver(() =>
+    seen.push(!!document.querySelector(".workspace-loading")),
+  );
+  watch.observe(document.body, { childList: true, subtree: true });
+  await mount("/dashboard/payments");
+  watch.disconnect();
+  expect(sectionOf("Payments body")).not.toBeNull();
+  expect(calls["/dashboard/payments"] ?? 0).toBe(0);
+  expect(seen).not.toContain(true);
 });
