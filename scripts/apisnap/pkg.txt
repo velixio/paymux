@@ -111,6 +111,14 @@ type ChargeRequest struct {
 	Currency    string     `json:"currency"`
 }
 
+type CheckoutHosts struct {
+	Script  []string `json:"script,omitempty"`
+	Frame   []string `json:"frame,omitempty"`
+	Form    []string `json:"form,omitempty"`
+	Connect []string `json:"connect,omitempty"`
+	Img     []string `json:"img,omitempty"`
+}
+
 type CheckoutRequest struct {
 	PaymentID   string            `json:"payment_id"`
 	AttemptID   string            `json:"attempt_id"`
@@ -238,6 +246,7 @@ type Info struct {
 	Capabilities             []Capability     `json:"capabilities"`
 	ConfigSchema             json.RawMessage  `json:"config_schema"`
 	Currencies               []string         `json:"currencies"`
+	CheckoutHosts            *CheckoutHosts   `json:"checkout_hosts,omitempty"`
 	SubscriptionCurrencies   []string         `json:"subscription_currencies,omitempty"`
 	SubscriptionFixedMethods []string         `json:"subscription_fixed_methods,omitempty"`
 	Methods                  []string         `json:"methods"`
