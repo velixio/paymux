@@ -14,11 +14,12 @@ const MAX_CLOSED = 10;
 const HOME = "/dashboard/overview";
 
 // Identity of a page: pathname plus identifying query, sorted. The `classic`
-// switch, empty values and the hash do not identify a page.
+// switch, the side-pane `peek`, empty values and the hash do not identify a
+// page.
 export function tabKey(href: string): string {
   const u = new URL(href, "http://tabs.invalid");
   const q = [...u.searchParams.entries()]
-    .filter(([k, v]) => k !== "classic" && v !== "")
+    .filter(([k, v]) => k !== "classic" && k !== "peek" && v !== "")
     .sort(([a, x], [b, y]) =>
       a === b ? x.localeCompare(y) : a.localeCompare(b),
     )

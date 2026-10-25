@@ -27,6 +27,22 @@ const isHeadExtra = (n: ViewNode) =>
   (n.tag === "nav" && hasClass(n, "overview-actions")) ||
   (n.tag === "a" && hasClass(n, "btn"));
 
+/** The h1 header of a page (back link, h1, description, actions) and the rest. */
+export function splitHead(nodes: ViewNode[]): {
+  head: ViewNode[];
+  rest: ViewNode[];
+} {
+  const h1 = nodes.findIndex((n) => n.tag === "h1");
+  if (h1 < 0) return { head: [], rest: nodes };
+  return { ...cut(nodes, h1, nodes.length) };
+}
+
+function cut(nodes: ViewNode[], h1: number, limit: number) {
+  let end = h1 + 1;
+  while (end < limit && isHeadExtra(nodes[end])) end++;
+  return { head: nodes.slice(0, end), rest: nodes.slice(end) };
+}
+
 /**
  * Splits a record page at its h2/h3 headings. Returns null with fewer than two
  * sections, so such pages render as they always did.
@@ -36,12 +52,9 @@ export function splitSections(nodes: ViewNode[]): SplitPage | null {
   if (firstHeading < 0) return null;
   if (nodes.filter(isHeading).length < 2) return null;
 
-  let headEnd = 0;
   const h1 = nodes.findIndex((n) => n.tag === "h1");
-  if (h1 >= 0 && h1 < firstHeading) {
-    headEnd = h1 + 1;
-    while (headEnd < firstHeading && isHeadExtra(nodes[headEnd])) headEnd++;
-  }
+  const headEnd =
+    h1 >= 0 && h1 < firstHeading ? cut(nodes, h1, firstHeading).head.length : 0;
 
   const sections: Section[] = [];
   const used = new Set<string>();
