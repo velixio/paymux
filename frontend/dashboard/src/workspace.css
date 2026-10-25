@@ -1568,6 +1568,7 @@ main.dash:has(#paymux-react-root) {
 }
 .theme-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
 }
