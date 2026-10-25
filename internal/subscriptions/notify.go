@@ -603,9 +603,15 @@ func (s *Service) recordProviderRenewal(ctx context.Context, subID string, ps co
 	if ps.ProviderPaymentID == "" {
 		return newErr(ErrInvalid, "a renewal notification needs a provider payment id")
 	}
+	// The webhook body is a hint: what is booked is the payment as the provider
+	// answers for it, never the body's amount, currency or status.
+	ps, ok, err := s.fetchRenewalPayment(ctx, subID, ps)
+	if err != nil || !ok {
+		return err
+	}
 	var cy store.Cycle
 	var sub store.Subscription
-	err := s.db.Write(ctx, func(tx store.Tx) error {
+	err = s.db.Write(ctx, func(tx store.Tx) error {
 		var err error
 		if sub, err = s.lockSub(ctx, tx, subID); err != nil {
 			return err
@@ -649,6 +655,44 @@ func (s *Service) recordProviderRenewal(ctx context.Context, subID string, ps co
 		return err
 	}
 	return s.reconcile(ctx, subID, cy.ID)
+}
+
+// fetchRenewalPayment asks the provider for the payment a notification named.
+// ok is false, with a nil error, when nothing must be booked: the provider
+// does not know the payment, or it belongs to another subscription. A failed
+// fetch, or a payment the provider has not captured, is an error so that the
+// job is retried.
+func (s *Service) fetchRenewalPayment(ctx context.Context, subID string, claimed connector.PaymentSnapshot) (connector.PaymentSnapshot, bool, error) {
+	var sub store.Subscription
+	if err := s.db.Read(ctx, func(q store.Querier) (err error) { sub, err = store.GetSubscription(ctx, q, subID); return }); err != nil {
+		return claimed, false, mapNotFound(err, "subscription")
+	}
+	conn, err := s.connectors.Get(ctx, sub.ProviderAccountID)
+	if err != nil {
+		return claimed, false, err
+	}
+	// Only the payment id is asked: a provider that cannot look a renewal up
+	// by our reference (it has none) must still answer.
+	truth, err := conn.FetchPayment(ctx, connector.PaymentRef{ProviderPaymentID: claimed.ProviderPaymentID})
+	switch {
+	case errors.Is(err, connector.ErrNotFound):
+		s.log.Warn("subscriptions: the provider does not know the renewal payment; nothing booked",
+			"subscription", sub.ID, "provider_payment_id", claimed.ProviderPaymentID)
+		return claimed, false, nil
+	case err != nil:
+		return claimed, false, err
+	}
+	// Where the provider names the subscription of a payment, it must be this one.
+	if truth.SubscriptionID != "" && sub.ProviderSubscriptionID != "" && truth.SubscriptionID != sub.ProviderSubscriptionID {
+		s.log.Warn("subscriptions: the renewal payment belongs to another subscription; nothing booked",
+			"subscription", sub.ID, "provider_payment_id", claimed.ProviderPaymentID, "provider_subscription_id", truth.SubscriptionID)
+		return claimed, false, nil
+	}
+	if truth.Status != connector.PaymentSucceeded {
+		return claimed, false, fmt.Errorf("subscriptions: the provider reports renewal payment %s as %q, not captured", claimed.ProviderPaymentID, truth.Status)
+	}
+	truth.ProviderPaymentID = claimed.ProviderPaymentID
+	return truth, true, nil
 }
 
 // ReturnRedirect is ApplyReturn for the payment flow: the URL to send the

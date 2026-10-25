@@ -53,6 +53,7 @@ type rec struct {
 	fixedMethods []string                                  // Info.SubscriptionFixedMethods of the test connectors
 	callIDs      []callIDs                                 // the log scope ids each provider call ran under
 	subTruth     map[string]connector.SubscriptionSnapshot // what the provider's API says of a subscription (default: active)
+	payTruth     map[string]connector.PaymentSnapshot      // what the provider's API says of a payment, by provider payment id
 }
 
 // callIDs are the identifiers (package logctx) a provider call ran under.
@@ -93,6 +94,11 @@ func (b base) FetchPayment(_ context.Context, ref connector.PaymentRef) (connect
 	b.r.mu.Unlock()
 	if fn != nil {
 		return fn(ref)
+	}
+	b.r.mu.Lock()
+	defer b.r.mu.Unlock()
+	if snap, ok := b.r.payTruth[ref.ProviderPaymentID]; ok && ref.ProviderPaymentID != "" {
+		return snap, nil
 	}
 	return connector.PaymentSnapshot{}, connector.ErrNotFound
 }
