@@ -690,7 +690,7 @@ func TestResolveSettlesAPayoutInReviewOnceWithAnAuditEntry(t *testing.T) {
 			if n := e.count1("payout." + status); n != 1 {
 				t.Errorf("payout.%s sent %d times: %v", status, n, e.types())
 			}
-			if n := e.count("SELECT COUNT(*) FROM audit_log WHERE action = 'payout.resolve' AND target = ? AND "after" LIKE '%checked the bank statement%'", p.ID); n != 1 {
+			if n := e.count("SELECT COUNT(*) FROM audit_log WHERE action = 'payout.resolve' AND target = ? AND \"after\" LIKE '%checked the bank statement%'", p.ID); n != 1 {
 				t.Errorf("audit rows = %d", n)
 			}
 			// Only from needs_review, and only once.
