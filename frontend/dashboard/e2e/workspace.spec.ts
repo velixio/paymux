@@ -129,3 +129,24 @@ test("reload shows no classic page; it appears only when the app script fails", 
   await expect(server).toBeVisible({ timeout: 4000 });
   await expect(server.getByRole("heading", { name: /Overview/ })).toBeVisible();
 });
+
+// The dashboard fetches each page and parses it before rendering it. A <style>
+// with the fetched page's nonce, left in that parsed copy, made the browser
+// report a Content Security Policy violation on every navigation.
+test("navigating the workspace reports no Content Security Policy violation", async ({
+  page,
+}) => {
+  const violations: string[] = [];
+  page.on("console", (m) => {
+    if (/Content Security Policy/i.test(m.text())) violations.push(m.text());
+  });
+  await login(page);
+  for (const name of ["Payments", "Settings", "Overview"]) {
+    const link = page.getByRole("link", { name, exact: true }).first();
+    if (await link.count()) {
+      await link.click();
+      await page.waitForLoadState("networkidle");
+    }
+  }
+  expect(violations).toEqual([]);
+});
