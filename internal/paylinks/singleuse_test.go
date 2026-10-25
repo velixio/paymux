@@ -173,3 +173,39 @@ func TestSuccessOnASpentLinkIsFlaggedOrRefunded(t *testing.T) {
 		})
 	}
 }
+
+// A payment already with the provider (processing) cannot be canceled. The
+// visitor asking for another amount then gets that payment back: a second
+// payable payment would let a single-use link be paid twice.
+func TestVariableAmountSingleUseLinkKeepsOneWhenTheProcessingPaymentCannotBeCanceled(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := su(t, db)
+		l := e.create(func(in *paylinks.CreateInput) {
+			in.SingleUse, in.Amount, in.MinAmount, in.MaxAmount = true, 0, 10000, 5000000
+		})
+		who := paylinks.StartInput{Name: "A", Email: "a@example.com", Holder: "visitor-a", Amount: 20000}
+		first, err := e.links.Start(ctx, l.Slug, who)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a, err := e.core.CreateAttempt(ctx, first.PaymentID, "pa_1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.core.ApplyAttemptSnapshot(ctx, a.ID, core.Snapshot{Status: state.AttemptAuthorized}); err != nil {
+			t.Fatal(err)
+		}
+		if got := e.payment(first.PaymentID); got.Status != "processing" {
+			t.Fatalf("setup: payment is %s", got.Status)
+		}
+
+		who.Amount = 30000 // another amount, same visitor
+		second, err := e.links.Start(ctx, l.Slug, who)
+		if err != nil {
+			t.Fatalf("second start: %v", err)
+		}
+		if second.PaymentID != first.PaymentID || e.paymentsOfLink(l.ID) != 1 {
+			t.Fatalf("a second payable payment was made: %s vs %s (%d payments)", second.PaymentID, first.PaymentID, e.paymentsOfLink(l.ID))
+		}
+	})
+}
