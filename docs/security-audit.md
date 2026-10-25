@@ -338,7 +338,11 @@ to the fixed tree.
   Fixed. A dispute keeps the provider's amount; its hold (`amount_held`) is
   capped at what the attempt has left after its other open disputes, release
   and loss move the held amount, and the payment gets the `dispute_overlap`
-  flag and an ops alert.
+  flag and an ops alert. A dispute that is lost takes what is left of the
+  attempt after the disputes still open and those already lost; if that is
+  more than it held (an earlier dispute ended in our favour), its hold is
+  topped up first, so release and loss still net per dispute and the ledger
+  never goes below minus the amount received.
 - **Where:** `internal/disputes/disputes.go`, `upsert`. F11 checks each
   dispute against the amount received, not the sum of the open holds.
 - **Why it is not fixed:** refusing the second dispute would drop a real
