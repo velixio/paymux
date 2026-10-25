@@ -35,7 +35,9 @@ func (r *recorder) Write(b []byte) (int, error) { return r.buf.Write(b) }
 // reserves the key, runs, and stores its response (sealed); a repeat with the
 // same body replays it, a repeat with another body is a 409, and a repeat
 // while the first is still running is a 409 to retry later. Responses with
-// status 5xx are not stored, so the client may retry.
+// status 5xx are not stored, so the client may retry. The reservation is a
+// fast path: payouts and refunds also store the key on the object, so a retry
+// that takes over a stale reservation still cannot create a second one.
 func (a *API) idempotent(w http.ResponseWriter, r *http.Request, pr core.Principal, body []byte, h handler) {
 	key := r.Header.Get("Idempotency-Key")
 	if len(key) > maxKeyLen {
