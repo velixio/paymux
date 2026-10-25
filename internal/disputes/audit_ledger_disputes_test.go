@@ -40,10 +40,6 @@ func TestAuditLedgerSecondOpenDisputeStillBlocksRefund(t *testing.T) {
 // received, but not the sum of the open holds: two full-amount disputes hold
 // twice what was received.
 func TestAuditLedgerDisputeHoldsCannotExceedReceived(t *testing.T) {
-	// Open finding A-13 in docs/security-audit.md: refusing the second dispute
-	// would drop a real chargeback, and capping its hold needs the release to
-	// match. Remove the skip with the fix.
-	t.Skip("A-13: unfixed, see docs/security-audit.md")
 	each(t, func(t *testing.T, e *env) {
 		p, _ := e.paid("pay_1")
 		e.apply(e.snap("dsp_a", "pay_1", connector.DisputeNeedsResponse, time.Time{}))
@@ -52,4 +48,36 @@ func TestAuditLedgerDisputeHoldsCannotExceedReceived(t *testing.T) {
 			t.Errorf("held %d of a payment that received %d (second apply err=%v)", held, p.AmountReceived, err)
 		}
 	})
+}
+
+// A-13. Two full-amount disputes on one payment, one lost and one won, in
+// either order: the dispute entries never take more than the payment received
+// out of the ledger, and a dispute that ends releases exactly what it held.
+func TestDisputeHoldsOfTwoDisputesNetToAtMostTheAmountReceived(t *testing.T) {
+	for _, lostFirst := range []bool{true, false} {
+		each(t, func(t *testing.T, e *env) {
+			p, _ := e.paid("pay_1")
+			a := e.snap("dsp_a", "pay_1", connector.DisputeNeedsResponse, time.Time{})
+			b := e.snap("dsp_b", "pay_1", connector.DisputeNeedsResponse, time.Time{})
+			e.apply(a)
+			e.apply(b)
+			if held := -sum(e.ledger(p.ID)); held > p.AmountReceived {
+				t.Errorf("lostFirst=%v: both open, %d held of %d received", lostFirst, held, p.AmountReceived)
+			}
+			first, second := connector.DisputeLost, connector.DisputeWon
+			if !lostFirst {
+				first, second = second, first
+			}
+			a.Status, b.Status = first, second
+			e.apply(a)
+			e.apply(b)
+			got := sum(e.ledger(p.ID))
+			if got < -p.AmountReceived {
+				t.Errorf("lostFirst=%v: disputes took %d from a payment that received %d", lostFirst, -got, p.AmountReceived)
+			}
+			if lostFirst && got != -p.AmountReceived {
+				t.Errorf("the lost dispute should cost the amount it held: dispute entries sum to %d, want %d", got, -p.AmountReceived)
+			}
+		})
+	}
 }
