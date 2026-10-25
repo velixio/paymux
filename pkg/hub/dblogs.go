@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/url"
+	"os"
 	"time"
 
+	"github.com/paymux/paymux/internal/config"
 	"github.com/paymux/paymux/internal/dblog"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/migrations"
@@ -163,6 +165,14 @@ func (l *dbLogs) responseHook() server.ResponseHook {
 	}
 	return func(ctx context.Context, method, route string, status int, d time.Duration) {
 		l.rec.HTTP(ctx, dblog.HTTPEvent{Method: method, Route: route, Status: status, Duration: d, Source: server.Source(ctx)})
+	}
+}
+
+// warnDatabaseTLS warns about a PostgreSQL connection that leaves this machine
+// without verifying the server's certificate (see config.DatabaseTLSWarning).
+func (a *App) warnDatabaseTLS() {
+	if msg := config.DatabaseTLSWarning(a.cfg.DatabaseURL, os.Getenv); msg != "" {
+		a.log.Warn(msg)
 	}
 }
 
