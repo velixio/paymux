@@ -283,6 +283,7 @@ type view struct {
 	Sessions     []sessionRow
 	Next         string // where the confirmation page returns to
 	NeedCode     bool   // the confirmation page asks for an authenticator code too
+	Unsaved      bool   // the confirmation page was reached by a write that was refused, which is not replayed
 	StyleNonce   string
 
 	AppName, LogoURL, Accent string
