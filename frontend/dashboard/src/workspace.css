@@ -234,13 +234,18 @@ main.dash:has(#paymux-react-root) {
   border-radius: 5px;
 }
 .workspace-warning {
-  background: var(--status-warn-bg);
-  color: var(--status-warn-fg);
-  font-size: 11px;
-  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: 12px;
   padding: 8px 30px;
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--status-warn-fg) 18%, var(--status-warn-bg));
+  border-bottom: 1px solid var(--border);
+}
+.workspace-warning svg {
+  flex-shrink: 0;
+  color: var(--status-warn-fg);
 }
 .react-content {
   padding: 32px 34px;

@@ -7,6 +7,7 @@ import {
   type MutableRefObject,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { TriangleAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -88,6 +89,7 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
       {active &&
         shown.data?.warnings.map((message, i) => (
           <div className="workspace-warning" role="status" key={i}>
+            <TriangleAlert size={14} aria-hidden="true" />
             {message}
           </div>
         ))}
