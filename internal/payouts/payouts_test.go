@@ -747,3 +747,116 @@ func TestProcessingPayoutKeepsBeingPolledUntilTheProviderSettlesIt(t *testing.T)
 		}
 	})
 }
+
+func TestNeedsReviewAlertNamesTheProviderReference(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, []string{"payout"})
+		p := e.needsReview()
+		if len(e.alerts) != 1 || e.alerts[0].Refs["provider_ref"] != p.ProviderRef || !strings.Contains(e.alerts[0].Message, p.ProviderRef) {
+			t.Fatalf("alerts = %+v, want the provider reference %s", e.alerts, p.ProviderRef)
+		}
+	})
+}
+
+// The guard looks at every payout in review, not only the newest page.
+func TestResendGuardPagesThroughEveryPayoutInReview(t *testing.T) {
+	defer payouts.SetReviewPageSize(2)()
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, []string{"payout"})
+		var oldest store.Payout
+		for i := 0; i < 5; i++ {
+			p, err := e.create(func(in *payouts.CreateInput) { in.Amount += int64(i) })
+			if err != nil {
+				t.Fatal(err)
+			}
+			if i == 0 {
+				oldest = p
+			}
+			time.Sleep(3 * time.Millisecond) // ids sort by creation time to the millisecond
+		}
+		e.exhaustSubmit()
+		if got := e.get(oldest.ID); got.Status != "needs_review" {
+			t.Fatalf("setup: %+v", got)
+		}
+		if _, err := e.create(nil); !errors.Is(err, payouts.ErrNeedsReview) {
+			t.Fatalf("the oldest payout in review is beyond the first page: %v", err)
+		}
+	})
+}
+
+// A payout that stays in needs_review is polled for as long as it does, whatever
+// the provider or the account's connector does meanwhile: the job queue's
+// attempt limit must not end the chain.
+func TestNeedsReviewPollingSurvivesFetchAndConnectorErrors(t *testing.T) {
+	for name, break_ := range map[string]func(e *env, on bool){
+		"fetch error": func(e *env, on bool) {
+			e.fake.Locked(func() {
+				e.fake.PayoutFetchErr = nil
+				if on {
+					e.fake.PayoutFetchErr = errors.New("provider is down")
+				}
+			})
+		},
+		"connector load error": func(e *env, on bool) {
+			e.mu.Lock()
+			e.connErr = nil
+			if on {
+				e.connErr = errors.New("the account's configuration cannot be read")
+			}
+			e.mu.Unlock()
+		},
+	} {
+		storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+			e := newEnv(t, db, []string{"payout"})
+			p := e.needsReview()
+			break_(e, true)
+			for i := 0; i < 40; i++ {
+				e.advance(48 * time.Hour)
+			}
+			if got := e.get(p.ID); got.Status != "needs_review" {
+				t.Fatalf("%s: %+v", name, got)
+			}
+			break_(e, false)
+			e.fake.Locked(func() {
+				e.fake.Payouts[p.ProviderRef] = connector.PayoutSnapshot{ProviderRef: p.ProviderRef, ProviderPayoutID: "po_late",
+					Status: connector.PayoutSucceeded, RawStatus: "processed", Amount: p.Amount, Currency: p.Currency}
+			})
+			e.advance(48 * time.Hour)
+			if got := e.get(p.ID); got.Status != "succeeded" {
+				t.Fatalf("%s: after the provider came back: %+v", name, got)
+			}
+		})
+	}
+}
+
+// Success is only booked for the amount and currency we sent: a snapshot that
+// states none, or others, leaves the payout as it is, with an alert.
+func TestSuccessIsNotBookedWithoutTheMatchingAmountAndCurrency(t *testing.T) {
+	cases := map[string]func(s *connector.PayoutSnapshot){
+		"no amount":      func(s *connector.PayoutSnapshot) { s.Amount = 0 },
+		"other amount":   func(s *connector.PayoutSnapshot) { s.Amount++ },
+		"no currency":    func(s *connector.PayoutSnapshot) { s.Currency = "" },
+		"other currency": func(s *connector.PayoutSnapshot) { s.Currency = "USD" },
+	}
+	for name, mut := range cases {
+		storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+			e := newEnv(t, db, []string{"payout"})
+			p := e.needsReview()
+			snap := connector.PayoutSnapshot{ProviderRef: p.ProviderRef, ProviderPayoutID: "po_x", Status: connector.PayoutSucceeded,
+				RawStatus: "processed", Amount: p.Amount, Currency: p.Currency}
+			mut(&snap)
+			e.fake.Locked(func() { e.fake.Payouts[p.ProviderRef] = snap })
+			e.advance(48 * time.Hour)
+			if got := e.get(p.ID); got.Status != "needs_review" {
+				t.Errorf("%s: payout is %s", name, got.Status)
+			}
+			found := false
+			for _, a := range e.alerts {
+				found = found || a.Kind == "payout.snapshot_mismatch"
+			}
+			if !found {
+				t.Errorf("%s: no alert: %+v", name, e.alerts)
+			}
+		})
+	}
+}
