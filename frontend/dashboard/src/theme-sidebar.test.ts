@@ -34,7 +34,7 @@ test("sidebar text comes from --sidebar-foreground, not the page text tokens", (
     "color: var(--sidebar-foreground)",
   );
   expect(rule(work, ".navigation-item.selected")).toContain(
-    "color: var(--sidebar-foreground)",
+    "color: var(--sidebar-accent-foreground)",
   );
   expect(rule(shell, ".app-shell .navigation-item .nav-count")).toContain(
     "color: var(--sidebar-foreground)",
@@ -112,6 +112,27 @@ test.each(["stripe", "paddle", "midnight"])(
         contrast(fg, mixHex(t["--primary"], selected, bg)),
         `${name} ${mode} selected`,
       ).toBeGreaterThanOrEqual(4.5);
+      // The selected item and the account button keep the accent colour.
+      expect(
+        contrast(
+          t["--sidebar-accent-foreground"],
+          mixHex(t["--primary"], selected, bg),
+        ),
+        `${name} ${mode} accent text on the selected tint`,
+      ).toBeGreaterThanOrEqual(4.5);
     }
   },
 );
+
+test("the status bar's warning is a chip, readable on any sidebar colour", () => {
+  const rule =
+    shell.match(/\.app-shell \.status-warning\s*\{([^}]*)\}/)?.[1] ?? "";
+  expect(rule).toContain("background: var(--status-warn-bg)");
+  expect(rule).toContain("color: var(--status-warn-fg)");
+});
+
+test("the scope maps the accent text to the sidebar's own accent token", () => {
+  expect(surface()[1]).toContain(
+    "--accent-foreground: var(--sidebar-accent-foreground)",
+  );
+});

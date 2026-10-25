@@ -51,6 +51,7 @@ const todayLight: Record<string, string> = {
   "--ring": "#635bff",
   "--sidebar": "#f7f8fa",
   "--sidebar-foreground": "#5c6478",
+  "--sidebar-accent-foreground": "#4b44d6",
 };
 const todayDark: Record<string, string> = {
   "--background": "#0f1117",
@@ -73,6 +74,7 @@ const todayDark: Record<string, string> = {
   "--ring": "#8b85ff",
   "--sidebar": "#14161d",
   "--sidebar-foreground": "#9aa1b2",
+  "--sidebar-accent-foreground": "#c4c1ff",
 };
 
 const rgb = (h: string) =>
