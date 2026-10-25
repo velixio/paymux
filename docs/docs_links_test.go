@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"unicode"
 )
 
 var (
@@ -22,7 +23,9 @@ func githubSlug(h string) string {
 		switch {
 		case r == ' ' || r == '-':
 			b.WriteRune('-')
-		case r == '_' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r > 127:
+		case r == '_' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r > 127 && (unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r)):
+			// GitHub keeps letters, digits and marks of any script and drops symbols and
+			// emoji, so "## 🚀 Quick start" is #-quick-start.
 			b.WriteRune(r)
 		}
 	}
