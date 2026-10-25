@@ -57,6 +57,15 @@ test("the form works before (and without) the editor", async () => {
   expect(input("light_accent").value).toBe("#0d7d68");
 });
 
+test("the form's inputs are not re-created when the editor arrives", async () => {
+  await mount("/dashboard/appearance/themes/mine/edit");
+  const version = input("version");
+  version.value = "9.9.9"; // typed before the editor chunk is ready
+  await waitFor(() => expect(preview()).not.toBe(""));
+  expect(input("version")).toBe(version);
+  expect(input("version").value).toBe("9.9.9");
+});
+
 test("previews the theme live on the whole dashboard, and shows contrast", async () => {
   await mount("/dashboard/appearance/themes/mine/edit");
   await waitFor(() => expect(preview()).toContain("--primary:#0d7d68"));

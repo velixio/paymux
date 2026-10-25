@@ -37,6 +37,31 @@ import { useRuntime, WorkspaceLink } from "./runtime";
 
 const ThemePreview = lazy(() => import("./theme-preview"));
 const ThemeEditor = lazy(() => import("./theme-editor"));
+
+// The theme form is plain and complete on its own. This keeps its DOM in place
+// (so nothing typed is lost when the editor chunk arrives) and adds the live
+// preview and contrast table beside it once the chunk has loaded.
+function ThemeEditorHost({
+  overrides,
+  children,
+}: {
+  overrides?: string;
+  children: ReactNode;
+}) {
+  const [root, setRoot] = useState<HTMLElement | null>(null);
+  return (
+    <>
+      <div className="theme-editor" ref={setRoot}>
+        {children}
+      </div>
+      {root && (
+        <Suspense fallback={null}>
+          <ThemeEditor root={root} overrides={overrides} />
+        </Suspense>
+      )}
+    </>
+  );
+}
 // <code> values inside table cells and definition lists get a copy button.
 const CellContext = createContext(false);
 function CopyCode({ node }: { node: ViewNode }) {
@@ -316,11 +341,9 @@ export function RenderNode({ node: n }: { node: ViewNode }): ReactNode {
   if ("data-theme-editor" in n.attrs)
     // The form is plain and complete; the editor adds live preview and contrast.
     return (
-      <Suspense fallback={<div className="theme-editor">{children()}</div>}>
-        <ThemeEditor overrides={n.attrs["data-overrides"]}>
-          {children()}
-        </ThemeEditor>
-      </Suspense>
+      <ThemeEditorHost overrides={n.attrs["data-overrides"]}>
+        {children()}
+      </ThemeEditorHost>
     );
   if ("data-theme-preview" in n.attrs) {
     // The card's colours are drawn from the seeds it carries; without JS (or

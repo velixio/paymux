@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getNonce } from "get-nonce";
 import {
   contrastReport,
@@ -71,13 +71,15 @@ function parseOverrides(raw: string | undefined): Overrides {
  * Without this the form is a plain form that works on its own.
  */
 export default function ThemeEditor({
+  root: rootEl,
   overrides: rawOverrides,
-  children,
 }: {
+  /** The element holding the server-rendered form; it is never re-created. */
+  root: HTMLElement;
   overrides?: string;
-  children: ReactNode;
 }) {
-  const root = useRef<HTMLDivElement>(null);
+  const root = useRef<HTMLElement>(rootEl);
+  root.current = rootEl;
   const dirty = useRef(false);
   const overrides = useMemo(() => parseOverrides(rawOverrides), [rawOverrides]);
   const [spec, setSpec] = useState<ThemeSpec | null>(null);
@@ -115,7 +117,7 @@ export default function ThemeEditor({
       form.removeEventListener("submit", submitted);
       window.removeEventListener("beforeunload", guard);
     };
-  }, [overrides]);
+  }, [overrides, rootEl]);
 
   const derived = useMemo(
     () => (spec ? derive(spec.seeds, spec.dark_seeds, spec.overrides) : null),
@@ -157,8 +159,7 @@ export default function ThemeEditor({
   }, [ok, spec]);
 
   return (
-    <div ref={root} className="theme-editor">
-      {children}
+    <>
       <section className="theme-editor-tools" aria-label="Preview and contrast">
         <p>
           <button
@@ -215,6 +216,6 @@ export default function ThemeEditor({
           </p>
         )}
       </section>
-    </div>
+    </>
   );
 }
