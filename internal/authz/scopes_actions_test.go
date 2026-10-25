@@ -10,13 +10,13 @@ func TestActionsForScopes(t *testing.T) {
 		scopes []string
 		want   []Action
 	}{
-		{nil, []Action{PaymentCreate, RefundCreate}},
+		{nil, []Action{PaymentCreate, PaymentCancel, RefundCreate}},
 		{[]string{ScopePaymentsRead}, nil},
 		{[]string{ScopePaymentsRead, ScopeRefundsRead, ScopeInvoicesRead, ScopeSubscriptionsRead}, nil},
 		{[]string{ScopeRefundsWrite}, []Action{RefundCreate}},
 		{[]string{ScopePayoutsRead}, []Action{PayoutCreate}},
-		{[]string{ScopePayoutsWrite, ScopePaymentsWrite}, []Action{PayoutCreate, PaymentCreate}},
-		{[]string{ScopeSubscriptionsWrite, ScopePaymentsWrite}, []Action{PaymentCreate}},
+		{[]string{ScopePayoutsWrite, ScopePaymentsWrite}, []Action{PayoutCreate, PaymentCreate, PaymentCancel}},
+		{[]string{ScopeSubscriptionsWrite, ScopePaymentsWrite}, []Action{PaymentCreate, PaymentCancel}},
 	} {
 		got := ActionsForScopes(c.scopes)
 		if !slices.Equal(got, c.want) {

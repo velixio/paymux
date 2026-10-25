@@ -179,7 +179,7 @@ var explicitScopes = []string{ScopePayoutsRead, ScopePayoutsWrite}
 // Read scopes need nothing beyond the right to issue keys.
 func ActionsForScopes(scopes []string) []Action {
 	if scopes == nil {
-		return []Action{PaymentCreate, RefundCreate}
+		return []Action{PaymentCreate, PaymentCancel, RefundCreate}
 	}
 	var out []Action
 	add := func(a Action) {
@@ -190,7 +190,9 @@ func ActionsForScopes(scopes []string) []Action {
 	for _, sc := range scopes {
 		switch sc {
 		case ScopePaymentsWrite, ScopeSubscriptionsWrite:
+			// These scopes also cancel payments and subscriptions.
 			add(PaymentCreate)
+			add(PaymentCancel)
 		case ScopeRefundsWrite:
 			add(RefundCreate)
 		case ScopePayoutsRead, ScopePayoutsWrite:
