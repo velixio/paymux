@@ -403,7 +403,12 @@ test("a reload uses the server-rendered page: no request, no loading state", asy
   );
   const seen: boolean[] = [];
   const watch = new MutationObserver(() =>
-    seen.push(!!document.querySelector(".workspace-loading")),
+    // Only a visible one counts: hidden tabs may wait for data unseen.
+    seen.push(
+      [...document.querySelectorAll(".workspace-loading")].some(
+        (el) => !el.closest("[hidden]"),
+      ),
+    ),
   );
   watch.observe(document.body, { childList: true, subtree: true });
   await mount("/dashboard/payments");
