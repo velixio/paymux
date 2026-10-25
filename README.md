@@ -12,6 +12,7 @@ Razorpay · Stripe · Cashfree · PayU · Zoho Payments · Whop, in a single Go 
 [![Go](https://img.shields.io/badge/go-1.27-00ADD8?logo=go&logoColor=white)](go.mod)
 [![SQLite or PostgreSQL](https://img.shields.io/badge/database-SQLite%20%7C%20PostgreSQL-4479A1)](#-faq)
 [![Status: beta](https://img.shields.io/badge/status-beta-orange.svg)](docs/provider-verification.md)
+[![views](https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=paymux&style=stats)](https://supermetry.com)
 
 [**Quick start**](#-quick-start-in-5-minutes) · [Why Paymux](#-why-paymux) · [Gateways](#-supported-payment-gateways) · [GST for India](#-built-for-india) · [Docs](docs/README.md) · [FAQ](#-faq)
 
