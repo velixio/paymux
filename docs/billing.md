@@ -32,6 +32,10 @@ Send this to the hub from your backend using a subscriptions write key, JSON con
 
 Track `incomplete`, `incomplete_expired`, `trialing`, `active`, `past_due`, `canceled`, and `ended` as separate outcomes. Do not grant indefinite access merely because authorization began. Tie entitlements to your own verified billing policy and event processing.
 
+## Billing details of the subscriber
+
+The hosted checkout (`/s/{id}`) asks the buyer for the billing details the pay page asks for (State for India, the country for everyone paying in a currency other than rupees, an address from Rs 50,000, and an optional GSTIN with its checksum checked), following the org or app setting `billing_details`, and only when the customer does not already have them. Send `customer.billing` (`state_code`, `country`, and `gstin` and `legal_name` for a business) with the subscription to skip the page. The details are kept on the customer: the first invoice, every renewal invoice and every prorated charge are taxed from them (a State in India: CGST and SGST in the supplier's State, IGST elsewhere; a GSTIN: a B2B invoice; a country outside India: an export, zero-rated under a valid LUT when paid in a foreign currency, with IGST otherwise). Without them the invoice defaults to a sale in the supplier's State and is flagged `pos_defaulted`.
+
 ## Renewal failures and changes
 
 A failed renewal can move a subscription past due. Dunning and mandate-specific limits affect what can be retried. Inspect the configured schedule and provider-specific constraints rather than issuing unlimited manual charges.
