@@ -1050,6 +1050,22 @@
   overflow-x: auto;
   scrollbar-width: none;
 }
+/* A soft fade marks the side that hides more chips. */
+.app-shell .react-content .toolbar-chips[data-fade-end] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+}
+.app-shell .react-content .toolbar-chips[data-fade-start] {
+  mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent);
+}
+.app-shell .react-content .toolbar-chips[data-fade-start][data-fade-end] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 32px,
+    #000 calc(100% - 32px),
+    transparent
+  );
+}
 .app-shell .react-content .toolbar-chip {
   flex-shrink: 0;
   padding: 3px 10px;

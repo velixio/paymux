@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { ArrowLeft, Info } from "lucide-react";
 import {
@@ -9,7 +9,7 @@ import {
 import type { ViewNode } from "./adapter";
 import { PageContent, RenderNode } from "./render";
 import { WorkspaceLink } from "./runtime";
-import { extractToolbar, type ToolbarModel } from "./toolbar";
+import { extractToolbar, overflowEdges, type ToolbarModel } from "./toolbar";
 
 function StatusChips({
   options,
@@ -28,8 +28,36 @@ function StatusChips({
       search: Object.fromEntries(url.searchParams),
     });
   }
+  // Fade the edges that hide chips, and bring the selected chip into view.
+  const row = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = row.current;
+    if (!el) return;
+    const update = () => {
+      const edges = overflowEdges(
+        el.scrollLeft,
+        el.scrollWidth,
+        el.clientWidth,
+      );
+      el.toggleAttribute("data-fade-start", edges.start);
+      el.toggleAttribute("data-fade-end", edges.end);
+    };
+    el.querySelector<HTMLElement>('[aria-pressed="true"]')?.scrollIntoView?.({
+      block: "nearest",
+      inline: "nearest",
+    });
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const resize =
+      typeof ResizeObserver === "function" ? new ResizeObserver(update) : null;
+    resize?.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      resize?.disconnect();
+    };
+  }, [options]);
   return (
-    <div role="group" aria-label="Status" className="toolbar-chips">
+    <div ref={row} role="group" aria-label="Status" className="toolbar-chips">
       {options.map((o) => (
         <button
           type="button"

@@ -137,3 +137,15 @@ export function extractToolbar(
     rest = rest.map((n) => (n === form ? dropStatusSelect(n)! : n));
   return { toolbar: { back, title, description, actions, statuses }, rest };
 }
+
+/** Which edges of a horizontal scroller hide content (1px slack for rounding). */
+export function overflowEdges(
+  scrollLeft: number,
+  scrollWidth: number,
+  clientWidth: number,
+): { start: boolean; end: boolean } {
+  return {
+    start: scrollLeft > 1,
+    end: scrollLeft + clientWidth < scrollWidth - 1,
+  };
+}
