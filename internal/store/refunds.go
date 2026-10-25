@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -11,17 +12,20 @@ type Refund struct {
 	Amount                                       int64
 	Currency, Status, Reason, ProviderRef        string
 	ProviderRefundID, InitiatedBy, Actor         string
-	CreatedAt, UpdatedAt                         time.Time
+	// IdempotencyKey is the key of the request that created it, empty if none.
+	IdempotencyKey       string
+	CreatedAt, UpdatedAt time.Time
 }
 
 const refundCols = `id, org_id, app_id, mode, payment_id, attempt_id, amount, currency, status, COALESCE(reason,''),
-	provider_ref, COALESCE(provider_refund_id,''), initiated_by, COALESCE(actor,''), created_at, updated_at`
+	provider_ref, COALESCE(provider_refund_id,''), initiated_by, COALESCE(actor,''), created_at, updated_at,
+	COALESCE(idempotency_key,'')`
 
 func scanRefund(row interface{ Scan(...any) error }) (Refund, error) {
 	var r Refund
 	var created, updated int64
 	err := row.Scan(&r.ID, &r.OrgID, &r.AppID, &r.Mode, &r.PaymentID, &r.AttemptID, &r.Amount, &r.Currency, &r.Status,
-		&r.Reason, &r.ProviderRef, &r.ProviderRefundID, &r.InitiatedBy, &r.Actor, &created, &updated)
+		&r.Reason, &r.ProviderRef, &r.ProviderRefundID, &r.InitiatedBy, &r.Actor, &created, &updated, &r.IdempotencyKey)
 	if err != nil {
 		return Refund{}, notFound(err)
 	}
@@ -32,12 +36,21 @@ func scanRefund(row interface{ Scan(...any) error }) (Refund, error) {
 // InsertRefund inserts r.
 func InsertRefund(ctx context.Context, tx Tx, r Refund) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO refunds (id, org_id, app_id, mode, payment_id, attempt_id, amount, currency,
-		status, reason, provider_ref, provider_refund_id, initiated_by, actor, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		status, reason, provider_ref, provider_refund_id, initiated_by, actor, created_at, updated_at, idempotency_key)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.ID, r.OrgID, r.AppID, r.Mode, r.PaymentID, r.AttemptID, r.Amount, r.Currency, r.Status,
 		nullIfEmpty(r.Reason), r.ProviderRef, nullIfEmpty(r.ProviderRefundID), r.InitiatedBy,
-		nullIfEmpty(r.Actor), ms(r.CreatedAt), ms(r.UpdatedAt))
+		nullIfEmpty(r.Actor), ms(r.CreatedAt), ms(r.UpdatedAt), nullIfEmpty(r.IdempotencyKey))
+	if IsUniqueViolation(err) {
+		return fmt.Errorf("%w: refund exists", ErrConflict)
+	}
 	return err
+}
+
+// FindRefundByKey returns the refund created under an Idempotency-Key, or ErrNotFound.
+func FindRefundByKey(ctx context.Context, q Queryer, appID, mode, key string) (Refund, error) {
+	return scanRefund(q.QueryRowContext(ctx, "SELECT "+refundCols+" FROM refunds WHERE app_id = ? AND mode = ? AND idempotency_key = ?",
+		appID, mode, key))
 }
 
 // GetRefund loads a refund by id.

@@ -143,7 +143,8 @@ func ListUnknownObjects(ctx context.Context, q Queryer, accountID string) ([]Unk
 }
 
 const refundColsQualified = `r.id, r.org_id, r.app_id, r.mode, r.payment_id, r.attempt_id, r.amount, r.currency, r.status, COALESCE(r.reason,''),
-	r.provider_ref, COALESCE(r.provider_refund_id,''), r.initiated_by, COALESCE(r.actor,''), r.created_at, r.updated_at`
+	r.provider_ref, COALESCE(r.provider_refund_id,''), r.initiated_by, COALESCE(r.actor,''), r.created_at, r.updated_at,
+	COALESCE(r.idempotency_key,'')`
 
 // FindAttempt looks an attempt of the account up by any of its provider
 // identifiers (empty ones are skipped). It returns ErrNotFound when none match.

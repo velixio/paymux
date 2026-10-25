@@ -24,11 +24,13 @@ type Payout struct {
 	SubmitAttempts                            int
 	Version                                   int64
 	CreatedAt, UpdatedAt, CompletedAt         time.Time
+	// IdempotencyKey is the key of the request that created it, empty if none.
+	IdempotencyKey string
 }
 
 const payoutCols = `id, org_id, mode, app_id, provider_account_id, provider_ref, COALESCE(provider_payout_id,''), amount, currency,
 	status, raw_status, beneficiary_enc, beneficiary_label, narration, metadata, failure_code, failure_message, submit_attempts,
-	version, created_at, updated_at, COALESCE(completed_at,0)`
+	version, created_at, updated_at, COALESCE(completed_at,0), COALESCE(idempotency_key,'')`
 
 func scanPayout(row interface{ Scan(...any) error }) (Payout, error) {
 	var p Payout
@@ -36,7 +38,7 @@ func scanPayout(row interface{ Scan(...any) error }) (Payout, error) {
 	var created, updated, completed int64
 	err := row.Scan(&p.ID, &p.OrgID, &p.Mode, &p.AppID, &p.ProviderAccountID, &p.ProviderRef, &p.ProviderPayoutID, &p.Amount,
 		&p.Currency, &p.Status, &p.RawStatus, &p.BeneficiaryEnc, &p.BeneficiaryLabel, &p.Narration, &meta, &p.FailureCode,
-		&p.FailureMessage, &p.SubmitAttempts, &p.Version, &created, &updated, &completed)
+		&p.FailureMessage, &p.SubmitAttempts, &p.Version, &created, &updated, &completed, &p.IdempotencyKey)
 	if err != nil {
 		return Payout{}, notFound(err)
 	}
@@ -47,20 +49,26 @@ func scanPayout(row interface{ Scan(...any) error }) (Payout, error) {
 	return p, nil
 }
 
-// InsertPayout inserts p. A repeated provider_ref is ErrConflict.
+// InsertPayout inserts p. A repeated provider_ref or Idempotency-Key is ErrConflict.
 func InsertPayout(ctx context.Context, tx Tx, p Payout) error {
 	meta, _ := json.Marshal(nonNilMap(p.Metadata))
 	_, err := tx.ExecContext(ctx, `INSERT INTO payouts (id, org_id, mode, app_id, provider_account_id, provider_ref, provider_payout_id,
 		amount, currency, status, raw_status, beneficiary_enc, beneficiary_label, narration, metadata, failure_code, failure_message,
-		submit_attempts, version, created_at, updated_at, completed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		submit_attempts, version, created_at, updated_at, completed_at, idempotency_key)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.ID, p.OrgID, p.Mode, p.AppID, p.ProviderAccountID, p.ProviderRef, nullIfEmpty(p.ProviderPayoutID), p.Amount, p.Currency,
 		p.Status, p.RawStatus, p.BeneficiaryEnc, p.BeneficiaryLabel, p.Narration, string(meta), p.FailureCode, p.FailureMessage,
-		p.SubmitAttempts, p.Version, ms(p.CreatedAt), ms(p.UpdatedAt), zeroMS(p.CompletedAt))
+		p.SubmitAttempts, p.Version, ms(p.CreatedAt), ms(p.UpdatedAt), zeroMS(p.CompletedAt), nullIfEmpty(p.IdempotencyKey))
 	if IsUniqueViolation(err) {
 		return fmt.Errorf("%w: payout exists", ErrConflict)
 	}
 	return err
+}
+
+// FindPayoutByKey returns the payout created under an Idempotency-Key, or ErrNotFound.
+func FindPayoutByKey(ctx context.Context, q Queryer, appID, mode, key string) (Payout, error) {
+	return scanPayout(q.QueryRowContext(ctx, "SELECT "+payoutCols+" FROM payouts WHERE app_id = ? AND mode = ? AND idempotency_key = ?",
+		appID, mode, key))
 }
 
 // GetPayout loads a payout by id.
