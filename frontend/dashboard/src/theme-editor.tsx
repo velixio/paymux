@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getNonce } from "get-nonce";
 import {
   contrastReport,
   derive,
@@ -8,6 +7,7 @@ import {
   type Seeds,
   type ThemeSpec,
 } from "./theme-derive";
+import { writeStyle } from "./theme-style";
 
 const STYLE_ID = "paymux-theme-preview";
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -154,16 +154,12 @@ export default function ThemeEditor({
       document.getElementById(STYLE_ID)?.remove();
       return;
     }
-    let tag = document.getElementById(STYLE_ID);
-    if (!tag) {
-      tag = document.createElement("style");
-      tag.id = STYLE_ID;
-      document.head.append(tag);
-    }
-    const nonce = getNonce();
-    if (nonce) tag.setAttribute("nonce", nonce);
-    tag.textContent = // More specific than the theme's own style, so the preview wins whichever mode the page is in.
-      tokenBlock("html:root:root,html.dark.dark", derived[mode]);
+    // More specific than the theme's own style, so the preview wins whichever
+    // mode the page is in.
+    writeStyle(
+      STYLE_ID,
+      tokenBlock("html:root:root,html.dark.dark", derived[mode]),
+    );
   }, [derived, mode, shown]);
   useEffect(() => () => document.getElementById(STYLE_ID)?.remove(), []);
 

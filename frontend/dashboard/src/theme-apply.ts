@@ -1,5 +1,5 @@
-import { getNonce } from "get-nonce";
 import type { ThemeSpec } from "./theme-derive";
+import { writeStyle } from "./theme-style";
 
 /** What GET /theme/<name>/dashboard.json serves. */
 export type Manifest = ThemeSpec & { name: string; scheme: string };
@@ -79,14 +79,6 @@ export async function applyDashboardTheme(
     (want === FALLBACK ? null : await loadManifest(FALLBACK));
   const { themeCss } = await derivation;
   if (!m || ticket !== latest) return null;
-  let tag = document.getElementById(STYLE_ID);
-  if (!tag) {
-    tag = document.createElement("style");
-    tag.id = STYLE_ID;
-    document.head.append(tag);
-  }
-  const nonce = getNonce();
-  if (nonce) tag.setAttribute("nonce", nonce);
-  tag.textContent = themeCss(m);
+  writeStyle(STYLE_ID, themeCss(m));
   return { scheme: m.scheme };
 }

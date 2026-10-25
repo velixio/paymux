@@ -79,6 +79,14 @@ test("an admin makes a theme from Paddle, sets it as default; a user overrides i
 test("editing a theme previews it live and leaving restores the page", async ({
   page,
 }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { csp: string[] }).csp = [];
+    document.addEventListener("securitypolicyviolation", (e) =>
+      (window as unknown as { csp: string[] }).csp.push(
+        `${e.violatedDirective} ${e.blockedURI} ${e.sample}`,
+      ),
+    );
+  });
   await login(page);
   await page.goto("/dashboard/appearance/themes/new?from=stripe");
   await page.locator('input[name="name"]').fill("inkwell");
@@ -104,4 +112,9 @@ test("editing a theme previews it live and leaving restores the page", async ({
   await page.getByRole("button", { name: "Discard and leave" }).click();
   await expect(preview).toHaveCount(0);
   await expect.poll(() => primary(page)).not.toBe("#123456");
+
+  // Neither the cards, the editor nor the live preview trip the Content Security Policy.
+  expect(
+    await page.evaluate(() => (window as unknown as { csp: string[] }).csp),
+  ).toEqual([]);
 });
