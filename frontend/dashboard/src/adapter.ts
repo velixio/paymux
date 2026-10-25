@@ -110,6 +110,16 @@ export function parseDashboard(doc: Document, href: string): DashboardPage {
   };
 }
 export class SessionRedirect extends Error {}
+// parseServerHTML parses a server-rendered page without its <style> blocks.
+// The adapter never uses them, and the browser checks them against the live
+// page's CSP: their nonce is the fetched page's, so each one would be reported
+// as a violation.
+export function parseServerHTML(html: string): Document {
+  return new DOMParser().parseFromString(
+    html.replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ""),
+    "text/html",
+  );
+}
 export async function fetchDashboard(
   href: string,
   signal?: AbortSignal,
@@ -123,7 +133,7 @@ export async function fetchDashboard(
   if (!type.includes("text/html"))
     throw new Error(`The workspace returned ${res.status}. Try again.`);
   const html = await res.text();
-  const doc = new DOMParser().parseFromString(html, "text/html");
+  const doc = parseServerHTML(html);
   if (!doc.getElementById("paymux-server-page"))
     throw new Error(`Unable to load workspace (${res.status}).`);
   if (
