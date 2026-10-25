@@ -1,6 +1,10 @@
 package dashboard
 
 import (
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"github.com/paymux/paymux/connectors/simulator"
 	"net/http"
@@ -54,6 +58,8 @@ type payDetail struct {
 	Events                                                                                             []eventRow
 	Pickable                                                                                           []attemptOpt
 	CanRefund, CanReplay                                                                               bool
+	// RefundNonce is the single-use key of the refund form on this page.
+	RefundNonce string
 	// SimAttempts are the captured attempts on a test-mode simulator account,
 	// the ones a dispute can be simulated on.
 	SimAttempts []attemptOpt
@@ -241,6 +247,9 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 		}
 	}
 	det.CanRefund = s.can(authz.RefundCreate) && len(det.Pickable) > 0
+	if det.CanRefund {
+		det.RefundNonce = refundNonce(s, p.ID)
+	}
 	det.CanSimulate = s.can(authz.DisputeManage) && len(det.SimAttempts) > 0
 	for _, l := range ledger {
 		det.Ledger = append(det.Ledger, ledgerRow{Kind: l.Kind, Amount: fmtMoney(l.Amount, l.Currency), At: d.fmtTime(l.OccurredAt)})
@@ -273,6 +282,11 @@ func (d *Dashboard) refundSubmit(w http.ResponseWriter, r *http.Request, s *sess
 		d.fail(w, err)
 		return
 	}
+	nonce := r.PostForm.Get("nonce")
+	if !validRefundNonce(s, p.ID, nonce) {
+		d.renderPayment(w, r, s, http.StatusBadRequest, "This refund form has expired. Check the refunds below, then try again.", "")
+		return
+	}
 	var amount int64
 	if raw := strings.TrimSpace(r.PostForm.Get("amount")); raw != "" {
 		amount, err = money.ParseDecimal(raw, p.Currency)
@@ -283,12 +297,15 @@ func (d *Dashboard) refundSubmit(w http.ResponseWriter, r *http.Request, s *sess
 	}
 	_, err = d.o.Core.CreateRefund(ctx, core.CreateRefundInput{
 		Scope: core.Scope{AppID: p.AppID, Mode: p.Mode}, Actor: s.auditActor(), InitiatedBy: "dashboard",
-		PaymentID: p.ID, AttemptID: r.PostForm.Get("attempt_id"), Amount: amount, Reason: strings.TrimSpace(r.PostForm.Get("reason"))})
+		PaymentID: p.ID, AttemptID: r.PostForm.Get("attempt_id"), Amount: amount, Reason: strings.TrimSpace(r.PostForm.Get("reason")),
+		IdempotencyKey: nonce})
 	switch {
 	case err == nil:
 		http.Redirect(w, r, prefix+"/payments/"+p.ID, http.StatusSeeOther)
 	case errors.Is(err, core.ErrNotFound):
 		http.NotFound(w, r)
+	case errors.Is(err, core.ErrConflict):
+		d.renderPayment(w, r, s, http.StatusBadRequest, "This form was already used for a different refund. Check the refunds below, then try again.", "")
 	case errors.Is(err, core.ErrInvalid), errors.Is(err, core.ErrNotRefundable), errors.Is(err, core.ErrRefundExceeds), errors.Is(err, core.ErrInvalidState):
 		d.renderPayment(w, r, s, http.StatusBadRequest, err.Error(), "")
 	default:
@@ -414,4 +431,28 @@ func (d *Dashboard) simulateProviderRefund(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	d.renderPayment(w, r, s, http.StatusOK, "", "Refund made at the simulated provider. Paymux books it as a provider refund once the webhook has been processed (a second or two).")
+}
+
+// refundNonce issues the key of one rendering of the refund form: a random
+// value and its HMAC under the session's key, bound to the session and the
+// payment. The form sends it back and it becomes the refund's idempotency key,
+// so a resubmitted form replays the first refund.
+func refundNonce(s *session, paymentID string) string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic(err) // the system's randomness failed; nothing safe can be done
+	}
+	rnd := base64.RawURLEncoding.EncodeToString(b[:])
+	return rnd + "." + refundNonceMAC(s, paymentID, rnd)
+}
+
+func refundNonceMAC(s *session, paymentID, rnd string) string {
+	m := hmac.New(sha256.New, s.CSRFKey)
+	m.Write([]byte("refund-nonce:" + s.ID + ":" + paymentID + ":" + rnd))
+	return base64.RawURLEncoding.EncodeToString(m.Sum(nil))
+}
+
+func validRefundNonce(s *session, paymentID, nonce string) bool {
+	rnd, mac, ok := strings.Cut(nonce, ".")
+	return ok && rnd != "" && hmac.Equal([]byte(refundNonceMAC(s, paymentID, rnd)), []byte(mac))
 }

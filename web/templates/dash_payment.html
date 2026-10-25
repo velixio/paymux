@@ -46,6 +46,7 @@
 {{if .CanRefund}}
 <form method="post" action="/dashboard/payments/{{.ID}}/refund" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
+<input type="hidden" name="nonce" value="{{.RefundNonce}}">
 <h4>Refund</h4>
 <label>Refund amount in {{.Currency}}<input class="field" name="amount" inputmode="decimal" placeholder="Blank = everything refundable" autocomplete="off"></label>
 <label>Reason for refund<input class="field" name="reason" maxlength="500" placeholder="Customer request…" autocomplete="off"></label>
