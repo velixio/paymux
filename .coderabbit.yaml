@@ -1,0 +1,176 @@
+# CodeRabbit review settings for Paymux.
+# Reference: https://docs.coderabbit.ai/reference/configuration
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: en-US
+early_access: false
+
+reviews:
+  # "assertive" comments on more things than "chill". This is money code.
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  collapse_walkthrough: true
+  sequence_diagrams: true
+  estimate_code_review_effort: true
+  poem: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+    ignore_title_keywords:
+      - WIP
+      - DO NOT REVIEW
+
+  # Generated, vendored or historical files add noise and no signal.
+  path_filters:
+    - "!**/*.png"
+    - "!**/*.jpg"
+    - "!**/*.pdf"
+    - "!bun.lock"
+    - "!go.sum"
+    - "!**/testdata/**"
+    - "!docs/design/**"
+    - "!docs/superpowers/**"
+    - "!docs/capabilities.md"
+    - "!scripts/apisnap/pkg.txt"
+    - "!cmd/paymux-home/dist/**"
+    - "!web/static/dashboard/**"
+
+  # The rules the project already enforces by hand, written down for the reviewer.
+  path_instructions:
+    - path: "internal/{core,checkout,subscriptions,billing,tax,payouts,reconcile,recon,invoice,paylinks,disputes,inbound}/**"
+      instructions: |
+        Money paths. Check, and say so when a change is missing one of these:
+        - Amounts are integer minor units. No floating point; rounding goes through the
+          big.Int helpers in internal/tax.
+        - A state change, its ledger entries and its events commit in ONE transaction
+          (transactional outbox). Jobs are enqueued in the caller's transaction.
+        - Idempotency: a retried request, job or webhook must not move money twice.
+          Look for double refunds, double credits, and a refund counted against the wrong
+          payment.
+        - A provider webhook is only a hint: the truth is fetched from the provider and
+          matched strictly to OUR object (reference, amount, currency, account). Never
+          trust a provider list filter.
+        - Races: balance checks run under the payment lock.
+        - Tests cover both SQLite and Postgres (storetest.Each / EachMigrated).
+
+    - path: "internal/store/**"
+      instructions: |
+        All SQL lives in internal/store, nowhere else. Queries are parameterised and
+        scoped by org (and app and mode where the table has them): flag any query that
+        reads or writes another tenant's rows. Both dialects must behave the same.
+
+    - path: "internal/migrations/**"
+      instructions: |
+        Migrations exist for BOTH dialects (sqlite and postgres) with the same number
+        and the same meaning, in lockstep. An applied migration is never edited: a change
+        is a new migration. The schema parity and upgrade-fixture tests must be updated
+        and green. Flag a number collision with another open change.
+
+    - path: "{connectors,pkg/connector}/**"
+      instructions: |
+        Connectors import only pkg/... (never internal/...). Check:
+        - Webhook signatures are verified over the raw body with a constant-time compare,
+          with a tolerance window where the provider signs a timestamp.
+        - Provider errors are classified into the SDK's sentinel errors (not found,
+          invalid credentials, rate limited, rejected, not refundable, temporary) and
+          never leak a secret into an error message.
+        - Credentials use the Secret type and never appear in fixtures, logs or errors.
+          Test fixtures are sanitised real responses.
+        - A fetch is matched to our reference strictly; an unknown id is ErrNotFound.
+        - Changes to capabilities or Info regenerate docs/capabilities.md and the API
+          snapshot.
+
+    - path: "internal/{dashboard,auth,authz,httpapi}/**"
+      instructions: |
+        Every dashboard handler goes through authed(<action>) with a closed-enum action;
+        every API route declares a scope. State-changing routes check CSRF. Queries are
+        scoped to the caller's org/app (look for IDOR). Templates use html/template with
+        no unescaped server data. The dashboard CSP is form-action 'self': a form POST
+        must never redirect to another origin (render a page that links instead).
+        Login, 2FA and session changes need tests for the failure paths.
+
+    - path: "{internal/redact,internal/logging,internal/outbound,internal/secrets,internal/reseal,pkg/jsvm}/**"
+      instructions: |
+        Security boundaries. Logs must never receive credentials or customer details
+        (names, e-mail, phone, address, GSTIN, card or UPI data). Outbound requests must
+        go through the SSRF guard. JavaScript hooks stay sandboxed with CPU and memory
+        limits and fail closed. Prefer linear-time code on attacker-controlled input.
+
+    - path: "**/*_test.go"
+      instructions: |
+        Tests must not depend on the wall clock or on timing thresholds (use the fake
+        clock; CI runners are slow and shared) and must not use fixed ports. Prefer the
+        shared helpers (storetest, fakeconn). Do not weaken or skip a test to make it pass.
+
+    - path: "frontend/**"
+      instructions: |
+        No dangerouslySetInnerHTML or innerHTML with server data. Pages must work at 360px
+        wide and keyboard-only. Keep accessibility labels on form controls.
+
+    - path: ".github/workflows/**"
+      instructions: |
+        Third-party actions are pinned to a full commit SHA with the tag in a comment.
+        Permissions are least-privilege. Never interpolate untrusted input (PR titles,
+        branch names) into a run: block; pass it through env.
+
+    - path: "docs/**"
+      instructions: |
+        Documentation is checked by a link test: relative links and heading anchors must
+        resolve. State only what the code does today and say what is unverified.
+
+  # Linters and scanners CodeRabbit runs on the changed files.
+  tools:
+    golangci-lint:
+      enabled: true
+    gitleaks:
+      enabled: true
+    trufflehog:
+      enabled: true
+    shellcheck:
+      enabled: true
+    yamllint:
+      enabled: true
+    actionlint:
+      enabled: true
+    zizmor:
+      enabled: true
+    hadolint:
+      enabled: true
+    osvScanner:
+      enabled: true
+    markdownlint:
+      enabled: false
+    github-checks:
+      enabled: true
+      timeout_ms: 90000
+
+  pre_merge_checks:
+    custom_checks:
+      - name: No credentials in the change
+        mode: error
+        instructions: |
+          Fail if the diff contains an API key, secret, token, password, webhook secret,
+          private key or a real customer's personal data, in code, tests, fixtures,
+          docs or comments. Placeholders such as pmx_test_sk_..., sk_test_REDACTED or
+          example.com addresses are fine.
+      - name: Money-path changes come with tests
+        mode: warning
+        instructions: |
+          If the change touches payments, refunds, subscriptions, invoices, tax or
+          payouts logic, it should add or update tests, including the failure and retry
+          paths. Warn when it does not.
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  code_guidelines:
+    filePatterns:
+      - "docs/development.md"
+      - "docs/security.md"
+      - ".github/CONTRIBUTING.md"
