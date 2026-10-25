@@ -59,7 +59,7 @@ func TestAuditOTLPRedactsAgainWhenSending(t *testing.T) {
 	srv := httptest.NewServer(sink)
 	defer srv.Close()
 	red := redact.New()
-	o := dblog.NewOTLP(dblog.OTLPOptions{Endpoint: srv.URL, FlushEvery: 5 * time.Millisecond, Redact: red.Text, Stdout: slog.New(slog.DiscardHandler)})
+	o := dblog.NewOTLP(dblog.OTLPOptions{Endpoint: srv.URL, FlushEvery: 5 * time.Millisecond, Redact: red.Scrub, Stdout: slog.New(slog.DiscardHandler)})
 	o.Start()
 	defer o.Close()
 	red.SetKnown("pa_late", secret)

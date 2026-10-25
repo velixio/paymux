@@ -25,7 +25,13 @@ type OTLPOptions struct {
 	// Client sends the requests; the default has a 10 second timeout and, on
 	// purpose, no address guard: the endpoint is set by the operator, who may
 	// point it at a private collector.
-	Client     *http.Client
+	Client *http.Client
+	// Redact, when set, is applied to every text field of a record as the batch
+	// is built (message, attributes, request and response). The rows are already
+	// redacted when they arrive; this catches a secret that became known while the
+	// row waited in the queue. It should only replace known secret values, since
+	// it also sees JSON documents: pass the Recorder's Redactor.Scrub.
+	Redact     func(string) string
 	QueueSize  int           // batches waiting to be sent; default 64
 	FlushEvery time.Duration // default 2s
 	// Stdout receives the shipper's own messages. It must not tee into the Recorder.
@@ -34,7 +40,8 @@ type OTLPOptions struct {
 
 // OTLP ships rows over OTLP/HTTP with a JSON payload. It hand-rolls the small
 // logs payload instead of pulling in the OpenTelemetry SDK. The rows it gets
-// are the ones already stored, so they are redacted. It never blocks the
+// are the ones being stored, so they are redacted, and Redact (if set) goes
+// over them once more as the batch is built. It never blocks the
 // caller: a full queue or a down collector costs the batch, which is counted.
 type OTLP struct {
 	o       OTLPOptions
@@ -214,14 +221,20 @@ func severity(level string) (int, string) {
 func (s *OTLP) payload(rows []store.LogRow) map[string]any {
 	records := make([]otlpRecord, 0, len(rows))
 	now := strconv.FormatInt(time.Now().UnixNano(), 10)
+	red := func(v string) string {
+		if v == "" || s.o.Redact == nil {
+			return v
+		}
+		return s.o.Redact(v)
+	}
 	for _, r := range rows {
 		num, text := severity(r.Level)
-		msg := r.Msg
+		msg := red(r.Msg)
 		rec := otlpRecord{TimeUnixNano: strconv.FormatInt(r.At.UnixNano(), 10), ObservedNano: now, SeverityNumber: num, SeverityText: text,
 			Body: otlpValue{StringValue: &msg}}
 		add := func(k, v string) {
 			if v != "" {
-				rec.Attributes = append(rec.Attributes, strAttr(k, v))
+				rec.Attributes = append(rec.Attributes, strAttr(k, red(v)))
 			}
 		}
 		add("log.id", r.ID)
