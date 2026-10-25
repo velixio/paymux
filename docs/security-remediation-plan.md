@@ -303,6 +303,17 @@ three days) or L (more than three days).
 
 Extend `docs/workflows_test.go` to check items 2 and 3.
 
+**Status.** Done: items 1, 2 (`bun install --ignore-scripts` in
+`scripts/release.sh`), 3 (the job declares `environment: release`; the
+reviewers are a repository setting), 4 for the archives (provenance
+attestation; no image is published yet, so there is none to sign), 5
+(`.github/dependabot.yml`: weekly, one grouped pull request per ecosystem, and
+the Docker base images too), 6 for gitleaks (the `secrets` job of the gate,
+`.gitleaksignore` with a reason for each of the 15 fixture findings), 7
+(`.github/workflows/fuzz.yml`, schedule only) and 8. gosec is not added. The
+CI `postgres` service image is pinned by digest by hand, as Dependabot does not
+read workflow service images.
+
 ### H-15: large exports outside the timeout buffer (S)
 
 - **Change:** serve `/dashboard/logs.jsonl` and `/reports/zip` from routes
