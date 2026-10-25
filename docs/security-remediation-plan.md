@@ -238,6 +238,14 @@ three days) or L (more than three days).
   not reach the OTLP payload. Decide whether to scan base64 and hex blobs
   longer than 32 characters for known values. That is costly, so measure it
   with `TestHostileInputIsLinear`.
+- **Done:** the shipper takes `OTLPOptions.Redact`, wired to the redactor's
+  `Scrub`, and applies it to every text field as the batch is built, so a secret
+  that becomes known while a row waits in the queue is still removed.
+  `TestAuditOTLPPayloadNeverCarriesAKnownSecret` covers the plain, base64 and hex
+  forms of a known secret. **Decision:** no blind scan of long base64 or hex
+  blobs. The redactor already matches the base64, hex and URL-escaped forms of
+  every known secret, which is the case that matters; a scan for unknown values
+  would redact ids, hashes and signatures that operators need in the log.
 
 ### R-A17: existing database files and the Docker image (S)
 

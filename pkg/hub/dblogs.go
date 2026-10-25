@@ -57,7 +57,7 @@ func (a *App) openDBLogs(ctx context.Context, main *store.DB) *dbLogs {
 		for k, v := range a.cfg.OTLPLogsHeaders {
 			headers[k] = v.Reveal()
 		}
-		otlp = dblog.NewOTLP(dblog.OTLPOptions{Endpoint: a.cfg.OTLPLogsEndpoint, Headers: headers, Service: "paymux", Version: Version, Stdout: a.log})
+		otlp = dblog.NewOTLP(dblog.OTLPOptions{Endpoint: a.cfg.OTLPLogsEndpoint, Headers: headers, Service: "paymux", Version: Version, Redact: red.Scrub, Stdout: a.log})
 		otlp.Start()
 		opts.Tee = otlp.Ship
 	}
