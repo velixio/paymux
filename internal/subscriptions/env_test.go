@@ -276,9 +276,9 @@ func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 		"pa_upi":     mandateConn{base{name: "payu", modes: mandateMod, limits: allMethods, r: e.r}},
 		"pa_enach":   mandateConn{base{name: "zoho", modes: mandateMod, limits: []connector.MandateLimit{{Method: "emandate", Currency: "INR"}}, r: e.r}},
 		"pa_managed": managedConn{base{name: "razorpay", modes: managedMod, subCur: []string{"INR"}, r: e.r}},
-		"pa_whop":    managedConn{base{name: "whop", modes: managedMod, r: e.r}},
+		"pa_whop":    managedConn{base{name: "whop", modes: managedMod, subCur: []string{"INR", "USD"}, r: e.r}},
 	}
-	e.subs = subscriptions.New(subscriptions.Options{DB: db, Core: e.core, Settings: e.set, Jobs: e.q, Emitter: emitter, BaseURL: "https://pay.example.com", Mailer: e.mailer,
+	e.subs = subscriptions.New(subscriptions.Options{DB: db, Core: e.core, Settings: e.set, Jobs: e.q, Emitter: emitter, BaseURL: "https://pay.example.com", Mailer: e.mailer, CSRFKey: []byte("0123456789abcdef0123456789abcdef"),
 		Now: e.clock, Connectors: subscriptions.ConnectorsFunc(func(_ context.Context, id string) (connector.Connector, error) {
 			if c, ok := conns[id]; ok {
 				return c, nil
@@ -302,7 +302,7 @@ func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 				return err
 			}
 			if _, err := tx.ExecContext(ctx, `UPDATE provider_accounts SET enabled_purposes = '["one_time","subscription"]',
-				accepted_currencies = '["INR"]' WHERE id = ?`, a[0]); err != nil {
+				accepted_currencies = CASE WHEN id = 'pa_whop' THEN '["INR","USD"]' ELSE '["INR"]' END WHERE id = ?`, a[0]); err != nil {
 				return err
 			}
 			if _, err := tx.ExecContext(ctx, "INSERT INTO app_provider_accounts (app_id, provider_account_id) VALUES ('app_1', ?)", a[0]); err != nil {

@@ -378,10 +378,11 @@ func TestBillingFormShownForIndianB2CWhenInvoicing(t *testing.T) {
 		if r := e.do("GET", big.path(), "", nil); !strings.Contains(r.body, `name="line1"`) || !strings.Contains(r.body, `name="postal_code"`) {
 			t.Errorf("address fields missing at 50,000: %s", r.body)
 		}
-		// Not needed for foreign currency, nor with invoicing off, nor when the setting is off.
-		if r := e.do("GET", e.create(core.CreatePaymentInput{Currency: "USD"}).path(), "", nil); r.status != 303 {
-			t.Errorf("USD: %d", r.status)
+		// Dollars: no Indian State, but the country decides the tax, so it is asked (see country_test.go).
+		if r := e.do("GET", e.create(core.CreatePaymentInput{Currency: "USD"}).path(), "", nil); r.status != 200 || strings.Contains(r.body, `name="state_code"`) || !strings.Contains(r.body, `name="country"`) {
+			t.Errorf("USD: %d %s", r.status, r.body)
 		}
+		// Not needed with invoicing off, nor when the setting is off.
 		if err := e.set.SetApp(ctx, audit.System, store.DefaultOrgID, "app_1", "issue_invoices", json.RawMessage(`false`)); err != nil {
 			t.Fatal(err)
 		}
