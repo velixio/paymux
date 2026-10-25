@@ -168,6 +168,32 @@ func (s *Service) applyRefundTx(ctx context.Context, tx store.Tx, refundID strin
 	}
 }
 
+// FailUnsentRefunds fails, inside the caller's transaction, the payment's
+// pending refunds of ours that have not been sent to the provider (no provider
+// refund id yet), each through the ordinary failure path (refund.failed, the
+// balance freed). A dispute opening calls it so that the refund job, finding
+// the refund failed, sends nothing. A refund whose request is already in
+// flight cannot be recalled: that window is the provider call itself. Returns
+// how many it failed.
+func (s *Service) FailUnsentRefunds(ctx context.Context, tx store.Tx, paymentID, reason string) (int, error) {
+	rs, err := store.ListRefunds(ctx, tx, paymentID)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, r := range rs {
+		if r.Status != string(state.RefundPending) || r.ProviderRefundID != "" || r.InitiatedBy == "provider" {
+			continue
+		}
+		var alerts []notify.Alert // a failure raises none
+		if _, err := s.applyRefundTx(ctx, tx, r.ID, RefundSnapshot{Status: state.RefundFailed, FailureReason: reason}, &alerts); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
 // refundEventData adds the failure reason to a refund snapshot.
 type refundEventData struct {
 	RefundView

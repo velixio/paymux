@@ -248,8 +248,12 @@ to the fixed tree.
 - **Fix:** the refund job reloads the payment. If the payment is disputed or
   its dispute was lost, the refund fails without being sent.
 - **Regression test:** `TestAuditLedgerPendingRefundIsNotSentOnceThePaymentIsDisputed`.
+- **Also (R-A7):** when a dispute opens, `disputes.upsert` fails the payment's
+  pending refunds that have no provider refund id yet, in the same transaction
+  (`core.FailUnsentRefunds`), so the refund job finds them failed and sends
+  nothing. Regression test: `TestDisputeOpeningFailsThePendingUnsentRefunds`.
 - **Residual risk:** a dispute that arrives during the provider call itself
-  is not caught.
+  is not caught; a refund whose request is already in flight cannot be recalled.
 
 ### A-8: the first dispute to end cleared the flag
 

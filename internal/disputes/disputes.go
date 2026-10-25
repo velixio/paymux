@@ -61,8 +61,11 @@ type Options struct {
 	Alerts   Alerter     // nil disables alerts
 	Credit   CreditNoter // nil disables credit notes
 	Conns    *connectors.Service
-	Logger   *slog.Logger
-	Now      func() time.Time
+	// Core fails the payment's unsent pending refunds when a dispute opens
+	// (nil: they are left to the refund job's own check).
+	Core   *core.Service
+	Logger *slog.Logger
+	Now    func() time.Time
 	// CutoffErr, when set, is the error value the CreditNoter returns for a
 	// passed deadline (default: invoice's, matched by message via errors.Is).
 	CutoffErr error
@@ -207,6 +210,12 @@ func (s *Service) upsert(ctx context.Context, tx store.Tx, a store.Attempt, p st
 		addFlag(&p, FlagDisputed)
 		if err := store.UpdatePayment(ctx, tx, &p, now); err != nil {
 			return res, nil, err
+		}
+		if s.o.Core != nil {
+			if _, err := s.o.Core.FailUnsentRefunds(ctx, tx, p.ID,
+				"the payment went into dispute before the refund was sent; the money is already being taken back"); err != nil {
+				return res, nil, err
+			}
 		}
 		if err := s.emit(ctx, tx, "dispute.opened", d); err != nil {
 			return res, nil, err

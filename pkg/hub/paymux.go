@@ -249,7 +249,7 @@ func (a *App) Start(ctx context.Context) error {
 	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter, Router: rt, Alerts: alerts,
 		OnPaymentSucceeded: onPaymentSucceeded, OnRefundSucceeded: inv.OnRefundSucceeded})
 	links = paylinks.New(paylinks.Options{DB: db, Core: svc, Emitter: emitter, Settings: set, BaseURL: a.cfg.BaseURL.String()})
-	disp := disputes.New(disputes.Options{DB: db, Settings: set, Emitter: emitter, Alerts: alerts, Credit: inv, Conns: conns,
+	disp := disputes.New(disputes.Options{DB: db, Settings: set, Emitter: emitter, Alerts: alerts, Credit: inv, Conns: conns, Core: svc,
 		Logger: a.log, CutoffErr: invoice.ErrCreditNoteCutoff})
 	// Subscriptions and mandates: renewals run as jobs; provider notifications
 	// and returns reach the engine through the payment flow.
