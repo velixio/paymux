@@ -36,18 +36,20 @@ const (
 	UserManage            Action = "user.manage"
 	AuditRead             Action = "audit.read"
 	RoleManage            Action = "role.manage"
-	PayoutCreate          Action = "payout.create" // sends money out: admin only unless a role is given it
-	LogsRead              Action = "logs.read"     // the Logs page: errors and failed provider calls; admin only unless a role is given it
+	PayoutCreate          Action = "payout.create"  // sends money out: admin only unless a role is given it
+	LogsRead              Action = "logs.read"      // the Logs page: errors and failed provider calls; admin only unless a role is given it
+	SettingsAdmin         Action = "settings.admin" // the sign-in policy and the e-invoice trust anchor; the built-in admin only
 )
 
 // AllActions lists every action.
 var AllActions = []Action{PaymentCreate, PaymentRead, PaymentCancel, RefundCreate, RefundRead, DisputeManage,
 	WebhookReplay, InvoiceReissue, SettingsRead, SettingsWrite, AppCreate, APIKeyCreate, ProviderAccountManage,
-	UserManage, AuditRead, RoleManage, PayoutCreate, LogsRead}
+	UserManage, AuditRead, RoleManage, PayoutCreate, LogsRead, SettingsAdmin}
 
 // adminOnly actions can never be granted to a custom role: whoever holds them
-// can create users and roles, so they could give themselves everything.
-var adminOnly = []Action{UserManage, RoleManage}
+// can create users and roles, so they could give themselves everything, or
+// (SettingsAdmin) stretch every session or swap the e-invoice trust anchor.
+var adminOnly = []Action{UserManage, RoleManage, SettingsAdmin}
 
 // Grantable lists the actions a custom role may be given.
 func Grantable() []Action {

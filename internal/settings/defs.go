@@ -29,6 +29,14 @@ type Def struct {
 	Validate func(json.RawMessage) error
 }
 
+// adminOnlyKeys are the settings only the built-in admin may change: they set
+// how long a stolen session lives and which keys vouch for an e-invoice, so a
+// custom role holding settings.write must not reach them.
+var adminOnlyKeys = []string{"session_idle_hours", "session_max_days", "session_remember_days", "einvoice_irp_keys"}
+
+// AdminOnly reports whether key may be changed by an admin only.
+func AdminOnly(key string) bool { return slices.Contains(adminOnlyKeys, key) }
+
 // Defs returns every setting definition, ordered by key.
 func Defs() []Def {
 	out := slices.Clone(defs)

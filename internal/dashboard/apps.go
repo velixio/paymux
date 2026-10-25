@@ -68,6 +68,7 @@ type settingRow struct {
 	Pattern, Min, Max, Step, Aux             string
 	Options                                  []enumOpt
 	Checked                                  bool
+	Locked                                   bool // admin-only setting shown to someone who may not change it
 }
 
 // settingsTable is what the shared settings partial renders: the rows, the

@@ -8,7 +8,7 @@
 <p class="muted default">Default: {{.Default}}</p></td>
 <td data-label="Source"><span class="source-badge">{{.Source}}</span></td>
 {{if $.Table.CanWrite}}<td data-label="Change">
-<form method="post" action="{{$.Table.Base}}/{{.Key}}" class="setting-form">
+{{if .Locked}}<span class="muted">Admin only</span>{{else}}<form method="post" action="{{$.Table.Base}}/{{.Key}}" class="setting-form">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 {{if eq .Kind "enum"}}<select class="field" name="value" aria-label="{{.Key}}">{{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Value}}</option>{{end}}</select>
 {{else if eq .Kind "bool"}}<input type="hidden" name="value" value="false"><label class="inline"><input type="checkbox" name="value" value="true"{{if .Checked}} checked{{end}}> on</label>
@@ -22,7 +22,7 @@
 {{if .Overridden}}<form class="inline" method="post" action="{{$.Table.Base}}/{{.Key}}/reset">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <button class="linkbtn" type="submit">Reset to org</button>
-</form>{{end}}
+</form>{{end}}{{end}}
 </td>{{end}}
 </tr>{{end}}
 </tbody>
