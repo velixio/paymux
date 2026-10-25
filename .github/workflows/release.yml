@@ -13,6 +13,11 @@ permissions:
 jobs:
   ci:
     uses: ./.github/workflows/ci.yml
+    # A called workflow cannot exceed its caller: grant what ci.yml's jobs ask
+    # for (the gitleaks job reads pull requests), or the run does not start.
+    permissions:
+      contents: read
+      pull-requests: read
 
   release:
     needs: ci
