@@ -1256,7 +1256,7 @@ main.dash:has(#paymux-react-root) {
 }
 .react-content .revenue-select select {
   height: 30px;
-  padding: 0 24px 0 8px;
+  padding: 0 28px 0 8px;
   background-color: var(--background);
   color: var(--foreground);
   border: 1px solid var(--input);

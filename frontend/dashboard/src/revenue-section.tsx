@@ -9,6 +9,10 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { textOf, type ViewNode } from "./adapter";
 import { parseRevenue, type Series } from "./revenue";
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/components/ui/native-select";
 
 // The chart is a separate chunk; the skeleton has its size so nothing shifts.
 const RevenueChart = lazy(() => import("./revenue-chart"));
@@ -158,7 +162,8 @@ function Toolbar({
         {selects.map((s) => (
           <label className="revenue-select" key={s.name}>
             <span>{form ? labelFor(form, s.name) : s.name}</span>
-            <select
+            <NativeSelect
+              size="sm"
               aria-label={form ? labelFor(form, s.name) : s.name}
               value={s.value}
               onChange={(e) =>
@@ -172,11 +177,11 @@ function Toolbar({
               }
             >
               {s.options.map((o) => (
-                <option key={o.value} value={o.value}>
+                <NativeSelectOption key={o.value} value={o.value}>
                   {o.label}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </label>
         ))}
         <Popover open={open} onOpenChange={setOpen}>
