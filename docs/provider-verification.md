@@ -54,15 +54,22 @@ unverified.
 | Razorpay | Netbanking, the demo bank's "Success" | Succeeded on the return; ₹100.00 received |
 | Cashfree | Net Banking simulator, OTP 111000, SUCCESS | Succeeded on the return; ₹100.00 received |
 | Zoho Payments | Net Banking, "Success Test Bank" | Succeeded on the return; ₹100.00 received. The A-4 Zoho fix still accepts a Zoho payment that names our session or reference. The case A-4 refuses (a payment that names neither) was not produced in the sandbox. |
-| PayU | Net Banking "Test bank", simulator "Simulate Success Response" | Not concluded: PayU's simulator page did not leave `pgsim01.payu.in` after the success click, so no return reached the hub |
-| Whop | card 4242, USD | Not concluded: Whop took the payment but stayed on its own return page and never redirected to the `localhost` return URL |
+| PayU | Net Banking "Test bank", simulator "Simulate Success Response" | Not concluded on `localhost`: PayU's simulator page did not leave `pgsim01.payu.in` after the success click, so no return reached the hub. See the second run below. |
+| Whop | card 4242, USD | Not concluded on `localhost`: Whop took the payment but stayed on its own return page and never redirected to the `localhost` return URL. See the second run below. |
 
-**Not covered by this run:**
+**Second run, the same night, on a public base URL** (`main` at `e98389b`, the
+development hub at its public address, the same test-mode accounts):
 
-- PayU and Whop. Repeat both against a hub with a public base URL, so that
-  the return and the webhook can both arrive.
+| Connector | Paid with | Result |
+|-----------|-----------|--------|
+| Whop | card 4242, USD | Succeeded; 1000 of 1000 USD received; no flags. Whop delivered its webhooks and redirected to the return URL, so the return path was exercised. |
+| PayU | card 5123 4567 8901 2346, 3-D Secure simulator OTP 123456 | Succeeded; ₹100.00 received; no flags. PayU's own response page answered HTTP 504 after the OTP, and neither a return nor a webhook reached the hub. The hub's status poll by reference (`verify_payment`) settled it. The return path was therefore not exercised for PayU. |
+
+**Not covered by these runs:**
+
+- PayU's return path. The poll path is verified; the return was not.
 - Subscription setups and renewals (A-2: a renewal success must carry an
-  amount).
+  amount). A renewal needs a billing cycle to pass.
 - Refunds, disputes and payouts.
 
 ## Razorpay
