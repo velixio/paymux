@@ -235,3 +235,29 @@ export function contrastReport(tokens: Tokens): ContrastRow[] {
     },
   );
 }
+
+/** What a stylesheet is made from: the "dashboard" block of a theme. */
+export type ThemeSpec = {
+  seeds: Seeds;
+  dark_seeds?: Seeds | null;
+  overrides?: Overrides | null;
+};
+
+const HEX = /^#[0-9a-f]{6}$/i;
+const TOKEN = /^--[a-z][a-z-]*$/;
+
+function block(selector: string, tokens: Tokens): string {
+  const decls = Object.entries(tokens)
+    .filter(
+      ([k, v]) => TOKEN.test(k) && !k.startsWith("--status-") && HEX.test(v),
+    )
+    .map(([k, v]) => `${k}:${v};`)
+    .join("");
+  return `${selector}{${decls}}`;
+}
+
+/** The stylesheet for a theme: light tokens on :root, dark tokens on .dark. */
+export function themeCss(m: ThemeSpec): string {
+  const { light, dark } = derive(m.seeds, m.dark_seeds, m.overrides);
+  return block(":root", light) + block(".dark", dark);
+}

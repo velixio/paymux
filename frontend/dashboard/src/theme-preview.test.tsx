@@ -20,10 +20,8 @@ const spec = (name: string) => {
     overrides: d.overrides ?? {},
   });
 };
-const rgb = (hex: string) => {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
-};
+// happy-dom keeps colours as written; a browser would report rgb().
+const rgb = (hex: string) => hex;
 
 beforeEach(resetHost);
 afterEach(() => {
@@ -46,15 +44,15 @@ test("shows the theme in light and dark, painted with the derived tokens", () =>
   const [l, k] = screen.getAllByRole("img");
   expect(l.getAttribute("aria-label")).toBe("paddle, light");
   expect(k.getAttribute("aria-label")).toBe("paddle, dark");
-  expect(l.style.background).toBe(rgb(light["--background"]));
-  expect(k.style.background).toBe(rgb(dark["--background"]));
+  expect(l.style.backgroundColor).toBe(rgb(light["--background"]));
+  expect(k.style.backgroundColor).toBe(rgb(dark["--background"]));
   const side = (el: HTMLElement) =>
-    el.querySelector<HTMLElement>("[data-part=sidebar]")!.style.background;
+    el.querySelector<HTMLElement>("[data-part=sidebar]")!.style.backgroundColor;
   // Paddle keeps a dark sidebar in light mode.
   expect(side(l)).toBe(rgb("#121417"));
   const btn = (el: HTMLElement) =>
     el.querySelector<HTMLElement>("[data-part=button]")!;
-  expect(btn(l).style.background).toBe(rgb(light["--primary"]));
+  expect(btn(l).style.backgroundColor).toBe(rgb(light["--primary"]));
   expect(btn(l).style.color).toBe(rgb(light["--primary-foreground"]));
 });
 

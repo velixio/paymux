@@ -6,24 +6,25 @@
 <p class="muted">A theme sets colours, corner radius and fonts, and can add its own styles, templates and images. Themes live in <code>themes/&lt;name&gt;/</code> inside the data directory; a change to a theme's files is live within a second, without a restart. A theme that cannot be loaded is skipped and the standard look is used instead.</p>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 
-<h3>Dashboard theme</h3>
-<p class="muted">Worn by this dashboard, and the default for every app's customer pages (pay page, subscription checkout, invoices).</p>
-{{if .CanManage}}<form class="filters" method="post" action="/dashboard/appearance/theme">
-<input type="hidden" name="csrf" value="{{.CSRF}}">
-<select name="theme" aria-label="Dashboard theme">{{range .ThemeRows}}{{if .Usable}}<option value="{{.Name}}"{{if .Current}} selected{{end}}>{{.Name}} {{.Version}}</option>{{end}}{{end}}</select>
-<button class="btn small" type="submit">Use this theme</button>
-</form>{{else}}<p>Current theme: <strong>{{.CurrentTheme}}</strong></p>{{end}}
-
-<h3>Installed themes</h3>
-<div class="table-scroll"><table class="grid">
-<thead><tr><th>Theme</th><th>About</th><th>Tokens</th><th></th></tr></thead>
-<tbody>{{range .ThemeRows}}<tr id="theme-{{.Name}}">
-<td><strong>{{.Name}}</strong>{{if .Version}} <small class="muted">{{.Version}}</small>{{end}}<br><small class="muted">{{if .Bundled}}bundled{{else}}custom{{end}}{{if .Current}}, in use{{end}}</small></td>
-<td>{{if .Usable}}{{.Description}}{{else}}<span class="error">Cannot be used: {{.Err}}</span>{{end}}</td>
-<td>{{range .Tokens}}<small><code>{{.Name}}: {{.Value}}</code></small><br>{{end}}</td>
-<td><a href="/dashboard/appearance/preview/{{.Name}}">Preview</a></td></tr>
-{{else}}<tr><td colspan="4" class="muted">No themes installed.</td></tr>{{end}}</tbody>
-</table></div>
+<h3>Themes</h3>
+<p class="muted">Worn by this dashboard, and the default for every app's customer pages (pay page, subscription checkout, invoices). Each person can pick their own on their account page. A theme without dashboard colours only styles customer pages; the dashboard then looks like <strong>{{.OrgThemeName}}</strong>.</p>
+<ul class="theme-cards">
+{{range .ThemeRows}}<li class="theme-card" id="theme-{{.Name}}" data-theme-card="{{.Name}}" data-kind="{{if .Bundled}}builtin{{else}}custom{{end}}" data-default="{{if .Current}}true{{else}}false{{end}}" data-users="{{.Users}}">
+{{if .Spec}}<div class="theme-preview" data-theme-preview data-theme-name="{{.Name}}" data-theme-spec="{{.Spec}}"></div>{{end}}
+<h4>{{.Name}}{{if .Version}} <small class="muted">{{.Version}}</small>{{end}}</h4>
+<p class="theme-badges"><span class="theme-badge">{{if .Bundled}}Built-in{{else}}Custom{{end}}</span>{{if .Current}} <span class="theme-badge theme-badge-default">Default</span>{{end}}</p>
+<p>{{if .Usable}}{{.Description}}{{else}}<span class="error">Cannot be used: {{.Err}}</span>{{end}}</p>
+{{if .Usable}}<p class="muted">{{.Users}} {{if eq .Users 1}}person has{{else}}people have{{end}} chosen it.</p>
+<p class="theme-actions"><a href="/dashboard/appearance/preview/{{.Name}}">Preview</a>
+{{if and $.CanManage (not .Current)}}<form class="inline" method="post" action="/dashboard/appearance/theme">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<input type="hidden" name="theme" value="{{.Name}}">
+<button class="btn small" type="submit">Set as default</button>
+</form>{{end}}</p>
+{{if .Tokens}}<details><summary class="muted">Customer-page tokens</summary>{{range .Tokens}}<small><code>{{.Name}}: {{.Value}}</code></small><br>{{end}}</details>{{end}}{{end}}
+</li>
+{{else}}<li class="muted">No themes installed.</li>{{end}}
+</ul>
 
 <h3>Customer pages, per app</h3>
 <p class="muted">Each app can have its own theme and language for its customer pages. "Inherit" uses the dashboard theme and the org's language setting. Customers can also pick an installed language with <code>?lang=</code> on the link.</p>

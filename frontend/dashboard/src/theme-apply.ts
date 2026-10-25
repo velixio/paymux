@@ -1,24 +1,12 @@
 import { getNonce } from "get-nonce";
-import {
-  derive,
-  type Overrides,
-  type Seeds,
-  type Tokens,
-} from "./theme-derive";
+import type { ThemeSpec } from "./theme-derive";
 
 /** What GET /theme/<name>/dashboard.json serves. */
-export type Manifest = {
-  name: string;
-  scheme: string;
-  seeds: Seeds;
-  dark_seeds: Seeds | null;
-  overrides: Overrides;
-};
+export type Manifest = ThemeSpec & { name: string; scheme: string };
 
 const STYLE_ID = "paymux-dashboard-theme";
 const FALLBACK = "stripe";
 const HEX = /^#[0-9a-f]{6}$/i;
-const TOKEN = /^--[a-z][a-z-]*$/;
 
 // One request per theme name; a failed one is forgotten so the next try asks again.
 const manifests = new Map<string, Promise<Manifest | null>>();
@@ -57,22 +45,6 @@ export function clearThemeCache(name?: string) {
   else manifests.clear();
 }
 
-function block(selector: string, tokens: Tokens): string {
-  const decls = Object.entries(tokens)
-    .filter(
-      ([k, v]) => TOKEN.test(k) && !k.startsWith("--status-") && HEX.test(v),
-    )
-    .map(([k, v]) => `${k}:${v};`)
-    .join("");
-  return `${selector}{${decls}}`;
-}
-
-/** The stylesheet for a theme: light tokens on :root, dark tokens on .dark. */
-export function themeCss(m: Manifest): string {
-  const { light, dark } = derive(m.seeds, m.dark_seeds, m.overrides);
-  return block(":root", light) + block(".dark", dark);
-}
-
 let latest = 0;
 
 /**
@@ -85,9 +57,12 @@ export async function applyDashboardTheme(
 ): Promise<{ scheme: string } | null> {
   const ticket = ++latest;
   const want = name || FALLBACK;
+  // The derivation is a separate chunk; start loading it with the manifest.
+  const derivation = import("./theme-derive");
   const m =
     (await loadManifest(want)) ??
     (want === FALLBACK ? null : await loadManifest(FALLBACK));
+  const { themeCss } = await derivation;
   if (!m || ticket !== latest) return null;
   let tag = document.getElementById(STYLE_ID);
   if (!tag) {

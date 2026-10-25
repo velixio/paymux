@@ -1,5 +1,7 @@
 import React, {
+  Suspense,
   createContext,
+  lazy,
   useContext,
   useEffect,
   useMemo,
@@ -26,11 +28,14 @@ import { cn } from "@/lib/utils";
 import { statusLabel, statusTone } from "./pill";
 import { polishNodes } from "./polish";
 import { RevenueSection } from "./revenue-section";
+import { parseSpec } from "./theme-spec";
 import { SavedFiltersBar } from "./saved-filters-bar";
 import { isRecordPath } from "./peek";
 import { recordSplit, SectionTabs } from "./section-tabs";
 import { attributes, textOf, type ViewNode } from "./adapter";
 import { useRuntime, WorkspaceLink } from "./runtime";
+
+const ThemePreview = lazy(() => import("./theme-preview"));
 // <code> values inside table cells and definition lists get a copy button.
 const CellContext = createContext(false);
 function CopyCode({ node }: { node: ViewNode }) {
@@ -307,6 +312,19 @@ export function RenderNode({ node: n }: { node: ViewNode }): ReactNode {
         {children()}
       </Table>
     );
+  if ("data-theme-preview" in n.attrs) {
+    // The card's colours are drawn from the seeds it carries; without JS (or
+    // with a broken spec) the card is just its name and badges.
+    const spec = parseSpec(n.attrs["data-theme-spec"]);
+    return spec ? (
+      <Suspense fallback={<div className="theme-preview-pending" />}>
+        <ThemePreview
+          spec={spec}
+          name={n.attrs["data-theme-name"] ?? "theme"}
+        />
+      </Suspense>
+    ) : null;
+  }
   if (n.tag === "section" && n.attrs.id === "revenue")
     return (
       <section {...props}>

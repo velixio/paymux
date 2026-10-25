@@ -1520,3 +1520,57 @@ main.dash:has(#paymux-react-root) {
   border-radius: 4px;
   font: inherit;
 }
+
+.theme-cards {
+  list-style: none;
+  margin: 0 0 24px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+@media (min-width: 640px) {
+  .theme-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1100px) {
+  .theme-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.theme-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--card);
+  color: var(--card-foreground);
+}
+.theme-card h4 {
+  margin: 8px 0 4px;
+  font-size: 14px;
+}
+.theme-card p {
+  margin: 4px 0;
+}
+.theme-badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted-foreground);
+}
+.theme-badge-default {
+  font-weight: 600;
+  color: var(--accent-foreground);
+  background: var(--ui-accent);
+}
+.theme-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.theme-actions form {
+  margin: 0;
+}
