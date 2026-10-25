@@ -210,3 +210,102 @@ test("closing the pane with unsaved edits asks first", async () => {
   );
   await waitFor(() => expect(pane()).toBeNull());
 });
+
+async function dirtyPane() {
+  handlers["/dashboard/payments/pay_1"] = () =>
+    pageHtml(
+      "pay_1",
+      `<h1>pay_1</h1><form method="post" action="/dashboard/payments/pay_1/note"><input type="hidden" name="csrf" value="t"><input name="note" aria-label="Note" value=""><button type="submit">Save</button></form>`,
+    );
+  const router = await onList();
+  fireEvent.click(rowLink("pay_1"));
+  const p = await screen.findByRole("complementary", {
+    name: "Record preview",
+  });
+  fireEvent.input(await within(p).findByLabelText("Note"), {
+    target: { value: "draft" },
+  });
+  return router;
+}
+
+test("clicking another row with unsaved edits asks first; keeping the edits keeps the record", async () => {
+  const router = await dirtyPane();
+  fireEvent.click(rowLink("pay_2"));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Discard unsaved changes?",
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(search(router).peek).toBe("/dashboard/payments/pay_1");
+  expect(
+    (within(pane()!).getByLabelText("Note") as HTMLInputElement).value,
+  ).toBe("draft");
+  expect(rowLink("pay_1").closest("tr")!.hasAttribute("data-peek-row")).toBe(
+    true,
+  );
+
+  fireEvent.click(rowLink("pay_2"));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Discard and continue" }),
+  );
+  await waitFor(() =>
+    expect(search(router).peek).toBe("/dashboard/payments/pay_2"),
+  );
+  await within(pane()!).findByText("failed");
+});
+
+test("moving the selection with j/k with unsaved edits asks first and keeps the current row selected", async () => {
+  const router = await dirtyPane();
+  act(() => {
+    fireEvent.keyDown(window, { code: "KeyJ", key: "j" });
+  });
+  act(() => {
+    fireEvent.keyDown(window, { code: "KeyJ", key: "j" });
+  });
+  const dialog = await screen.findByRole("dialog", {
+    name: "Discard unsaved changes?",
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(search(router).peek).toBe("/dashboard/payments/pay_1");
+  const current = rowLink("pay_1").closest("tr")!;
+  expect(current.hasAttribute("data-nav-row")).toBe(true);
+  expect(rowLink("pay_2").closest("tr")!.hasAttribute("data-nav-row")).toBe(
+    false,
+  );
+  expect(current.contains(document.activeElement)).toBe(true);
+  expect(
+    (within(pane()!).getByLabelText("Note") as HTMLInputElement).value,
+  ).toBe("draft");
+});
+
+test("the pane header carries the record's title, status and action links; the body repeats none of them", async () => {
+  handlers["/dashboard/payments/pay_1"] = () =>
+    pageHtml(
+      "pay_1",
+      `<p><a href="/dashboard/payments">← Payments</a></p><h1>pay_1 <span class="status status-succeeded">succeeded</span> <span class="mode mode-live">live</span></h1><p class="muted">About this payment</p><p><a href="/dashboard/logs?id=pay_1">Logs for this payment</a></p><dl><dt>Amount</dt><dd>10.00 INR</dd></dl><h3>Attempts</h3><p>a</p><h3>Ledger</h3><p>l</p>`,
+    );
+  await onList();
+  fireEvent.click(rowLink("pay_1"));
+  const p = await screen.findByRole("complementary", {
+    name: "Record preview",
+  });
+  await within(p).findByText("succeeded");
+  const head = p.querySelector(".peek-head") as HTMLElement;
+  expect(
+    within(head).getByRole("link", { name: "Logs for this payment" }),
+  ).toBeTruthy();
+  expect(
+    within(head).getByRole("button", { name: "Open in tab" }),
+  ).toBeTruthy();
+  const body = p.querySelector(".peek-body") as HTMLElement;
+  expect(
+    within(body).queryByRole("link", {
+      name: /Logs for this payment|Payments/,
+    }),
+  ).toBeNull();
+  expect(body.querySelector("h1")).toBeNull();
+  expect(within(body).queryByText("pay_1")).toBeNull();
+  expect(within(body).queryByText("About this payment")).toBeNull();
+  expect(within(body).getAllByRole("tab")).toHaveLength(3);
+});

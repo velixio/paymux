@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LoaderCircle } from "lucide-react";
 import { useOptionalTabs } from "./tabs-context";
-import { isWide, peekClickTarget, peekOf } from "./peek";
+import { guardPeek, isWide, peekClickTarget, peekOf } from "./peek";
 import {
   parseDashboard,
   isDownloadPath,
@@ -108,12 +108,16 @@ export function WorkspaceLink({
           const to = new URL(peekTo, location.origin);
           // The first open is a history step (Back closes the pane); moving to
           // another record replaces it.
-          void router.navigate({
-            to: to.pathname,
-            search: Object.fromEntries(to.searchParams),
-            replace: !!peekOf(here.searchStr),
-            ignoreBlocker: true,
-          });
+          const replace = !!peekOf(here.searchStr);
+          const navigate = () =>
+            void router.navigate({
+              to: to.pathname,
+              search: Object.fromEntries(to.searchParams),
+              replace,
+              ignoreBlocker: true,
+            });
+          if (replace) guardPeek(navigate);
+          else navigate();
           return;
         }
         if (["#routing", "#route-test"].includes(url.hash)) {

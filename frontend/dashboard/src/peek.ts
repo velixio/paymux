@@ -92,3 +92,12 @@ export function peekClickTarget(link: string, current: string): string | null {
 /** The side pane needs room: desktop widths only. */
 export const isWide = (): boolean =>
   typeof matchMedia === "function" && matchMedia("(min-width: 1100px)").matches;
+
+// The open pane registers a guard so that anything switching it to another
+// record (a row click, j/k) can ask about unsaved edits first.
+let guard: ((run: () => void) => void) | null = null;
+export const setPeekGuard = (g: typeof guard) => {
+  guard = g;
+};
+/** Runs a switch of the pane's record, after the pane's own confirmation. */
+export const guardPeek = (run: () => void) => (guard ? guard(run) : run());
