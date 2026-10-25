@@ -250,14 +250,6 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, appName string,
 
 // ---- billing details ----
 
-func (h *Handler) setting(ctx context.Context, appID, key string, dst any) error {
-	v, err := h.o.Settings.Resolve(ctx, appID, key)
-	if err != nil {
-		return err
-	}
-	return v.Decode(dst)
-}
-
 // billingNeed decides what the pay page must ask (spec sections 6.2 and 10).
 func (h *Handler) billingNeed(ctx context.Context, p store.Payment, c store.Customer) (billingform.Need, error) {
 	mode, issue, err := billingform.Settings(ctx, h.o.Settings, p.AppID)
