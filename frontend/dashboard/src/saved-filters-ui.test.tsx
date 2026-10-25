@@ -116,3 +116,23 @@ test("chips are listed in a labelled group", async () => {
     2,
   );
 });
+
+test("the chip matching the current filter shows as active", async () => {
+  localStorage.setItem(
+    KEY,
+    JSON.stringify([
+      { name: "Alice", query: "q=alice&status=succeeded" },
+      { name: "Failed", query: "status=failed" },
+    ]),
+  );
+  await payments();
+  const alice = () => screen.getByRole("button", { name: "Alice" });
+  expect(alice().getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(alice());
+  await waitFor(() =>
+    expect(alice().getAttribute("aria-pressed")).toBe("true"),
+  );
+  expect(
+    screen.getByRole("button", { name: "Failed" }).getAttribute("aria-pressed"),
+  ).toBe("false");
+});

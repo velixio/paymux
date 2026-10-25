@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { add, filterQuery, list, remove } from "./saved-filters";
+import { add, filterQuery, list, remove, sameQuery } from "./saved-filters";
 
 function memory() {
   const data = new Map<string, string>();
@@ -131,5 +131,23 @@ describe("filterQuery", () => {
 
   test("nothing set gives an empty string", () => {
     expect(filterQuery([])).toBe("");
+  });
+});
+
+describe("sameQuery", () => {
+  test("order, empty values, csrf and peek do not matter", () => {
+    expect(
+      sameQuery(
+        "status=failed&app=a1",
+        "app=a1&q=&csrf=x&status=failed&peek=%2Fdashboard%2Fpayments%2Fpay_1",
+      ),
+    ).toBe(true);
+  });
+  test("a different value or an extra filter is not the same", () => {
+    expect(sameQuery("status=failed", "status=succeeded")).toBe(false);
+    expect(sameQuery("status=failed", "status=failed&app=a1")).toBe(false);
+  });
+  test("an empty saved query never matches", () => {
+    expect(sameQuery("", "")).toBe(false);
   });
 });
