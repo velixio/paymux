@@ -199,6 +199,14 @@ describe("close", () => {
     expect(closeRight(s, "nope")).toBe(s);
     expect(closeOthers(s, "nope")).toBe(s);
   });
+
+  test("closeRight never closes pinned tabs", () => {
+    let s = withTabs(3);
+    s = setPinned(s, s.tabs[1].id, true); // overview, p1 pinned; p2, p3
+    const r = closeRight(s, s.tabs[0].id);
+    expect(hrefs(r)).toEqual(["/dashboard/overview", `${D}p1`]);
+    expect(r.closed.map((t) => t.href)).toEqual([`${D}p2`, `${D}p3`]);
+  });
 });
 
 describe("reopen, duplicate, pin, move, rename, navigate", () => {
@@ -209,6 +217,25 @@ describe("reopen, duplicate, pin, move, rename, navigate", () => {
     expect(active(r).href).toBe(`${D}p2`);
     expect(r.closed).toHaveLength(0);
     expect(reopen(r, 901)).toBe(r);
+  });
+
+  test("reopen keeps the unpinned cap, evicting the least recent clean tab", () => {
+    let s = withTabs(MAX_UNPINNED);
+    s = close(s, s.tabs[MAX_UNPINNED].id); // close p10
+    s = open(s, `${D}extra`, "Extra", "new", 500, none);
+    const r = reopen(s, 600, none);
+    expect(r.tabs.filter((t) => !t.pinned)).toHaveLength(MAX_UNPINNED);
+    expect(active(r).href).toBe(`${D}p10`);
+    expect(hrefs(r)).not.toContain(`${D}p1`); // least recently active
+  });
+
+  test("reopen past the cap keeps dirty tabs", () => {
+    let s = withTabs(MAX_UNPINNED);
+    s = close(s, s.tabs[MAX_UNPINNED].id);
+    s = open(s, `${D}extra`, "Extra", "new", 500, none);
+    const dirty = new Set(s.tabs.filter((t) => !t.pinned).map((t) => t.id));
+    const r = reopen(s, 600, dirty);
+    expect(r.tabs.filter((t) => !t.pinned)).toHaveLength(MAX_UNPINNED + 1);
   });
 
   test("reopen of a key that is already open just focuses it", () => {
