@@ -2,7 +2,7 @@
 # Smoke test of the real binary: builds bin/paymux, starts it on a fresh data
 # directory, completes first-run setup over HTTP, adds a simulator provider
 # account, and drives a payment to success, a signed webhook to a local
-# receiver, an invoice PDF and a refund (scripts/smoke.py does the driving).
+# receiver, an invoice PDF and a refund (scripts/smoke, a Go program, does the driving).
 #
 #   bash scripts/smoke.sh
 #
@@ -12,19 +12,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-command -v python3 >/dev/null || { echo "smoke: python3 is required" >&2; exit 1; }
-
-echo "==> building bin/paymux"
+echo "==> building bin/paymux and bin/smoke"
 make build-paymux >/dev/null
+go build -o bin/smoke ./scripts/smoke
 
-free_port() {
-	python3 - <<'PY'
-import socket
-s = socket.socket()
-s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])
-PY
-}
+free_port() { bin/smoke -free-port; }
 
 pid=""
 tmp=""
@@ -93,7 +85,7 @@ run_one() {
 		exit 1
 	fi
 
-	if ! python3 scripts/smoke.py --base "http://127.0.0.1:$port" --code "$code"; then
+	if ! bin/smoke -base "http://127.0.0.1:$port" -code "$code"; then
 		echo >&2
 		echo "smoke: FAILED on $db; the last 60 lines of the server log:" >&2
 		tail -60 "$tmp/server.log" >&2

@@ -97,6 +97,12 @@ class H(BaseHTTPRequestHandler):
 HTTPServer(("127.0.0.1", 9000), H).serve_forever()
 ```
 
+This one does not check signatures, which is fine for a walkthrough on your own
+machine. For a real receiver use one that does: the repository has tested
+examples in [Go](../examples/webhook-receiver-go/main.go),
+[JavaScript](../examples/webhook-receiver-js/receiver.mjs) and
+[Python](../examples/webhook-receiver/receiver.py).
+
 In the dashboard open your app, go to **Webhooks**, add the URL
 `http://127.0.0.1:9000/` and save. The signing secret (`whsec_...`) is shown
 once; a real app uses it to verify each webhook with the

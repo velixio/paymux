@@ -1,0 +1,8 @@
+{
+  "name": "paymux-webhook-receiver-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

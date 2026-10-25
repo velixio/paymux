@@ -54,7 +54,7 @@ Paymux uses the Standard Webhooks signing format:
 5. Check the timestamp against a bounded clock tolerance; Paymux's own verifier uses five minutes.
 6. Only then parse and accept the event.
 
-Use a Standard Webhooks library for your application stack or adapt the [Python verification and durable inbox example](../examples/webhook-receiver/receiver.py). The Python 3.9+ example binds to loopback, limits request size, rejects stale/tampered signatures, and persists the event before returning 2xx. It is a learning receiver, not a public production HTTP server.
+Use a Standard Webhooks library for your application stack or adapt one of the verification and durable inbox examples: [Go](../examples/webhook-receiver-go/main.go) (standard library only), [JavaScript](../examples/webhook-receiver-js/receiver.mjs) (Node 18+, built-in `crypto`) or [Python](../examples/webhook-receiver/receiver.py) (3.9+). Each binds to loopback, limits request size, rejects stale/tampered signatures, and persists the event before returning 2xx (the Python one in SQLite, the Go and JavaScript ones as one file per event id). They are learning receivers, not public production HTTP servers, and each has a test you can run.
 
 ## Acknowledge durably, process idempotently
 

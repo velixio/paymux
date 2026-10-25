@@ -14,8 +14,11 @@ bun run --cwd frontend test:frontend
 (cd frontend && bunx playwright install chromium)
 bun run --cwd frontend test:home
 go test ./...
-python3 -m unittest discover -s examples/webhook-receiver -p 'test_*.py'
+python3 -m unittest discover -s examples/webhook-receiver -p 'test_*.py'   # optional: the Python receiver example
+node --test examples/webhook-receiver-js/receiver.test.mjs                  # optional: the Node receiver example
 ```
+
+The Go receiver example (`examples/webhook-receiver-go`) is tested by `go test ./...`. The Python and Node examples are for customers and need their interpreters, which the project does not: `scripts/ci.sh` runs them when `python3` or `node` is installed and skips them, with a message, when it is not. The smoke test (`bash scripts/smoke.sh`) is a Go program, `scripts/smoke`; it needs only the Go toolchain and, for the PostgreSQL run, `psql`.
 
 The full CI gate is `bash scripts/ci.sh`. It also runs static analysis, API/capability snapshot checks, database tests, smoke checks, and release/build checks. See the Makefile for database-specific targets.
 
