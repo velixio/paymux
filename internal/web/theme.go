@@ -238,6 +238,11 @@ type Themes struct {
 	cache map[string]cachedTheme
 
 	wmu sync.Mutex // serialises the write methods (theme_write.go)
+
+	gen uint64 // bumped by Invalidate; a load only fills the cache if it did not move
+
+	// Test hooks: run at the marked points of a load, a rename and a delete.
+	loadHook, renameHook, deleteHook func()
 }
 
 type cachedTheme struct {
@@ -265,10 +270,18 @@ func (t *Themes) Load(name string) (*Theme, error) {
 		t.mu.Unlock()
 		return c.th, c.err
 	}
+	gen := t.gen
 	t.mu.Unlock()
 	th, err := t.load(name)
+	if t.loadHook != nil {
+		t.loadHook()
+	}
 	t.mu.Lock()
-	t.cache[name] = cachedTheme{th, err, time.Now()}
+	// An edit that landed while this was loading invalidated the cache: this
+	// result may predate it, so it is returned but not remembered.
+	if t.gen == gen {
+		t.cache[name] = cachedTheme{th, err, time.Now()}
+	}
 	t.mu.Unlock()
 	return th, err
 }

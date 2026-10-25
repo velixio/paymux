@@ -36,6 +36,7 @@ func (t *Themes) IsBundled(name string) bool {
 // write methods call it; it is also what makes a change visible at once.
 func (t *Themes) Invalidate() {
 	t.mu.Lock()
+	t.gen++
 	clear(t.cache)
 	t.mu.Unlock()
 }
@@ -61,6 +62,22 @@ func (t *Themes) root(create bool) (*os.Root, error) {
 		return nil, ErrThemeMissing
 	}
 	return r, err
+}
+
+// parseLoose reads a theme.json found in directory dir even when the name inside
+// is not the directory's (what an interrupted rename leaves). The result carries
+// the directory's name, so saving it repairs the file.
+func parseLoose(raw []byte, dir string) (Manifest, error) {
+	var declared struct {
+		Name string `json:"name"`
+	}
+	_ = json.Unmarshal(raw, &declared)
+	m, err := ParseManifest(raw, declared.Name)
+	if err != nil {
+		return Manifest{}, err
+	}
+	m.Name = dir
+	return m, nil
 }
 
 func encodeManifest(m Manifest) ([]byte, error) {
@@ -183,7 +200,7 @@ func (t *Themes) Update(name string, edit func(*Manifest) error) error {
 	if err != nil {
 		return fmt.Errorf("theme %s: %w", name, err)
 	}
-	m, err := ParseManifest(cur, name)
+	m, err := parseLoose(cur, name)
 	if err != nil {
 		return err
 	}
@@ -221,7 +238,7 @@ func (t *Themes) Rename(old, new string) error {
 	if err != nil {
 		return err
 	}
-	m, err := ParseManifest(cur, old)
+	m, err := parseLoose(cur, old)
 	if err != nil {
 		return err
 	}
@@ -230,11 +247,24 @@ func (t *Themes) Rename(old, new string) error {
 	if err != nil {
 		return err
 	}
-	if err := r.Rename(old, new); err != nil {
+	// Prepare the new manifest beside the old one first, then move the directory
+	// and put the manifest in place: the only moment the manifest and the
+	// directory disagree is between those two renames, and nothing loaded then
+	// is remembered (Invalidate runs after).
+	tmp := path.Join(old, ".theme.json.tmp-"+randSuffix())
+	if err := r.WriteFile(tmp, raw, 0o644); err != nil {
 		return err
 	}
-	if err := writeAtomic(r, new, raw); err != nil {
+	if err := r.Rename(old, new); err != nil {
+		_ = r.Remove(tmp)
+		return err
+	}
+	if t.renameHook != nil {
+		t.renameHook()
+	}
+	if err := r.Rename(path.Join(new, path.Base(tmp)), path.Join(new, "theme.json")); err != nil {
 		_ = r.Rename(new, old) // put it back as it was
+		_ = r.Remove(path.Join(old, path.Base(tmp)))
 		return err
 	}
 	return nil
@@ -250,5 +280,15 @@ func (t *Themes) Delete(name string) error {
 		return err
 	}
 	defer r.Close()
-	return r.RemoveAll(name)
+	// Move it out of the way first (one atomic step), so a request never sees
+	// a theme with half its files; then remove it. A leftover of a crash is a
+	// dot directory, which neither the list nor the loader looks at.
+	gone := ".del-" + name + "-" + randSuffix()
+	if err := r.Rename(name, gone); err != nil {
+		return err
+	}
+	if t.deleteHook != nil {
+		t.deleteHook()
+	}
+	return r.RemoveAll(gone)
 }
