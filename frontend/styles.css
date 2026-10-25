@@ -55,8 +55,8 @@
   --status-warn-fg: #8a5a00;
   --status-bad-bg: #fde2e1;
   --status-bad-fg: #a4261d;
-  --status-neutral-bg: #eef1f5;
-  --status-neutral-fg: #4f566b;
+  --status-neutral-bg: #e3e7ee;
+  --status-neutral-fg: #3c4257;
   --status-info-bg: #e5eefd;
   --status-info-fg: #1d4fa8;
   --test-mode: #f59e0b;
@@ -88,8 +88,8 @@
   --status-warn-fg: #f2c66b;
   --status-bad-bg: #3e1a19;
   --status-bad-fg: #ff9d96;
-  --status-neutral-bg: #232734;
-  --status-neutral-fg: #aab1c3;
+  --status-neutral-bg: #2a2f3d;
+  --status-neutral-fg: #c3c9d6;
   --status-info-bg: #16264a;
   --status-info-fg: #9dbdfb;
   --test-mode: #f59e0b;

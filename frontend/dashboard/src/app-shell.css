@@ -470,6 +470,9 @@
 .app-shell .pill.pill-neutral {
   background: var(--status-neutral-bg);
   color: var(--status-neutral-fg);
+  /* A grey pill needs an edge to read as a status, not as plain text. */
+  border: 1px solid
+    color-mix(in srgb, var(--status-neutral-fg) 25%, var(--status-neutral-bg));
 }
 .app-shell .pill.pill-info {
   background: var(--status-info-bg);

@@ -238,3 +238,17 @@ test("focus rings inside clipping containers are drawn inset", () => {
   expect(rule).toContain("outline-offset: -2px");
   expect(rule).toContain("outline: 2px solid var(--ring)");
 });
+
+test("finished statuses are a clear slate pill, not faint grey", () => {
+  const light = block(":root");
+  const dark = block(".dark");
+  expect(light["--status-neutral-bg"]).toBe("#e3e7ee");
+  expect(light["--status-neutral-fg"]).toBe("#3c4257");
+  expect(dark["--status-neutral-bg"]).toBe("#2a2f3d");
+  expect(dark["--status-neutral-fg"]).toBe("#c3c9d6");
+  const rule =
+    read("./app-shell.css").match(
+      /\.app-shell \.pill\.pill-neutral\s*\{([^}]*)\}/,
+    )?.[1] ?? "";
+  expect(rule).toMatch(/border: 1px solid/);
+});
