@@ -18,6 +18,8 @@ import {
   setPinned,
   storageKey,
   tabKey,
+  openInSection,
+  leavesSection,
   type TabState,
 } from "./tabs";
 
@@ -437,4 +439,84 @@ test("tabKey ignores the side-pane parameter: a peek is not another page", () =>
       "/dashboard/payments?status=failed&peek=%2Fdashboard%2Fpayments%2Fpay_1",
     ),
   ).toBe("/dashboard/payments?status=failed");
+});
+
+describe("openInSection", () => {
+  const PAY = `${D}payments/pay_1`;
+  const LOGS = `${D}logs?id=pay_1`;
+  function onPayment() {
+    return open(initialState(1), PAY, "Payment", "new", 2, none);
+  }
+
+  test("no tab of that section yet: a new tab beside the active one", () => {
+    const s = onPayment();
+    const r = openInSection(s, LOGS, "Logs", 3, none);
+    expect(hrefs(r)).toEqual(["/dashboard/overview", PAY, LOGS]);
+    expect(active(r).href).toBe(LOGS);
+  });
+
+  test("a clean tab of that section is reused: it shows the link and is focused", () => {
+    let s = open(
+      initialState(1),
+      `${D}logs?level=error`,
+      "Logs",
+      "new",
+      2,
+      none,
+    );
+    s = open(s, PAY, "Payment", "new", 3, none);
+    const logsId = s.tabs[1].id;
+    const r = openInSection(s, LOGS, "Logs", 4, none);
+    expect(r.tabs).toHaveLength(3);
+    expect(r.activeId).toBe(logsId);
+    expect(active(r).href).toBe(LOGS);
+    expect(hrefs(r)).toContain(PAY); // the payment stays open
+  });
+
+  test("a tab of that section with unsaved edits is left alone", () => {
+    let s = open(
+      initialState(1),
+      `${D}logs?level=error`,
+      "Logs",
+      "new",
+      2,
+      none,
+    );
+    s = open(s, PAY, "Payment", "new", 3, none);
+    const logs = s.tabs[1];
+    const r = openInSection(s, LOGS, "Logs", 4, new Set([logs.id]));
+    expect(r.tabs).toHaveLength(4);
+    expect(r.tabs.find((t) => t.id === logs.id)!.href).toBe(
+      `${D}logs?level=error`,
+    );
+    expect(active(r).href).toBe(LOGS);
+  });
+
+  test("a record tab of that section is not reused for a list link", () => {
+    let s = open(initialState(1), `${D}logs/log_9`, "Log", "new", 2, none);
+    s = open(s, PAY, "Payment", "new", 3, none);
+    const r = openInSection(s, LOGS, "Logs", 4, none);
+    expect(r.tabs).toHaveLength(4);
+    expect(hrefs(r)).toContain(`${D}logs/log_9`);
+  });
+});
+
+describe("leavesSection", () => {
+  test("a link to another section from a record page or the pane", () => {
+    expect(
+      leavesSection(`${D}logs?id=pay_1`, `${D}payments/pay_1`, false),
+    ).toBe(true);
+    expect(
+      leavesSection(`${D}logs?id=pay_1`, `${D}payments?peek=pay_1`, true),
+    ).toBe(true);
+  });
+  test("same section, or from a list outside the pane, stays in place", () => {
+    expect(leavesSection(`${D}payments`, `${D}payments/pay_1`, false)).toBe(
+      false,
+    );
+    expect(
+      leavesSection(`${D}payments/pay_2`, `${D}payments/pay_1`, false),
+    ).toBe(false);
+    expect(leavesSection(`${D}logs`, `${D}payments`, false)).toBe(false);
+  });
 });
