@@ -116,6 +116,9 @@ type Options struct {
 	Location *time.Location
 	// PageSize is the number of rows per list page (default 25).
 	PageSize int
+	// Updater serves the Update page, which installs a newer release (nil: the
+	// page is not there).
+	Updater Updater
 	// LogDB is the database that holds the logs table (store.DB.OpenLogs); nil
 	// disables the Logs page. LogRedact, when set, redacts every stored text once
 	// more on its way to the page or the export.
