@@ -71,6 +71,7 @@ test.each([
       "trialing",
       "under_review",
       "info",
+      "this session",
     ],
   ],
   [
