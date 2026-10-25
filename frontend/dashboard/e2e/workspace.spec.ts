@@ -1,6 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { OWNER_EMAIL, OWNER_PASSWORD } from "./global-setup";
 
+// The workspace tabs only: record pages also have inner section tabs.
+const openTabs = (page: Page) =>
+  page.getByRole("tablist", { name: "Open pages" }).getByRole("tab");
+
 async function login(page: Page) {
   await page.goto("/dashboard/login");
   await page.getByLabel("Email address").fill(OWNER_EMAIL);
@@ -93,7 +97,7 @@ test("switch to 12M shows monthly bars", async ({ page }) => {
 test("ctrl+k finds a payment id and opens it", async ({ page }) => {
   await login(page);
   await page.goto("/dashboard/overview");
-  await expect(page.getByRole("tab")).toHaveCount(1);
+  await expect(openTabs(page)).toHaveCount(1);
   await page.keyboard.press("Control+k");
   const box = page.getByRole("combobox", { name: /search pages/i });
   await expect(box).toBeFocused();
@@ -105,7 +109,7 @@ test("ctrl+k finds a payment id and opens it", async ({ page }) => {
   await expect(page).toHaveURL(/\/dashboard\/payments\/pay_e2e_033$/);
   await expect(visible(page).getByText("pay_e2e_033").first()).toBeVisible();
   // The pinned Overview stays; the payment opened beside it.
-  await expect(page.getByRole("tab")).toHaveCount(2);
+  await expect(openTabs(page)).toHaveCount(2);
 });
 
 test("reload shows no classic page; it appears only when the app script fails", async ({

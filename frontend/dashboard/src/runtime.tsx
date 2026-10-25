@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LoaderCircle } from "lucide-react";
 import { useOptionalTabs } from "./tabs-context";
+import { isWide, peekClickTarget, peekOf } from "./peek";
 import {
   parseDashboard,
   isDownloadPath,
@@ -55,6 +56,7 @@ export function WorkspaceLink({
   ...props
 }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
   const tabs = useOptionalTabs();
+  const router = useRouter({ warn: false });
   const url = new URL(href, location.href);
   return !props.target &&
     !props.download &&
@@ -82,6 +84,38 @@ export function WorkspaceLink({
           tabs.openHref(url.pathname + url.search, "new");
           return;
         }
+        // On a list page (desktop), a plain click on a record link in a table
+        // row opens the record in the side pane instead of leaving the list.
+        const here = router.state.location;
+        const peekTo =
+          tabs &&
+          !event.defaultPrevented &&
+          !event.altKey &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.shiftKey &&
+          event.button === 0 &&
+          isWide() &&
+          event.currentTarget.closest("tbody tr") &&
+          !event.currentTarget.closest(".peek-pane")
+            ? peekClickTarget(
+                url.pathname + url.search,
+                here.pathname + here.searchStr,
+              )
+            : null;
+        if (peekTo) {
+          event.preventDefault();
+          const to = new URL(peekTo, location.origin);
+          // The first open is a history step (Back closes the pane); moving to
+          // another record replaces it.
+          void router.navigate({
+            to: to.pathname,
+            search: Object.fromEntries(to.searchParams),
+            replace: !!peekOf(here.searchStr),
+            ignoreBlocker: true,
+          });
+          return;
+        }
         if (["#routing", "#route-test"].includes(url.hash)) {
           const details = document.querySelector<HTMLDetailsElement>(
             ".react-content .routing-disclosure",
@@ -104,6 +138,7 @@ export function RuntimeProvider({
   children,
   guard = true,
   pinned = false,
+  inPane = false,
   onDirtyChange,
 }: {
   page: DashboardPage;
@@ -117,6 +152,9 @@ export function RuntimeProvider({
   /** A pinned tab opens other pages in a new tab, so only a new query on the
    *  same page can replace (and discard) its edits. */
   pinned?: boolean;
+  /** The view is the side pane: a saved form updates the record in place and
+   *  the list underneath stays where it is. */
+  inPane?: boolean;
   /** Reports whether this view has unsaved edits (false again on unmount). */
   onDirtyChange?: (dirty: boolean) => void;
 }) {
@@ -197,12 +235,14 @@ export function RuntimeProvider({
         refetchType: "none",
       });
       client.setQueryData(queryKey(next.href), next);
-      const url = new URL(next.href, location.origin);
-      await router.navigate({
-        to: url.pathname,
-        search: Object.fromEntries(url.searchParams),
-        ignoreBlocker: true,
-      });
+      if (!inPane) {
+        const url = new URL(next.href, location.origin);
+        await router.navigate({
+          to: url.pathname,
+          search: Object.fromEntries(url.searchParams),
+          ignoreBlocker: true,
+        });
+      }
       setNotice("");
     },
     onError: () => setNotice(""),

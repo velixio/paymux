@@ -25,6 +25,29 @@ function page() {
     "/dashboard/settings",
   );
 }
+describe("nav counts", () => {
+  const withNav = (nav: string) =>
+    parseDashboard(
+      new win.DOMParser().parseFromString(
+        `<title>Overview - Paymux</title><div id="paymux-server-page"><header class="dash-head"><span class="muted">a@example.com (admin)</span></header><nav class="dash-nav">${nav}</nav><section class="dash-main"></section></div>`,
+        "text/html",
+      ) as unknown as Document,
+      "/dashboard/overview",
+    );
+  test("reads data-count into nav[].count and keeps the label clean", () => {
+    const p = withNav(
+      `<a href="/dashboard/disputes" data-count="3">Disputes</a><a href="/dashboard/alerts" data-count="2">Alerts <span class="badge">2</span></a><a href="/dashboard/logs">Logs</a><a href="/dashboard/fx" data-count="x">FX</a><a href="/dashboard/audit" data-count="0">Audit</a>`,
+    );
+    expect(p.nav.map((n) => [n.label, n.count])).toEqual([
+      ["Disputes", 3],
+      ["Alerts", 2],
+      ["Logs", undefined],
+      ["FX", undefined],
+      ["Audit", undefined],
+    ]);
+  });
+});
+
 describe("existing Go page contract", () => {
   test("retains session actions, CSRF, mode and permission-derived navigation", () => {
     const p = page();

@@ -321,6 +321,7 @@ type view struct {
 
 	// header: the count of open alerts in the nav badge
 	AlertsOpen, AlertsCritical int
+	DisputesOpen               int // disputes waiting for a response (nav count)
 
 	// CanLogs says the user may read the logs: pages show "logs for this ..." links.
 	CanLogs bool
@@ -687,6 +688,7 @@ func (d *Dashboard) shell(r *http.Request, s *session, active, title string) vie
 		v.Nav = slices.DeleteFunc(slices.Clone(navItems), func(n navItem) bool { return n.Key == "logs" })
 	}
 	v.AlertsOpen, v.AlertsCritical = d.alertCounts(r)
+	v.DisputesOpen = d.disputeCount(r)
 	return v
 }
 

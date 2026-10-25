@@ -100,6 +100,14 @@ func ListDisputes(ctx context.Context, q Queryer, orgID string, openOnly bool, l
 	return listDisputes(ctx, q, query, orgID, limit)
 }
 
+// CountDisputesNeedingResponse is how many of an org's disputes wait for the
+// merchant's answer (the nav badge); those under review wait on the provider.
+func CountDisputesNeedingResponse(ctx context.Context, q Queryer, orgID string) (int, error) {
+	var n int
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM disputes WHERE org_id = ? AND status = 'needs_response'`, orgID).Scan(&n)
+	return n, err
+}
+
 // ListOpenDisputes returns every open dispute (for deadline alerts).
 func ListOpenDisputes(ctx context.Context, q Queryer, limit int) ([]Dispute, error) {
 	return listDisputes(ctx, q, "SELECT "+disputeCols+" FROM disputes WHERE status IN ('needs_response','under_review') ORDER BY id LIMIT ?", limit)

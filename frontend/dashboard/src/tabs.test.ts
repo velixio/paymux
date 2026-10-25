@@ -399,3 +399,14 @@ describe("land (boot on a URL)", () => {
     expect(r.activeId).toBe(r.tabs.at(-1)!.id);
   });
 });
+
+test("tabKey ignores the side-pane parameter: a peek is not another page", () => {
+  expect(
+    tabKey("/dashboard/payments?peek=%2Fdashboard%2Fpayments%2Fpay_1"),
+  ).toBe(tabKey("/dashboard/payments"));
+  expect(
+    tabKey(
+      "/dashboard/payments?status=failed&peek=%2Fdashboard%2Fpayments%2Fpay_1",
+    ),
+  ).toBe("/dashboard/payments?status=failed");
+});

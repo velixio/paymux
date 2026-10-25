@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchDashboard } from "./adapter";
 import { ScreenContent } from "./screen-toolbar";
+import { PeekFrame } from "./peek-pane";
 import { queryKey, RuntimeProvider } from "./runtime";
 import { useTableNav } from "./use-table-nav";
 import type { Tab } from "./tabs";
@@ -113,6 +114,8 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
                 shown.data.content.map((n) => n.attrs.id || n.tag).join("")
               }
               nodes={shown.data.content}
+              href={tab.href}
+              syncHash={active}
             />
           </RuntimeProvider>
         ) : error ? (
@@ -180,13 +183,15 @@ export function TabView({
   );
   if (!active && (once || evicted)) return null;
   return (
-    <TabBody
-      tab={tab}
-      active={active}
-      dirty={dirty}
-      onDirty={reportDirty}
-      onOnce={setOnce}
-      scroll={scroll}
-    />
+    <PeekFrame active={active}>
+      <TabBody
+        tab={tab}
+        active={active}
+        dirty={dirty}
+        onDirty={reportDirty}
+        onOnce={setOnce}
+        scroll={scroll}
+      />
+    </PeekFrame>
   );
 }

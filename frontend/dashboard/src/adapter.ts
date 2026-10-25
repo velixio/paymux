@@ -70,12 +70,6 @@ function node(el: Node): ViewNode | null {
     children: [...el.childNodes].map(node).filter((n): n is ViewNode => !!n),
   };
 }
-// A live count the server attached to a nav entry (data-count); none if absent.
-function navCount(a: Element): number | undefined {
-  const raw = a.getAttribute("data-count");
-  const n = raw === null || raw.trim() === "" ? NaN : Number(raw);
-  return Number.isFinite(n) && n >= 0 ? n : undefined;
-}
 export function parseDashboard(doc: Document, href: string): DashboardPage {
   const main =
     doc.querySelector(".dash-main") || doc.getElementById("paymux-server-page");
@@ -89,12 +83,20 @@ export function parseDashboard(doc: Document, href: string): DashboardPage {
     title: doc.title.replace(/ - Paymux$/, ""),
     user: doc.querySelector(".dash-head>.muted")?.textContent?.trim() || "",
     mode: doc.querySelector(".modeform .mode")?.textContent?.trim() || "",
-    nav: [...doc.querySelectorAll(".dash-nav a")].map((a) => ({
-      href: a.getAttribute("href")!,
-      label: a.textContent!.trim(),
-      active: a.hasAttribute("aria-current"),
-      count: navCount(a),
-    })),
+    nav: [...doc.querySelectorAll(".dash-nav a")].map((a) => {
+      const count = Number(a.getAttribute("data-count"));
+      return {
+        href: a.getAttribute("href")!,
+        // the server's fallback badge is not part of the name
+        label: [...a.childNodes]
+          .filter((c) => !(c as Element).classList?.contains("badge"))
+          .map((c) => c.textContent)
+          .join("")
+          .trim(),
+        active: a.hasAttribute("aria-current"),
+        ...(count > 0 ? { count } : {}),
+      };
+    }),
     content: [...main.childNodes].map(node).filter((n): n is ViewNode => !!n),
     modeForm: parseForm(".modeform"),
     logoutForm: parseForm('form[action="/dashboard/logout"]'),

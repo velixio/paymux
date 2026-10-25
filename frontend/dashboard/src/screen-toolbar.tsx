@@ -92,13 +92,24 @@ export function ScreenToolbar({ model }: { model: ToolbarModel }) {
 }
 
 // A screen's content: the toolbar built from the server markup, then the rest.
-export function ScreenContent({ nodes }: { nodes: ViewNode[] }) {
+// The toolbar is taken out first; the rest may still split into inner
+// section tabs (record pages), so href/syncHash pass through.
+export function ScreenContent({
+  nodes,
+  href,
+  syncHash,
+}: {
+  nodes: ViewNode[];
+  href?: string;
+  syncHash?: boolean;
+}) {
   const parts = useMemo(() => extractToolbar(nodes), [nodes]);
-  if (!parts) return <PageContent nodes={nodes} />;
+  if (!parts)
+    return <PageContent nodes={nodes} href={href} syncHash={syncHash} />;
   return (
     <>
       <ScreenToolbar model={parts.toolbar} />
-      <PageContent nodes={parts.rest} />
+      <PageContent nodes={parts.rest} href={href} syncHash={syncHash} />
     </>
   );
 }
