@@ -226,3 +226,15 @@ test("CSS of the removed header, footer and brand card is gone", () => {
   ])
     expect(css, dead).not.toContain(dead);
 });
+
+test("focus rings inside clipping containers are drawn inset", () => {
+  // The global ring sits 3px outside; the sidebar, tab strip and chip rows
+  // clip it into stray bars, so there it is drawn inside the element.
+  const shell = read("./app-shell.css");
+  const rule =
+    shell.match(
+      /\.app-shell \.react-sidebar :focus-visible,[^{]*\.tab-strip :focus-visible,[^{]*\.toolbar-chips :focus-visible\s*\{([^}]*)\}/,
+    )?.[1] ?? "";
+  expect(rule).toContain("outline-offset: -2px");
+  expect(rule).toContain("outline: 2px solid var(--ring)");
+});
