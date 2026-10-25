@@ -34,7 +34,7 @@ type checklistItem struct {
 }
 
 func (d *Dashboard) routesDomains() {
-	d.mux.HandleFunc("POST "+prefix+"/apps/{id}/domains", d.authed(authz.SettingsWrite, d.domainAdd))
+	d.mux.HandleFunc("POST "+prefix+"/apps/{id}/domains", d.authed(authz.SettingsWrite, d.recent(d.domainAdd)))
 }
 
 func (d *Dashboard) domainRows(ds []store.Domain) ([]domainRow, []checklistItem) {

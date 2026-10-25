@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -100,4 +101,91 @@ func TestAuditAuthzUserAndKeyRevocationNeedRecentSignIn(t *testing.T) {
 		r, _ = e.post(c, "/dashboard/apps/"+app.ID+"/keys/"+key.ID+"/revoke", url.Values{"csrf": {tok}})
 		wantReauth(t, "POST /dashboard/apps/{id}/keys/{kid}/revoke (live key)", r)
 	})
+}
+
+// R-A9: the remaining configuration writes also need a recent full sign-in.
+// A stale remembered cookie must not add a webhook endpoint (an attacker's URL
+// then receives every event), add a domain, or change org, app or appearance
+// settings. The routes that exist under these names are the endpoint add and
+// disable, the domain add, the org settings (one key and the routing editor),
+// the app settings (set and reset) and the two appearance saves.
+func reauthConfigRoutes(app store.App, sinkURL string) []struct {
+	what, path string
+	form       url.Values
+	loose      bool // a fresh sign-in must pass the guard; the stub form need not be valid
+} {
+	a := "/dashboard/apps/" + app.ID
+	return []struct {
+		what, path string
+		form       url.Values
+		loose      bool
+	}{
+		{"endpoint add", a + "/endpoints", url.Values{"url": {sinkURL}, "events": {"payment.succeeded"}}, false},
+		{"endpoint disable", a + "/endpoints/whe_none/disable", url.Values{}, true},
+		{"domain add", a + "/domains", url.Values{"host": {"pay.alpha.example"}}, false},
+		{"org setting", "/dashboard/settings/payment_ttl", url.Values{"value": {"45"}}, false},
+		{"org routing", "/dashboard/settings/routing", routingForm(), false},
+		{"app setting", a + "/settings/payment_ttl", url.Values{"value": {"45"}}, false},
+		{"app setting reset", a + "/settings/payment_ttl/reset", url.Values{}, false},
+		{"branding", a + "/branding", url.Values{"display_name": {"Alpha"}}, true},
+		{"app tax", a + "/tax", url.Values{}, true},
+		{"fx", "/dashboard/fx", url.Values{}, true},
+		{"tax entity create", "/dashboard/tax-entities", url.Values{}, true},
+		{"tax entity update", "/dashboard/tax-entities/ten_none", url.Values{}, true},
+		{"tax entity dsc set", "/dashboard/tax-entities/ten_none/dsc", url.Values{}, true},
+		{"tax entity dsc remove", "/dashboard/tax-entities/ten_none/dsc/remove", url.Values{}, true},
+		{"theme", "/dashboard/appearance/theme", url.Values{"theme": {"pink"}}, false},
+		{"app appearance", "/dashboard/appearance/apps/" + app.ID, url.Values{"theme": {"pink"}, "language": {""}}, false},
+	}
+}
+
+func TestAuditAuthzConfigWritesNeedRecentSignIn(t *testing.T) {
+	sink := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	defer sink.Close()
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newThemedEnv(t, db)
+		e.writeTheme("pink", pinkTheme, nil)
+		app := e.seedApp("alpha")
+		c := staleAdmin(t, e.env)
+		tok := csrfOf(t, e.pageOK(c, "/dashboard/settings"))
+		for _, rt := range reauthConfigRoutes(app, sink.URL) {
+			f := url.Values{"csrf": {tok}}
+			for k, v := range rt.form {
+				f[k] = v
+			}
+			r, _ := e.post(c, rt.path, f)
+			wantReauth(t, "POST "+rt.path+" ("+rt.what+")", r)
+		}
+	})
+}
+
+// The guard only asks for a recent sign-in: with one, every route still works.
+func TestAuditAuthzConfigWritesWorkWithRecentSignIn(t *testing.T) {
+	sink := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	defer sink.Close()
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newThemedEnv(t, db)
+		e.writeTheme("pink", pinkTheme, nil)
+		app := e.seedApp("alpha")
+		c := e.roleClient("admin")
+		tok := csrfOf(t, e.pageOK(c, "/dashboard/settings"))
+		for _, rt := range reauthConfigRoutes(app, sink.URL) {
+			f := url.Values{"csrf": {tok}}
+			for k, v := range rt.form {
+				f[k] = v
+			}
+			r, body := e.post(c, rt.path, f)
+			if strings.HasPrefix(r.Header.Get("Location"), "/dashboard/reauth") || r.StatusCode >= 400 && !rt.loose {
+				t.Errorf("POST %s (%s) with a fresh sign-in: %d %q\n%.300s", rt.path, rt.what, r.StatusCode, r.Header.Get("Location"), body)
+			}
+		}
+	})
+}
+
+// routingForm is a valid save of the routing editor, without the CSRF token.
+func routingForm() url.Values {
+	f := routeForm("", []map[string]string{{"r_name": "inr", "r_currency": "INR", "r_action": "route", "r_targets": "razorpay"}},
+		map[string]string{"ca_targets": "razorpay, whop"})
+	f.Del("csrf")
+	return f
 }
