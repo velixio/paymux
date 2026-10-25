@@ -7,6 +7,7 @@
 **One webhook endpoint. One ledger. Every payment gateway.**<br>
 Razorpay · Stripe · Cashfree · PayU · Zoho Payments · Whop, in a single Go binary with GST invoicing built in.
 
+[![Release](https://img.shields.io/github/v/release/velixio/paymux?sort=semver)](https://github.com/velixio/paymux/releases/latest)
 [![CI](https://github.com/velixio/paymux/actions/workflows/ci.yml/badge.svg)](https://github.com/velixio/paymux/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.27-00ADD8?logo=go&logoColor=white)](go.mod)
@@ -69,7 +70,7 @@ The complete list is in [docs/features.md](docs/features.md).
 | **Stripe** | ✅ | ✅ | ✅ | ✅ | ✅ payments, refunds, subscriptions, webhooks |
 | **Cashfree** | ✅ | ✅ | none | none | ✅ payments, refunds, webhooks |
 | **PayU India** | ✅ | ✅ | 🟡 mandates | 🟡 chargebacks | ✅ payments, refunds. Recurring needs PayU to enable it on the merchant |
-| **Zoho Payments** | 🟡 | 🟡 | 🟡 UPI AutoPay | none | 🟡 built from the API docs, full sandbox run pending |
+| **Zoho Payments** | ✅ | 🟡 | 🟡 UPI AutoPay | none | 🟡 payments ✅ (sandbox, Oct 2026); refunds and UPI AutoPay pending |
 | **Whop** | ✅ | ✅ | ✅ | 🟡 | ✅ payments, refunds, subscriptions, webhooks |
 | **Your own** | any | any | any | any | Go package or a small signed HTTP service |
 
@@ -77,12 +78,33 @@ The complete list is in [docs/features.md](docs/features.md).
 
 ## 🚀 Quick start in 5 minutes
 
-You need [Go](https://go.dev/dl/) and [Bun](https://bun.sh) to build from source. Go fetches the pinned toolchain by itself. You do **not** need a gateway account to try it: the built-in simulator plays one.
+You do **not** need a gateway account to try it: the built-in simulator plays one.
+
+**Download a release.** Linux and macOS archives (amd64, arm64) are on the [releases page](https://github.com/velixio/paymux/releases/latest). `SHA256SUMS` is signed with [cosign](https://docs.sigstore.dev/cosign/) by the release workflow itself:
+
+```bash
+v=0.1.0; f=paymux_${v}_linux_amd64.tar.gz
+base=https://github.com/velixio/paymux/releases/download/v$v
+curl -LO $base/$f -LO $base/SHA256SUMS -LO $base/SHA256SUMS.sig -LO $base/SHA256SUMS.pem
+cosign verify-blob --certificate SHA256SUMS.pem --signature SHA256SUMS.sig \
+  --certificate-identity-regexp '^https://github\.com/velixio/paymux/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS && tar xzf $f
+```
+
+Later, `paymux update` installs a newer release and checks the same signature.
+
+**Or build from source.** You need [Go](https://go.dev/dl/) and [Bun](https://bun.sh). Go fetches the pinned toolchain by itself.
 
 ```bash
 git clone https://github.com/velixio/paymux.git && cd paymux
-cp .env.example .env     # then set PAYMUX_MASTER_KEY:  head -c32 /dev/urandom | base64
 make build               # the hub, the website and the examples, into bin/
+```
+
+**Then run it.**
+
+```bash
+cp .env.example .env     # then set PAYMUX_MASTER_KEY:  head -c32 /dev/urandom | base64
 ./bin/paymux             # starts on :8080 and prints a one-time setup code
 ```
 
@@ -125,7 +147,9 @@ Tip: `make dev` builds everything and runs the hub and the public website togeth
 - Secrets are **encrypted at rest** (AES-256-GCM) under a master key you hold, with a `paymux secrets reseal` command to rotate it.
 - Dashboard: **2FA (TOTP)**, optional single sign-on, roles and custom roles, scoped API keys, login lockout, "remember me" sessions that ask for your password again before sensitive changes.
 - Outbound webhooks are **SSRF-guarded** and signed. The error log removes secrets and customer details before it stores anything.
-- Independently reviewed: over 50 findings across several review rounds are tracked, with their fixes, in [docs/security-review.md](docs/security-review.md).
+- **Money paths that hold up under retries and races.** An Idempotency-Key is stored on the payout or refund itself. One provider payment settles one payment. Payouts with an unknown outcome go to review instead of being sent twice. Ledger rules are enforced by the database, and the ledger is append-only.
+- **Releases you can verify.** Archives are signed with cosign and carry build provenance. CI runs vulnerability and secret scans.
+- Independently reviewed: over 50 findings across several review rounds are tracked, with their fixes, in [docs/security-review.md](docs/security-review.md). The October 2026 audit and its remediation are in [docs/security-audit.md](docs/security-audit.md) and [docs/security-remediation-plan.md](docs/security-remediation-plan.md).
 
 ## 🧩 Make it yours
 
@@ -158,7 +182,7 @@ Yes: tax invoices, credit notes, place-of-supply rules, exports, e-invoice JSON 
 SQLite (default) and PostgreSQL, with the same code and the same tests on both.
 
 **Is Paymux production-ready?**
-It is **beta**. Razorpay, Stripe, Cashfree, PayU and Whop have been run end to end against their real sandboxes, and the security audit findings are fixed. Before you take live money, run your own test payments and read [docs/provider-verification.md](docs/provider-verification.md): the checklist of what still needs a live account, per gateway.
+It is **beta**: [v0.1.0](https://github.com/velixio/paymux/releases/tag/v0.1.0) is the first signed release. Razorpay, Stripe, Cashfree, PayU and Whop have been run end to end against their real sandboxes, and Zoho Payments has had its payments checked there. The October 2026 audit's findings are fixed. Before you take live money, run your own test payments and read [docs/provider-verification.md](docs/provider-verification.md): the checklist of what still needs a live account, per gateway.
 
 **How do I add a gateway that is not listed?**
 Write a connector (a Go package or a small HTTP service). The SDK, the conformance kit and a worked example are in [docs/connectors.md](docs/connectors.md).
