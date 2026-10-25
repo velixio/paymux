@@ -212,6 +212,14 @@ By default an invoice PDF carries the authorised signatory's name and the line "
 - Operators and admins press *Acknowledge* once somebody has looked; it is audited (`alert.acknowledge`). If the condition returns later it opens a new alert. Filter by open, acknowledged or all, severity and kind.
 - Alerts are kept indefinitely; there is no pruning yet.
 
+## Payouts in needs_review
+
+A payout whose submission to the provider kept ending in a timeout or a cut connection (10 attempts) goes to `needs_review`: the provider may or may not have paid it. Paymux stops sending, polls the provider for it by its reference (a provider answer moves it on by itself), and raises a critical alert `payout.needs_review`.
+
+- **Check the provider's dashboard** (or bank statement) for the payout's reference, shown in the alert and the API.
+- **If it did not happen or did not pay,** and you want to send it again, send a new payout with `"force": true` (the API refuses a payout to the same beneficiary and amount while one is in review; the force is audited as `payout.force_create`). Resolve the old one as failed first, or it may be paid twice if the provider acts late.
+- **To settle it by hand** (the provider will not answer for it): `paymux payout resolve --id po_... --status succeeded|failed --reason "what you checked"`. It works only on a payout in `needs_review`, sends the matching `payout.succeeded` or `payout.failed` event once, and is audited (`payout.resolve`, with the reason). Like the other commands that open the database, it needs `paymux serve` stopped on SQLite.
+
 ## Logs
 
 *Logs* in the dashboard (menu: Operations) is where to look when something failed: it keeps the **errors and warnings** of the hub, so you can review and fix them later. Info and debug lines still go only to stdout and journald. It needs the `logs.read` permission: admins have it, and a custom role can be given it under *Roles*.
