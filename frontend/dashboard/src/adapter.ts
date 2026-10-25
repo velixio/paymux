@@ -107,7 +107,11 @@ export function parseDashboard(doc: Document, href: string): DashboardPage {
     warnings: [...doc.querySelectorAll(".dev-banner,.banner-warning")].map(
       (e) => e.textContent!.trim(),
     ),
-    auth: !doc.querySelector(".dash-head"),
+    // The confirmation page is rendered inside the signed-in header, but like
+    // sign-in it belongs to no tab and shows on its own.
+    auth:
+      !doc.querySelector(".dash-head") ||
+      new URL(href, "http://x").pathname === "/dashboard/reauth",
     once: !!main.querySelector("[data-once]"),
     theme:
       doc.querySelector('link[href^="/theme/"]')?.getAttribute("href") || null,
