@@ -231,3 +231,53 @@ func TestGitleaksIsInTheGateWithReasonedAllowlist(t *testing.T) {
 		t.Error(".gitleaksignore has no entries: the file is not being read")
 	}
 }
+
+// A reusable workflow's jobs cannot have more permissions than the job that
+// calls it: GitHub refuses to start the run (startup_failure). release.yml
+// calls ci.yml, so its "ci" job grants every permission a ci.yml job asks for.
+// The first v0.1.0 tag failed this way when the gitleaks job asked for
+// pull-requests: read.
+func TestReleaseGrantsWhatTheCIGateAsksFor(t *testing.T) {
+	perm := regexp.MustCompile(`^\s+([a-z-]+): (read|write)\s*(#.*)?$`)
+	collect := func(lines []string) map[string]string {
+		out := map[string]string{}
+		in, indent := false, 0
+		for _, l := range lines {
+			trimmed := strings.TrimLeft(l, " ")
+			depth := len(l) - len(trimmed)
+			switch {
+			case strings.HasPrefix(trimmed, "permissions:"):
+				in, indent = true, depth
+				continue
+			case in && trimmed != "" && depth <= indent:
+				in = false
+			}
+			if m := perm.FindStringSubmatch(l); in && m != nil && out[m[1]] != "write" {
+				out[m[1]] = m[2]
+			}
+		}
+		return out
+	}
+	asked := collect(strings.Split(readRepoFile(t, ".github", "workflows", "ci.yml"), "\n"))
+	release := strings.Split(readRepoFile(t, ".github", "workflows", "release.yml"), "\n")
+	var job []string
+	for i, l := range release {
+		if l == "  ci:" {
+			for _, m := range release[i+1:] {
+				if strings.HasPrefix(m, "  ") && !strings.HasPrefix(m, "   ") && strings.TrimSpace(m) != "" {
+					break
+				}
+				job = append(job, m)
+			}
+		}
+	}
+	if job == nil {
+		t.Fatal(`release.yml has no "ci" job`)
+	}
+	granted := collect(job)
+	for scope, level := range asked {
+		if g := granted[scope]; g == "" || (level == "write" && g != "write") {
+			t.Errorf("ci.yml asks for %s: %s, which release.yml's ci job does not grant (granted %q)", scope, level, g)
+		}
+	}
+}
