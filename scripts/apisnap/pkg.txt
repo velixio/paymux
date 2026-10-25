@@ -18,6 +18,7 @@ var (
 	ErrInvalidCredentials = errors.New("connector: invalid credentials")
 	ErrTemporary          = errors.New("connector: temporary failure")
 	ErrUnsupported        = errors.New("connector: unsupported")
+	ErrRejected           = errors.New("connector: rejected by the provider")
 	ErrInvalidSignature   = errors.New("connector: webhook signature missing, wrong or stale")
 	ErrUnsigned           = errors.New("connector: webhook event type is not signed by the provider")
 	ErrInvalidReturn      = errors.New("connector: return signature invalid")
@@ -753,6 +754,7 @@ const (
 	CodeUnsigned           = "unsigned"
 	CodeInvalidReturn      = "invalid_return"
 	CodeMandateLimit       = "mandate_limit"
+	CodeRejected           = "rejected"
 	CodeNotRefundable      = "not_refundable"
 	CodeRateLimited        = "rate_limited"
 	CodeInternal           = "internal"

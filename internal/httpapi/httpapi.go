@@ -24,10 +24,12 @@ import (
 	"github.com/paymux/paymux/internal/logctx"
 	"github.com/paymux/paymux/internal/paylinks"
 	"github.com/paymux/paymux/internal/payouts"
+	"github.com/paymux/paymux/internal/redact"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/server"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/subscriptions"
+	"github.com/paymux/paymux/pkg/connector"
 )
 
 const maxBody = 1 << 20 // 1 MiB
@@ -49,6 +51,10 @@ type Options struct {
 	// BaseURL is PAYMUX_BASE_URL, the origin of checkout_url.
 	BaseURL *url.URL
 	Log     *slog.Logger
+	// Redact scrubs a provider's message before it is put in an error response
+	// (the hub passes its log redactor, which knows every account's secrets). Nil
+	// scrubs by pattern only.
+	Redact func(string) string
 	// RatePerSecond is the request rate allowed per API key (default 20; a
 	// negative value disables the limit). RateBurst is the bucket size
 	// (default: the rate rounded up). Now is the clock (tests).
@@ -102,6 +108,9 @@ type API struct {
 	baseURL string
 	log     *slog.Logger
 	limit   *limiter // nil: unlimited
+	// redact scrubs a provider's message before it is shown to the caller (the
+	// hub's log redactor, which knows every account's secrets); nil: patterns only.
+	redact func(string) string
 
 	invoices *invoice.Service
 	subs     *subscriptions.Service
@@ -117,7 +126,7 @@ func New(o Options) (*API, error) {
 	if o.Log == nil {
 		o.Log = slog.Default()
 	}
-	a := &API{core: o.Core, db: o.DB, box: o.Box, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log, invoices: o.Invoices, subs: o.Subscriptions, links: o.PaymentLinks, payouts: o.Payouts}
+	a := &API{redact: o.Redact, core: o.Core, db: o.DB, box: o.Box, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log, invoices: o.Invoices, subs: o.Subscriptions, links: o.PaymentLinks, payouts: o.Payouts}
 	if o.RatePerSecond >= 0 {
 		a.limit = newLimiter(o.RatePerSecond, o.RateBurst, o.Now)
 	}
@@ -291,9 +300,38 @@ func (a *API) fail(w http.ResponseWriter, r *http.Request, status int, typ, msg 
 	writeJSON(w, status, b)
 }
 
+// maxProviderMessage bounds the provider's message in an error response.
+const maxProviderMessage = 300
+
+// serverError answers an error that is none of the API's own. A provider's
+// "this request is invalid or not allowed" (connector.ErrRejected) is the
+// caller's to fix, so it is a 422 provider_rejected carrying the provider's
+// message, passed through the log redactor (known secrets, key shapes, personal
+// data) and cut to a bounded length; connector.ErrUnsupported is a 422
+// unsupported. Everything else is an internal error that says nothing.
 func (a *API) serverError(w http.ResponseWriter, r *http.Request, err error) {
 	a.log.Error("api request failed", "request_id", server.RequestID(r.Context()), "path", r.URL.Path, "err", err)
-	a.fail(w, r, http.StatusInternalServerError, "internal", "internal error")
+	switch {
+	case errors.Is(err, connector.ErrRejected):
+		a.fail(w, r, http.StatusUnprocessableEntity, "provider_rejected", a.providerMessage(err))
+	case errors.Is(err, connector.ErrUnsupported):
+		a.fail(w, r, http.StatusUnprocessableEntity, "unsupported", a.providerMessage(err))
+	default:
+		a.fail(w, r, http.StatusInternalServerError, "internal", "internal error")
+	}
+}
+
+// providerMessage is the text of a connector error made safe to show the caller.
+func (a *API) providerMessage(err error) string {
+	redactor := a.redact
+	if redactor == nil {
+		redactor = redact.New().Text
+	}
+	msg := strings.TrimSpace(redactor(err.Error()))
+	if r := []rune(msg); len(r) > maxProviderMessage {
+		msg = string(r[:maxProviderMessage]) + "..."
+	}
+	return msg
 }
 
 // failCore maps a domain error to its HTTP response.

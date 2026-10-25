@@ -42,6 +42,14 @@ info:
     call to your records, and quote the id when you ask for help: it finds the
     request in the hub's Logs page, together with the failed provider call, if
     there was one.
+
+    **Provider rejections.** When the payment provider itself refuses a request
+    ("currency is not supported", "only offers can be updated for card
+    subscriptions"), the call answers 422 `provider_rejected` with the provider's
+    message (scrubbed of credentials and personal data, and cut to 300
+    characters). It is the request to fix, not a Paymux fault: do not retry it
+    unchanged. 422 `unsupported` says the provider cannot do what was asked at
+    all. A provider outage is not one of these; it answers 5xx and can be retried.
 servers:
   - url: "{baseUrl}"
     variables:
@@ -230,7 +238,10 @@ paths:
       operationId: listInvoices
       x-required-scope: invoices:read
       summary: List the invoices of a payment
-      description: Empty when the payment has no invoice (the app issues none, or the provider is merchant of record).
+      description: |
+        `payment_id` is required (400 `invalid_request` without it): invoices are listed per
+        payment, there is no list of all invoices. Empty when the payment has no invoice (the
+        app issues none, or the provider is merchant of record).
       parameters:
         - name: payment_id
           in: query
@@ -300,6 +311,7 @@ paths:
       operationId: listCreditNotes
       x-required-scope: invoices:read
       summary: List the credit notes of a payment
+      description: "`payment_id` is required (400 `invalid_request` without it): credit notes are listed per payment."
       parameters:
         - name: payment_id
           in: query
@@ -837,7 +849,8 @@ components:
     SubscriptionUnprocessable:
       description: |
         `amount_exceeds_mandate_limit` (no e-NACH or provider-managed account can bill the amount),
-        `no_route` (no subscription-capable provider account for the currency) or `unsupported`.
+        `no_route` (no subscription-capable provider account for the currency), `unsupported`, or
+        `provider_rejected` (the provider refused the request; the message is the provider's).
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -876,6 +889,8 @@ components:
                 - rate_limited
                 - amount_exceeds_mandate_limit
                 - unsupported
+                - provider_rejected
+                - provider_rejected
                 - internal
             message: { type: string }
             request_id:
