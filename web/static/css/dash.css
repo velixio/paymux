@@ -13,6 +13,19 @@
     --color-ok: #86efac;
   }
 }
+/* While the React workspace loads, the server page stays invisible so a reload
+   does not flash the classic layout. Without JavaScript a <noscript> style in
+   _dash.html shows it at once; if the script is blocked or slow it shows after
+   2 s; ?classic=1 removes the React root, so this rule no longer matches. */
+#paymux-react-root + #paymux-server-page {
+  visibility: hidden;
+  animation: paymux-server-reveal 0s 2s forwards;
+}
+@keyframes paymux-server-reveal {
+  to {
+    visibility: visible;
+  }
+}
 /* Same quiet strip as the React workspace, so a reload does not flash. */
 .dev-banner,
 .banner-warning {

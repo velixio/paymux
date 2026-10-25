@@ -1,4 +1,4 @@
-{{define "dash_open"}}<div id="paymux-react-root" data-style-nonce="{{.StyleNonce}}"></div><div id="paymux-server-page">{{if .DevBanner}}<div class="dev-banner" role="alert">2FA disabled (development)</div>{{end}}
+{{define "dash_open"}}<div id="paymux-react-root" data-style-nonce="{{.StyleNonce}}"></div><div id="paymux-server-page"><noscript><style nonce="{{.StyleNonce}}">#paymux-server-page{visibility:visible;animation:none}</style></noscript>{{if .DevBanner}}<div class="dev-banner" role="alert">2FA disabled (development)</div>{{end}}
 {{range .Warnings}}<div class="banner-warning" role="alert">{{.}}</div>{{end}}
 {{if .User}}<a class="skip-link" href="#workspace">Skip to workspace</a><header class="dash-head">
 <a class="dash-brand" href="/dashboard/overview" aria-label="Paymux overview"><span aria-hidden="true" class="brand-symbol">↗</span>paymux</a>
