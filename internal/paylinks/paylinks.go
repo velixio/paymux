@@ -708,10 +708,13 @@ func (s *Service) reuseOpenPayment(ctx context.Context, l store.PaymentLink, pay
 	}
 	secret, err := reissueSecret(ctx, s.core, p.ID)
 	if err != nil {
-		if p.Amount != amount {
-			return Started{}, false, newErr(ErrBusy, "this single-use link has a payment in progress; try again in a little while")
+		// Over in the meantime: a new payment is fine. Still open and the
+		// secret could not be replaced: it is the one payable payment, so no
+		// second one is made.
+		if cur, gerr := s.core.GetPaymentByID(ctx, p.ID); gerr == nil && !openStatus(cur.Status) {
+			return Started{}, false, nil
 		}
-		return Started{}, false, nil
+		return Started{}, false, newErr(ErrBusy, "this single-use link has a payment in progress; try again in a little while")
 	}
 	return Started{PaymentID: p.ID, ClientSecret: secret}, true, nil
 }
