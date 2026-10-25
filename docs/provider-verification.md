@@ -43,15 +43,17 @@ run its `sandbox_test.go` (skipped without credentials; see
 **What was checked:** that a payment settles on the customer's return alone.
 The hub was not reachable from the internet, so no webhook could arrive. This
 is the check that the October audit's stricter return rule (A-3 in
-[the audit](security-audit.md)) does not hold up genuine payments: a payment
-fetched by the id in the return URL must name our reference or order.
+[the audit](security-audit.md)) does not hold up sandbox payments: a payment
+fetched by the id in the return URL must name our reference or order. These
+were sandbox payments on test-mode accounts. Live provider behaviour is
+unverified.
 
 | Connector | Paid with | Result |
 |-----------|-----------|--------|
 | Stripe | card 4242, USD | Succeeded on the return; 1000 of 1000 USD received; no flags |
 | Razorpay | Netbanking, the demo bank's "Success" | Succeeded on the return; ₹100.00 received |
 | Cashfree | Net Banking simulator, OTP 111000, SUCCESS | Succeeded on the return; ₹100.00 received |
-| Zoho Payments | Net Banking, "Success Test Bank" | Succeeded on the return; ₹100.00 received (also covers A-4, the Zoho fix) |
+| Zoho Payments | Net Banking, "Success Test Bank" | Succeeded on the return; ₹100.00 received. The A-4 Zoho fix still accepts a Zoho payment that names our session or reference. The case A-4 refuses (a payment that names neither) was not produced in the sandbox. |
 | PayU | Net Banking "Test bank", simulator "Simulate Success Response" | Not concluded: PayU's simulator page did not leave `pgsim01.payu.in` after the success click, so no return reached the hub |
 | Whop | card 4242, USD | Not concluded: Whop took the payment but stayed on its own return page and never redirected to the `localhost` return URL |
 
