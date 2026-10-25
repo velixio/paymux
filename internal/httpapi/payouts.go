@@ -33,6 +33,8 @@ func (a *API) failPayout(w http.ResponseWriter, r *http.Request, err error) {
 		status, typ = http.StatusNotFound, "not_found"
 	case errors.Is(err, payouts.ErrNoRoute):
 		status, typ = http.StatusUnprocessableEntity, "no_route"
+	case errors.Is(err, payouts.ErrNeedsReview):
+		status, typ = http.StatusConflict, "payout_needs_review"
 	case errors.Is(err, payouts.ErrKeyReuse):
 		status, typ = http.StatusConflict, "idempotency_key_reuse"
 	}
@@ -53,6 +55,9 @@ type createPayoutReq struct {
 	} `json:"beneficiary"`
 	Narration string            `json:"narration"`
 	Metadata  map[string]string `json:"metadata"`
+	// Force sends the payout although one to the same beneficiary and amount
+	// is in needs_review. It is audited.
+	Force bool `json:"force"`
 }
 
 // createPayout sends money out. It needs the payout.create action and the
@@ -73,7 +78,7 @@ func (a *API) createPayout(w http.ResponseWriter, r *http.Request, pr core.Princ
 	p, err := a.payouts.Create(r.Context(), payouts.CreateInput{Scope: scope(pr), Amount: *req.Amount, Currency: req.Currency,
 		Beneficiary: connector.Beneficiary{Name: b.Name, AccountNumber: b.AccountNumber, IFSC: b.IFSC, UPI: b.UPI, Email: b.Email, Phone: b.Phone},
 		Narration:   req.Narration, Metadata: req.Metadata, ProviderAccountID: req.ProviderAccountID,
-		IdempotencyKey: r.Header.Get("Idempotency-Key")})
+		Force: req.Force, Actor: auditActor(pr), IdempotencyKey: r.Header.Get("Idempotency-Key")})
 	if err != nil {
 		a.failPayout(w, r, err)
 		return

@@ -13,7 +13,7 @@ import (
 	"github.com/paymux/paymux/pkg/hub"
 )
 
-const usage = "usage: paymux <serve|migrate|backup|db|build|update|app|provider|domain|tax-entity|report|fx|endpoint|version>"
+const usage = "usage: paymux <serve|migrate|backup|db|build|update|app|provider|domain|tax-entity|report|fx|endpoint|payout|version>"
 
 const help = `usage: paymux [command] [arguments]
 
@@ -31,6 +31,7 @@ Commands:
   domain       manage app custom domains
   user         manage dashboard users
   endpoint     manage outbound webhook endpoints
+  payout       resolve a payout whose outcome is unknown
   secrets      re-encrypt stored secrets under the current master key
   tax-entity   manage the GST tax entity
   report       export ledger and tax reports
@@ -88,6 +89,13 @@ func RunWith(ctx context.Context, args []string, lookupEnv func(string) (string,
 			return 1
 		}
 		return runEndpoint(ctx, args[1:], env, stdout, stderr)
+	case "payout":
+		env, err := envWithDotEnv(lookupEnv)
+		if err != nil {
+			fmt.Fprintf(stderr, "paymux payout: %v\n", err)
+			return 1
+		}
+		return runPayout(ctx, args[1:], env, stdout, stderr)
 	case "tax-entity", "report", "fx":
 		env, err := envWithDotEnv(lookupEnv)
 		if err != nil {

@@ -199,3 +199,33 @@ func TestPayoutsRequireAnIdempotencyKey(t *testing.T) {
 		}
 	})
 }
+
+func TestPayoutToABeneficiaryInReviewNeedsForce(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		f := newPayoutFixture(t, db, `["payout"]`)
+		writer := f.scopedKey("test", authz.ScopePayoutsWrite)
+		r := f.do("POST", "/v1/payouts", writer, payoutBody, "Idempotency-Key", "po-a")
+		if r.status != 201 {
+			t.Fatalf("create: %d %s", r.status, r.raw)
+		}
+		if err := db.Write(ctx, func(tx store.Tx) error {
+			_, err := tx.ExecContext(ctx, `UPDATE payouts SET status = 'needs_review'`)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if r := f.do("POST", "/v1/payouts", writer, payoutBody, "Idempotency-Key", "po-b"); r.status != 409 || r.errType(t) != "payout_needs_review" {
+			t.Fatalf("re-send: %d %s", r.status, r.raw)
+		}
+		forced := map[string]any{"force": true}
+		for k, v := range payoutBody {
+			forced[k] = v
+		}
+		if r := f.do("POST", "/v1/payouts", writer, forced, "Idempotency-Key", "po-c"); r.status != 201 {
+			t.Fatalf("forced: %d %s", r.status, r.raw)
+		}
+		if n := f.count("SELECT COUNT(*) FROM audit_log WHERE action = 'payout.force_create'"); n != 1 {
+			t.Errorf("force audit rows = %d", n)
+		}
+	})
+}

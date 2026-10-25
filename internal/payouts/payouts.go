@@ -27,11 +27,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/paymux/paymux/internal/audit"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/jobs"
 	"github.com/paymux/paymux/internal/logctx"
+	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector"
@@ -44,14 +46,27 @@ const (
 	JobPoll   = "payout.poll"
 )
 
-// Statuses (the connector's, plus none of its own).
+// Statuses (the connector's, plus needs_review: our own).
 const (
 	StatusPending    = string(connector.PayoutPending)
 	StatusProcessing = string(connector.PayoutProcessing)
 	StatusSucceeded  = string(connector.PayoutSucceeded)
 	StatusFailed     = string(connector.PayoutFailed)
 	StatusReversed   = string(connector.PayoutReversed)
+	// StatusNeedsReview is a payout whose submission ended in an unknown
+	// outcome: the provider may or may not have it. It is polled by its
+	// reference until the provider answers, and an operator is alerted.
+	StatusNeedsReview = "needs_review"
 )
+
+// rawSynthesised is the raw status of a failure we concluded ourselves (the
+// provider's answer to the submit was an error we read as a refusal). The
+// provider has not confirmed it, so it is not final: see apply.
+const rawSynthesised = "paymux_rejected"
+
+// submitMaxAttempts is how many ambiguous submit attempts a payout gets before
+// it goes to needs_review.
+const submitMaxAttempts = 10
 
 // Event types.
 const (
@@ -60,6 +75,9 @@ const (
 	EvSucceeded  = "payout.succeeded"
 	EvFailed     = "payout.failed"
 	EvReversed   = "payout.reversed"
+	// EvNeedsReview is sent when a payout's outcome is unknown after the
+	// submit attempts ran out.
+	EvNeedsReview = "payout.needs_review"
 )
 
 // Error kinds. Errors returned by Service wrap exactly one of these.
@@ -67,6 +85,9 @@ var (
 	ErrInvalid  = errors.New("invalid request")
 	ErrNotFound = errors.New("not found")
 	ErrNoRoute  = errors.New("no route")
+	// ErrNeedsReview refuses a payout to a beneficiary and amount of which
+	// one is in needs_review: it may have been paid already.
+	ErrNeedsReview = errors.New("a payout awaits review")
 	// ErrKeyReuse means the Idempotency-Key already made a different payout.
 	ErrKeyReuse = errors.New("idempotency key reuse")
 )
@@ -106,6 +127,13 @@ type Options struct {
 	Emitter    events.Emitter
 	Logger     *slog.Logger
 	Now        func() time.Time
+	// Alerts receives ops alerts (a payout in needs_review); optional.
+	Alerts Alerter
+}
+
+// Alerter raises ops alerts (*notify.Alerts).
+type Alerter interface {
+	Raise(ctx context.Context, al notify.Alert) error
 }
 
 // Service is the payouts service.
@@ -146,6 +174,11 @@ type CreateInput struct {
 	// ProviderAccountID picks the account; empty means the first of the app's
 	// accounts that accepts payouts in the currency.
 	ProviderAccountID string
+	// Force sends the payout although one to the same beneficiary and amount
+	// is in needs_review (it may have been paid). It is audited and needs an
+	// Actor.
+	Force bool
+	Actor audit.Actor
 	// IdempotencyKey is the request's Idempotency-Key. The payout is stored
 	// with it: a repeat returns the payout the key made first, however the
 	// request was retried.
@@ -270,6 +303,16 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (store.Payout, err
 	if err := s.o.DB.Read(ctx, func(q store.Querier) (err error) { app, err = store.GetApp(ctx, q, in.Scope.AppID); return }); err != nil {
 		return store.Payout{}, newErr(ErrNotFound, "app not found")
 	}
+	reviewing, err := s.inReview(ctx, in, app.ID)
+	if err != nil {
+		return store.Payout{}, err
+	}
+	if reviewing != "" && !in.Force {
+		return store.Payout{}, newErr(ErrNeedsReview, "payout %s to the same beneficiary and amount is awaiting review and may have been paid; resolve it, or send with force", reviewing)
+	}
+	if reviewing != "" && in.Actor.Type == "" {
+		return store.Payout{}, newErr(ErrInvalid, "force needs an actor")
+	}
 	id := ids.New("po")
 	raw, _ := json.Marshal(in.Beneficiary)
 	sealed, err := s.o.Box.Seal(raw, aad(id))
@@ -285,8 +328,15 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (store.Payout, err
 		if err := store.InsertPayout(ctx, tx, p); err != nil {
 			return err
 		}
-		if err := s.o.Jobs.Enqueue(ctx, tx, jobs.Job{Kind: JobSubmit, Payload: payload{PayoutID: p.ID}, DedupeKey: "payout:" + p.ID + ":submit"}); err != nil {
+		if err := s.o.Jobs.Enqueue(ctx, tx, jobs.Job{Kind: JobSubmit, Payload: payload{PayoutID: p.ID}, DedupeKey: "payout:" + p.ID + ":submit",
+			MaxAttempts: submitMaxAttempts + 1}); err != nil { // the +1 leaves the last attempt to the needs_review move
 			return err
+		}
+		if reviewing != "" {
+			if err := audit.Record(ctx, tx, audit.Entry{OrgID: app.OrgID, Actor: in.Actor, Action: "payout.force_create", Target: p.ID,
+				After: map[string]any{"amount": p.Amount, "currency": p.Currency, "beneficiary": p.BeneficiaryLabel, "while_in_review": reviewing}}); err != nil {
+				return err
+			}
 		}
 		return s.emit(ctx, tx, EvCreated, p)
 	})
@@ -297,6 +347,42 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (store.Payout, err
 		}
 	}
 	return p, err
+}
+
+// inReview returns the id of a needs_review payout of the app with the same
+// destination, amount and currency as in, or "".
+func (s *Service) inReview(ctx context.Context, in CreateInput, appID string) (string, error) {
+	after := ""
+	for {
+		var rows []store.Payout
+		err := s.o.DB.Read(ctx, func(q store.Querier) (err error) {
+			rows, err = store.ListPayouts(ctx, q, appID, in.Scope.Mode, StatusNeedsReview, after, reviewPageSize)
+			return
+		})
+		if err != nil {
+			return "", err
+		}
+		for _, r := range rows {
+			if r.Amount != in.Amount || r.Currency != in.Currency {
+				continue
+			}
+			plain, err := s.o.Box.Open(r.BeneficiaryEnc, aad(r.ID))
+			if err != nil {
+				return "", err
+			}
+			var b connector.Beneficiary
+			if err := json.Unmarshal(plain, &b); err != nil {
+				return "", err
+			}
+			if b.AccountNumber == in.Beneficiary.AccountNumber && b.IFSC == in.Beneficiary.IFSC && b.UPI == in.Beneficiary.UPI {
+				return r.ID, nil
+			}
+		}
+		if len(rows) < reviewPageSize {
+			return "", nil
+		}
+		after = rows[len(rows)-1].ID
+	}
 }
 
 // byKey returns the payout the request's Idempotency-Key made before. It
@@ -332,6 +418,9 @@ func (s *Service) byKey(ctx context.Context, in CreateInput) (store.Payout, bool
 	}
 	return p, true, nil
 }
+
+// reviewPageSize is how many payouts in review inReview reads at a time.
+var reviewPageSize = 200
 
 // Get returns a payout of the scope's app and mode.
 func (s *Service) Get(ctx context.Context, sc core.Scope, id string) (store.Payout, error) {
@@ -442,7 +531,7 @@ func (s *Service) handleSubmit(ctx context.Context, raw json.RawMessage) error {
 	}
 	po, err := s.payouter(ctx, p.ProviderAccountID)
 	if err != nil {
-		return err // retried: the account may be fixed meanwhile
+		return s.retry(ctx, p.ID, err) // retried: the account may be fixed meanwhile
 	}
 	// The same ProviderRef every time: the provider treats a repeat as the same payout.
 	snap, err := po.CreatePayout(ctx, connector.PayoutRequest{ProviderRef: p.ProviderRef, Amount: p.Amount, Currency: p.Currency,
@@ -451,13 +540,12 @@ func (s *Service) handleSubmit(ctx context.Context, raw json.RawMessage) error {
 	case err == nil:
 		return s.apply(ctx, p.ID, snap)
 	case errors.Is(err, connector.ErrTemporary) || isRateLimited(err) || isAmbiguous(err):
-		_ = s.countAttempt(ctx, p.ID)
-		return err // retried by the queue with the same reference
+		return s.retry(ctx, p.ID, err) // retried by the queue with the same reference
 	default:
 		// The provider refused it (bad beneficiary, over a limit, bad credentials):
 		// nothing was sent, and repeating the request will not change that.
 		return s.apply(ctx, p.ID, connector.PayoutSnapshot{ProviderRef: p.ProviderRef, Status: connector.PayoutFailed,
-			RawStatus: "rejected", ErrorCode: "rejected", ErrorMessage: truncate(err.Error(), 300)})
+			RawStatus: rawSynthesised, ErrorCode: "rejected", ErrorMessage: truncate(err.Error(), 300)})
 	}
 }
 
@@ -483,15 +571,65 @@ func truncate(s string, n int) string {
 	return s
 }
 
-func (s *Service) countAttempt(ctx context.Context, id string) error {
-	return s.o.DB.Write(ctx, func(tx store.Tx) error {
+// retry counts a failed submit attempt and returns err for the queue to retry
+// it. When the attempts have run out the provider may have the payout (an
+// earlier attempt may have reached it) and we cannot tell: stop sending, ask
+// for it by its reference, and tell an operator.
+func (s *Service) retry(ctx context.Context, id string, err error) error {
+	if n, cerr := s.countAttempt(ctx, id); cerr == nil && n >= submitMaxAttempts {
+		return s.needsReview(ctx, id, err)
+	}
+	return err
+}
+
+// countAttempt records one more submit attempt and returns the count.
+func (s *Service) countAttempt(ctx context.Context, id string) (n int, err error) {
+	err = s.o.DB.Write(ctx, func(tx store.Tx) error {
 		p, err := store.GetPayoutForUpdate(ctx, tx, id)
 		if err != nil {
 			return err
 		}
 		p.SubmitAttempts++
+		n = p.SubmitAttempts
 		return store.UpdatePayout(ctx, tx, &p, s.now())
 	})
+	return n, err
+}
+
+// needsReview moves a pending payout whose submit attempts ran out on
+// ambiguous errors to needs_review, starts polling it by its reference and
+// raises an ops alert. cause is the last error.
+func (s *Service) needsReview(ctx context.Context, id string, cause error) error {
+	var moved store.Payout
+	err := s.o.DB.Write(ctx, func(tx store.Tx) error {
+		p, err := store.GetPayoutForUpdate(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if p.Status != StatusPending {
+			return nil
+		}
+		p.Status, p.RawStatus = StatusNeedsReview, StatusNeedsReview
+		p.FailureMessage = truncate("outcome unknown after "+fmt.Sprint(p.SubmitAttempts)+" attempts: "+cause.Error(), 300)
+		if err := store.UpdatePayout(ctx, tx, &p, s.now()); err != nil {
+			return err
+		}
+		moved = p
+		if err := s.emit(ctx, tx, EvNeedsReview, p); err != nil {
+			return err
+		}
+		return s.enqueuePoll(ctx, tx, p.ID, 0)
+	})
+	if err != nil || moved.ID == "" {
+		return err
+	}
+	if s.o.Alerts != nil {
+		_ = s.o.Alerts.Raise(ctx, notify.Alert{Severity: notify.SeverityCritical, Kind: "payout.needs_review",
+			Message: fmt.Sprintf("Payout %s (%d %s to %s, provider reference %s) could not be confirmed with the provider after %d attempts; it may or may not have been paid. It is polled by its reference; check the provider dashboard before sending it again.",
+				moved.ID, moved.Amount, moved.Currency, moved.BeneficiaryLabel, moved.ProviderRef, moved.SubmitAttempts),
+			Refs: map[string]string{"payout": moved.ID, "provider_ref": moved.ProviderRef, "provider_account": moved.ProviderAccountID, "app": moved.AppID}})
+	}
+	return nil
 }
 
 // pollLadder is the wait before each status check: 1m, 2m, 5m, 15m, 1h, 6h,
@@ -509,25 +647,61 @@ func (s *Service) handlePoll(ctx context.Context, raw json.RawMessage) error {
 	if err := s.o.DB.Read(ctx, func(q store.Querier) (err error) { p, err = store.GetPayout(ctx, q, pl.PayoutID); return }); err != nil {
 		return jobs.Permanent(err)
 	}
-	if p.Status != StatusProcessing && p.Status != StatusSucceeded { // a succeeded payout is checked once more for a reversal
+	// A succeeded payout is checked once more for a reversal; one in
+	// needs_review, or failed by our own reading, until the provider answers.
+	if p.Status != StatusProcessing && p.Status != StatusSucceeded && p.Status != StatusNeedsReview && !synthesisedFailure(p) {
 		return nil
 	}
 	logctx.Note(ctx, "payout_id", p.ID, "provider_account_id", p.ProviderAccountID, "app_id", p.AppID, "org_id", p.OrgID)
+	// A payout in needs_review is asked about for as long as it stays there:
+	// whatever goes wrong meanwhile is logged and the next check scheduled, so
+	// the job queue's attempt limit can never end the chain.
+	inReview := p.Status == StatusNeedsReview
+	again := func(err error) error {
+		s.o.Logger.Warn("payouts: checking a payout in needs_review failed; asking again later", "payout", p.ID, "err", err.Error())
+		return s.nextPoll(ctx, p.ID, pl.N)
+	}
 	po, err := s.payouter(ctx, p.ProviderAccountID)
 	if err != nil {
+		if inReview {
+			return again(err)
+		}
 		return err
 	}
 	snap, err := po.FetchPayout(ctx, connector.PayoutRef{ProviderRef: p.ProviderRef, ProviderPayoutID: p.ProviderPayoutID})
 	if err != nil {
-		if errors.Is(err, connector.ErrNotFound) && s.now().Sub(p.CreatedAt) < pollGiveUp {
+		// A payout in needs_review is polled for as long as it stays there.
+		if errors.Is(err, connector.ErrNotFound) && (p.Status == StatusNeedsReview || s.now().Sub(p.CreatedAt) < pollGiveUp) {
 			return s.nextPoll(ctx, p.ID, pl.N)
+		}
+		if errors.Is(err, connector.ErrNotFound) && synthesisedFailure(p) {
+			return nil // the provider never had it: our reading stands
+		}
+		if inReview {
+			return again(err)
 		}
 		return err
 	}
 	if err := payoutIsOurs(p, snap); err != nil {
+		s.alertNotOurs(ctx, p, err)
+		if inReview {
+			return again(err)
+		}
 		return jobs.Permanent(err) // not ours: polling again cannot fix that; the payout stays as it is
 	}
-	return s.apply(ctx, p.ID, snap)
+	if err := s.apply(ctx, p.ID, snap); err != nil {
+		return err
+	}
+	// apply schedules the next check only when the status moves; one that is
+	// still in flight after this answer must be asked again.
+	var cur store.Payout
+	if err := s.o.DB.Read(ctx, func(q store.Querier) (err error) { cur, err = store.GetPayout(ctx, q, p.ID); return }); err != nil {
+		return err
+	}
+	if cur.Status == StatusProcessing || cur.Status == StatusNeedsReview || synthesisedFailure(cur) {
+		return s.nextPoll(ctx, p.ID, pl.N)
+	}
+	return nil
 }
 
 func (s *Service) nextPoll(ctx context.Context, id string, n int) error {
@@ -540,6 +714,12 @@ func (s *Service) enqueuePoll(ctx context.Context, tx store.Tx, id string, n int
 		DedupeKey: fmt.Sprintf("payout:%s:poll:%d", id, n)})
 }
 
+// synthesisedFailure says whether p failed by our own reading of an error, not
+// by the provider's word.
+func synthesisedFailure(p store.Payout) bool {
+	return p.Status == StatusFailed && p.RawStatus == rawSynthesised
+}
+
 func terminal(status string) bool {
 	return status == StatusFailed || status == StatusReversed
 }
@@ -547,55 +727,142 @@ func terminal(status string) bool {
 // apply books the provider's view of a payout under the row lock: it moves the
 // payout forward, emits the matching event once, and schedules the next poll
 // while it is still on its way. A failed or reversed payout never moves again;
-// a succeeded one can still be reversed.
+// a succeeded one can still be reversed. The exception is a failure we
+// concluded ourselves (rawSynthesised): it is polled, and the provider's
+// answer replaces it.
 func (s *Service) apply(ctx context.Context, id string, snap connector.PayoutSnapshot) error {
-	return s.o.DB.Write(ctx, func(tx store.Tx) error {
+	var refused store.Payout
+	err := s.o.DB.Write(ctx, func(tx store.Tx) error { return s.applyTx(ctx, tx, id, snap, &refused) })
+	if err == nil && refused.ID != "" {
+		s.o.Logger.Error("payouts: a success that does not state the amount and currency sent was not applied", "payout", refused.ID,
+			"sent", refused.Amount, "currency", refused.Currency, "stated", snap.Amount, "stated_currency", snap.Currency)
+		if s.o.Alerts != nil {
+			_ = s.o.Alerts.Raise(ctx, notify.Alert{Severity: notify.SeverityCritical, Kind: "payout.snapshot_mismatch",
+				Message: fmt.Sprintf("The provider reports payout %s (provider reference %s) as paid, but states %d %q where %d %s was sent; it was left as it is (%s). Check the provider dashboard.",
+					refused.ID, refused.ProviderRef, snap.Amount, snap.Currency, refused.Amount, refused.Currency, refused.Status),
+				Refs: map[string]string{"payout": refused.ID, "provider_ref": refused.ProviderRef, "provider_account": refused.ProviderAccountID, "app": refused.AppID}})
+		}
+	}
+	return err
+}
+
+// applyTx is apply inside a transaction. When the snapshot would move the payout
+// to succeeded without stating the amount and currency that were sent, nothing
+// is changed and *refused is set to the payout.
+func (s *Service) applyTx(ctx context.Context, tx store.Tx, id string, snap connector.PayoutSnapshot, refused *store.Payout) error {
+	p, err := store.GetPayoutForUpdate(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	prev := p.Status
+	if snap.Status == connector.PayoutSucceeded && !terminal(p.Status) && p.Status != StatusSucceeded &&
+		(snap.Amount != p.Amount || !strings.EqualFold(snap.Currency, p.Currency)) {
+		*refused = p
+		return nil
+	}
+	next := string(snap.Status)
+	switch snap.Status {
+	case connector.PayoutPending, connector.PayoutProcessing, connector.PayoutSucceeded, connector.PayoutFailed, connector.PayoutReversed:
+	default:
+		next = StatusProcessing // an unknown status is never a failure
+	}
+	if next == StatusPending {
+		next = StatusProcessing // the provider has it: from here on we follow it
+	}
+	synth := synthesisedFailure(p)
+	if (terminal(p.Status) && !synth) || (p.Status == next && !(synth && snap.RawStatus != rawSynthesised)) ||
+		(p.Status == StatusSucceeded && next != StatusReversed) {
+		return nil
+	}
+	if p.Status == StatusProcessing && next == StatusPending {
+		return nil // never goes backwards
+	}
+	now := s.now()
+	p.Status, p.RawStatus = next, snap.RawStatus
+	if snap.ProviderPayoutID != "" {
+		p.ProviderPayoutID = snap.ProviderPayoutID
+	}
+	if next == StatusFailed {
+		p.FailureCode, p.FailureMessage = snap.ErrorCode, snap.ErrorMessage
+	} else {
+		p.FailureCode, p.FailureMessage = "", "" // a needs_review note or a failure the provider overruled
+	}
+	p.CompletedAt = time.Time{}
+	if next == StatusSucceeded || next == StatusFailed || next == StatusReversed {
+		p.CompletedAt = now
+	}
+	if err := store.UpdatePayout(ctx, tx, &p, now); err != nil {
+		return err
+	}
+	ev := map[string]string{StatusProcessing: EvProcessing, StatusPending: "", StatusSucceeded: EvSucceeded, StatusFailed: EvFailed, StatusReversed: EvReversed}[next]
+	if ev != "" && next != prev { // the provider confirming our own reading of a failure sends nothing again
+		if err := s.emit(ctx, tx, ev, p); err != nil {
+			return err
+		}
+	}
+	if next == StatusFailed && snap.RawStatus == rawSynthesised {
+		return s.enqueuePoll(ctx, tx, p.ID, 0) // ask the provider before this is final
+	}
+	if next == StatusProcessing || next == StatusPending {
+		return s.enqueuePoll(ctx, tx, p.ID, 0)
+	}
+	if next == StatusSucceeded {
+		// A succeeded payout can still come back; look once more later.
+		return s.enqueuePoll(ctx, tx, p.ID, len(pollLadder)-1)
+	}
+	return nil
+}
+
+// Resolve settles a payout in needs_review by an operator's word, after they
+// checked with the provider: status is succeeded or failed. It goes through
+// the normal apply path (one event, the poll for a reversal) and is audited
+// with the reason.
+func (s *Service) Resolve(ctx context.Context, id, status, reason string, actor audit.Actor) (store.Payout, error) {
+	reason = strings.TrimSpace(reason)
+	if status != StatusSucceeded && status != StatusFailed {
+		return store.Payout{}, newErr(ErrInvalid, "status must be succeeded or failed")
+	}
+	if reason == "" {
+		return store.Payout{}, newErr(ErrInvalid, "a reason is required")
+	}
+	var out store.Payout
+	err := s.o.DB.Write(ctx, func(tx store.Tx) error {
 		p, err := store.GetPayoutForUpdate(ctx, tx, id)
+		if errors.Is(err, store.ErrNotFound) {
+			return newErr(ErrNotFound, "payout not found")
+		}
 		if err != nil {
 			return err
 		}
-		next := string(snap.Status)
-		switch snap.Status {
-		case connector.PayoutPending, connector.PayoutProcessing, connector.PayoutSucceeded, connector.PayoutFailed, connector.PayoutReversed:
-		default:
-			next = StatusProcessing // an unknown status is never a failure
+		if p.Status != StatusNeedsReview {
+			return newErr(ErrInvalid, "payout %s is %s: only a payout in needs_review can be resolved by hand", p.ID, p.Status)
 		}
-		if next == StatusPending {
-			next = StatusProcessing // the provider has it: from here on we follow it
-		}
-		if terminal(p.Status) || p.Status == next || (p.Status == StatusSucceeded && next != StatusReversed) {
-			return nil
-		}
-		if p.Status == StatusProcessing && next == StatusPending {
-			return nil // never goes backwards
-		}
-		now := s.now()
-		p.Status, p.RawStatus = next, snap.RawStatus
-		if snap.ProviderPayoutID != "" {
-			p.ProviderPayoutID = snap.ProviderPayoutID
-		}
-		if next == StatusFailed {
-			p.FailureCode, p.FailureMessage = snap.ErrorCode, snap.ErrorMessage
-		}
-		if next == StatusSucceeded || next == StatusFailed || next == StatusReversed {
-			p.CompletedAt = now
-		}
-		if err := store.UpdatePayout(ctx, tx, &p, now); err != nil {
+		if err := audit.Record(ctx, tx, audit.Entry{OrgID: p.OrgID, Actor: actor, Action: "payout.resolve", Target: p.ID,
+			Before: map[string]any{"status": p.Status}, After: map[string]any{"status": status, "reason": reason}}); err != nil {
 			return err
 		}
-		ev := map[string]string{StatusProcessing: EvProcessing, StatusPending: "", StatusSucceeded: EvSucceeded, StatusFailed: EvFailed, StatusReversed: EvReversed}[next]
-		if ev != "" {
-			if err := s.emit(ctx, tx, ev, p); err != nil {
-				return err
-			}
+		snap := connector.PayoutSnapshot{ProviderRef: p.ProviderRef, Status: connector.PayoutStatus(status), RawStatus: "manual",
+			Amount: p.Amount, Currency: p.Currency}
+		if status == StatusFailed {
+			snap.ErrorCode, snap.ErrorMessage = "manual", truncate("resolved by an operator: "+reason, 300)
 		}
-		if next == StatusProcessing || next == StatusPending {
-			return s.enqueuePoll(ctx, tx, p.ID, 0)
+		if err := s.applyTx(ctx, tx, p.ID, snap, &store.Payout{}); err != nil {
+			return err
 		}
-		if next == StatusSucceeded {
-			// A succeeded payout can still come back; look once more later.
-			return s.enqueuePoll(ctx, tx, p.ID, len(pollLadder)-1)
-		}
-		return nil
+		out, err = store.GetPayout(ctx, tx, p.ID)
+		return err
 	})
+	return out, err
+}
+
+// alertNotOurs tells an operator that the provider answered for a payout with
+// another reference, id, amount or currency than ours; nothing is applied.
+func (s *Service) alertNotOurs(ctx context.Context, p store.Payout, cause error) {
+	if s.o.Alerts == nil {
+		return
+	}
+	_ = s.o.Alerts.Raise(ctx, notify.Alert{Severity: notify.SeverityCritical, Kind: "payout.snapshot_mismatch",
+		Message: fmt.Sprintf("The provider's answer for payout %s (provider reference %s) is not this payout's and was ignored: %v. Check the provider dashboard.",
+			p.ID, p.ProviderRef, cause),
+		Refs: map[string]string{"payout": p.ID, "provider_ref": p.ProviderRef, "provider_account": p.ProviderAccountID, "app": p.AppID}})
 }

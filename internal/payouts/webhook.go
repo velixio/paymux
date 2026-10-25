@@ -48,6 +48,7 @@ func (s *Service) SyncNotification(ctx context.Context, providerAccountID string
 	if err := payoutIsOurs(p, snap); err != nil {
 		s.o.Logger.Warn("payouts: the provider returned a payout that is not this payout's; ignored", "payout", p.ID,
 			"account", p.ProviderAccountID, "err", err)
+		s.alertNotOurs(ctx, p, err)
 		return err
 	}
 	return s.apply(ctx, p.ID, snap)

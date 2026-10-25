@@ -686,7 +686,7 @@ paths:
       summary: Send money out to a beneficiary
       description: |
         Records the payout (`pending`) and submits it to the provider in the background; follow it with
-        `payout.processing`, `payout.succeeded`, `payout.failed` and `payout.reversed` events or `GET`. The
+        `payout.processing`, `payout.succeeded`, `payout.failed`, `payout.reversed` and `payout.needs_review` events or `GET`. The
         provider is sent the payout's own reference as an idempotency token, so a retry never pays twice. The
         `Idempotency-Key` header is required (400 `invalid_request` without it): a client that retries after a
         timeout must not send the money twice.
@@ -694,6 +694,10 @@ paths:
         This is the only operation an ordinary key cannot do: the key must list `payouts:write` explicitly (keys
         with no scope list do not have it), and a provider account of the app must have the `payout` purpose and a
         connector that can pay out. The beneficiary is stored encrypted and shown masked.
+
+        While a payout to the same beneficiary (account or UPI id), amount and currency is in `needs_review` (the
+        provider may already have paid it), a new one is refused with 409 `payout_needs_review`. Resolve the first,
+        or send `force: true`: it is recorded in the audit log under the key that sent it.
       parameters:
         - $ref: "#/components/parameters/IdempotencyKeyRequired"
       requestBody:
@@ -721,6 +725,7 @@ paths:
                 narration: { type: string, maxLength: 100 }
                 metadata: { type: object, additionalProperties: { type: string } }
                 provider_account_id: { type: string, description: Pick the provider account (default the app's first that accepts payouts in the currency). }
+                force: { type: boolean, description: "Send although a payout to the same beneficiary and amount is in `needs_review`. Audited." }
               additionalProperties: false
       responses:
         "201":
@@ -735,6 +740,11 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
         "403":
           $ref: "#/components/responses/InsufficientScope"
+        "409":
+          description: "`payout_needs_review`: a payout to the same beneficiary and amount is in `needs_review`; see `force`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "422":
           description: "`no_route`: no provider account of the app accepts payouts in this currency."
           content:
@@ -883,6 +893,7 @@ components:
                 - refund_amount_exceeds_balance
                 - conflict
                 - no_route
+                - payout_needs_review
                 - currency_not_accepted
                 - idempotency_key_reuse
                 - idempotency_in_progress
@@ -1311,11 +1322,18 @@ components:
         reason: { type: string, description: Why the mode differs from the request, or why nothing was prorated. }
     PayoutStatus:
       type: string
-      enum: [pending, processing, succeeded, failed, reversed]
+      enum: [pending, processing, succeeded, failed, reversed, needs_review]
       description: |
         `pending` is recorded and not yet with the provider; `processing` is on its way; `succeeded` has arrived;
         `failed` will not arrive (the money stays with you); `reversed` arrived and came back. A status the
         provider reports that Paymux does not know stays `processing`.
+
+        `needs_review` means the outcome is unknown: the submission to the provider kept ending in a timeout or a
+        cut connection, so the provider may or may not have the payout. Paymux stops sending, asks the provider for
+        it by its reference, and raises an ops alert; the payout moves on when the provider answers. Treat it as
+        possibly paid. A `failed` payout whose failure Paymux concluded itself (not the provider) is likewise
+        checked with the provider, and can become `processing` or `succeeded` (a `payout.failed` event is then
+        followed by the later one).
     Payout:
       type: object
       required: [id, object, status, amount, currency, beneficiary, metadata, created_at, version]

@@ -261,7 +261,7 @@ func (a *App) Start(ctx context.Context) error {
 			return live.Connector, err
 		})})
 	subs.RegisterJobs(q)
-	payoutSvc := payouts.New(payouts.Options{DB: db, Box: box, Jobs: q, Emitter: emitter, Logger: a.log,
+	payoutSvc := payouts.New(payouts.Options{DB: db, Box: box, Jobs: q, Emitter: emitter, Logger: a.log, Alerts: alerts,
 		Connectors: payouts.ConnectorsFunc(func(ctx context.Context, id string) (connector.Connector, error) {
 			live, err := conns.Get(ctx, id)
 			return live.Connector, err
