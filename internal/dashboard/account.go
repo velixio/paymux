@@ -63,10 +63,14 @@ func (d *Dashboard) reauthPage(w http.ResponseWriter, r *http.Request, s *sessio
 	d.renderReauth(w, r, s, http.StatusOK, "", r.URL.Query().Get("next"))
 }
 
+// flagOn reads a 0/1 query flag. The dashboard's router re-serialises query
+// values and may hand "1" back quoted, so both forms count.
+func flagOn(v string) bool { return v == "1" || v == `"1"` }
+
 func (d *Dashboard) renderReauth(w http.ResponseWriter, r *http.Request, s *session, status int, msg, next string) {
 	v := d.shell(r, s, "", "Confirm it is you")
 	v.Error, v.Next = msg, safeNext(next, prefix+"/overview")
-	v.Unsaved = r.URL.Query().Get("unsaved") == "1" || r.PostForm.Get("unsaved") == "1"
+	v.Unsaved = flagOn(r.URL.Query().Get("unsaved")) || flagOn(r.PostForm.Get("unsaved"))
 	v.NeedCode = !d.o.DevSkip2FA && s.User.TOTPLastStep >= 0
 	d.render(w, status, "dash_reauth", v)
 }
