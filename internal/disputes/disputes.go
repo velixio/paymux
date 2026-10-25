@@ -38,6 +38,9 @@ var ErrNoReader = errors.New("disputes: the connector cannot read disputes")
 const (
 	FlagDisputed    = "disputed"
 	FlagDisputeLost = "dispute_lost"
+	// FlagDisputeOverlap marks a payment whose open disputes together claim more
+	// than was received: a later dispute's hold was capped.
+	FlagDisputeOverlap = "dispute_overlap"
 )
 
 // Alerter raises ops alerts (*notify.Alerts).
@@ -98,25 +101,28 @@ type Result struct {
 
 // DisputeView is the public JSON shape of a dispute, used in events.
 type DisputeView struct {
-	ID        string    `json:"id"`
-	Object    string    `json:"object"`
-	Livemode  bool      `json:"livemode"` // false for a test-mode object
-	PaymentID string    `json:"payment_id"`
-	AttemptID string    `json:"attempt_id"`
-	Amount    int64     `json:"amount"`
-	Currency  string    `json:"currency"`
-	Reason    string    `json:"reason,omitempty"`
-	Status    string    `json:"status"`
-	Stage     string    `json:"stage,omitempty"`
-	DueBy     time.Time `json:"due_by,omitzero"`
-	Source    string    `json:"source"`
-	Version   int64     `json:"version"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string `json:"id"`
+	Object    string `json:"object"`
+	Livemode  bool   `json:"livemode"` // false for a test-mode object
+	PaymentID string `json:"payment_id"`
+	AttemptID string `json:"attempt_id"`
+	Amount    int64  `json:"amount"`
+	// AmountHeld is what the dispute holds back from the payment: Amount, or
+	// less when other open disputes already hold part of what was received.
+	AmountHeld int64     `json:"amount_held"`
+	Currency   string    `json:"currency"`
+	Reason     string    `json:"reason,omitempty"`
+	Status     string    `json:"status"`
+	Stage      string    `json:"stage,omitempty"`
+	DueBy      time.Time `json:"due_by,omitzero"`
+	Source     string    `json:"source"`
+	Version    int64     `json:"version"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // ViewDispute renders d.
 func ViewDispute(d store.Dispute) DisputeView {
-	return DisputeView{ID: d.ID, Object: "dispute", Livemode: d.Mode == "live", PaymentID: d.PaymentID, AttemptID: d.AttemptID, Amount: d.Amount, Currency: d.Currency,
+	return DisputeView{ID: d.ID, Object: "dispute", Livemode: d.Mode == "live", PaymentID: d.PaymentID, AttemptID: d.AttemptID, Amount: d.Amount, AmountHeld: d.AmountHeld, Currency: d.Currency,
 		Reason: d.Reason, Status: d.Status, Stage: d.Stage, DueBy: d.DueBy, Source: d.Source, Version: d.Version, CreatedAt: d.CreatedAt}
 }
 
@@ -198,13 +204,24 @@ func (s *Service) upsert(ctx context.Context, tx store.Tx, a store.Attempt, p st
 		if d.Currency == "" {
 			d.Currency = a.CurrencyReceived
 		}
+		// The open disputes of the attempt never hold more than it received. The
+		// provider's amount is kept as it is; a dispute is never refused for it.
+		others, err := store.SumOpenHolds(ctx, tx, a.ID, d.ID)
+		if err != nil {
+			return res, nil, err
+		}
+		d.AmountHeld = max(min(d.Amount, a.AmountReceived-others), 0)
 		if err := store.InsertDispute(ctx, tx, d); err != nil {
 			return res, nil, err
 		}
-		if err := s.ledger(ctx, tx, d, "dispute_hold", -d.Amount, now); err != nil {
+		if err := s.ledger(ctx, tx, d, "dispute_hold", -d.AmountHeld, now); err != nil {
 			return res, nil, err
 		}
 		addFlag(&p, FlagDisputed)
+		if d.AmountHeld < d.Amount {
+			addFlag(&p, FlagDisputeOverlap)
+			tasks = append(tasks, alertTask{alert: overlapAlert(d)})
+		}
 		if err := store.UpdatePayment(ctx, tx, &p, now); err != nil {
 			return res, nil, err
 		}
@@ -272,7 +289,7 @@ func (s *Service) transition(ctx context.Context, tx store.Tx, d *store.Dispute,
 	evType := "dispute.updated"
 	switch to {
 	case state.DisputeWon, state.DisputeLost, state.DisputeAccepted, state.DisputeClosed:
-		if err := s.ledger(ctx, tx, *d, "dispute_release", d.Amount, now); err != nil {
+		if err := s.ledger(ctx, tx, *d, "dispute_release", d.AmountHeld, now); err != nil {
 			return nil, err
 		}
 		// Another open dispute on this payment still holds money back: the flag
@@ -289,7 +306,7 @@ func (s *Service) transition(ctx context.Context, tx store.Tx, d *store.Dispute,
 			evType = "dispute.won"
 		case state.DisputeLost, state.DisputeAccepted:
 			evType = "dispute.lost"
-			if err := s.ledger(ctx, tx, *d, "dispute_loss", -d.Amount, now); err != nil {
+			if err := s.ledger(ctx, tx, *d, "dispute_loss", -d.AmountHeld, now); err != nil {
 				return nil, err
 			}
 			addFlag(p, FlagDisputeLost)
@@ -331,6 +348,9 @@ func (s *Service) isCutoff(err error) bool {
 }
 
 func (s *Service) ledger(ctx context.Context, tx store.Tx, d store.Dispute, kind string, amount int64, now time.Time) error {
+	if amount == 0 { // a fully capped hold moves no money
+		return nil
+	}
 	return store.InsertLedgerEntry(ctx, tx, store.LedgerEntry{ID: ids.New("led"), OrgID: d.OrgID, Mode: d.Mode, Kind: kind,
 		Amount: amount, Currency: d.Currency, PaymentID: d.PaymentID, DisputeID: d.ID, OccurredAt: now})
 }
@@ -355,6 +375,12 @@ func lostAlert(d store.Dispute) notify.Alert {
 		Message: fmt.Sprintf("Dispute %s on payment %s was lost (%s %s)", d.ID, d.PaymentID, money(d.Amount), d.Currency), Refs: refs(d)}
 }
 
+func overlapAlert(d store.Dispute) notify.Alert {
+	return notify.Alert{Severity: notify.SeverityWarning, Kind: "dispute.overlap",
+		Message: fmt.Sprintf("Dispute %s on payment %s claims %s %s but other open disputes already hold most of what was received; it holds %s. Review the disputes of this payment.",
+			d.ID, d.PaymentID, money(d.Amount), d.Currency, money(d.AmountHeld)), Refs: refs(d)}
+}
+
 func dueAlert(d store.Dispute, hours int, sev notify.Severity) notify.Alert {
 	return notify.Alert{Severity: sev, Kind: fmt.Sprintf("dispute.due_%dh", hours),
 		Message: fmt.Sprintf("Dispute %s on payment %s is due within %d hours (%s)", d.ID, d.PaymentID, hours, d.DueBy.Format("2006-01-02 15:04 MST")),
@@ -377,6 +403,12 @@ func (s *Service) deliver(ctx context.Context, tasks []alertTask) {
 
 func (s *Service) alertOnce(ctx context.Context, t alertTask) {
 	if s.o.Alerts == nil {
+		return
+	}
+	if t.column == "" { // raised once by construction, not tracked on the dispute
+		if err := s.o.Alerts.Raise(ctx, t.alert); err != nil {
+			s.o.Logger.Warn("disputes: alert not delivered", "kind", t.alert.Kind, "err", err)
+		}
 		return
 	}
 	var claimed bool
