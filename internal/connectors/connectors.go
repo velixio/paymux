@@ -23,6 +23,7 @@ import (
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/ids"
 	"github.com/paymux/paymux/internal/inbound"
+	"github.com/paymux/paymux/internal/notify"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/pkg/connector"
@@ -56,6 +57,9 @@ type Service struct {
 	baseURL string
 	mu      sync.Mutex
 	cache   map[string]*cached
+	// alerts and reported serve reportMismatch.
+	alerts   Alerter
+	reported map[string]string
 }
 
 type cached struct {
@@ -77,7 +81,7 @@ func New(o Options) *Service {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	return &Service{o: o, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), cache: map[string]*cached{}}
+	return &Service{o: o, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), cache: map[string]*cached{}, reported: map[string]string{}}
 }
 
 func configAAD(id string) []byte { return secrets.AADProviderConfig(id) }
@@ -407,6 +411,7 @@ func (s *Service) Invalidate(accountID string) {
 
 func fingerprint(pa store.ProviderAccount) string {
 	h := sha256.New()
+	h.Write([]byte(pa.Mode + "|"))
 	h.Write(pa.ConfigEnc)
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
@@ -415,31 +420,50 @@ func fingerprint(pa store.ProviderAccount) string {
 // The account row is re-read on every call and the instance rebuilt when its
 // config changed, so changes made by other processes take effect too.
 func (s *Service) Get(ctx context.Context, accountID string) (Live, error) {
+	live, mismatch, err := s.get(ctx, accountID)
+	if mismatch != nil {
+		s.reportMismatch(ctx, mismatch.pa, mismatch.fp, err) // after the lock is released: it may send mail
+	}
+	return live, err
+}
+
+type mismatch struct {
+	pa store.ProviderAccount
+	fp string
+}
+
+func (s *Service) get(ctx context.Context, accountID string) (Live, *mismatch, error) {
 	var pa store.ProviderAccount
 	err := s.o.DB.Read(ctx, func(q store.Querier) (err error) {
 		pa, err = store.GetProviderAccount(ctx, q, accountID)
 		return
 	})
 	if err != nil {
-		return Live{}, notFound(err, "provider account")
+		return Live{}, nil, notFound(err, "provider account")
 	}
 	fp := fingerprint(pa)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if c, ok := s.cache[accountID]; ok && c.fingerprint == fp {
 		c.live.Account = pa // status and currency changes apply without a rebuild
-		return c.live, nil
+		return c.live, nil, nil
 	}
 	factory, info, ok := connector.Lookup(pa.Connector)
 	if !ok {
-		return Live{}, fmt.Errorf("connectors: %q is not available in this build", pa.Connector)
+		return Live{}, nil, fmt.Errorf("connectors: %q is not available in this build", pa.Connector)
 	}
 	if info.TestOnly && pa.Mode != "test" {
-		return Live{}, fmt.Errorf("connectors: %s is a %s-mode account, but the %s connector can only be used in test mode", pa.ID, pa.Mode, pa.Connector)
+		return Live{}, nil, fmt.Errorf("connectors: %s is a %s-mode account, but the %s connector can only be used in test mode", pa.ID, pa.Mode, pa.Connector)
 	}
 	cfg, err := s.o.Box.Open(pa.ConfigEnc, configAAD(pa.ID))
 	if err != nil {
-		return Live{}, fmt.Errorf("connectors: decrypting config of %s: %w", pa.ID, err)
+		return Live{}, nil, fmt.Errorf("connectors: decrypting config of %s: %w", pa.ID, err)
+	}
+	if err := checkCredentialMode(pa.Mode, cfg); err != nil {
+		// Never built, whatever the status: a live account must not run with
+		// sandbox settings. The account is reported once (Get).
+		return Live{}, &mismatch{pa: pa, fp: fp}, fmt.Errorf("connectors: %s (%s, %s mode) is refused: %w: %s", pa.ID, pa.Connector, pa.Mode, ErrSandboxOnLive,
+			strings.TrimPrefix(err.Error(), "config: "))
 	}
 	if pa.Mode == "live" && allowInsecure(cfg) {
 		// Created before live accounts were refused the opt-out: it is ignored,
@@ -448,11 +472,11 @@ func (s *Service) Get(ctx context.Context, accountID string) (Live, error) {
 	}
 	conn, err := factory(cfg, s.deps(pa, info, cfg))
 	if err != nil {
-		return Live{}, fmt.Errorf("connectors: building %s: %w", pa.ID, err)
+		return Live{}, nil, fmt.Errorf("connectors: building %s: %w", pa.ID, err)
 	}
 	live := Live{Account: pa, Connector: conn}
 	s.cache[accountID] = &cached{fingerprint: fp, live: live}
-	return live, nil
+	return live, nil, nil
 }
 
 func (s *Service) deps(pa store.ProviderAccount, info connector.Info, cfg json.RawMessage) connector.Deps {
@@ -567,10 +591,17 @@ func allowInsecure(cfg json.RawMessage) bool {
 // checked; a sandbox switch left off on a test account is allowed.
 func checkCredentialMode(mode string, cfg json.RawMessage) error {
 	var c struct {
-		TestMode  bool   `json:"test_mode"`
-		Sandbox   bool   `json:"sandbox"`
-		SecretKey string `json:"secret_key"`
-		KeyID     string `json:"key_id"`
+		TestMode  bool   `json:"test_mode"`  // PayU: test.payu.in
+		Sandbox   bool   `json:"sandbox"`    // Cashfree, Whop, Zoho
+		SecretKey string `json:"secret_key"` // Stripe
+		KeyID     string `json:"key_id"`     // Razorpay
+		ClientID  string `json:"client_id"`  // Cashfree: test app ids start with TEST
+		// Cashfree secrets carry their environment (cfsk_ma_test_..., cfsk_ma_prod_...).
+		ClientSecret string `json:"client_secret"`
+		Key          string `json:"key"` // PayU merchant key
+		// Zoho: scopes granted by the sandbox server, and a checkout URL on it.
+		OAuthScopes       string `json:"oauth_scopes"`
+		HostedCheckoutURL string `json:"hosted_checkout_url"`
 	}
 	if json.Unmarshal(cfg, &c) != nil {
 		return nil // ValidateConfig has judged the shape already
@@ -585,7 +616,10 @@ func checkCredentialMode(mode string, cfg json.RawMessage) error {
 	}
 	switch mode {
 	case "live":
-		if c.TestMode || c.Sandbox || hasPrefix(c.SecretKey, "sk_test_", "rk_test_") || hasPrefix(c.KeyID, "rzp_test_") {
+		if c.TestMode || c.Sandbox || hasPrefix(c.SecretKey, "sk_test_", "rk_test_") || hasPrefix(c.KeyID, "rzp_test_") ||
+			hasPrefix(c.ClientID, "TEST") || (hasPrefix(c.ClientSecret, "cfsk_") && strings.Contains(c.ClientSecret, "_test_")) ||
+			payuPublicTestKeys[c.Key] || strings.Contains(c.OAuthScopes, "ZohoPaySandbox") ||
+			strings.Contains(strings.ToLower(c.HostedCheckoutURL), "sandbox") {
 			return invalid("config: these are sandbox credentials; a live account needs the provider's live credentials")
 		}
 	case "test":
@@ -594,6 +628,91 @@ func checkCredentialMode(mode string, cfg json.RawMessage) error {
 		}
 	}
 	return nil
+}
+
+// payuPublicTestKeys are the merchant keys PayU publishes for its test
+// environment; no live account has one.
+var payuPublicTestKeys = map[string]bool{"gtKFFx": true, "JBZaLc": true}
+
+// ErrSandboxOnLive is the refusal to use a provider account whose stored
+// config does not belong to its mode: a live account with sandbox credentials
+// (a public test card would "pay" a live payment), or a test account with live
+// ones.
+var ErrSandboxOnLive = errors.New("the stored config does not belong to the account's mode")
+
+// Alerter raises ops alerts (*notify.Alerts).
+type Alerter interface {
+	Raise(ctx context.Context, al notify.Alert) error
+}
+
+// SetAlerter sets where the refusals of ErrSandboxOnLive are reported.
+func (s *Service) SetAlerter(a Alerter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.alerts = a
+}
+
+// reportMismatch logs and alerts that an account's config does not belong to
+// its mode, once per account and config: a hot path must not repeat it.
+func (s *Service) reportMismatch(ctx context.Context, pa store.ProviderAccount, fp string, cause error) {
+	s.mu.Lock()
+	if s.reported[pa.ID] == fp {
+		s.mu.Unlock()
+		return
+	}
+	s.reported[pa.ID] = fp
+	alerts := s.alerts
+	s.mu.Unlock()
+	s.o.Logger.Error("connectors: provider account refused: its config does not belong to its mode",
+		"provider_account", pa.ID, "connector", pa.Connector, "mode", pa.Mode, "err", cause.Error())
+	if alerts != nil {
+		_ = alerts.Raise(ctx, notify.Alert{Severity: notify.SeverityCritical, Kind: "provider.sandbox_on_live",
+			Message: fmt.Sprintf("Provider account %s (%s, %s mode) is refused and receives nothing: %s", pa.ID, pa.Connector, pa.Mode, cause.Error()),
+			Refs:    map[string]string{"provider_account": pa.ID}})
+	}
+}
+
+// DisableSandboxOnLive is run at startup: it disables every active account
+// whose stored config does not belong to its mode, with an audit entry and an
+// alert, so that nothing is routed to it. It returns how many it disabled.
+// Get refuses such an account anyway, whatever its status.
+func (s *Service) DisableSandboxOnLive(ctx context.Context) (int, error) {
+	var accounts []store.ProviderAccount
+	if err := s.o.DB.Read(ctx, func(q store.Querier) (err error) { accounts, err = store.ListEveryProviderAccount(ctx, q); return }); err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, pa := range accounts {
+		cfg, err := s.o.Box.Open(pa.ConfigEnc, configAAD(pa.ID))
+		if err != nil {
+			continue
+		}
+		cause := checkCredentialMode(pa.Mode, cfg)
+		if cause == nil {
+			continue
+		}
+		s.reportMismatch(ctx, pa, fingerprint(pa), cause)
+		if pa.Status != "active" {
+			continue
+		}
+		err = s.o.DB.Write(ctx, func(tx store.Tx) error {
+			cur, err := store.GetProviderAccount(ctx, tx, pa.ID)
+			if err != nil {
+				return err
+			}
+			cur.Status = "disabled"
+			if err := store.UpdateProviderAccount(ctx, tx, cur, s.o.Now()); err != nil {
+				return err
+			}
+			return audit.Record(ctx, tx, audit.Entry{OrgID: pa.OrgID, Actor: audit.System, Action: "provider_account.disable_sandbox_on_live",
+				Target: pa.ID, Before: map[string]any{"status": "active"}, After: map[string]any{"status": "disabled", "reason": cause.Error()}})
+		})
+		if err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
 }
 
 // secretValues returns the string values of config keys marked "x-secret".

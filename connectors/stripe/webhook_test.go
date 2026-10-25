@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -200,6 +201,47 @@ func TestSubscriptionStatusMapping(t *testing.T) {
 		"pending": connector.RefundPending, "requires_action": connector.RefundPending, "new": connector.RefundPending} {
 		if got := mapRefundStatus(raw); got != want {
 			t.Errorf("refund %s -> %s, want %s", raw, got, want)
+		}
+	}
+}
+
+// An event of the other Stripe environment than the account's key is refused,
+// signed or not: a test-mode event must never book a live payment, nor the
+// reverse.
+func TestWebhookLivemodeMustMatchTheKey(t *testing.T) {
+	body := fixture(t, "event_checkout_session_completed") // livemode false
+	if !strings.Contains(string(body), `"livemode":false`) {
+		t.Fatal("fixture has no livemode flag")
+	}
+	liveBody := []byte(strings.Replace(string(body), `"livemode":false`, `"livemode":true`, 1))
+	mk := func(key string) *stripe {
+		c, err := New([]byte(`{"secret_key":"`+key+`","webhook_secret":"`+testSecret+`"}`), connectorDeps())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c.(*stripe)
+	}
+	for _, tc := range []struct {
+		name, key string
+		body      []byte
+		ok        bool
+	}{
+		{"test key, test event", "sk_test_abc", body, true},
+		{"live key, live event", "sk_live_abc", liveBody, true},
+		{"live restricted key, live event", "rk_live_abc", liveBody, true},
+		{"live key, test event", "sk_live_abc", body, false},
+		{"test key, live event", "sk_test_abc", liveBody, false},
+		{"live key, no flag", "sk_live_abc", []byte(strings.Replace(string(body), `"livemode":false,`, "", 1)), false},
+	} {
+		c := mk(tc.key)
+		req := hook(tc.body, testSecret, nowUnix)
+		verr := c.VerifyWebhook(bg, req)
+		_, perr := c.ParseWebhook(bg, req)
+		if (verr == nil) != tc.ok || (perr == nil) != tc.ok {
+			t.Errorf("%s: verify=%v parse=%v, want ok=%v", tc.name, verr, perr, tc.ok)
+		}
+		if !tc.ok && errors.Is(verr, connector.ErrInvalidSignature) {
+			t.Errorf("%s: a livemode mismatch is not a signature error", tc.name)
 		}
 	}
 }
