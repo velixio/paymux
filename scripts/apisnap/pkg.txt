@@ -870,6 +870,8 @@ func New(cfg config.Config, opts ...Option) (*App, error)
 
 func (a *App) Addr() string
 
+func (a *App) EnableSelfUpdate(repo, exe string)
+
 func (a *App) InternalAddr() string
 
 func (a *App) OnDisputeOpened(f func(context.Context, DisputeEvent) error)
@@ -885,6 +887,8 @@ func (a *App) OnRefundSucceeded(f func(context.Context, RefundEvent) error)
 func (a *App) OnRoute(f func(RouteRequest) []string)
 
 func (a *App) OnSubscriptionRenewed(f func(context.Context, SubscriptionEvent) error)
+
+func (a *App) RestartRequested() bool
 
 func (a *App) Start(ctx context.Context) error
 
