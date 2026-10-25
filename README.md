@@ -177,7 +177,7 @@ Write a connector (a Go package or a small HTTP service). The SDK, the conforman
 
 ## 🤝 Contributing
 
-Issues and pull requests are welcome. `make ci` runs everything CI runs: formatting, vet, the public-API snapshot, static analysis, vulnerability scan, the full test suite on SQLite and PostgreSQL, the browser tests and the Docker build. Start with [docs/development.md](docs/development.md).
+Issues and pull requests are welcome. Branch from `main`, run `make ci` (it runs everything CI runs: formatting, vet, the public-API snapshot, static analysis, the vulnerability scan, the full test suite on SQLite and PostgreSQL, the browser tests and the Docker build), then open a pull request. The template lists what to check. [CodeRabbit](https://coderabbit.ai) reviews every pull request automatically, with rules written for this codebase in [`.coderabbit.yaml`](.coderabbit.yaml). Details: [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md) and [docs/development.md](docs/development.md).
 
 ## 📄 License
 
