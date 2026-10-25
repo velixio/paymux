@@ -86,3 +86,26 @@ test("below 1100px there is no pane: the link navigates", async ({ page }) => {
   await expect(page).toHaveURL(/\/dashboard\/payments\/pay_[^?]+$/);
   await expect(pane(page)).toHaveCount(0);
 });
+
+test("Logs for this payment opens a Logs tab; Payments keeps its pane", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/dashboard/payments");
+  await visible(page).getByRole("link", { name: "pay_e2e_032" }).click();
+  await expect(pane(page)).toBeVisible();
+  const before = await openTabs(page).count();
+
+  await pane(page).getByRole("link", { name: "Logs for this payment" }).click();
+  await expect(openTabs(page)).toHaveCount(before + 1);
+  await expect(page).toHaveURL(/\/dashboard\/logs\?/);
+
+  // Back on Payments: the same payment is still open in the pane.
+  await openTabs(page).filter({ hasText: "Payments" }).click();
+  await expect(page).toHaveURL(/\/dashboard\/payments\?peek=pay_e2e_032$/);
+  await expect(pane(page)).toBeVisible();
+
+  // A second logs link reuses the Logs tab instead of adding another.
+  await pane(page).getByRole("link", { name: "Logs for this payment" }).click();
+  await expect(openTabs(page)).toHaveCount(before + 1);
+});
