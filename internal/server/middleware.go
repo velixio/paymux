@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/paymux/paymux/internal/ids"
@@ -17,7 +18,25 @@ import (
 	"github.com/paymux/paymux/internal/metrics"
 )
 
-const requestTimeout = 30 * time.Second
+// requestTimeout bounds every route but the exports (a variable for the tests).
+var requestTimeout = 30 * time.Second
+
+// exportTimeout bounds an export: the context of its request and the write
+// deadline of its connection.
+const exportTimeout = 5 * time.Minute
+
+// streamed are the routes whose output is large: the Logs export and the GST
+// report downloads. http.TimeoutHandler would hold the whole body in memory and
+// cut it at requestTimeout, so they run outside it (audit H-15).
+var streamed = map[string]bool{
+	"/dashboard/logs.jsonl":   true,
+	"/dashboard/reports/zip":  true,
+	"/dashboard/reports/file": true,
+}
+
+// IsStreamed reports whether a request to path is served outside the timeout
+// handler, as a stream under its own deadline.
+func IsStreamed(method, path string) bool { return method == http.MethodGet && streamed[path] }
 
 var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
 
@@ -63,7 +82,17 @@ func RequestID(ctx context.Context) string {
 
 // routeHolder lets the matched mux pattern travel back out through handlers
 // that copy the request (such as TimeoutHandler).
-type routeHolder struct{ pattern string }
+//
+// A handler that outlives its TimeoutHandler may still set the pattern while
+// the access log reads it, so both go through the mutex.
+type routeHolder struct {
+	mu      sync.Mutex
+	pattern string
+}
+
+func (h *routeHolder) set(p string) { h.mu.Lock(); h.pattern = p; h.mu.Unlock() }
+
+func (h *routeHolder) get() string { h.mu.Lock(); defer h.mu.Unlock(); return h.pattern }
 
 // statusWriter records the response status.
 type statusWriter struct {
@@ -93,9 +122,23 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 
 func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
-// chain applies, outermost first: request ID, access log, recover, timeout.
+// chain applies, outermost first: request ID, access log, recover, timeout
+// (except for the streamed export routes, which get a deadline of their own).
 func chain(h http.Handler, log *slog.Logger, requests *metrics.CounterVec, onResponse ResponseHook, clientIP func(*http.Request) string) http.Handler {
-	h = http.TimeoutHandler(h, requestTimeout, `{"error":{"type":"timeout"}}`)
+	inner := h
+	timed := http.TimeoutHandler(inner, requestTimeout, `{"error":{"type":"timeout"}}`)
+	h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !IsStreamed(r.Method, r.URL.Path) {
+			timed.ServeHTTP(w, r)
+			return
+		}
+		// Straight to the connection (so the output streams), with a deadline of
+		// its own in place of the server's. The wrappers above unwrap for it.
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(exportTimeout))
+		ctx, cancel := context.WithTimeout(r.Context(), exportTimeout)
+		defer cancel()
+		inner.ServeHTTP(w, r.WithContext(ctx))
+	})
 	h = recoverer(h, log)
 	h = accessLog(h, log, requests, onResponse, clientIP)
 	return requestID(h)
@@ -128,7 +171,7 @@ func accessLog(next http.Handler, log *slog.Logger, requests *metrics.CounterVec
 			// so a person can quote it and an operator can find the log row.
 			_, _ = fmt.Fprintf(sw.ResponseWriter, "request id: %s\n", RequestID(r.Context()))
 		}
-		route := holder.pattern
+		route := holder.get()
 		if route == "" {
 			route = "unmatched"
 		}
