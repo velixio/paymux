@@ -39,6 +39,14 @@ func openSQLite(ctx context.Context, path string) (*DB, error) {
 // openSQLiteFile opens a SQLite file with one writer and a read pool. It
 // takes no data-dir lock: the caller holds it.
 func openSQLiteFile(ctx context.Context, path string) (*DB, error) {
+	// A new database file is the hub's user's alone (sealed secrets, customer
+	// data); SQLite gives its -wal and -shm files the same mode. An existing
+	// file keeps the mode the operator gave it.
+	if f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600); err == nil {
+		f.Close()
+	} else if !os.IsExist(err) {
+		return nil, fmt.Errorf("create %s: %w", path, err)
+	}
 	escaped := (&url.URL{Path: path}).EscapedPath()
 	writer, err := sql.Open("sqlite", "file:"+escaped+"?"+sqlitePragmas+"&_txlock=immediate")
 	if err != nil {
