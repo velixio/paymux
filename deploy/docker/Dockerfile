@@ -3,11 +3,14 @@
 # Build from the repository root: docker build -f deploy/docker/Dockerfile .
 # (make docker). The ignore rules are in Dockerfile.dockerignore beside this file.
 
+# Every base image is pinned by digest, with its tag kept for the reader: a tag can
+# be moved to other content, a digest cannot. Dependabot (docker) proposes both
+# together. Changing GO_VERSION also needs the digest of that golang tag.
 # Declared before the first FROM so every FROM line can use it.
 ARG GO_VERSION=1.27
 
 # Frontends are compiled once; the runtime images remain static Go binaries.
-FROM oven/bun:1.4.3 AS frontend
+FROM oven/bun:1.4.3@sha256:ec06c3b6cea04192ae6770c434f668ca41d343ad19fa6472216c7b48be39c598 AS frontend
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/bun.lock ./
 RUN bun install --frozen-lockfile
@@ -18,7 +21,7 @@ COPY cmd/paymux-home/docs-catalog.json /src/cmd/paymux-home/docs-catalog.json
 RUN bun run typecheck && bun run build
 
 # ---- build -------------------------------------------------------------------
-FROM golang:${GO_VERSION} AS build
+FROM golang:${GO_VERSION}@sha256:f20d83a83e18dbd2a4714b8ffd4b30b287b6243962dd75608e86abcc63ba4efc AS build
 WORKDIR /src
 
 # Dependencies first, so a code change does not download them again.
@@ -37,7 +40,7 @@ RUN CGO_ENABLED=0 go build -trimpath \
 
 # ---- run ---------------------------------------------------------------------
 # distroless static: no shell, no package manager, only the binary and CA certificates.
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 
 COPY --from=build /out/paymux /paymux
 # The data directory is owned by the non-root user (65532) so SQLite can write to it.
