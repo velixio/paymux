@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 )
 
@@ -39,10 +40,17 @@ func (d *Dashboard) mode(r *http.Request, s *session) string {
 // safeNext returns a same-site path to redirect back to, or fallback.
 func safeNext(next, fallback string) string {
 	u, err := url.Parse(next)
-	if err != nil || u.Scheme != "" || u.Host != "" || !strings.HasPrefix(u.Path, prefix+"/") || strings.HasPrefix(next, "//") {
+	if err != nil || u.Scheme != "" || u.Host != "" || u.User != nil || strings.HasPrefix(next, "//") || strings.ContainsRune(next, '\\') {
 		return fallback
 	}
-	return next
+	// http.Redirect cleans the path, so check the cleaned one: /dashboard/../x
+	// must not leave the dashboard.
+	clean := path.Clean(u.Path)
+	if !strings.HasPrefix(clean, prefix+"/") {
+		return fallback
+	}
+	u.Path, u.RawPath = clean, ""
+	return u.String()
 }
 
 func (d *Dashboard) setMode(w http.ResponseWriter, r *http.Request, s *session) {
