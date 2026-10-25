@@ -23,6 +23,7 @@ const dark = block(".dark");
 const keys = [
   "--background",
   "--sidebar",
+  "--sidebar-foreground",
   "--foreground",
   "--muted-foreground",
   "--border",
@@ -35,6 +36,7 @@ test("light tokens match spec", () => {
   const want = [
     "#ffffff",
     "#f7f8fa",
+    "#5c6478",
     "#1a1f36",
     "#5c6478",
     "#e3e8ee",
@@ -49,6 +51,7 @@ test("dark tokens match spec", () => {
   const want = [
     "#0f1117",
     "#14161d",
+    "#9aa1b2",
     "#e6e8ef",
     "#9aa1b2",
     "#262a35",

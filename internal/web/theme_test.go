@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -344,6 +345,9 @@ func TestParseManifestDashboardBlock(t *testing.T) {
 func TestDashboardTokensExcludeStatusColours(t *testing.T) {
 	if len(DashboardTokens) == 0 {
 		t.Fatal("DashboardTokens is empty")
+	}
+	if !slices.Contains(DashboardTokens, "--sidebar-foreground") {
+		t.Error("--sidebar-foreground must be themeable")
 	}
 	for _, k := range DashboardTokens {
 		if strings.HasPrefix(k, "--status-") {

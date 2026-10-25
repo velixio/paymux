@@ -50,6 +50,7 @@ const todayLight: Record<string, string> = {
   "--input": "#c1c9d4",
   "--ring": "#635bff",
   "--sidebar": "#f7f8fa",
+  "--sidebar-foreground": "#5c6478",
 };
 const todayDark: Record<string, string> = {
   "--background": "#0f1117",
@@ -71,6 +72,7 @@ const todayDark: Record<string, string> = {
   "--input": "#3d4354",
   "--ring": "#8b85ff",
   "--sidebar": "#14161d",
+  "--sidebar-foreground": "#9aa1b2",
 };
 
 const rgb = (h: string) =>
@@ -98,7 +100,7 @@ test("the pair list mirrors tokens.test.ts and leaves status colours out", () =>
   expect(TEXT_PAIRS).toEqual([
     ["--foreground", "--background"],
     ["--muted-foreground", "--background"],
-    ["--muted-foreground", "--sidebar"],
+    ["--sidebar-foreground", "--sidebar"],
     ["--accent-foreground", "--ui-accent"],
     ["--primary-foreground", "--primary"],
   ]);
@@ -312,4 +314,35 @@ test("every bundled theme with a dashboard block passes in light and dark", () =
     expectPasses(`${name} light`, light);
     expectPasses(`${name} dark`, dark);
   }
+});
+
+const paddleLike: Seeds = {
+  accent: "#0a8f6b",
+  background: "#f5f5f2",
+  sidebar: "#121417",
+  text: "#23211c",
+  sidebar_text: "#e8e8e3",
+};
+
+test("a dark sidebar on a light page stays dark and readable", () => {
+  const { light, dark } = derive(paddleLike);
+  expect(light["--sidebar"]).toBe("#121417");
+  expect(light["--sidebar-foreground"]).toBe("#e8e8e3");
+  expect(light["--background"]).toBe("#f5f5f2");
+  expectPasses("paddle-like light", light);
+  expectPasses("paddle-like dark", dark);
+  // The page text is not dragged toward the sidebar.
+  expect(
+    contrast(light["--muted-foreground"], light["--background"]),
+  ).toBeGreaterThanOrEqual(4.5);
+});
+
+test("a dark sidebar without sidebar_text gets a readable derived text colour", () => {
+  const { light, dark } = derive({ ...paddleLike, sidebar_text: undefined });
+  expect(light["--sidebar"]).toBe("#121417");
+  expect(
+    contrast(light["--sidebar-foreground"], "#121417"),
+  ).toBeGreaterThanOrEqual(4.5);
+  expectPasses("no sidebar_text light", light);
+  expectPasses("no sidebar_text dark", dark);
 });
