@@ -241,21 +241,24 @@ func (m *Manager) run(cur, target string, done func(Status)) {
 		return err
 	}()
 	m.mu.Lock()
-	m.status.FinishedAt = m.cfg.Now()
-	if err != nil {
-		m.status.State, m.status.Error = StateFailed, redact(err.Error())
-	} else {
-		m.status.State = StateRestarting
-	}
 	final := m.status
 	final.Log = append([]string(nil), final.Log...)
 	m.mu.Unlock()
+	final.FinishedAt = m.cfg.Now()
 	if err != nil {
+		final.State, final.Error = StateFailed, redact(err.Error())
 		m.cfg.Logger.Warn("selfupdate: failed", "from", cur, "to", target, "err", final.Error)
+	} else {
+		final.State = StateRestarting
 	}
+	// done (the audit) runs before the result is visible, so whoever sees it
+	// finish finds it recorded.
 	if done != nil {
 		done(final)
 	}
+	m.mu.Lock()
+	m.status.State, m.status.Error, m.status.FinishedAt = final.State, final.Error, final.FinishedAt
+	m.mu.Unlock()
 	if err == nil {
 		time.Sleep(m.cfg.RestartDelay)
 		m.cfg.Restart()

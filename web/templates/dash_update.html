@@ -6,14 +6,14 @@
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 {{with .Update}}
 <p class="muted">Install a newer release of Paymux from GitHub. Paymux downloads the build for this server, checks it against the release's SHA256SUMS and the cosign signature of that file, tries the new binary, replaces its own, and restarts. Running requests finish first. Database migrations run on the next start, so take a backup first (see docs/upgrades.md).</p>
-<table class="grid">
+<div class="table-scroll"><table class="grid">
 <tbody>
 <tr><th scope="row">Running version</th><td><code>{{.Info.Current}}</code>{{if .Info.Dev}} <small class="muted">(a development build)</small>{{end}}</td></tr>
 <tr><th scope="row">Latest release</th><td>{{if .Info.Latest}}<code>{{.Info.Latest}}</code>{{if .Info.ReleaseURL}} <a href="{{.Info.ReleaseURL}}" rel="noopener noreferrer" target="_blank">release notes</a>{{end}}{{if .Info.Newer}} <span class="status status-warning">newer</span>{{else}} <small class="muted">(nothing newer)</small>{{end}}{{else}}<span class="muted">unknown</span>{{end}}</td></tr>
 <tr><th scope="row">Checked</th><td>{{if .Checked}}{{.Checked}}{{else}}never{{end}} <a href="/dashboard/update?refresh=1">Check again</a></td></tr>
 <tr><th scope="row">Binary</th><td><code>{{.Info.Exe}}</code></td></tr>
 </tbody>
-</table>
+</table></div>
 {{with .Info.FetchError}}<p class="error" role="alert">Could not ask GitHub for the latest release: {{.}}</p>{{end}}
 
 <div id="update-status" data-state="{{.State}}" aria-live="polite">
