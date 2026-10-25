@@ -38,7 +38,7 @@ function StatusChips({
           aria-pressed={o.selected}
           onClick={() => apply(o.value)}
         >
-          {o.label}
+          {o.label.replaceAll("_", " ")}
         </button>
       ))}
     </div>
