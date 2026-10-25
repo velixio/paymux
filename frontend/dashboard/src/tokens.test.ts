@@ -138,6 +138,20 @@ test("warning strip and mode labels take their colours from the tokens", () => {
   expect(rule(".live-label")).toContain("var(--status-ok-bg)");
 });
 
+test("server-rendered banners match the in-app warning strip", () => {
+  // The server page shows until React mounts (and on sign-in), so a reload
+  // must not flash a different banner.
+  const dash = read("../../../web/static/css/dash.css");
+  for (const selector of [".dev-banner", ".banner-warning"]) {
+    const rule =
+      dash.match(
+        new RegExp(`\\n${selector.replace(".", "\\.")}\\s*\\{([^}]*)\\}`),
+      )?.[1] ?? "";
+    expect(rule, selector).toContain("background: var(--surface)");
+    expect(rule, selector).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+  }
+});
+
 test("dashboard stylesheets use no fixed colours outside the tokens", () => {
   for (const f of ["./workspace.css", "./app-shell.css"]) {
     const fixed = read(f)
