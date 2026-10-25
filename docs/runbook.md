@@ -212,6 +212,10 @@ By default an invoice PDF carries the authorised signatory's name and the line "
 - Operators and admins press *Acknowledge* once somebody has looked; it is audited (`alert.acknowledge`). If the condition returns later it opens a new alert. Filter by open, acknowledged or all, severity and kind.
 - Alerts are kept indefinitely; there is no pruning yet.
 
+## Live accounts never run with sandbox settings
+
+A live provider account whose stored config is a sandbox one (a sandbox or test switch, a test key such as `sk_test_` or `rzp_test_`, PayU's public test keys, Cashfree test credentials, Zoho sandbox scopes) is refused, and so is a test account with live keys. At start-up the hub disables such accounts (audit entry `provider_account.disable_sandbox_on_live`) and raises a critical alert `provider.sandbox_on_live`; the connector is also never built while the config stays as it is, so enabling the account again does not help. Edit the account with the provider's live credentials. The hub keeps running without the account. Stripe events whose `livemode` is not the environment of the account's key are refused.
+
 ## Logs
 
 *Logs* in the dashboard (menu: Operations) is where to look when something failed: it keeps the **errors and warnings** of the hub, so you can review and fix them later. Info and debug lines still go only to stdout and journald. It needs the `logs.read` permission: admins have it, and a custom role can be given it under *Roles*.
