@@ -169,11 +169,13 @@ func (s *Service) applyRefundTx(ctx context.Context, tx store.Tx, refundID strin
 }
 
 // FailUnsentRefunds fails, inside the caller's transaction, the payment's
-// pending refunds of ours that have not been sent to the provider (no provider
-// refund id yet), each through the ordinary failure path (refund.failed, the
-// balance freed). A dispute opening calls it so that the refund job, finding
-// the refund failed, sends nothing. A refund whose request is already in
-// flight cannot be recalled: that window is the provider call itself. Returns
+// pending refunds of ours whose refund.submit job has never been claimed by a
+// worker, each through the ordinary failure path (refund.failed, the balance
+// freed). The job is cancelled in the same transaction, atomically with the
+// claim, so it never runs. A refund whose job has been tried, is running or is
+// done may be with the provider already; failing it would be final while the
+// provider's success could not move it, so it is left alone (the submit-time
+// check stops any further send, and the provider's answer settles it). Returns
 // how many it failed.
 func (s *Service) FailUnsentRefunds(ctx context.Context, tx store.Tx, paymentID, reason string) (int, error) {
 	rs, err := store.ListRefunds(ctx, tx, paymentID)
@@ -183,6 +185,11 @@ func (s *Service) FailUnsentRefunds(ctx context.Context, tx store.Tx, paymentID,
 	n := 0
 	for _, r := range rs {
 		if r.Status != string(state.RefundPending) || r.ProviderRefundID != "" || r.InitiatedBy == "provider" {
+			continue
+		}
+		if cancelled, err := store.CancelUnclaimedJob(ctx, tx, JobRefundSubmit+":"+r.ID, s.nowUTC()); err != nil {
+			return n, err
+		} else if !cancelled {
 			continue
 		}
 		var alerts []notify.Alert // a failure raises none
