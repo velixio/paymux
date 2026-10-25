@@ -25,6 +25,8 @@ import { cn } from "@/lib/utils";
 import { statusTone } from "./pill";
 import { RevenueSection } from "./revenue-section";
 import { SavedFiltersBar } from "./saved-filters-bar";
+import { isRecordPath } from "./peek";
+import { recordSplit, SectionTabs } from "./section-tabs";
 import { attributes, textOf, type ViewNode } from "./adapter";
 import { useRuntime, WorkspaceLink } from "./runtime";
 // <code> values inside table cells and definition lists get a copy button.
@@ -343,6 +345,21 @@ export function RenderNode({ node: n }: { node: ViewNode }): ReactNode {
     return React.createElement(n.tag, props);
   return React.createElement(n.tag, props, children());
 }
-export function PageContent({ nodes }: { nodes: ViewNode[] }) {
+export function PageContent({
+  nodes,
+  href,
+  syncHash,
+}: {
+  nodes: ViewNode[];
+  /** The page's own URL; record pages get inner section tabs. */
+  href?: string;
+  /** Keep the selected inner tab in the URL hash (the active workspace tab). */
+  syncHash?: boolean;
+}) {
+  const split = href && isRecordPath(href) ? recordSplit(nodes) : null;
+  if (split)
+    return (
+      <SectionTabs split={split} render={renderChildren} syncHash={syncHash} />
+    );
   return <>{renderChildren(nodes)}</>;
 }

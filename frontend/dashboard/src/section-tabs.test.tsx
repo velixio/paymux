@@ -1,7 +1,19 @@
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ViewNode } from "./adapter";
 import { PageContent } from "./render";
+
+// RenderNode only needs the runtime for forms and links; these pages have none.
+vi.mock("./runtime", async (original) => ({
+  ...(await original<typeof import("./runtime")>()),
+  useRuntime: () => ({
+    submit() {},
+    pending: false,
+    markDirty() {},
+    hasEdits: false,
+    copy: async () => {},
+  }),
+}));
 
 const text = (t: string): ViewNode => ({
   tag: "#text",
@@ -51,6 +63,9 @@ test("selecting a tab shows its section and records #tab-<slug> in the URL", asy
   expect(location.hash).toBe("#tab-ledger");
   expect(screen.getByText("Ledger body").closest("[hidden]")).toBeNull();
   expect(screen.getByText("Details body").closest("[hidden]")).not.toBeNull();
+  fireEvent.mouseDown(screen.getByRole("tab", { name: "Details" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Details" }));
+  expect(location.hash).toBe("");
 });
 
 test("a #tab-<slug> hash selects that tab on load; an unknown hash falls back to Details", () => {

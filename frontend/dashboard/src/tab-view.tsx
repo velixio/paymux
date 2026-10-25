@@ -120,6 +120,8 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
                 shown.data.content.map((n) => n.attrs.id || n.tag).join("")
               }
               nodes={shown.data.content}
+              href={tab.href}
+              syncHash={active}
             />
           </RuntimeProvider>
         ) : error ? (
