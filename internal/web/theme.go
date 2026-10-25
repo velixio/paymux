@@ -236,6 +236,8 @@ type Themes struct {
 	mu    sync.Mutex
 	ttl   time.Duration
 	cache map[string]cachedTheme
+
+	wmu sync.Mutex // serialises the write methods (theme_write.go)
 }
 
 type cachedTheme struct {
