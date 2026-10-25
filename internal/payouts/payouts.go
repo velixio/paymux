@@ -657,64 +657,62 @@ func (s *Service) apply(ctx context.Context, id string, snap connector.PayoutSna
 }
 
 func (s *Service) applyTx(ctx context.Context, tx store.Tx, id string, snap connector.PayoutSnapshot) error {
-	{
-		p, err := store.GetPayoutForUpdate(ctx, tx, id)
-		if err != nil {
-			return err
-		}
-		prev := p.Status
-		next := string(snap.Status)
-		switch snap.Status {
-		case connector.PayoutPending, connector.PayoutProcessing, connector.PayoutSucceeded, connector.PayoutFailed, connector.PayoutReversed:
-		default:
-			next = StatusProcessing // an unknown status is never a failure
-		}
-		if next == StatusPending {
-			next = StatusProcessing // the provider has it: from here on we follow it
-		}
-		synth := synthesisedFailure(p)
-		if (terminal(p.Status) && !synth) || (p.Status == next && !(synth && snap.RawStatus != rawSynthesised)) ||
-			(p.Status == StatusSucceeded && next != StatusReversed) {
-			return nil
-		}
-		if p.Status == StatusProcessing && next == StatusPending {
-			return nil // never goes backwards
-		}
-		now := s.now()
-		p.Status, p.RawStatus = next, snap.RawStatus
-		if snap.ProviderPayoutID != "" {
-			p.ProviderPayoutID = snap.ProviderPayoutID
-		}
-		if next == StatusFailed {
-			p.FailureCode, p.FailureMessage = snap.ErrorCode, snap.ErrorMessage
-		} else {
-			p.FailureCode, p.FailureMessage = "", "" // a needs_review note or a failure the provider overruled
-		}
-		p.CompletedAt = time.Time{}
-		if next == StatusSucceeded || next == StatusFailed || next == StatusReversed {
-			p.CompletedAt = now
-		}
-		if err := store.UpdatePayout(ctx, tx, &p, now); err != nil {
-			return err
-		}
-		ev := map[string]string{StatusProcessing: EvProcessing, StatusPending: "", StatusSucceeded: EvSucceeded, StatusFailed: EvFailed, StatusReversed: EvReversed}[next]
-		if ev != "" && next != prev { // the provider confirming our own reading of a failure sends nothing again
-			if err := s.emit(ctx, tx, ev, p); err != nil {
-				return err
-			}
-		}
-		if next == StatusFailed && snap.RawStatus == rawSynthesised {
-			return s.enqueuePoll(ctx, tx, p.ID, 0) // ask the provider before this is final
-		}
-		if next == StatusProcessing || next == StatusPending {
-			return s.enqueuePoll(ctx, tx, p.ID, 0)
-		}
-		if next == StatusSucceeded {
-			// A succeeded payout can still come back; look once more later.
-			return s.enqueuePoll(ctx, tx, p.ID, len(pollLadder)-1)
-		}
+	p, err := store.GetPayoutForUpdate(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	prev := p.Status
+	next := string(snap.Status)
+	switch snap.Status {
+	case connector.PayoutPending, connector.PayoutProcessing, connector.PayoutSucceeded, connector.PayoutFailed, connector.PayoutReversed:
+	default:
+		next = StatusProcessing // an unknown status is never a failure
+	}
+	if next == StatusPending {
+		next = StatusProcessing // the provider has it: from here on we follow it
+	}
+	synth := synthesisedFailure(p)
+	if (terminal(p.Status) && !synth) || (p.Status == next && !(synth && snap.RawStatus != rawSynthesised)) ||
+		(p.Status == StatusSucceeded && next != StatusReversed) {
 		return nil
 	}
+	if p.Status == StatusProcessing && next == StatusPending {
+		return nil // never goes backwards
+	}
+	now := s.now()
+	p.Status, p.RawStatus = next, snap.RawStatus
+	if snap.ProviderPayoutID != "" {
+		p.ProviderPayoutID = snap.ProviderPayoutID
+	}
+	if next == StatusFailed {
+		p.FailureCode, p.FailureMessage = snap.ErrorCode, snap.ErrorMessage
+	} else {
+		p.FailureCode, p.FailureMessage = "", "" // a needs_review note or a failure the provider overruled
+	}
+	p.CompletedAt = time.Time{}
+	if next == StatusSucceeded || next == StatusFailed || next == StatusReversed {
+		p.CompletedAt = now
+	}
+	if err := store.UpdatePayout(ctx, tx, &p, now); err != nil {
+		return err
+	}
+	ev := map[string]string{StatusProcessing: EvProcessing, StatusPending: "", StatusSucceeded: EvSucceeded, StatusFailed: EvFailed, StatusReversed: EvReversed}[next]
+	if ev != "" && next != prev { // the provider confirming our own reading of a failure sends nothing again
+		if err := s.emit(ctx, tx, ev, p); err != nil {
+			return err
+		}
+	}
+	if next == StatusFailed && snap.RawStatus == rawSynthesised {
+		return s.enqueuePoll(ctx, tx, p.ID, 0) // ask the provider before this is final
+	}
+	if next == StatusProcessing || next == StatusPending {
+		return s.enqueuePoll(ctx, tx, p.ID, 0)
+	}
+	if next == StatusSucceeded {
+		// A succeeded payout can still come back; look once more later.
+		return s.enqueuePoll(ctx, tx, p.ID, len(pollLadder)-1)
+	}
+	return nil
 }
 
 // Resolve settles a payout in needs_review by an operator's word, after they
