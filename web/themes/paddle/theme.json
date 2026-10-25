@@ -1,0 +1,21 @@
+{
+  "name": "paddle",
+  "version": "1.0.0",
+  "description": "Warm off-white with a teal accent and a dark sidebar.",
+  "dashboard": {
+    "seeds": {
+      "accent": "#0d7d68",
+      "background": "#f5f5f2",
+      "sidebar": "#121417",
+      "text": "#16181d",
+      "sidebar_text": "#e8e8e3"
+    },
+    "dark_seeds": {
+      "accent": "#34c9a9",
+      "background": "#14161a",
+      "sidebar": "#0c0d10",
+      "text": "#e8e8e3",
+      "sidebar_text": "#d6d6d0"
+    }
+  }
+}

@@ -103,7 +103,7 @@ func TestAppearancePageListsThemesAndTheirProblems(t *testing.T) {
 
 		admin := e.roleClient("admin")
 		body = e.pageOK(admin, "/dashboard/appearance")
-		has(t, body, `action="/dashboard/appearance/theme"`, `action="/dashboard/appearance/apps/`+alpha.ID+`"`, `name="theme"`, `name="language"`)
+		has(t, body, `action="/dashboard/appearance/apps/`+alpha.ID+`"`, `name="theme"`, `name="language"`)
 		// Themes that cannot be used are not offered as choices.
 		opts := regexpFind(t, `(?s)(<select[^>]*name="theme"[^>]*>.*?</select>)`, body)
 		has(t, opts, `value="pink"`, `value="minimal-dark"`)

@@ -16,6 +16,11 @@ type themeRow struct {
 	Bundled, Usable, Current   bool
 	Err                        string
 	Tokens                     []tokenRow
+	// Spec is the dashboard block as JSON for the card's preview; empty when the
+	// theme only styles customer pages.
+	Spec   string
+	Users  int  // how many users chose this theme for themselves
+	Custom bool // not built in: can be edited, renamed and deleted
 }
 
 type tokenRow struct{ Name, Value string }
@@ -32,6 +37,7 @@ type appearanceRow struct {
 func (d *Dashboard) routesAppearance() {
 	m := d.mux
 	m.HandleFunc("GET "+prefix+"/appearance", d.authed(authz.SettingsRead, d.appearancePage))
+	d.routesThemeEditor()
 	m.HandleFunc("GET "+prefix+"/appearance/preview/{name}", d.authed(authz.SettingsRead, d.themePreview))
 	m.HandleFunc("POST "+prefix+"/appearance/theme", d.authed(authz.SettingsWrite, d.recent(d.themeSet)))
 	m.HandleFunc("POST "+prefix+"/appearance/apps/{id}", d.authed(authz.SettingsWrite, d.recent(d.appAppearanceSet)))
@@ -50,6 +56,12 @@ func (d *Dashboard) appearancePage(w http.ResponseWriter, r *http.Request, s *se
 }
 
 func (d *Dashboard) renderAppearance(w http.ResponseWriter, r *http.Request, s *session, status int, errMsg string) {
+	d.renderAppearanceWith(w, r, s, status, errMsg, nil)
+}
+
+// renderAppearanceWith is renderAppearance with the import form shown again
+// after a refused import.
+func (d *Dashboard) renderAppearanceWith(w http.ResponseWriter, r *http.Request, s *session, status int, errMsg string, imp *importFormView) {
 	ctx := r.Context()
 	org, err := d.orgID(ctx)
 	if err != nil {
@@ -58,9 +70,10 @@ func (d *Dashboard) renderAppearance(w http.ResponseWriter, r *http.Request, s *
 	}
 	cur := d.dashboardTheme(ctx)
 	v := d.shell(r, s, "appearance", "Appearance")
-	v.Error = errMsg
+	v.Error, v.ImportForm = errMsg, imp
 	v.CanManage = s.can(authz.SettingsWrite)
 	v.CurrentTheme = cur
+	v.OrgThemeName = d.orgDashboardTheme(ctx)
 	for _, ti := range d.installedThemes() {
 		row := themeRow{Name: ti.Name, Version: ti.Version, Description: ti.Description, Bundled: ti.Bundled, Err: ti.Err,
 			Usable: ti.Err == "", Current: ti.Name == cur}
@@ -74,6 +87,20 @@ func (d *Dashboard) renderAppearance(w http.ResponseWriter, r *http.Request, s *
 				for _, k := range keys {
 					row.Tokens = append(row.Tokens, tokenRow{k, th.Tokens[k]})
 				}
+				row.Custom = !th.Bundled && !d.o.Themes.IsBundled(ti.Name)
+				if dt := th.Dashboard; dt != nil {
+					spec, _ := json.Marshal(struct {
+						Seeds     web.Seeds                    `json:"seeds"`
+						DarkSeeds *web.Seeds                   `json:"dark_seeds"`
+						Overrides map[string]map[string]string `json:"overrides"`
+					}{dt.Seeds, dt.DarkSeeds, dt.Overrides})
+					row.Spec = string(spec)
+				}
+				_ = d.o.DB.Read(ctx, func(q store.Querier) error {
+					emails, err := store.ThemeUsers(ctx, q, org, ti.Name)
+					row.Users = len(emails)
+					return err
+				})
 			}
 		}
 		v.ThemeRows = append(v.ThemeRows, row)

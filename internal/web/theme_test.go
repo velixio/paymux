@@ -2,11 +2,13 @@ package web
 
 import (
 	"bytes"
+	"encoding/json"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -49,7 +51,7 @@ func TestBundledThemesLoad(t *testing.T) {
 	for _, i := range th.List() {
 		names = append(names, i.Name)
 	}
-	if strings.Join(names, ",") != "default,minimal-dark" {
+	if strings.Join(names, ",") != "default,midnight,minimal-dark,paddle,stripe" {
 		t.Fatalf("list: %v", names)
 	}
 }
@@ -306,3 +308,157 @@ func TestEmbeddedLayoutLinksTheTheme(t *testing.T) {
 }
 
 var _ fs.FS = (*Overlay)(nil)
+
+func dashManifest(block string) string {
+	return `{"name":"mine","version":"1.0.0","dashboard":` + block + `}`
+}
+
+func TestParseManifestDashboardBlock(t *testing.T) {
+	cases := []struct{ name, block, want string }{
+		{"seeds only", `{"seeds":{"accent":"#635bff"}}`, ""},
+		{"all seeds, dark seeds, scheme, overrides", `{"seeds":{"accent":"#635bff","background":"#ffffff","sidebar":"#f7f8fa","text":"#1a1f36","sidebar_text":"#3c4257"},"dark_seeds":{"accent":"#8b85ff","background":"#0f1117"},"scheme":"dark","overrides":{"light":{"--border":"#e3e8ee"},"dark":{"--ring":"#8b85ff"}}}`, ""},
+		{"empty scheme is allowed", `{"seeds":{"accent":"#635bff"},"scheme":""}`, ""},
+		{"accent is required", `{"seeds":{"background":"#ffffff"}}`, "accent"},
+		{"dark seeds need an accent too", `{"seeds":{"accent":"#635bff"},"dark_seeds":{"background":"#000000"}}`, "accent"},
+		{"bad hex", `{"seeds":{"accent":"red"}}`, "#rrggbb"},
+		{"short hex", `{"seeds":{"accent":"#fff"}}`, "#rrggbb"},
+		{"bad hex in a later seed", `{"seeds":{"accent":"#635bff","text":"#12345g"}}`, "text"},
+		{"bad hex in dark seeds", `{"seeds":{"accent":"#635bff"},"dark_seeds":{"accent":"#xyz"}}`, "dark_seeds"},
+		{"unknown scheme", `{"seeds":{"accent":"#635bff"},"scheme":"sepia"}`, "scheme"},
+		{"status token in overrides", `{"seeds":{"accent":"#635bff"},"overrides":{"light":{"--status-ok-bg":"#00ff00"}}}`, "--status-ok-bg"},
+		{"unknown token in overrides", `{"seeds":{"accent":"#635bff"},"overrides":{"light":{"--nope":"#00ff00"}}}`, "--nope"},
+		{"override value is not hex", `{"seeds":{"accent":"#635bff"},"overrides":{"dark":{"--border":"url(x)"}}}`, "#rrggbb"},
+		{"unknown override mode", `{"seeds":{"accent":"#635bff"},"overrides":{"sepia":{"--border":"#000000"}}}`, "overrides"},
+		{"unknown field in block", `{"seeds":{"accent":"#635bff"},"extra":1}`, "unknown field"},
+	}
+	for _, c := range cases {
+		_, err := ParseManifest([]byte(dashManifest(c.block)), "mine")
+		switch {
+		case c.want == "" && err != nil:
+			t.Errorf("%s: unexpected %v", c.name, err)
+		case c.want != "" && (err == nil || !strings.Contains(err.Error(), c.want)):
+			t.Errorf("%s: want error containing %q, got %v", c.name, c.want, err)
+		}
+	}
+}
+
+func TestDashboardTokensExcludeStatusColours(t *testing.T) {
+	if len(DashboardTokens) == 0 {
+		t.Fatal("DashboardTokens is empty")
+	}
+	if !slices.Contains(DashboardTokens, "--sidebar-foreground") {
+		t.Error("--sidebar-foreground must be themeable")
+	}
+	for _, k := range DashboardTokens {
+		if strings.HasPrefix(k, "--status-") {
+			t.Errorf("%s must not be themeable", k)
+		}
+	}
+}
+
+func TestDashboardJSONEndpoint(t *testing.T) {
+	themes := t.TempDir()
+	writeTheme(t, themes, "mine", map[string]string{"theme.json": dashManifest(`{"seeds":{"accent":"#635bff","background":"#ffffff"},"dark_seeds":{"accent":"#8b85ff"},"scheme":"dark","overrides":{"light":{"--border":"#e3e8ee"}}}`)})
+	writeTheme(t, themes, "plain", map[string]string{"theme.json": `{"name":"plain","version":"1.0.0"}`})
+	h := NewThemes(Bundled(), themes).Handler()
+	get := func(p string, hdr ...string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", p, nil)
+		if len(hdr) == 1 {
+			r.Header.Set("If-None-Match", hdr[0])
+		}
+		h.ServeHTTP(w, r)
+		return w
+	}
+
+	w := get("/theme/mine/dashboard.json")
+	if w.Code != 200 {
+		t.Fatalf("status %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("content type %q", ct)
+	}
+	if cc := w.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("cache control %q", cc)
+	}
+	etag := w.Header().Get("ETag")
+	if etag == "" {
+		t.Error("no ETag")
+	}
+	var got struct {
+		Name      string                       `json:"name"`
+		Scheme    string                       `json:"scheme"`
+		Seeds     map[string]string            `json:"seeds"`
+		DarkSeeds map[string]string            `json:"dark_seeds"`
+		Overrides map[string]map[string]string `json:"overrides"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("%v: %s", err, w.Body.String())
+	}
+	if got.Name != "mine" || got.Scheme != "dark" || got.Seeds["accent"] != "#635bff" || got.Seeds["background"] != "#ffffff" ||
+		got.DarkSeeds["accent"] != "#8b85ff" || got.Overrides["light"]["--border"] != "#e3e8ee" {
+		t.Errorf("unexpected body: %s", w.Body.String())
+	}
+	if _, has := got.Seeds["sidebar"]; has {
+		t.Errorf("unset seeds should be omitted: %s", w.Body.String())
+	}
+	if w2 := get("/theme/mine/dashboard.json", etag); w2.Code != http.StatusNotModified {
+		t.Errorf("If-None-Match: status %d", w2.Code)
+	}
+
+	// A theme without a dashboard block still answers, with empty seeds.
+	w = get("/theme/plain/dashboard.json")
+	if w.Code != 200 {
+		t.Fatalf("plain: status %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"seeds":{}`) || !strings.Contains(w.Body.String(), `"overrides":{}`) {
+		t.Errorf("plain: want empty seeds and overrides, got %s", w.Body.String())
+	}
+
+	if w = get("/theme/nope/dashboard.json"); w.Code != 404 {
+		t.Errorf("missing theme: status %d", w.Code)
+	}
+	if w = httptest.NewRecorder(); true {
+		r := httptest.NewRequest("GET", "/theme/mine/dashboard.json", nil)
+		h.ServeHTTP(w, r)
+		if w.Header().Get("X-Content-Type-Options") != "nosniff" {
+			t.Error("nosniff header missing")
+		}
+	}
+}
+
+func TestBundledDashboardThemesLoadAndLeaveCustomerPagesAlone(t *testing.T) {
+	th := NewThemes(Bundled(), "")
+	for _, name := range []string{"stripe", "paddle", "midnight"} {
+		got, err := th.Load(name)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !got.Bundled || got.Dashboard == nil || got.Dashboard.Seeds.Accent == "" {
+			t.Fatalf("%s: want a bundled theme with dashboard seeds, got %+v", name, got.Manifest)
+		}
+		// A dashboard-only theme must not touch the customer pages: no tokens,
+		// no font stack, no stylesheets, so its theme.css is an empty :root.
+		if len(got.Tokens) != 0 || got.FontStack != "" {
+			t.Errorf("%s: customer-page tokens or font stack set", name)
+		}
+		css := string(got.CSS())
+		_, body, _ := strings.Cut(css, "\n")
+		if strings.TrimSpace(body) != ":root{}" {
+			t.Errorf("%s: customer-page CSS should be an empty :root, got %q", name, body)
+		}
+	}
+	// The customer-page theme stays as it was.
+	d, err := th.Load("default")
+	if err != nil || d.Dashboard != nil || d.Tokens["--color-accent"] != "#2563eb" {
+		t.Fatalf("default theme changed: %v %+v", err, d)
+	}
+	m, _ := th.Load("midnight")
+	if m.Dashboard.Scheme != "dark" || m.Dashboard.Seeds.Accent == m.Dashboard.DarkSeeds.Accent {
+		t.Errorf("midnight: want scheme dark and separate light seeds, got %+v", m.Dashboard)
+	}
+	p, _ := th.Load("paddle")
+	if p.Dashboard.Seeds.Sidebar != "#121417" || p.Dashboard.Seeds.SidebarText == "" {
+		t.Errorf("paddle: want a dark sidebar with light text, got %+v", p.Dashboard.Seeds)
+	}
+}

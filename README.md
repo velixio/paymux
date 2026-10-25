@@ -222,6 +222,7 @@ Write a connector (a Go package or a small HTTP service). The SDK, the conforman
 | [Webhooks](docs/webhooks.md) · [Payments](docs/payments.md) · [Billing](docs/billing.md) | The core concepts |
 | [Runbook](docs/runbook.md) · [Upgrades](docs/upgrades.md) · [Troubleshooting](docs/troubleshooting.md) | Run it in production |
 | [Features](docs/features.md) · [Access control](docs/access-control.md) · [Security](docs/security.md) | The complete lists |
+| [Dashboard themes](docs/themes.md) | Make, share and choose dashboard themes |
 | [Writing connectors](docs/connectors.md) · [Extending](docs/extending.md) | Make it yours |
 | [Development](docs/development.md) · [Testing](docs/testing.md) | Contribute |
 

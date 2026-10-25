@@ -20,6 +20,10 @@ export type DashboardPage = {
   /** The page shows a one-time secret: never keep it mounted or cached. */
   once: boolean;
   theme: string | null;
+  /** The dashboard theme this page is drawn in (data-dashboard-theme on the react root). */
+  dashboardTheme: string | null;
+  /** Changes whenever that theme's files do (data-dashboard-theme-version). */
+  dashboardThemeVersion: string | null;
 };
 const ignored = new Set(["script", "style", "link", "noscript"]);
 function node(el: Node): ViewNode | null {
@@ -107,6 +111,14 @@ export function parseDashboard(doc: Document, href: string): DashboardPage {
     once: !!main.querySelector("[data-once]"),
     theme:
       doc.querySelector('link[href^="/theme/"]')?.getAttribute("href") || null,
+    dashboardTheme:
+      doc
+        .querySelector("#paymux-react-root")
+        ?.getAttribute("data-dashboard-theme") || null,
+    dashboardThemeVersion:
+      doc
+        .querySelector("#paymux-react-root")
+        ?.getAttribute("data-dashboard-theme-version") || null,
   };
 }
 export class SessionRedirect extends Error {}

@@ -1,0 +1,47 @@
+{
+  "name": "stripe",
+  "version": "1.0.0",
+  "description": "The standard dashboard look: clean white with an indigo accent.",
+  "dashboard": {
+    "seeds": {
+      "accent": "#635bff",
+      "background": "#ffffff",
+      "sidebar": "#f7f8fa",
+      "text": "#1a1f36"
+    },
+    "dark_seeds": {
+      "accent": "#8b85ff",
+      "background": "#0f1117",
+      "sidebar": "#14161d",
+      "text": "#e6e8ef"
+    },
+    "overrides": {
+      "light": {
+        "--secondary": "#f1f3f8",
+        "--secondary-foreground": "#2a3050",
+        "--muted": "#f7f8fa",
+        "--muted-foreground": "#5c6478",
+        "--ui-accent": "#ebeafe",
+        "--accent-foreground": "#4b44d6",
+        "--border": "#e3e8ee",
+        "--input": "#c1c9d4",
+        "--sidebar-accent-foreground": "#4b44d6",
+        "--sidebar-foreground": "#5c6478"
+      },
+      "dark": {
+        "--card": "#14161d",
+        "--popover": "#14161d",
+        "--primary-foreground": "#0f1117",
+        "--secondary": "#1d2029",
+        "--muted": "#1a1d26",
+        "--muted-foreground": "#9aa1b2",
+        "--ui-accent": "#24224a",
+        "--accent-foreground": "#c4c1ff",
+        "--border": "#262a35",
+        "--input": "#3d4354",
+        "--sidebar-accent-foreground": "#c4c1ff",
+        "--sidebar-foreground": "#9aa1b2"
+      }
+    }
+  }
+}

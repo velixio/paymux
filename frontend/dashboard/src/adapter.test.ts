@@ -154,11 +154,43 @@ test("binary and export endpoints keep native downloads", () => {
     "/dashboard/reports/zip",
     "/dashboard/reports/file",
     "/dashboard/invoices/inv_1/einvoice.json",
+    "/dashboard/appearance/themes/paddle/export.json",
     "/dashboard/disputes/d_1/evidence/b_1",
   ])
     expect(isDownloadPath(path)).toBe(true);
   expect(isDownloadPath("/dashboard/reports")).toBe(false);
   expect(isDownloadPath("/dashboard/payments/pay_1")).toBe(false);
+});
+
+describe("dashboard theme", () => {
+  const parse = (extra: string) =>
+    parseDashboard(
+      new win.DOMParser().parseFromString(
+        extra + html,
+        "text/html",
+      ) as unknown as Document,
+      "/dashboard/settings",
+    );
+  test("is read from the react root", () => {
+    expect(
+      parse('<div id="paymux-react-root" data-dashboard-theme="paddle"></div>')
+        .dashboardTheme,
+    ).toBe("paddle");
+  });
+  test("carries the theme's version beside its name", () => {
+    expect(
+      parse(
+        '<div id="paymux-react-root" data-dashboard-theme="paddle" data-dashboard-theme-version="abc123"></div>',
+      ).dashboardThemeVersion,
+    ).toBe("abc123");
+    expect(parse("").dashboardThemeVersion).toBeNull();
+  });
+  test("is null when the page does not carry one", () => {
+    expect(parse("").dashboardTheme).toBeNull();
+    expect(
+      parse('<div id="paymux-react-root"></div>').dashboardTheme,
+    ).toBeNull();
+  });
 });
 
 describe("parseServerHTML", () => {

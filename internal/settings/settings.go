@@ -129,6 +129,11 @@ func (s *Service) invalidate() {
 	clear(s.cache)
 }
 
+// Invalidate drops every cached value. A caller that changed a stored setting
+// without going through this Service (a store helper that rewrites a value, as
+// renaming a theme does) calls it so the next read sees the change at once.
+func (s *Service) Invalidate() { s.invalidate() }
+
 // ResolveCachedWith is Resolve for a caller that already holds a reader (often
 // a write transaction on another table): a fresh cached value needs no query,
 // otherwise the value is read through q. Unlike ResolveWith it may be up to

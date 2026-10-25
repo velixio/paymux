@@ -25,6 +25,17 @@
 <button class="btn" type="submit">Sign out all other sessions</button>
 </form>
 
+<h2>Theme</h2>
+<p class="muted">How the dashboard looks for you. It does not change what anyone else sees.</p>
+<form method="post" action="/dashboard/account/theme" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<label>Theme<select class="field" name="theme">
+<option value=""{{if not .UserHasTheme}} selected{{end}}>Organisation default ({{.OrgThemeName}})</option>
+{{range .ThemeChoices}}<option value="{{.Name}}"{{if .Selected}} selected{{end}}>{{.Name}}</option>
+{{end}}</select></label>
+<button class="btn" type="submit">Save theme</button>
+</form>
+
 <h2>Change password</h2>
 <p class="muted">Changing it signs you out everywhere, this session too.</p>
 <form method="post" action="/dashboard/account/password" class="stack">

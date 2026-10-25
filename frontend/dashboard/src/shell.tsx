@@ -90,6 +90,7 @@ import { TabView } from "./tab-view";
 import { TabsContext, useTabs, type TabsApi } from "./tabs-context";
 import { withPeek } from "./peek";
 import * as tabs from "./tabs";
+import { applyDashboardTheme } from "./theme-apply";
 import type { TabState } from "./tabs";
 
 export { useTabs, type TabsApi };
@@ -250,8 +251,7 @@ function useChrome(page: DashboardPage | null) {
       return (
         localStorage.getItem("paymux-theme") === "dark" ||
         (!localStorage.getItem("paymux-theme") &&
-          (!!page?.theme?.includes("/minimal-dark/") ||
-            matchMedia("(prefers-color-scheme:dark)").matches))
+          matchMedia("(prefers-color-scheme:dark)").matches)
       );
     } catch {
       return false;
@@ -285,16 +285,33 @@ function useChrome(page: DashboardPage | null) {
       }
       link.href = theme;
     } else link?.remove();
-    try {
-      if (!localStorage.getItem("paymux-theme"))
-        setDark(
-          !!theme?.includes("/minimal-dark/") ||
-            matchMedia("(prefers-color-scheme:dark)").matches,
-        );
-    } catch {}
-    // Only a change of the theme link re-evaluates the default.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme, page !== null]);
+  // The dashboard theme the page carries: its tokens, and its default scheme
+  // until the user has toggled (the saved toggle always wins).
+  const dashboardTheme = page?.dashboardTheme ?? null;
+  const dashboardThemeVersion = page?.dashboardThemeVersion ?? null;
+  useEffect(() => {
+    if (!page) return;
+    let live = true;
+    void applyDashboardTheme(dashboardTheme, dashboardThemeVersion).then(
+      (applied) => {
+        if (!live || !applied) return;
+        try {
+          if (localStorage.getItem("paymux-theme")) return;
+          setDark(
+            applied.scheme === "dark" ||
+              (applied.scheme !== "light" &&
+                matchMedia("(prefers-color-scheme:dark)").matches),
+          );
+        } catch {}
+      },
+    );
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboardTheme, dashboardThemeVersion, page !== null]);
   return { dark, setDark };
 }
 

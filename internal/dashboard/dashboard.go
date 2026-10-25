@@ -267,6 +267,8 @@ func (d *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case strings.HasPrefix(r.URL.Path, prefix+"/disputes/") && strings.HasSuffix(r.URL.Path, "/evidence"):
 		limit = 3*disputes.MaxEvidenceBytes + 1<<20 // up to three files of 10 MiB
+	case r.URL.Path == prefix+"/appearance/themes/import":
+		limit = themeImportMax + 16<<10 // the file plus the form's other fields
 	case isUploadPath(r.URL.Path):
 		limit = maxUploadBytes + 64<<10
 	}
@@ -284,6 +286,17 @@ type view struct {
 	Next         string // where the confirmation page returns to
 	NeedCode     bool   // the confirmation page asks for an authenticator code too
 	StyleNonce   string
+	// DashboardTheme names the theme the React dashboard wears; see effectiveDashboardTheme.
+	DashboardTheme string
+	// DashboardThemeVersion changes whenever the theme's files do, so a browser
+	// already wearing the theme refetches its colours after an edit.
+	DashboardThemeVersion string
+	ThemeForm             *themeFormView // the theme editor
+	ImportForm            *importFormView
+	// The account page's theme picker.
+	OrgThemeName string
+	ThemeChoices []themeChoice
+	UserHasTheme bool // the user's own choice is set and still usable
 
 	AppName, LogoURL, Accent string
 
@@ -349,6 +362,53 @@ func (d *Dashboard) dashboardTheme(ctx context.Context) string {
 	return look.Dashboard(ctx, d.o.Settings)
 }
 
+// defaultDashboardTheme is the dashboard theme when nothing usable is chosen.
+const defaultDashboardTheme = "stripe"
+
+// dashboardThemeUsable reports whether name loads and styles the dashboard
+// (customer-page-only themes such as "default" have no dashboard block).
+func (d *Dashboard) dashboardThemeUsable(name string) bool {
+	if d.o.Themes == nil || !web.ValidThemeName(name) {
+		return false
+	}
+	th, err := d.o.Themes.Load(name)
+	return err == nil && th.Dashboard != nil
+}
+
+// effectiveDashboardTheme is the theme the dashboard wears for userID: the
+// first usable of the user's own choice, the organisation default and stripe.
+// A name that no longer loads (deleted on disk, broken) is skipped.
+func (d *Dashboard) effectiveDashboardTheme(ctx context.Context, userID string) string {
+	if own := d.userTheme(ctx, userID); own != "" && d.dashboardThemeUsable(own) {
+		return own
+	}
+	return d.orgDashboardTheme(ctx)
+}
+
+// orgDashboardTheme is the organisation default, or stripe when that is not a
+// usable dashboard theme.
+func (d *Dashboard) orgDashboardTheme(ctx context.Context) string {
+	if org := d.dashboardTheme(ctx); d.dashboardThemeUsable(org) {
+		return org
+	}
+	return defaultDashboardTheme
+}
+
+// userTheme is the theme a user chose for themselves, "" for none (or unknown).
+func (d *Dashboard) userTheme(ctx context.Context, userID string) string {
+	if userID == "" || d.o.DB == nil {
+		return ""
+	}
+	var name string
+	if err := d.o.DB.Read(ctx, func(q store.Querier) (err error) {
+		name, err = store.UserTheme(ctx, q, userID)
+		return
+	}); err != nil {
+		return ""
+	}
+	return name
+}
+
 // themedRenderer is the renderer drawing in the org's theme.
 func (d *Dashboard) themedRenderer() *web.Renderer {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -364,6 +424,16 @@ func (d *Dashboard) renderWith(w http.ResponseWriter, status int, rend *web.Rend
 	v.DevBanner = d.o.DevSkip2FA
 	_, noncePart, _ := strings.Cut(w.Header().Get("Content-Security-Policy"), "'nonce-")
 	v.StyleNonce, _, _ = strings.Cut(noncePart, "'")
+	if v.DashboardTheme == "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		v.DashboardTheme = d.effectiveDashboardTheme(ctx, v.Self)
+	}
+	if v.DashboardTheme != "" && d.o.Themes != nil {
+		if th, err := d.o.Themes.Load(v.DashboardTheme); err == nil {
+			v.DashboardThemeVersion = th.Fingerprint
+		}
+	}
 	var buf bytes.Buffer
 	if err := rend.Render(&buf, page, v); err != nil {
 		d.o.Logger.Error("dashboard: render", "page", page, "err", err)

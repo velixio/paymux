@@ -83,7 +83,7 @@ The command bar finds pages, open tabs and actions, opens a payment, subscriptio
 
 The React dashboard uses a compact application shell with a fixed header and independently scrolling content. Collapse the desktop sidebar to an icon rail using **Collapse sidebar**; **Expand sidebar** restores labels. The browser remembers the choice. Changing routes starts the content at the top, and changing sidebar size keeps current form edits.
 
-The dashboard has a personal light/dark control and responsive navigation. Organization appearance and per-app customer-page themes are separate settings. The marketing site's saved theme does not configure your hub. On narrow screens, tables can scroll inside their containers and navigation opens in a sheet.
+The dashboard has a personal light/dark control and responsive navigation. The **Appearance** page chooses the organisation's dashboard theme (Stripe, Paddle, Midnight or your own); each person can pick their own on the **Account** page. Making, editing, exporting and importing themes is covered in [Dashboard themes](themes.md). Per-app customer-page themes are a separate setting on the same page. The marketing site's saved theme does not configure your hub. On narrow screens, tables can scroll inside their containers and navigation opens in a sheet.
 
 ## Browser errors and uncertain writes
 

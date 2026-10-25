@@ -870,7 +870,7 @@
 }
 .app-shell .navigation-item .nav-count {
   margin-left: auto;
-  color: var(--muted-foreground);
+  color: var(--sidebar-foreground);
   font-size: 10px;
   font-feature-settings: "tnum";
 }
@@ -917,8 +917,10 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 0;
-  background: transparent;
+  /* A chip, so the warning reads on a dark sidebar as well as a light one. */
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--status-warn-bg);
   border: 0;
   color: var(--status-warn-fg);
   font: inherit;
@@ -1364,4 +1366,41 @@
 .app-shell .toolbar-chips :focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
+}
+
+/* Themes may draw the sidebar dark on a light page (or the reverse), so every
+   surface painted with --sidebar reads its text and tints from the sidebar
+   tokens. The page's own values stay reachable as --page-* for the islands
+   inside (the active tab, the command box). */
+.app-shell {
+  --page-foreground: var(--foreground);
+  --page-muted-foreground: var(--muted-foreground);
+  --page-accent-foreground: var(--accent-foreground);
+  --page-muted: var(--muted);
+  --page-ui-accent: var(--ui-accent);
+  --page-border: var(--border);
+}
+.app-shell .react-sidebar,
+.app-shell .react-titlebar,
+.app-shell .tab-strip,
+.app-shell .status-bar {
+  --foreground: var(--sidebar-foreground);
+  --muted-foreground: var(--sidebar-foreground);
+  --accent-foreground: var(--sidebar-accent-foreground);
+  --muted: color-mix(in srgb, var(--sidebar-foreground) 12%, var(--sidebar));
+  --ui-accent: color-mix(in srgb, var(--primary) 12%, var(--sidebar));
+  --border: color-mix(in srgb, var(--sidebar-foreground) 20%, var(--sidebar));
+}
+.app-shell .react-titlebar .tab.active,
+.app-shell .tab-strip .tab.active,
+.app-shell
+  .react-titlebar
+  .header-controls
+  [data-slot="button"].command-trigger {
+  --foreground: var(--page-foreground);
+  --muted-foreground: var(--page-muted-foreground);
+  --accent-foreground: var(--page-accent-foreground);
+  --muted: var(--page-muted);
+  --ui-accent: var(--page-ui-accent);
+  --border: var(--page-border);
 }

@@ -215,3 +215,31 @@ func TestCacheIsSafeUnderConcurrentSets(t *testing.T) {
 		}
 	})
 }
+
+// A writer that goes around the Service (a store helper that rewrites a stored
+// value) calls Invalidate so the next read is not served from the cache.
+func TestInvalidateDropsCachedValues(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		ctx := context.Background()
+		svc := settings.New(db)
+		svc.SetCacheTTL(time.Hour)
+		if err := svc.SetOrg(ctx, admin, store.DefaultOrgID, "theme", json.RawMessage(`"a"`)); err != nil {
+			t.Fatal(err)
+		}
+		if v, _ := svc.ResolveOrg(ctx, store.DefaultOrgID, "theme"); string(v.Raw) != `"a"` {
+			t.Fatalf("got %s", v.Raw)
+		}
+		if err := db.Write(ctx, func(tx store.Tx) error {
+			return store.SetOrgSetting(ctx, tx, store.DefaultOrgID, "theme", `"b"`, time.Now())
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if v, _ := svc.ResolveOrg(ctx, store.DefaultOrgID, "theme"); string(v.Raw) != `"a"` {
+			t.Skip("the cache is off in this configuration")
+		}
+		svc.Invalidate()
+		if v, _ := svc.ResolveOrg(ctx, store.DefaultOrgID, "theme"); string(v.Raw) != `"b"` {
+			t.Errorf("after Invalidate: %s", v.Raw)
+		}
+	})
+}

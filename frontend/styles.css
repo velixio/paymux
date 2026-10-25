@@ -49,6 +49,8 @@
   --input: #c1c9d4;
   --ring: #635bff;
   --sidebar: #f7f8fa;
+  --sidebar-foreground: #5c6478;
+  --sidebar-accent-foreground: #4b44d6;
   --status-ok-bg: #d7f7e6;
   --status-ok-fg: #0b6b47;
   --status-warn-bg: #fdf0d5;
@@ -82,6 +84,8 @@
   --ring: #8b85ff;
   --destructive: #fda29b;
   --sidebar: #14161d;
+  --sidebar-foreground: #9aa1b2;
+  --sidebar-accent-foreground: #c4c1ff;
   --status-ok-bg: #12372a;
   --status-ok-fg: #8de0b5;
   --status-warn-bg: #3d2e0a;

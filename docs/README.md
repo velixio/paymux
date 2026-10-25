@@ -15,6 +15,7 @@ These guides describe the implementation in this repository. Connector capabilit
 ## Operate the product
 
 - [Dashboard guide](dashboard.md): apps, providers, roles, settings, and operational workflows.
+- [Dashboard themes](themes.md): the bundled themes, making your own from a few colours, choosing one, export and import.
 - [Subscriptions and invoicing](billing.md): recurring billing modes, proration, GST document flow, and limitations.
 - [Configuration reference](configuration.md): deployment variables, secrets, SMTP, SSO, and hooks.
 - [Deployment and recovery runbook](runbook.md): Linux, containers, TLS, backups, restore, and monitoring.
