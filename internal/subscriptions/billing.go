@@ -48,6 +48,7 @@ func (s *Service) renderBilling(w http.ResponseWriter, r *http.Request, pages *w
 		data.Error = pages.T(lang, msgKey)
 	}
 	billingform.Fill(&data, co.Customer, co.Subscription.Currency, co.Need)
+	web.SetHostedCSP(w.Header(), &data)
 	var buf bytes.Buffer
 	if err := pages.Render(&buf, "pay_billing", data); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)

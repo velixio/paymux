@@ -3,6 +3,7 @@ package web
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -81,4 +82,15 @@ func originOf(raw string) string {
 		return ""
 	}
 	return "https://" + strings.ToLower(u.Host)
+}
+
+// SetHostedCSP stamps a response of a hosted payment page: it draws the nonce
+// into data (for the page's scripts), and sets the report-only policy for it
+// and the enforced frame-ancestors, which a report-only policy cannot enforce.
+// data.Launcher names the connector, data.ScriptURL and data.FormURL are the
+// provider URLs of the page.
+func SetHostedCSP(h http.Header, data *PayPage) {
+	data.Nonce = NewNonce()
+	h.Set(HostedCSPHeader, HostedCSP(data.Nonce, data.Launcher, data.ScriptURL, data.FormURL))
+	h.Set("Content-Security-Policy", "frame-ancestors 'none'")
 }

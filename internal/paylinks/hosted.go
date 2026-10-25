@@ -106,6 +106,7 @@ func (h *Hosted) write(c *pageCtx, status int, name string, data web.PayPage) {
 	hdr.Set("Cache-Control", "no-store")
 	hdr.Set("X-Content-Type-Options", "nosniff")
 	hdr.Set("X-Frame-Options", "DENY")
+	web.SetHostedCSP(hdr, &data)
 	var buf bytes.Buffer
 	if err := c.rend.Render(&buf, name, data); err != nil {
 		h.o.Logger.Error("paylinks: render", "page", name, "err", err)
