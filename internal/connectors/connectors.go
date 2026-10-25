@@ -140,6 +140,9 @@ func (s *Service) CreateAccount(ctx context.Context, actor audit.Actor, sc core.
 	if in.Mode == "live" && allowInsecure(in.Config) {
 		return store.ProviderAccount{}, errAllowInsecureLive
 	}
+	if err := checkCredentialMode(in.Mode, in.Config); err != nil {
+		return store.ProviderAccount{}, err
+	}
 	if len(in.Currencies) == 0 {
 		in.Currencies = slices.Clone(info.Currencies)
 	}
@@ -271,6 +274,9 @@ func (s *Service) UpdateAccount(ctx context.Context, actor audit.Actor, sc core.
 		}
 		if pa.Mode == "live" && allowInsecure(in.Config) {
 			return errAllowInsecureLive
+		}
+		if err := checkCredentialMode(pa.Mode, in.Config); err != nil {
+			return err
 		}
 		if err := s.checkEndpointChange(pa, info, in.Config); err != nil {
 			return err
@@ -552,6 +558,42 @@ func allowInsecure(cfg json.RawMessage) bool {
 		AllowInsecure bool `json:"allow_insecure"`
 	}
 	return json.Unmarshal(cfg, &c) == nil && c.AllowInsecure
+}
+
+// checkCredentialMode refuses provider credentials that plainly belong to the
+// other mode: a sandbox switch or a test key on a live account (a public test
+// card would then "pay" a live payment), or a live key on a test account (a
+// test-mode API key would then move real money). Only unambiguous signals are
+// checked; a sandbox switch left off on a test account is allowed.
+func checkCredentialMode(mode string, cfg json.RawMessage) error {
+	var c struct {
+		TestMode  bool   `json:"test_mode"`
+		Sandbox   bool   `json:"sandbox"`
+		SecretKey string `json:"secret_key"`
+		KeyID     string `json:"key_id"`
+	}
+	if json.Unmarshal(cfg, &c) != nil {
+		return nil // ValidateConfig has judged the shape already
+	}
+	hasPrefix := func(v string, ps ...string) bool {
+		for _, p := range ps {
+			if strings.HasPrefix(v, p) {
+				return true
+			}
+		}
+		return false
+	}
+	switch mode {
+	case "live":
+		if c.TestMode || c.Sandbox || hasPrefix(c.SecretKey, "sk_test_", "rk_test_") || hasPrefix(c.KeyID, "rzp_test_") {
+			return invalid("config: these are sandbox credentials; a live account needs the provider's live credentials")
+		}
+	case "test":
+		if hasPrefix(c.SecretKey, "sk_live_", "rk_live_") || hasPrefix(c.KeyID, "rzp_live_") {
+			return invalid("config: these are live credentials; a test account needs the provider's test credentials")
+		}
+	}
+	return nil
 }
 
 // secretValues returns the string values of config keys marked "x-secret".
