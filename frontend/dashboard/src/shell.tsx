@@ -800,6 +800,14 @@ function TabsShell({
   );
 }
 
+// The page the server already rendered into this document. Handed over
+// directly because the query cache drops unobserved data at once (gcTime 0),
+// which would refetch it and flash the loading state on every reload.
+let seed: { href: string; page: DashboardPage } | null = null;
+export function seedInitialPage(href: string, page: DashboardPage) {
+  seed = { href, page };
+}
+
 export function DashboardApp({ slot }: { slot?: React.ReactNode }) {
   const loc = useLocation();
   const router = useRouter();
@@ -810,6 +818,13 @@ export function DashboardApp({ slot }: { slot?: React.ReactNode }) {
   const { data, error, refetch } = useQuery({
     queryKey: queryKey(href),
     queryFn: ({ signal }) => fetchDashboard(href, signal),
+    // Used once: later visits to this URL fetch fresh data.
+    initialData: () => {
+      if (seed?.href !== href) return undefined;
+      const page = seed.page;
+      seed = null;
+      return page;
+    },
     // Inside the shell the tab views fetch; this observer only reads.
     // Sign-in style pages have no tab, so this observer loads them.
     enabled: !inShell || isAuthHref(href),

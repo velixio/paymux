@@ -9,8 +9,7 @@ import "../../styles.css";
 import "./workspace.css";
 import "./app-shell.css";
 import { parseDashboard } from "./adapter";
-import { queryKey } from "./runtime";
-import { createDashboardRouter } from "./shell";
+import { createDashboardRouter, seedInitialPage } from "./shell";
 
 const source = document.getElementById("paymux-server-page");
 const mount = document.getElementById("paymux-react-root");
@@ -27,7 +26,7 @@ const client = new QueryClient({
     },
   },
 });
-if (initial) client.setQueryData(queryKey(initialHref), initial);
+if (initial) seedInitialPage(initialHref, initial);
 class Boundary extends React.Component<
   { children: React.ReactNode },
   { failed: boolean }
