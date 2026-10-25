@@ -81,22 +81,18 @@ test("status chips apply the filter, All clears it", async () => {
 });
 
 test("a chip keeps the other filters in the query", async () => {
-  const router = await mount("/dashboard/payments?q=alice");
   handlers["/dashboard/payments"] = () =>
     pageHtml("Payments", `<h1>Payments</h1>${filters}`);
-  // (first mount used the default fixture; re-mount with the filter page)
-  cleanup();
-  const r2 = await mount("/dashboard/payments?q=alice");
+  const router = await mount("/dashboard/payments?q=alice");
   fireEvent.click(
     within(screen.getByRole("group", { name: "Status" })).getByRole("button", {
       name: "failed",
     }),
   );
   await waitFor(() =>
-    expect(r2.state.location.searchStr).toContain("status=failed"),
+    expect(router.state.location.searchStr).toContain("status=failed"),
   );
-  expect(r2.state.location.searchStr).toContain("q=alice");
-  void router;
+  expect(router.state.location.searchStr).toContain("q=alice");
 });
 
 test("record pages get a back button and keep the status pill beside the title", async () => {
