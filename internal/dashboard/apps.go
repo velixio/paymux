@@ -110,7 +110,7 @@ func (d *Dashboard) routesApps() {
 	m.HandleFunc("POST "+prefix+"/apps/{id}/keys/{kid}/revoke", d.authed(authz.APIKeyCreate, d.recent(d.keyRevoke)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints", d.authed(authz.SettingsWrite, d.recent(d.endpointCreate)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints/{eid}/disable", d.authed(authz.SettingsWrite, d.recent(d.endpointDisable)))
-	m.HandleFunc("POST "+prefix+"/apps/{id}/branding", d.authed(authz.SettingsWrite, d.brandingSave))
+	m.HandleFunc("POST "+prefix+"/apps/{id}/branding", d.authed(authz.SettingsWrite, d.recent(d.brandingSave)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/providers", d.authed(authz.ProviderAccountManage, d.recent(d.providersSave)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/settings/{key}", d.authed(authz.SettingsWrite, d.recent(d.appSettingSet)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/settings/{key}/reset", d.authed(authz.SettingsWrite, d.recent(d.appSettingReset)))
