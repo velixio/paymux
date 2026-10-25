@@ -628,7 +628,11 @@ func (s *Service) Start(ctx context.Context, slug string, in StartInput) (Starte
 			// The visitor already has a payment on this link (a reload, the back button,
 			// a double click): hand it back instead of making a second one that could
 			// be paid as well. Only if it can still be paid and asks for this amount.
-			if st, reused := s.reuseOpenPayment(ctx, l, claimed, amount); reused {
+			st, reused, err := s.reuseOpenPayment(ctx, l, claimed, amount)
+			if err != nil {
+				return Started{}, err
+			}
+			if reused {
 				return st, nil
 			}
 		}
@@ -674,28 +678,55 @@ func (s *Service) Start(ctx context.Context, slug string, in StartInput) (Starte
 // reuseOpenPayment returns the holder's earlier payment when it is still open
 // and for the same amount, with a fresh client secret (only the hash is kept). An
 // open payment for another amount is canceled first, so only one stays payable.
-func (s *Service) reuseOpenPayment(ctx context.Context, l store.PaymentLink, paymentID string, amount int64) (Started, bool) {
+// When it cannot be canceled (it is already with the provider) it stays the
+// one payable payment and is handed back as it is: making another would let
+// the link be paid twice. An error means neither could be done.
+func (s *Service) reuseOpenPayment(ctx context.Context, l store.PaymentLink, paymentID string, amount int64) (Started, bool, error) {
 	p, err := s.core.GetPaymentByID(ctx, paymentID)
 	if err != nil {
-		return Started{}, false
+		return Started{}, false, nil
 	}
 	switch p.Status {
 	case "created", "requires_action", "processing":
 	default:
-		return Started{}, false
+		return Started{}, false, nil
 	}
 	if !p.ExpiresAt.After(s.now()) {
-		return Started{}, false
+		return Started{}, false, nil
 	}
 	if p.Amount != amount {
-		_, _ = s.core.CancelPayment(ctx, core.Scope{AppID: l.AppID, Mode: l.Mode}, audit.System, p.ID)
-		return Started{}, false
+		if _, err := s.core.CancelPayment(ctx, core.Scope{AppID: l.AppID, Mode: l.Mode}, audit.System, p.ID); err == nil {
+			return Started{}, false, nil
+		}
+		// Not canceled: unless it is over by now, it is still payable.
+		if cur, err := s.core.GetPaymentByID(ctx, p.ID); err != nil || !openStatus(cur.Status) {
+			if err == nil {
+				return Started{}, false, nil
+			}
+			return Started{}, false, newErr(ErrBusy, "this single-use link has a payment in progress; try again in a little while")
+		}
 	}
-	secret, err := s.core.ReissueClientSecret(ctx, p.ID)
+	secret, err := reissueSecret(ctx, s.core, p.ID)
 	if err != nil {
-		return Started{}, false
+		// Over in the meantime: a new payment is fine. Still open and the
+		// secret could not be replaced: it is the one payable payment, so no
+		// second one is made.
+		if cur, gerr := s.core.GetPaymentByID(ctx, p.ID); gerr == nil && !openStatus(cur.Status) {
+			return Started{}, false, nil
+		}
+		return Started{}, false, newErr(ErrBusy, "this single-use link has a payment in progress; try again in a little while")
 	}
-	return Started{PaymentID: p.ID, ClientSecret: secret}, true
+	return Started{PaymentID: p.ID, ClientSecret: secret}, true, nil
+}
+
+// reissueSecret is core's ReissueClientSecret; a variable so that a test can
+// make it fail.
+var reissueSecret = func(ctx context.Context, c *core.Service, paymentID string) (string, error) {
+	return c.ReissueClientSecret(ctx, paymentID)
+}
+
+func openStatus(status string) bool {
+	return status == "created" || status == "requires_action" || status == "processing"
 }
 
 func randomHolder() string {
