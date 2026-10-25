@@ -275,6 +275,13 @@ func TestRevenueDefaultCurrencyMajority(t *testing.T) {
 	})
 }
 
+// reToken matches random attribute values (CSP nonces, CSRF tokens): one can
+// spell "Inf" or "NaN" ("6Infw2y..."), so they are removed before the page is
+// searched for a broken number.
+var reToken = regexp.MustCompile(`="[A-Za-z0-9_+/=-]{16,}"`)
+
+func withoutTokens(body string) string { return reToken.ReplaceAllString(body, `=""`) }
+
 func TestRevenuePreviousPeriodChange(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
@@ -294,7 +301,7 @@ func TestRevenuePreviousPeriodChange(t *testing.T) {
 		if p := pts["2027-01-12"]; p.prevGross != 10000 {
 			t.Errorf("prev gross %+v", p)
 		}
-		lacks(t, body, `data-metric="refunds">+`, "NaN", "Inf")
+		lacks(t, withoutTokens(body), `data-metric="refunds">+`, "NaN", "Inf")
 		// 30d: previous 30 days hold only Jan 5's 10000? no: Dec 17..Jan 15 / Nov 17..Dec 16 holds nothing
 		body = e.pageOK(v, "/dashboard/overview?range=30d")
 		has(t, body, `data-metric="gross"></`)
@@ -309,7 +316,7 @@ func TestRevenueEmpty(t *testing.T) {
 		if n := len(revPoints(body)); n != 0 {
 			t.Errorf("%d points for a new org", n)
 		}
-		lacks(t, body, "NaN", "Inf", "undefined")
+		lacks(t, withoutTokens(body), "NaN", "Inf", "undefined")
 		has(t, body, `id="revenue-data"`)
 	})
 }
