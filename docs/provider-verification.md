@@ -43,6 +43,26 @@ run its `sandbox_test.go` (skipped without credentials; see
   retries for about a day; the exact schedule was read, not observed), and the
   event id is the body hash, not the unsigned `X-Razorpay-Event-Id`. Confirm a
   late retry still arrives within the window.
+- [x] **Subscriptions, run live in test mode** (through a Paymux hub; 2026-10): an INR
+  subscription paid with the test card **4718 6091 0820 4366** works end to end: the first
+  charge booked as a `renewal` payment linked to the subscription, an invoice issued,
+  `payment.authorized`, `payment.captured`, `order.paid`, `subscription.charged` and
+  `subscription.activated` verified, and cancel at period end. The generic test card
+  4111 1111 1111 1111 is refused with "not eligible for recurring payments": use the
+  card above (or a UPI mandate) for subscriptions. Found and fixed:
+  - **INR only.** A USD subscription was created at Razorpay and the customer's
+    checkout then failed with "Currency is not supported". `Info.SubscriptionCurrencies`
+    is `["INR"]`; routing skips Razorpay for other currencies (so the next target takes it,
+    or the call is refused with `no_route` at creation) and the connector refuses it too.
+  - **No plan change for card subscriptions.** `PATCH /v1/subscriptions/{id}` with a new
+    plan answered 400 "Only offers can be updated for subscriptions when payment mode is
+    domestic card." (UPI likewise, per the documentation). That is now `ErrUnsupported`
+    ("cancel it and start a new one"), refused up front through
+    `Info.SubscriptionFixedMethods` (`card`, `upi`) once the subscription's payment
+    method is known. Whether an e-mandate (net banking) subscription can change plan was
+    not run.
+  - Any other 4xx of the provider is `ErrRejected` (422 `provider_rejected` in the API,
+    with the provider's message), not an internal error.
 - [x] **Dispute evidence** (`disputes_respond.go`), from Razorpay's Contest a
   Dispute documentation (no secret in the last session, no test dispute): the
   named fields take lists of document id **strings** (the connector sent

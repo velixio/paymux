@@ -28,6 +28,8 @@ Use `POST /v1/subscriptions` with customer, amount, currency, and interval. The 
 
 Send this to the hub from your backend using a subscriptions write key, JSON content type, and a stable idempotency key. This is an example body, not a full create request. Consult [OpenAPI](openapi.yaml) for optional start dates, trial periods, return URL, mandate method, and allowed fields.
 
+**Choosing the provider.** Routing picks the account, as for a payment, and the same two fields steer it: `allowed_connectors` restricts routing to the listed connectors and `country` is matched by routing rules. Both are kept on the subscription. A connector that cannot bill the subscription is never picked: a provider that bills subscriptions in fewer currencies than it takes payments in (Razorpay: INR only) is skipped for other currencies, and if no listed provider can bill it the call is refused with 422 `no_route` at creation, never at the customer's checkout.
+
 Track `incomplete`, `incomplete_expired`, `trialing`, `active`, `past_due`, `canceled`, and `ended` as separate outcomes. Do not grant indefinite access merely because authorization began. Tie entitlements to your own verified billing policy and event processing.
 
 ## Renewal failures and changes
@@ -35,6 +37,8 @@ Track `incomplete`, `incomplete_expired`, `trialing`, `active`, `past_due`, `can
 A failed renewal can move a subscription past due. Dunning and mandate-specific limits affect what can be retried. Inspect the configured schedule and provider-specific constraints rather than issuing unlimited manual charges.
 
 `POST /v1/subscriptions/{id}/update` changes the future amount and can request proration for supported merchant-triggered billing. A requested immediate charge may be deferred to the next renewal when the mandate or authorization cannot support it; read the returned `proration` outcome and reason. Provider-managed subscriptions reject unsupported proration rather than emulating it invisibly.
+
+Some providers keep the plan of a subscription paid by a given method: Razorpay cannot change the plan of a card or UPI subscription. The update then answers 422 `unsupported` with the way out (cancel it and start a new one), before the provider is asked; `connector.Info.CanChangeSubscriptionAmount(method)` says which methods can change. A request the provider itself refuses (an amount or plan it does not allow) answers 422 `provider_rejected` with the provider's message.
 
 `POST /v1/subscriptions/{id}/payment_method` starts payment-method replacement where supported. Cancellation has its own operation and state rules. Read each response instead of assuming every connector can update an active agreement in place.
 

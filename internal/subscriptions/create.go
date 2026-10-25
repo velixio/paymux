@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/url"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/paymux/paymux/internal/billing"
@@ -40,6 +41,11 @@ type CreateInput struct {
 	// Method is an optional mandate method hint (upi, card, emandate) for
 	// merchant-triggered billing; the default prefers UPI.
 	Method string
+	// AllowedConnectors restricts routing to these connectors for the life of the
+	// subscription; Country is the buyer's country, which routing rules can match
+	// on. Both are kept on the subscription, like a payment's.
+	AllowedConnectors []string
+	Country           string
 }
 
 // Created is the result of Create and the other calls that start a checkout.
@@ -81,6 +87,19 @@ func validateCreate(in *CreateInput) error {
 	}
 	if len(in.Description) > 1000 {
 		return newErr(ErrInvalid, "description too long (max 1000)")
+	}
+	in.Country = strings.ToUpper(strings.TrimSpace(in.Country))
+	if in.Country != "" && (len(in.Country) != 2 || in.Country[0] < 'A' || in.Country[0] > 'Z' || in.Country[1] < 'A' || in.Country[1] > 'Z') {
+		return newErr(ErrInvalid, "country must be an ISO 3166 alpha-2 code")
+	}
+	if len(in.AllowedConnectors) > 20 {
+		return newErr(ErrInvalid, "allowed_connectors has at most 20 entries")
+	}
+	for i, c := range in.AllowedConnectors {
+		in.AllowedConnectors[i] = strings.TrimSpace(c)
+		if in.AllowedConnectors[i] == "" || len(in.AllowedConnectors[i]) > 64 {
+			return newErr(ErrInvalid, "allowed_connectors entries are connector names (1-64 characters)")
+		}
 	}
 	if len(in.Metadata) > 20 {
 		return newErr(ErrInvalid, "metadata has at most 20 keys")
@@ -186,8 +205,8 @@ func (s *Service) chooseRoute(ctx context.Context, q store.Queryer, appID, mode 
 		// customer's checkout.
 		accounts[i].SubscriptionCurrencies = conns[accounts[i].ID].Info().SubscriptionCurrencies
 	}
-	res, err := routing.Choose(cfg, routing.Request{Currency: in.Currency, Amount: in.Amount, Purpose: routing.PurposeSubscription,
-		Metadata: in.Metadata}, accounts, nil)
+	res, err := routing.Choose(cfg, routing.Request{Currency: in.Currency, Country: in.Country, Amount: in.Amount, Purpose: routing.PurposeSubscription,
+		Metadata: in.Metadata, AllowedConnectors: in.AllowedConnectors}, accounts, nil)
 	var rej *routing.RejectedError
 	switch {
 	case errors.As(err, &rej):
@@ -322,7 +341,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Created, error) {
 			Amount: in.Amount, Currency: in.Currency, Interval: in.Interval, IntervalCount: in.IntervalCount, AnchorAt: anchor,
 			CurrentPeriodStart: anchor, CurrentPeriodEnd: billing.Boundary(anchor, iv, in.IntervalCount, 1), TrialEnd: trialEnd,
 			TotalCount: in.TotalCount, Description: in.Description, Metadata: in.Metadata, ReturnURL: in.ReturnURL,
-			CheckoutTokenHash: tokenHash, ExpiresAt: now.Add(IncompleteTTL), Version: 1, CreatedAt: now, UpdatedAt: now}
+			AllowedConnectors: in.AllowedConnectors, Country: in.Country, CheckoutTokenHash: tokenHash, ExpiresAt: now.Add(IncompleteTTL), Version: 1, CreatedAt: now, UpdatedAt: now}
 		if sub.ReturnURL == "" {
 			sub.ReturnURL = app.DefaultReturnURL
 		}

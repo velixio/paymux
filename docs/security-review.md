@@ -476,6 +476,16 @@ is kept elsewhere. Each has a failing test that was written first.
   field will therefore show that error when the URL is edited without re-entering
   the secret (the dashboard is the core builder's).
 
+## Provider messages in API errors
+
+A provider's "request invalid or not allowed" answer reaches the API caller as a 422
+`provider_rejected` (or `unsupported`) with the provider's own text. That text could echo
+a credential or personal data, so it passes through the log redactor (every account's
+known secrets, key shapes, personal data) and is cut to 300 characters before it is put in
+the response; a test checks that a message echoing a configured secret does not leak. The
+full error stays in the (redacted) log. Everything else remains an internal error that
+says nothing.
+
 ## What remains
 
 Every `TODO(spec)` left in the code needs a provider sandbox, a provider

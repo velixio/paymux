@@ -223,3 +223,30 @@ func TestSubscriptionRoutesWithoutServiceAre404(t *testing.T) {
 		}
 	})
 }
+
+// F-D: POST /v1/subscriptions takes allowed_connectors and country like POST
+// /v1/payments, keeps them on the subscription and routes inside them.
+func TestSubscriptionAPIAcceptsRoutingRestrictions(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		f := newSubFixture(t, db)
+		with := func(k string, v any) map[string]any { return mut(subBody, k, v) }
+		r := f.do("POST", "/v1/subscriptions", f.liveKey, with("allowed_connectors", []string{"payu"}))
+		if r.status != 201 {
+			t.Fatalf("allowed: %d %s", r.status, r.raw)
+		}
+		sub := r.json(t)
+		if ac, _ := sub["allowed_connectors"].([]any); len(ac) != 1 || ac[0] != "payu" {
+			t.Errorf("allowed_connectors not echoed: %v", sub)
+		}
+		if r := f.do("POST", "/v1/subscriptions", f.liveKey, with("country", "in")); r.status != 201 || r.json(t)["country"] != "IN" {
+			t.Errorf("country: %d %s", r.status, r.raw)
+		}
+		// No listed connector can take it: refused at creation.
+		if r := f.do("POST", "/v1/subscriptions", f.liveKey, with("allowed_connectors", []string{"whop"})); r.status != 422 || r.errType(t) != "no_route" {
+			t.Errorf("no route: %d %s", r.status, r.raw)
+		}
+		if r := f.do("POST", "/v1/subscriptions", f.liveKey, with("country", "India")); r.status != 400 || r.errType(t) != "invalid_request" {
+			t.Errorf("bad country: %d %s", r.status, r.raw)
+		}
+	})
+}

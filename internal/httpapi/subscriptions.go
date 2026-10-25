@@ -58,6 +58,9 @@ type createSubscriptionReq struct {
 	Metadata      map[string]string `json:"metadata"`
 	ReturnURL     string            `json:"return_url"`
 	Method        string            `json:"method"`
+	// AllowedConnectors and Country restrict and steer routing, as for a payment.
+	AllowedConnectors []string `json:"allowed_connectors"`
+	Country           string   `json:"country"`
 }
 
 // subscriptionResp is a subscription, plus the checkout link where one was issued.
@@ -82,7 +85,8 @@ func (a *API) createSubscription(w http.ResponseWriter, r *http.Request, pr core
 	}
 	in := subscriptions.CreateInput{Scope: scope(pr), Amount: *req.Amount, Currency: req.Currency, Interval: req.Interval,
 		IntervalCount: req.IntervalCount, TrialDays: req.TrialDays, TotalCount: req.TotalCount, Description: req.Description,
-		Metadata: req.Metadata, ReturnURL: req.ReturnURL, Method: req.Method}
+		Metadata: req.Metadata, ReturnURL: req.ReturnURL, Method: req.Method,
+		AllowedConnectors: req.AllowedConnectors, Country: req.Country}
 	if req.StartAt != nil {
 		in.StartAt = *req.StartAt
 	}

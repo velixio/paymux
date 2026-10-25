@@ -123,9 +123,13 @@ type Subscription struct {
 	Metadata                      map[string]string
 	ReturnURL, CheckoutTokenHash  string
 	CheckoutAction                string // JSON of the cached connector.NextAction
-	ExpiresAt                     time.Time
-	Version                       int64
-	CreatedAt, UpdatedAt          time.Time
+	// AllowedConnectors and Country are the routing restrictions the
+	// subscription was created with (like a payment's).
+	AllowedConnectors    []string
+	Country              string
+	ExpiresAt            time.Time
+	Version              int64
+	CreatedAt, UpdatedAt time.Time
 }
 
 const subCols = `id, org_id, mode, app_id, customer_id, status, billing_mode, provider_account_id,
@@ -134,20 +138,23 @@ const subCols = `id, org_id, mode, app_id, customer_id, status, billing_mode, pr
 	COALESCE(total_count,0), renewals_done, cancel_at_period_end, COALESCE(canceled_at,0), COALESCE(ended_at,0),
 	COALESCE(pending_amount,0), requires_reauthorization, dunning_attempt, COALESCE(next_retry_at,0), description, metadata,
 	return_url, checkout_token_hash, checkout_action, expires_at, version, created_at, updated_at,
-	proration_adjust, billed_amount, proration_lines`
+	proration_adjust, billed_amount, proration_lines, allowed_connectors, country`
 
 func scanSub(row interface{ Scan(...any) error }) (Subscription, error) {
 	var s Subscription
 	var anchor, ps, pe, trial, canceled, ended, retry, exp, created, updated int64
 	var cape, reauth int
-	var meta, lines string
+	var meta, lines, allowed string
 	err := row.Scan(&s.ID, &s.OrgID, &s.Mode, &s.AppID, &s.CustomerID, &s.Status, &s.BillingMode, &s.ProviderAccountID,
 		&s.ProviderSubscriptionID, &s.ProviderRef, &s.MandateID, &s.PendingMandateID, &s.Amount, &s.Currency, &s.Interval,
 		&s.IntervalCount, &anchor, &ps, &pe, &trial, &s.TotalCount, &s.RenewalsDone, &cape, &canceled, &ended,
 		&s.PendingAmount, &reauth, &s.DunningAttempt, &retry, &s.Description, &meta, &s.ReturnURL, &s.CheckoutTokenHash, &s.CheckoutAction,
-		&exp, &s.Version, &created, &updated, &s.ProrationAdjust, &s.BilledAmount, &lines)
+		&exp, &s.Version, &created, &updated, &s.ProrationAdjust, &s.BilledAmount, &lines, &allowed, &s.Country)
 	if err != nil {
 		return Subscription{}, notFound(err)
+	}
+	if err := json.Unmarshal([]byte(allowed), &s.AllowedConnectors); err != nil {
+		return Subscription{}, fmt.Errorf("subscription %s allowed_connectors: %w", s.ID, err)
 	}
 	if s.ProrationLines, err = unmarshalLines(lines); err != nil {
 		return Subscription{}, fmt.Errorf("subscription %s proration lines: %w", s.ID, err)
@@ -165,19 +172,21 @@ func scanSub(row interface{ Scan(...any) error }) (Subscription, error) {
 // InsertSubscription inserts s.
 func InsertSubscription(ctx context.Context, tx Tx, s Subscription) error {
 	meta, _ := json.Marshal(nonNilMap(s.Metadata))
+	allowed, _ := json.Marshal(nonNilSlice(s.AllowedConnectors))
 	_, err := tx.ExecContext(ctx, `INSERT INTO subscriptions (id, org_id, mode, app_id, customer_id, status, billing_mode,
 		provider_account_id, provider_subscription_id, provider_ref, mandate_id, pending_mandate_id, amount, currency, interval,
 		interval_count, anchor_at, current_period_start, current_period_end, trial_end, total_count, renewals_done,
 		cancel_at_period_end, canceled_at, ended_at, pending_amount, requires_reauthorization, dunning_attempt, next_retry_at,
-		description, metadata, return_url, checkout_token_hash, checkout_action, expires_at, version, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		description, metadata, return_url, checkout_token_hash, checkout_action, expires_at, version, created_at, updated_at,
+		allowed_connectors, country)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.OrgID, s.Mode, s.AppID, s.CustomerID, s.Status, s.BillingMode, s.ProviderAccountID,
 		nullIfEmpty(s.ProviderSubscriptionID), s.ProviderRef, nullIfEmpty(s.MandateID), nullIfEmpty(s.PendingMandateID),
 		s.Amount, s.Currency, s.Interval, s.IntervalCount, ms(s.AnchorAt), ms(s.CurrentPeriodStart), ms(s.CurrentPeriodEnd),
 		zeroMS(s.TrialEnd), zeroInt(s.TotalCount), s.RenewalsDone, boolInt(s.CancelAtPeriodEnd), zeroMS(s.CanceledAt),
 		zeroMS(s.EndedAt), zeroInt64(s.PendingAmount), boolInt(s.RequiresReauthorization), s.DunningAttempt,
 		zeroMS(s.NextRetryAt), s.Description, string(meta), s.ReturnURL, s.CheckoutTokenHash, s.CheckoutAction, ms(s.ExpiresAt), s.Version,
-		ms(s.CreatedAt), ms(s.UpdatedAt))
+		ms(s.CreatedAt), ms(s.UpdatedAt), string(allowed), s.Country)
 	return err
 }
 

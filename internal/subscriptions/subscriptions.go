@@ -303,6 +303,8 @@ type View struct {
 	RequiresReauthorization bool              `json:"requires_reauthorization"`
 	Description             string            `json:"description,omitempty"`
 	Metadata                map[string]string `json:"metadata"`
+	AllowedConnectors       []string          `json:"allowed_connectors,omitempty"`
+	Country                 string            `json:"country,omitempty"`
 	ReturnURL               string            `json:"return_url,omitempty"`
 	MandateID               string            `json:"mandate_id,omitempty"`
 	CreatedAt               time.Time         `json:"created_at"`
@@ -328,6 +330,7 @@ func ViewSubscription(sub store.Subscription) View {
 		TotalCount: sub.TotalCount, RenewalsDone: sub.RenewalsDone, CancelAtPeriodEnd: sub.CancelAtPeriodEnd,
 		CanceledAt: tp(sub.CanceledAt), EndedAt: tp(sub.EndedAt), PendingAmount: sub.PendingAmount, ProrationAdjust: sub.ProrationAdjust,
 		RequiresReauthorization: sub.RequiresReauthorization, Description: sub.Description, Metadata: meta,
+		AllowedConnectors: sub.AllowedConnectors, Country: sub.Country,
 		ReturnURL: sub.ReturnURL, MandateID: sub.MandateID, CreatedAt: sub.CreatedAt, Version: sub.Version}
 }
 

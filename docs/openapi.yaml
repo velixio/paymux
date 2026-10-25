@@ -966,6 +966,11 @@ components:
         description: { type: string }
         customer_id: { type: string }
         metadata: { type: object, additionalProperties: { type: string } }
+        allowed_connectors:
+          type: array
+          items: { type: string }
+          description: The connectors the subscription was restricted to when it was created. Absent when unrestricted.
+        country: { type: string, description: The buyer country given when the subscription was created. Absent when none was given. }
         return_url: { type: string }
         allowed_connectors:
           type: array
@@ -1068,6 +1073,12 @@ components:
           additionalProperties: { type: string, maxLength: 500 }
         return_url: { type: string, format: uri }
         method: { type: string, enum: [upi, card, emandate], description: Preferred mandate method for merchant-triggered billing; default UPI. }
+        allowed_connectors:
+          type: array
+          maxItems: 20
+          items: { type: string }
+          description: Restricts routing to these connectors, as for a payment; a subscription no listed connector can bill (in this currency) is refused with 422 `no_route`. Kept on the subscription.
+        country: { type: string, description: "Buyer country (ISO 3166 alpha-2), matched by routing rules. Kept on the subscription." }
       additionalProperties: false
     Subscription:
       type: object
