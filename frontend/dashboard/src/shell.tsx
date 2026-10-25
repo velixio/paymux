@@ -83,6 +83,7 @@ import { PageContent, RenderNode } from "./render";
 import { queryKey, RuntimeProvider, WorkspaceLink } from "./runtime";
 import { createMatcher, isTyping, type Binding } from "./keys";
 import { ShortcutSheet } from "./shortcut-sheet";
+import { StatusBar } from "./status-bar";
 import { TabStrip } from "./tab-strip";
 import { TabView } from "./tab-view";
 import { TabsContext, useTabs, type TabsApi } from "./tabs-context";
@@ -192,13 +193,19 @@ function Navigation({
                   className={
                     "navigation-item " + (item.active ? "selected" : "")
                   }
-                  aria-label={item.label}
+                  aria-label={
+                    item.count === undefined
+                      ? item.label
+                      : `${item.label} (${item.count})`
+                  }
                   title={item.label}
                   aria-current={item.active ? "page" : undefined}
                 >
                   <Icon size={16} />
                   <span>{item.label}</span>
-                  {item.active && <span className="active-marker" />}
+                  {item.count !== undefined && (
+                    <span className="nav-count">{item.count}</span>
+                  )}
                 </WorkspaceLink>
               );
             })}
@@ -596,7 +603,6 @@ function TabsShell({
   const activeKey = queryKey(active.href);
   const loading = useIsFetching({ queryKey: activeKey }) > 0;
   const refresh = () => void client.refetchQueries({ queryKey: activeKey });
-  const name = page.nav.find((n) => n.active)?.label || page.title;
 
   return (
     <TabsContext.Provider value={api}>
@@ -609,126 +615,110 @@ function TabsShell({
         <a href="#react-workspace" className="react-skip">
           Skip to workspace
         </a>
-        <aside className="react-sidebar" id="desktop-workspace-navigation">
-          <Logo />
-          <div className="workspace-identity">
-            <span className="workspace-initial">P</span>
-            <div>
-              <strong>Payment workspace</strong>
-              <small>Self-hosted infrastructure</small>
-            </div>
-          </div>
-          <Navigation page={page} />
-          <div className="sidebar-bottom">
-            <span className="ownership-dot" />
-            <span>Your infrastructure. Your control.</span>
-          </div>
-        </aside>
-        <div className="react-workspace">
+        <header className="react-titlebar">
           <RuntimeProvider page={page} guard={false}>
-            <header className="react-header">
-              <div className="header-location">
-                <Sheet open={menu} onOpenChange={setMenu}>
-                  <SheetTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="mobile-workspace-trigger"
-                      aria-label="Open workspace navigation"
-                    >
-                      <Menu size={20} />
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent side="left" className="mobile-workspace-sheet">
-                    <SheetHeader>
-                      <SheetTitle>Paymux workspace</SheetTitle>
-                    </SheetHeader>
-                    <Navigation page={page} close={() => setMenu(false)} />
-                  </SheetContent>
-                </Sheet>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="desktop-sidebar-trigger"
-                  aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                  aria-expanded={!collapsed}
-                  aria-controls="desktop-workspace-navigation"
-                  onClick={() => {
-                    setCollapsed(!collapsed);
-                    try {
-                      localStorage.setItem(
-                        "paymux-sidebar-collapsed",
-                        String(!collapsed),
-                      );
-                    } catch {}
-                  }}
-                >
-                  {collapsed ? (
-                    <PanelLeftOpen aria-hidden="true" size={17} />
-                  ) : (
-                    <PanelLeftClose aria-hidden="true" size={17} />
-                  )}
-                </Button>
-                <span className="breadcrumb-root">Workspace</span>
-                <ChevronRight size={14} />
-                <strong>{name}</strong>
-              </div>
-              <div className="header-controls">
-                <Badge
-                  variant="secondary"
-                  className={
-                    page.mode.includes("test") ? "test-label" : "live-label"
-                  }
-                >
-                  {page.mode.replace(" mode", "").toUpperCase()}
-                </Badge>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="command-trigger"
-                  aria-label="Search and commands"
-                  onClick={openCommand}
-                >
-                  <Search size={14} />
-                  <span>Search</span>
-                  <kbd>Ctrl K</kbd>
-                </Button>
-                <RefreshWorkspace
-                  refresh={refresh}
-                  loading={loading}
-                  hasEdits={dirtyIds.has(state.activeId)}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={
-                    dark ? "Switch to light theme" : "Switch to dark theme"
-                  }
-                  onClick={toggleTheme}
-                >
-                  {dark ? <Sun size={17} /> : <Moon size={17} />}
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="account-trigger"
-                      aria-label="Account and mode"
-                    >
-                      {page.user.slice(0, 2).toUpperCase() || "PM"}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="account-menu">
-                    <DropdownMenuLabel>{page.user}</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {page.modeForm && <RenderNode node={page.modeForm} />}
-                    <DropdownMenuSeparator />
-                    {page.logoutForm && <RenderNode node={page.logoutForm} />}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </header>
+            <div className="titlebar-brand">
+              <Sheet open={menu} onOpenChange={setMenu}>
+                <SheetTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="mobile-workspace-trigger"
+                    aria-label="Open workspace navigation"
+                  >
+                    <Menu size={20} />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="mobile-workspace-sheet">
+                  <SheetHeader>
+                    <SheetTitle>Paymux workspace</SheetTitle>
+                  </SheetHeader>
+                  <Navigation page={page} close={() => setMenu(false)} />
+                </SheetContent>
+              </Sheet>
+              <Logo />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="desktop-sidebar-trigger"
+                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                aria-expanded={!collapsed}
+                aria-controls="desktop-workspace-navigation"
+                onClick={() => {
+                  setCollapsed(!collapsed);
+                  try {
+                    localStorage.setItem(
+                      "paymux-sidebar-collapsed",
+                      String(!collapsed),
+                    );
+                  } catch {}
+                }}
+              >
+                {collapsed ? (
+                  <PanelLeftOpen aria-hidden="true" size={17} />
+                ) : (
+                  <PanelLeftClose aria-hidden="true" size={17} />
+                )}
+              </Button>
+            </div>
             <TabStrip iconFor={iconFor} />
+            <div className="header-controls">
+              <Button
+                variant="outline"
+                size="sm"
+                className="command-trigger"
+                aria-label="Search and commands"
+                onClick={openCommand}
+              >
+                <Search size={14} />
+                <span>Search or jump to…</span>
+                <kbd>Ctrl K</kbd>
+              </Button>
+              <Badge
+                variant="secondary"
+                className={
+                  page.mode.includes("test") ? "test-label" : "live-label"
+                }
+              >
+                {page.mode.replace(" mode", "").toUpperCase()}
+              </Badge>
+              <RefreshWorkspace
+                refresh={refresh}
+                loading={loading}
+                hasEdits={dirtyIds.has(state.activeId)}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={
+                  dark ? "Switch to light theme" : "Switch to dark theme"
+                }
+                onClick={toggleTheme}
+              >
+                {dark ? <Sun size={17} /> : <Moon size={17} />}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="account-trigger"
+                    aria-label="Account and mode"
+                  >
+                    {page.user.slice(0, 2).toUpperCase() || "PM"}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="account-menu">
+                  <DropdownMenuLabel>{page.user}</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {page.modeForm && <RenderNode node={page.modeForm} />}
+                  <DropdownMenuItem asChild>
+                    <a href="/docs">API reference</a>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {page.logoutForm && <RenderNode node={page.logoutForm} />}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             {commandLoaded && (
               <Suspense fallback={null}>
                 <CommandBar
@@ -740,6 +730,11 @@ function TabsShell({
               </Suspense>
             )}
           </RuntimeProvider>
+        </header>
+        <aside className="react-sidebar" id="desktop-workspace-navigation">
+          <Navigation page={page} />
+        </aside>
+        <div className="react-workspace">
           {/* The active tab leads in DOM order so ids, label[for] and
               aria-controls resolve to the visible page. Keyed children move
               without remounting. */}
@@ -751,19 +746,12 @@ function TabsShell({
               onDirty={onDirty}
             />
           ))}
-          <div className="workspace-bottom">
-            <span>Paymux control plane</span>
-            <button
-              type="button"
-              className="shortcuts-link"
-              aria-label="Keyboard shortcuts"
-              onClick={() => setShortcutsOpen(true)}
-            >
-              Shortcuts <kbd>?</kbd>
-            </button>
-            <a href="/docs">API reference</a>
-          </div>
         </div>
+        <StatusBar
+          updatedAt={client.getQueryState(activeKey)?.dataUpdatedAt}
+          warnings={page.warnings}
+          onShortcuts={() => setShortcutsOpen(true)}
+        />
         <Dialog
           open={!!confirm}
           onOpenChange={(open) => {

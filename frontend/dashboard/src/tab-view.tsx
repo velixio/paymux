@@ -86,13 +86,6 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
 
   return (
     <>
-      {active &&
-        shown.data?.warnings.map((message, i) => (
-          <div className="workspace-warning" role="status" key={i}>
-            <TriangleAlert size={14} aria-hidden="true" />
-            {message}
-          </div>
-        ))}
       <section
         className="react-content"
         ref={section}
