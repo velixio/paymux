@@ -107,3 +107,21 @@ test("ctrl+k finds a payment id and opens it", async ({ page }) => {
   // The pinned Overview stays; the payment opened beside it.
   await expect(page.getByRole("tab")).toHaveCount(2);
 });
+
+test("reload shows no classic page; it appears only when the app script fails", async ({
+  page,
+}) => {
+  await login(page);
+  // Normal load: the server page is invisible until React replaces it.
+  await page.goto("/dashboard/overview");
+  await expect(page.locator(".revenue-chart")).toBeVisible();
+  await expect(page.locator("#paymux-server-page")).toHaveCount(0);
+
+  // App script blocked: the server page is hidden at first, then shown.
+  await page.route("**/assets/dashboard/main.js", (r) => r.abort());
+  await page.goto("/dashboard/overview");
+  const server = page.locator("#paymux-server-page");
+  await expect(server).toBeHidden();
+  await expect(server).toBeVisible({ timeout: 4000 });
+  await expect(server.getByRole("heading", { name: /Overview/ })).toBeVisible();
+});
