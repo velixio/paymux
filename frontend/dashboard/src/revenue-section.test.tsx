@@ -107,6 +107,15 @@ test("selects apply on change and keep the current range", async () => {
   expect(search(router).get("range")).toBe("12m");
 });
 
+test("toolbar selects use the styled select, not the browser arrow", async () => {
+  await overview({}, "/dashboard/overview?range=12m");
+  const toolbar = within(q(".revenue-toolbar") as HTMLElement);
+  for (const name of ["App", "Currency", "Group by"])
+    expect(toolbar.getByLabelText(name).getAttribute("data-slot")).toBe(
+      "native-select",
+    );
+});
+
 test("choosing the empty option removes that filter", async () => {
   const router = await overview(
     { app: "app_1" },

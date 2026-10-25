@@ -65,6 +65,24 @@ export default defineConfig({
       output: {
         entryFileNames: "main.js",
         chunkFileNames: "[name]-[hash].js",
+        // Libraries change far less often than the app: separate, hashed
+        // chunks stay cached across Paymux updates and load in parallel.
+        codeSplitting: {
+          groups: [
+            {
+              name: "vendor-react",
+              test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/,
+            },
+            {
+              name: "vendor-tanstack",
+              test: /node_modules[\\/]@tanstack[\\/]/,
+            },
+            {
+              name: "vendor-ui",
+              test: /node_modules[\\/](radix-ui|@radix-ui|@floating-ui|lucide-react|tailwind-merge|class-variance-authority|clsx)[\\/]/,
+            },
+          ],
+        },
         assetFileNames: (asset) =>
           asset.names.some((n) => n.endsWith(".css"))
             ? "style.css"

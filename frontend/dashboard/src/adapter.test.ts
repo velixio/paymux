@@ -25,6 +25,29 @@ function page() {
     "/dashboard/settings",
   );
 }
+describe("nav counts", () => {
+  const withNav = (nav: string) =>
+    parseDashboard(
+      new win.DOMParser().parseFromString(
+        `<title>Overview - Paymux</title><div id="paymux-server-page"><header class="dash-head"><span class="muted">a@example.com (admin)</span></header><nav class="dash-nav">${nav}</nav><section class="dash-main"></section></div>`,
+        "text/html",
+      ) as unknown as Document,
+      "/dashboard/overview",
+    );
+  test("reads data-count into nav[].count and keeps the label clean", () => {
+    const p = withNav(
+      `<a href="/dashboard/disputes" data-count="3">Disputes</a><a href="/dashboard/alerts" data-count="2">Alerts <span class="badge">2</span></a><a href="/dashboard/logs">Logs</a><a href="/dashboard/fx" data-count="x">FX</a><a href="/dashboard/audit" data-count="0">Audit</a>`,
+    );
+    expect(p.nav.map((n) => [n.label, n.count])).toEqual([
+      ["Disputes", 3],
+      ["Alerts", 2],
+      ["Logs", undefined],
+      ["FX", undefined],
+      ["Audit", undefined],
+    ]);
+  });
+});
+
 describe("existing Go page contract", () => {
   test("retains session actions, CSRF, mode and permission-derived navigation", () => {
     const p = page();
@@ -88,6 +111,19 @@ describe("existing Go page contract", () => {
       encType: "multipart/form-data",
       readOnly: true,
     });
+  });
+  test("reads a nav count only when the server attached one", () => {
+    const d = new win.DOMParser().parseFromString(
+      '<title>Keys - Paymux</title><div id="paymux-server-page"><header class="dash-head"></header><nav class="dash-nav"><a href="/dashboard/disputes" data-count="2">Disputes</a><a href="/dashboard/apps" data-count="">Apps</a><a href="/dashboard/logs" data-count="x">Logs</a><a href="/dashboard/audit">Audit</a></nav><section class="dash-main"></section></div>',
+      "text/html",
+    );
+    const p = parseDashboard(d as unknown as Document, "/dashboard/disputes");
+    expect(p.nav.map((n) => n.count)).toEqual([
+      2,
+      undefined,
+      undefined,
+      undefined,
+    ]);
   });
   test("marks pages that show a one-time secret", () => {
     expect(page().once).toBe(false);

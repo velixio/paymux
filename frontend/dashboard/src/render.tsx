@@ -2,6 +2,7 @@ import React, {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -22,9 +23,12 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Copy, LoaderCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { statusTone } from "./pill";
+import { statusLabel, statusTone } from "./pill";
+import { polishNodes } from "./polish";
 import { RevenueSection } from "./revenue-section";
 import { SavedFiltersBar } from "./saved-filters-bar";
+import { isRecordPath } from "./peek";
+import { recordSplit, SectionTabs } from "./section-tabs";
 import { attributes, textOf, type ViewNode } from "./adapter";
 import { useRuntime, WorkspaceLink } from "./runtime";
 // <code> values inside table cells and definition lists get a copy button.
@@ -80,37 +84,34 @@ function Form({ node }: { node: ViewNode }) {
     (node.attrs.class ?? "").split(/\s+/).includes("filters") &&
     (node.attrs.method ?? "get").toLowerCase() === "get";
   return (
-    <>
+    <form
+      {...attributes(node)}
+      ref={(el) => {
+        form.current = el;
+        if (el && baseline.current === null) baseline.current = fingerprint(el);
+      }}
+      aria-busy={pending}
+      data-dirty={dirty || undefined}
+      onInput={(event) => {
+        const changed = fingerprint(event.currentTarget) !== baseline.current;
+        setDirty(changed);
+        markDirty(event.currentTarget, changed);
+      }}
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit(
+          event.currentTarget,
+          (event.nativeEvent as SubmitEvent)
+            .submitter as HTMLButtonElement | null,
+        );
+      }}
+    >
+      {renderChildren(node.children)}
+      {dirty && node.attrs.class?.includes("setting-form") && (
+        <small className="unsaved-note">Unsaved change</small>
+      )}
       {filterForm && <SavedFiltersBar form={form} />}
-      <form
-        {...attributes(node)}
-        ref={(el) => {
-          form.current = el;
-          if (el && baseline.current === null)
-            baseline.current = fingerprint(el);
-        }}
-        aria-busy={pending}
-        data-dirty={dirty || undefined}
-        onInput={(event) => {
-          const changed = fingerprint(event.currentTarget) !== baseline.current;
-          setDirty(changed);
-          markDirty(event.currentTarget, changed);
-        }}
-        onSubmit={(event) => {
-          event.preventDefault();
-          submit(
-            event.currentTarget,
-            (event.nativeEvent as SubmitEvent)
-              .submitter as HTMLButtonElement | null,
-          );
-        }}
-      >
-        {renderChildren(node.children)}
-        {dirty && node.attrs.class?.includes("setting-form") && (
-          <small className="unsaved-note">Unsaved change</small>
-        )}
-      </form>
-    </>
+    </form>
   );
 }
 function PolicyTable({ node }: { node: ViewNode }) {
@@ -272,16 +273,28 @@ export function RenderNode({ node: n }: { node: ViewNode }): ReactNode {
         {n.attrs["data-copy"] && <Copy size={14} />} {children()}
       </Button>
     );
-  if (n.tag === "span" && /\b(status|mode|flag|badge)\b/.test(cls))
+  if (n.tag === "span" && /\b(status|mode|flag|badge)\b/.test(cls)) {
+    const text = textOf(n);
+    // A plain status word reads as a label ("Requires action") with a dot in
+    // its tone; richer content (links, counts) renders as given.
+    const plain = n.children.every((c) => c.tag === "#text");
     return (
       <Badge
         {...props}
         variant="secondary"
-        className={cn(cls, "pill", `pill-${statusTone(textOf(n))}`)}
+        className={cn(cls, "pill", `pill-${statusTone(text)}`)}
       >
-        {children()}
+        {plain ? (
+          <>
+            <span className="pill-dot" aria-hidden="true" />
+            {statusLabel(text)}
+          </>
+        ) : (
+          children()
+        )}
       </Badge>
     );
+  }
   if (n.tag === "table")
     return cls.includes("settings") ? (
       <PolicyTable node={n} />
@@ -343,6 +356,23 @@ export function RenderNode({ node: n }: { node: ViewNode }): ReactNode {
     return React.createElement(n.tag, props);
   return React.createElement(n.tag, props, children());
 }
-export function PageContent({ nodes }: { nodes: ViewNode[] }) {
-  return <>{renderChildren(nodes)}</>;
+export function PageContent({
+  nodes,
+  href,
+  syncHash,
+}: {
+  nodes: ViewNode[];
+  /** The page's own URL; record pages get inner section tabs. */
+  href?: string;
+  /** Keep the selected inner tab in the URL hash (the active workspace tab). */
+  syncHash?: boolean;
+}) {
+  // Readable money, dates, status pills and empty states (presentation only).
+  const shown = useMemo(() => polishNodes(nodes), [nodes]);
+  const split = href && isRecordPath(href) ? recordSplit(shown) : null;
+  if (split)
+    return (
+      <SectionTabs split={split} render={renderChildren} syncHash={syncHash} />
+    );
+  return <>{renderChildren(shown)}</>;
 }

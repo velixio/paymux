@@ -156,3 +156,41 @@ func TestAssetHandler(t *testing.T) {
 		t.Fatal("templates reachable through assets")
 	}
 }
+
+// Fixed-name assets (main.js, style.css) must be revalidated, or a browser
+// keeps an old dashboard after an upgrade; hashed chunks can be cached for good.
+func TestAssetCaching(t *testing.T) {
+	fsys := fstest.MapFS{
+		"static/dashboard/main.js":                                {Data: []byte("console.log(1)")},
+		"static/dashboard/vendor-react-Dph6fTCk.js":               {Data: []byte("react")},
+		"static/dashboard/inter-latin-wght-normal-Dx4kXJAl.woff2": {Data: []byte("font")},
+	}
+	srv := httptest.NewServer(AssetHandler(fsys))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/assets/dashboard/main.js")
+	if err != nil || res.StatusCode != 200 {
+		t.Fatalf("%v %v", res, err)
+	}
+	etag := res.Header.Get("ETag")
+	if res.Header.Get("Cache-Control") != "no-cache" || !strings.HasPrefix(etag, `"`) {
+		t.Fatalf("fixed-name asset: cache-control %q etag %q", res.Header.Get("Cache-Control"), etag)
+	}
+	req, _ := http.NewRequest("GET", srv.URL+"/assets/dashboard/main.js", nil)
+	req.Header.Set("If-None-Match", etag)
+	if again, _ := http.DefaultClient.Do(req); again.StatusCode != http.StatusNotModified {
+		t.Fatalf("unchanged file: want 304, got %d", again.StatusCode)
+	}
+
+	fsys["static/dashboard/main.js"] = &fstest.MapFile{Data: []byte("console.log(2)")}
+	if changed, _ := http.Get(srv.URL + "/assets/dashboard/main.js"); changed.Header.Get("ETag") == etag {
+		t.Fatal("a changed file must get a new ETag")
+	}
+
+	for _, p := range []string{"vendor-react-Dph6fTCk.js", "inter-latin-wght-normal-Dx4kXJAl.woff2"} {
+		res, _ := http.Get(srv.URL + "/assets/dashboard/" + p)
+		if got := res.Header.Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+			t.Fatalf("%s: hashed asset cache-control %q", p, got)
+		}
+	}
+}

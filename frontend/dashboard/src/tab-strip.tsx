@@ -25,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useRuntime } from "./runtime";
 import { useTabs } from "./tabs-context";
+import { useEdgeFade } from "./use-edge-fade";
 import type { Tab } from "./tabs";
 
 type Icon = ComponentType<{ size?: number }>;
@@ -60,11 +61,8 @@ export function TabStrip({ iconFor }: { iconFor: (href: string) => Icon }) {
   const { tabs, activeId } = api.state;
 
   useEffect(() => () => stop.current?.(), []);
-  useEffect(() => {
-    list.current
-      ?.querySelector('[aria-selected="true"]')
-      ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-  }, [activeId, narrow]);
+  // Keep the active tab in view; fade the side that hides more tabs.
+  useEdgeFade(list, '[aria-selected="true"]', [activeId, narrow, tabs.length]);
 
   if (narrow)
     return (

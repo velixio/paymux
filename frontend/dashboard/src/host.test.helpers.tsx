@@ -11,8 +11,15 @@ const NAV = ["overview", "payments", "apps"]
   )
   .join("");
 
-export function pageHtml(title: string, body: string) {
-  return `<title>${title} - Paymux</title><div id="paymux-server-page"><header class="dash-head"><span class="muted">u@example.com (admin)</span><form class="modeform" method="post" action="/dashboard/mode"><span class="mode">live mode</span><input type="hidden" name="csrf" value="tok"><button name="mode" value="test">Switch to test</button></form></header><nav class="dash-nav">${NAV}</nav><section class="dash-main">${body}</section></div>`;
+export function pageHtml(
+  title: string,
+  body: string,
+  opts: { nav?: string; warnings?: string[] } = {},
+) {
+  const banners = (opts.warnings ?? [])
+    .map((w) => `<div class="dev-banner">${w}</div>`)
+    .join("");
+  return `<title>${title} - Paymux</title><div id="paymux-server-page"><header class="dash-head"><span class="muted">u@example.com (admin)</span><form class="modeform" method="post" action="/dashboard/mode"><span class="mode">live mode</span><input type="hidden" name="csrf" value="tok"><button name="mode" value="test">Switch to test</button></form></header>${banners}<nav class="dash-nav">${opts.nav ?? NAV}</nav><section class="dash-main">${body}</section></div>`;
 }
 export const loginHtml =
   '<title>Sign in - Paymux</title><div id="paymux-server-page"><form action="/dashboard/login"><input name="csrf" value="t"></form></div>';

@@ -1,13 +1,19 @@
 BUN ?= bun
 VERSION ?= $(shell git describe --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: build build-paymux build-home build-examples dev run-home test test-pg test-all fmt ci run-dev kill docker
+.PHONY: build build-paymux build-home build-examples clean dev run-home test test-pg test-all fmt ci run-dev kill docker
 
 GOBUILD = CGO_ENABLED=0 go build -trimpath
 
 # Every binary into bin/: the hub, the public website and the examples.
 build: build-paymux build-home build-examples
 	@ls -1 bin/
+
+# Remove build output only (what .gitignore marks as generated). Never touches
+# data/, .env or node_modules.
+clean:
+	rm -rf bin web/static/dashboard coverage frontend/test-results frontend/playwright-report
+	find cmd/paymux-home/dist -mindepth 1 ! -name .keep -exec rm -rf {} +
 
 # The payment hub (with the dashboard frontend embedded).
 build-paymux: frontend

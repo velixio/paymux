@@ -89,3 +89,18 @@ export function filterQuery(
   }
   return params.toString();
 }
+
+// Parameters that do not change which records a list shows.
+const IGNORED = new Set(["csrf", "peek"]);
+const canonical = (query: string) =>
+  [...new URLSearchParams(query)]
+    .filter(([k, v]) => v !== "" && !IGNORED.has(k))
+    .map(([k, v]) => `${k}=${v}`)
+    .sort()
+    .join("&");
+
+/** Whether a saved query selects the same filter as the current one. */
+export function sameQuery(saved: string, current: string): boolean {
+  const a = canonical(saved);
+  return a !== "" && a === canonical(current);
+}

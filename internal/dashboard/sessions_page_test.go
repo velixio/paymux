@@ -41,7 +41,9 @@ func TestYourSessionsPageListsOnlyYourOwnAndRevokesThem(t *testing.T) {
 		e.loginAs(b1, "bob@example.com", bsecret, false)
 
 		page := e.pageOK(a1, "/dashboard/account")
-		has(t, page, "Your sessions", "Remembered", "This session", "127.0.0.0/24", "Go-http-client")
+		has(t, page, "Your sessions", "Remembered", "127.0.0.0/24", "Go-http-client")
+		// The current session is marked with a badge (a pill in the workspace).
+		has(t, page, `<span class="badge">This session</span>`)
 		ids := sessionIDRE.FindAllStringSubmatch(page, -1)
 		if len(ids) != 1 { // the other one of alice's; the current one has no button
 			t.Fatalf("revoke buttons: %v", ids)

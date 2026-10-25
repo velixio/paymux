@@ -9,13 +9,14 @@ import "../../styles.css";
 import "./workspace.css";
 import "./app-shell.css";
 import { parseDashboard } from "./adapter";
-import { queryKey } from "./runtime";
-import { createDashboardRouter } from "./shell";
+import { createDashboardRouter, seedInitialPage } from "./shell";
+import { withPeek } from "./peek";
 
 const source = document.getElementById("paymux-server-page");
 const mount = document.getElementById("paymux-react-root");
 if (mount?.dataset.styleNonce) setNonce(mount.dataset.styleNonce);
-const initialHref = location.pathname + location.search;
+// The page's data address: the side pane (?peek=) does not change it.
+const initialHref = withPeek(location.pathname + location.search, null);
 let initial = source ? parseDashboard(document, initialHref) : null;
 const client = new QueryClient({
   defaultOptions: {
@@ -27,7 +28,7 @@ const client = new QueryClient({
     },
   },
 });
-if (initial) client.setQueryData(queryKey(initialHref), initial);
+if (initial) seedInitialPage(initialHref, initial);
 class Boundary extends React.Component<
   { children: React.ReactNode },
   { failed: boolean }

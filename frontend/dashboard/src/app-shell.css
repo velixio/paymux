@@ -29,21 +29,6 @@
   border-radius: 6px;
   flex-shrink: 0;
 }
-.app-shell .workspace-identity {
-  padding: 8px;
-  margin: 16px 2px 7px;
-  gap: 8px;
-  border-radius: 6px;
-  flex-shrink: 0;
-}
-.app-shell .workspace-initial {
-  width: 26px;
-  height: 26px;
-  flex-shrink: 0;
-}
-.app-shell .workspace-identity small {
-  font-size: 10px;
-}
 .app-shell .react-sidebar .react-navigation {
   overflow-y: auto;
   overflow-x: hidden;
@@ -66,32 +51,11 @@
   margin-bottom: 1px;
   font-size: 12px;
 }
-.app-shell .sidebar-bottom {
-  padding: 13px 10px 0;
-  font-size: 10px;
-  flex-shrink: 0;
-}
 .app-shell .react-workspace {
   margin-left: var(--shell-sidebar-width);
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
-}
-.app-shell .react-header {
-  min-height: 52px;
-  height: 52px;
-  flex-shrink: 0;
-  padding: 6px 20px;
-  gap: 10px;
-}
-.app-shell .header-location {
-  gap: 9px;
-  min-width: 0;
-}
-.app-shell .header-location strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .app-shell .header-controls {
   gap: 5px;
@@ -272,14 +236,6 @@
   padding: 6px 20px;
   flex-shrink: 0;
 }
-.app-shell .workspace-bottom {
-  margin: 0;
-  padding: 5px 20px;
-  min-height: 26px;
-  flex-shrink: 0;
-  background: var(--card);
-  font-size: 10px;
-}
 .app-shell .desktop-sidebar-trigger {
   display: inline-flex;
   flex-shrink: 0;
@@ -287,16 +243,9 @@
 .app-shell.sidebar-collapsed {
   --shell-sidebar-width: 64px;
 }
-.sidebar-collapsed .react-sidebar .react-wordmark,
-.sidebar-collapsed .react-sidebar .workspace-identity,
 .sidebar-collapsed .react-sidebar .navigation-caption,
-.sidebar-collapsed .react-sidebar .navigation-item > span,
-.sidebar-collapsed .react-sidebar .sidebar-bottom {
+.sidebar-collapsed .react-sidebar .navigation-item > span {
   display: none;
-}
-.sidebar-collapsed .react-sidebar .react-logo {
-  padding: 0;
-  justify-content: center;
 }
 .sidebar-collapsed .react-sidebar .react-navigation {
   margin-top: 15px;
@@ -327,27 +276,12 @@
     height: 44px;
     width: 44px;
   }
-  .app-shell .react-header {
-    height: 58px;
-    min-height: 58px;
-  }
 }
 @media (max-width: 760px) {
   .app-shell .react-workspace {
     margin-left: 0;
   }
   .app-shell .desktop-sidebar-trigger {
-    display: none;
-  }
-  .app-shell .react-header {
-    height: 58px;
-    min-height: 58px;
-    padding: 6px 10px;
-  }
-  .app-shell .header-location {
-    gap: 4px;
-  }
-  .app-shell .header-location > svg {
     display: none;
   }
   .app-shell .header-controls {
@@ -364,9 +298,6 @@
   }
   .app-shell .react-content > h1 {
     font-size: 21px;
-  }
-  .app-shell .workspace-bottom {
-    padding-inline: 12px;
   }
   .app-shell .workspace-warning {
     padding-inline: 12px;
@@ -443,7 +374,6 @@
   background: var(--ui-accent);
   color: var(--accent-foreground);
 }
-
 .app-shell .react-content [data-slot="button"]:hover {
   background: color-mix(in srgb, var(--foreground) 5%, var(--card));
 }
@@ -457,13 +387,7 @@
   .app-shell .react-logo {
     min-height: 44px;
   }
-  .app-shell .workspace-bottom a {
-    min-height: 44px;
-    display: flex;
-    align-items: center;
-  }
 }
-
 @media (max-width: 760px) {
   .app-shell .react-content .setting-nav {
     flex-wrap: nowrap;
@@ -522,10 +446,14 @@
   border-top: 3px solid var(--test-mode);
 }
 .app-shell .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   border-radius: 999px;
-  padding: 2px 9px;
+  padding: 2px 8px 2px 7px;
   font-size: 11px;
   font-weight: 500;
+  white-space: nowrap;
 }
 .app-shell .pill.pill-ok {
   background: var(--status-ok-bg);
@@ -542,6 +470,18 @@
 .app-shell .pill.pill-neutral {
   background: var(--status-neutral-bg);
   color: var(--status-neutral-fg);
+}
+.app-shell .pill.pill-info {
+  background: var(--status-info-bg);
+  color: var(--status-info-fg);
+}
+/* The dot repeats the tone in solid colour, so a status reads at a glance. */
+.app-shell .pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
 }
 .app-shell .react-workspace [hidden] {
   display: none !important;
@@ -781,4 +721,636 @@
     min-height: 30px;
     padding: 0 10px;
   }
+}
+/* App frame: title bar (brand, tabs, controls), sidebar, workspace, status bar. */
+.app-shell {
+  --titlebar-height: 40px;
+  --statusbar-height: 24px;
+  display: grid;
+  grid-template-columns: var(--shell-sidebar-width) minmax(0, 1fr);
+  grid-template-rows: var(--titlebar-height) minmax(0, 1fr) var(
+      --statusbar-height
+    );
+  grid-template-areas: "bar bar" "side main" "status status";
+}
+.app-shell .react-titlebar {
+  grid-area: bar;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  background: var(--sidebar);
+  border-bottom: 1px solid var(--border);
+}
+.app-shell .titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: var(--shell-sidebar-width);
+  flex-shrink: 0;
+  padding: 0 6px 0 12px;
+  border-right: 1px solid var(--border);
+}
+.app-shell .titlebar-brand .react-logo {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  gap: 8px;
+  font-size: 15px;
+  letter-spacing: -0.4px;
+}
+.app-shell .titlebar-brand .react-logo > span {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+}
+.app-shell .titlebar-brand .react-logo svg {
+  width: 14px;
+  height: 14px;
+}
+.app-shell .titlebar-brand .desktop-sidebar-trigger {
+  height: 28px;
+  width: 28px;
+  min-height: 28px;
+  padding: 5px;
+}
+.app-shell.sidebar-collapsed .titlebar-brand {
+  justify-content: center;
+  padding: 0;
+}
+.app-shell.sidebar-collapsed .titlebar-brand .react-logo {
+  display: none;
+}
+.app-shell .react-titlebar .tab-strip {
+  flex: 1;
+  height: auto;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 0 6px;
+  background: transparent;
+  border: 0;
+}
+.app-shell .react-titlebar .tab-strip-compact {
+  align-items: center;
+}
+.app-shell .react-titlebar .tab {
+  height: 32px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 7px 7px 0 0;
+  max-width: 190px;
+}
+.app-shell .react-titlebar .tab.active {
+  margin-bottom: -1px;
+  height: 33px;
+  background: var(--background);
+  border-color: var(--border);
+  box-shadow: inset 0 2px 0 var(--primary);
+}
+.app-shell .react-titlebar .tab:not(.active):hover {
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+.app-shell .react-titlebar .header-controls {
+  gap: 8px;
+  padding: 0 10px;
+  align-items: center;
+}
+.app-shell
+  .react-titlebar
+  .header-controls
+  [data-slot="button"].command-trigger {
+  width: 200px;
+  justify-content: space-between;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 8px;
+  background: var(--background);
+}
+.app-shell .command-trigger span {
+  margin-right: auto;
+}
+.app-shell .react-titlebar .live-label,
+.app-shell .react-titlebar .test-label {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+}
+.app-shell .react-titlebar .header-controls [data-slot="button"] {
+  min-height: 28px;
+  height: 28px;
+  width: 28px;
+  padding: 5px;
+}
+.app-shell .react-titlebar .account-trigger {
+  border-radius: 50%;
+  background: var(--ui-accent);
+  color: var(--accent-foreground);
+  font-weight: 700;
+}
+.app-shell .react-sidebar {
+  grid-area: side;
+  position: static;
+  width: auto;
+  padding: 8px 6px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+.app-shell .react-sidebar .react-navigation {
+  margin-top: 0;
+}
+.app-shell .navigation-group:first-child {
+  padding-top: 0;
+}
+.app-shell .navigation-item {
+  min-height: 28px;
+  padding: 4px 8px;
+}
+.app-shell .navigation-item .nav-count {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-feature-settings: "tnum";
+}
+.app-shell .navigation-item.selected .nav-count {
+  color: inherit;
+}
+.sidebar-collapsed .react-sidebar .nav-count {
+  display: none;
+}
+.app-shell .react-workspace {
+  grid-area: main;
+  margin-left: 0;
+  height: auto;
+  min-height: 0;
+}
+.app-shell .status-bar {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 0 12px;
+  background: var(--sidebar);
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.app-shell .status-bar > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.app-shell .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-ok-fg);
+}
+.app-shell .status-offline .status-dot {
+  background: var(--status-bad-fg);
+}
+.app-shell .status-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--status-warn-fg);
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-shell .status-hints {
+  margin-left: auto;
+}
+.app-shell .status-bar .shortcuts-link {
+  height: 100%;
+}
+.status-popover {
+  width: auto;
+  max-width: min(380px, calc(100vw - 24px));
+  padding: 4px;
+}
+.status-popover ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.status-popover .workspace-warning {
+  padding: 6px 8px;
+  border-bottom: 0;
+}
+@media (max-width: 1100px) {
+  .app-shell
+    .react-titlebar
+    .header-controls
+    [data-slot="button"].command-trigger {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+  }
+  .app-shell .command-trigger span,
+  .app-shell .command-trigger kbd {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .app-shell {
+    --titlebar-height: 48px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "bar" "main" "status";
+  }
+  .app-shell .react-sidebar {
+    display: none;
+  }
+  .app-shell .titlebar-brand {
+    width: auto;
+    padding: 0 4px;
+    border-right: 0;
+  }
+  .app-shell .titlebar-brand .react-wordmark {
+    display: none;
+  }
+  .app-shell .titlebar-brand .react-logo {
+    flex: none;
+  }
+  .app-shell .react-titlebar .header-controls {
+    gap: 2px;
+    padding: 0 6px 0 0;
+  }
+  .app-shell .react-titlebar .header-controls [data-slot="button"] {
+    min-height: 40px;
+    height: 40px;
+    width: 40px;
+  }
+  .app-shell .status-bar .status-hints,
+  .app-shell .status-bar .shortcuts-link {
+    display: none;
+  }
+}
+/* Screen toolbar: one sticky 44 px row per page. It leads the scroller (a
+   sticky box cannot leave its parent's content box, so no top padding). */
+.app-shell .react-content:has(> .screen-toolbar) {
+  padding-top: 0;
+}
+.app-shell .react-content .screen-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 0 -20px 16px;
+  padding: 0 20px;
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+.app-shell .react-content .toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+  max-width: 60%;
+}
+.app-shell .react-content .toolbar-title small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 400;
+}
+.app-shell .react-content .toolbar-back,
+.app-shell .react-content .toolbar-info {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.app-shell .react-content .toolbar-back:hover,
+.app-shell .react-content .toolbar-info:hover {
+  background: var(--muted);
+  color: var(--foreground);
+  text-decoration: none;
+}
+.toolbar-description {
+  width: auto;
+  max-width: min(360px, calc(100vw - 24px));
+  font-size: 12px;
+}
+.toolbar-description p {
+  margin: 0;
+}
+.app-shell .react-content .toolbar-chips {
+  flex: 0 1 auto;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+/* A soft fade marks the side that hides more chips. */
+.app-shell .react-content .toolbar-chips[data-fade-end] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+}
+.app-shell .react-content .toolbar-chips[data-fade-start] {
+  mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent);
+}
+.app-shell .react-content .toolbar-chips[data-fade-start][data-fade-end] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 32px,
+    #000 calc(100% - 32px),
+    transparent
+  );
+}
+.app-shell .react-content .toolbar-chip {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 11px;
+  text-transform: capitalize;
+  cursor: pointer;
+}
+.app-shell .react-content .toolbar-chip:hover {
+  background: var(--muted);
+}
+.app-shell .react-content .toolbar-chip[aria-pressed="true"] {
+  background: var(--ui-accent);
+  border-color: var(--ring);
+  color: var(--accent-foreground);
+}
+.app-shell .react-content .toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.app-shell .react-content .toolbar-actions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.app-shell .react-content .toolbar-actions a:not(.btn) {
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+.app-shell .react-content .toolbar-actions a:not(.btn):hover {
+  background: var(--muted);
+}
+@media (max-width: 760px) {
+  .app-shell .react-content .screen-toolbar {
+    margin: 0 -12px 12px;
+    padding: 0 12px;
+    gap: 6px;
+  }
+  .app-shell .react-content .toolbar-actions a:not(.btn) {
+    display: none;
+  }
+}
+/* Filter row: one compact borderless line; saved filters end it. */
+.app-shell .react-content form.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+.app-shell .react-content form.filters [data-slot="input"],
+.app-shell .react-content form.filters [data-slot="native-select"],
+.app-shell .react-content form.filters > [data-slot="button"] {
+  min-height: 30px;
+  height: 30px;
+  padding-block: 0;
+  font-size: 12px;
+}
+.app-shell .react-content form.filters > [data-slot="button"] {
+  padding-inline: 12px;
+}
+.app-shell .react-content form.filters > [data-slot="native-select-wrapper"] {
+  flex: 0 0 auto;
+}
+.app-shell .react-content form.filters > input[type="search"] {
+  flex: 1 1 200px;
+  min-width: 160px;
+}
+.app-shell .react-content form.filters > label.filter-date-field {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  min-width: 0;
+}
+.app-shell .react-content form.filters .filter-date-field > span {
+  margin: 0;
+  white-space: nowrap;
+}
+.app-shell .react-content form.filters .filter-date-field [data-slot="input"] {
+  width: 140px;
+}
+.app-shell .react-content form.filters .saved-filters {
+  margin: 0 0 0 auto;
+}
+@media (max-width: 760px) {
+  .app-shell .react-content form.filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: end;
+  }
+  .app-shell .react-content form.filters > label.filter-date-field {
+    display: grid;
+    gap: 3px;
+  }
+  .app-shell .react-content form.filters .filter-date-field [data-slot="input"],
+  .app-shell .react-content form.filters > [data-slot="input"],
+  .app-shell .react-content form.filters [data-slot="native-select"],
+  .app-shell .react-content form.filters > [data-slot="button"] {
+    min-height: 44px;
+    height: 44px;
+    width: 100%;
+  }
+  .app-shell .react-content form.filters .saved-filters {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+  .app-shell .titlebar-brand .mobile-workspace-trigger {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* Status chips carry a dot in the tone of their status. */
+.app-shell .toolbar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.app-shell .pill-dot.tone-ok {
+  background: var(--status-ok-fg);
+}
+.app-shell .pill-dot.tone-bad {
+  background: var(--status-bad-fg);
+}
+.app-shell .pill-dot.tone-warn {
+  background: var(--status-warn-fg);
+}
+.app-shell .pill-dot.tone-info {
+  background: var(--status-info-fg);
+}
+.app-shell .pill-dot.tone-neutral {
+  background: var(--status-neutral-fg);
+}
+
+/* The tab strip fades the side that hides more tabs, like the chip rows. */
+.app-shell .tab-strip[data-fade-end] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+}
+.app-shell .tab-strip[data-fade-start] {
+  mask-image: linear-gradient(to left, #000 calc(100% - 40px), transparent);
+}
+.app-shell .tab-strip[data-fade-start][data-fade-end] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 40px,
+    #000 calc(100% - 40px),
+    transparent
+  );
+}
+
+/* ---- polish of server content ---- */
+
+/* Amounts line up; dates are quieter than the data around them. */
+.app-shell .react-content .money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.app-shell .react-content .when {
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+/* A table with nothing in it says so in the middle, not in a corner. */
+.app-shell .react-content tr.empty-row > td {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  border-bottom: 0;
+}
+.app-shell .react-content tr.empty-row:hover > td {
+  background: transparent;
+}
+
+/* In a filter row, a link button (e.g. Export) is secondary to Filter. */
+.app-shell .react-content form.filters a.btn {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 500;
+}
+.app-shell .react-content form.filters a.btn:hover {
+  background: var(--ui-accent);
+}
+
+/* A list of choices (link + short name), e.g. connectors: a grid of cards. */
+.app-shell .react-content ul:has(> li > a + small) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  max-width: 920px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.app-shell .react-content ul:has(> li > a + small) > li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition:
+    border-color 120ms,
+    background-color 120ms;
+}
+.app-shell .react-content ul:has(> li > a + small) > li:hover {
+  border-color: var(--ring);
+  background: var(--ui-accent);
+}
+.app-shell .react-content ul:has(> li > a + small) > li > a {
+  color: var(--foreground);
+  font-weight: 600;
+  text-decoration: none;
+}
+/* The whole card is the link's click area. */
+.app-shell .react-content ul:has(> li > a + small) > li > a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.app-shell .react-content ul:has(> li > a + small) > li > small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+/* A short create form without labels (name, slug, …): one compact row. */
+.app-shell .react-content form.stack:not(:has(label)) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: 1000px;
+}
+.app-shell .react-content form.stack:not(:has(label)) > .field,
+.app-shell
+  .react-content
+  form.stack:not(:has(label))
+  > [data-slot="native-select-wrapper"] {
+  flex: 1 1 180px;
+  width: auto;
+  margin: 0;
+}
+.app-shell .react-content form.stack:not(:has(label)) > button {
+  flex: 0 0 auto;
 }

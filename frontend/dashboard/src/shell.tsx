@@ -82,10 +82,13 @@ import { fetchDashboard, type DashboardPage } from "./adapter";
 import { PageContent, RenderNode } from "./render";
 import { queryKey, RuntimeProvider, WorkspaceLink } from "./runtime";
 import { createMatcher, isTyping, type Binding } from "./keys";
+import { TAB_KEYS, type TabAction } from "./shortcuts";
 import { ShortcutSheet } from "./shortcut-sheet";
+import { StatusBar } from "./status-bar";
 import { TabStrip } from "./tab-strip";
 import { TabView } from "./tab-view";
 import { TabsContext, useTabs, type TabsApi } from "./tabs-context";
+import { withPeek } from "./peek";
 import * as tabs from "./tabs";
 import type { TabState } from "./tabs";
 
@@ -192,13 +195,19 @@ function Navigation({
                   className={
                     "navigation-item " + (item.active ? "selected" : "")
                   }
-                  aria-label={item.label}
+                  aria-label={
+                    item.count === undefined
+                      ? item.label
+                      : `${item.label} (${item.count})`
+                  }
                   title={item.label}
                   aria-current={item.active ? "page" : undefined}
                 >
                   <Icon size={16} />
                   <span>{item.label}</span>
-                  {item.active && <span className="active-marker" />}
+                  {item.count !== undefined && (
+                    <span className="nav-count">{item.count}</span>
+                  )}
                 </WorkspaceLink>
               );
             })}
@@ -396,7 +405,13 @@ function TabsShell({
     if (isAuthHref(href)) return;
     const s = stateRef.current;
     const active = s.tabs.find((t) => t.id === s.activeId);
-    if (active && tabs.tabKey(active.href) === tabs.tabKey(href)) return;
+    if (active && tabs.tabKey(active.href) === tabs.tabKey(href)) {
+      // Same page, e.g. the side pane opened or closed (?peek=): the tab
+      // remembers it, so returning to this tab brings the pane back.
+      if (active.href !== href)
+        commit(tabs.navigate(s, active.id, href, active.title));
+      return;
+    }
     const asked = intent.current;
     intent.current = null;
     const how =
@@ -482,6 +497,21 @@ function TabsShell({
         intent.current = { href: to, how };
         void go(to, { ignoreBlocker: how === "new" });
       },
+      retarget(id, to) {
+        const t = stateRef.current.tabs.find((x) => x.id === id);
+        if (t) commit(tabs.navigate(stateRef.current, id, to, t.title));
+      },
+      openInSection(to) {
+        const next = tabs.openInSection(
+          stateRef.current,
+          to,
+          titleFor(to, page),
+          Date.now(),
+          dirtyRef.current,
+        );
+        commit(next);
+        follow(next);
+      },
       activate(id) {
         const next = tabs.activate(stateRef.current, id, Date.now());
         commit(next);
@@ -513,14 +543,18 @@ function TabsShell({
           void client.invalidateQueries({ queryKey: queryKey(tab.href) });
       },
       reopen() {
-        const next = tabs.reopen(stateRef.current, Date.now());
+        const next = tabs.reopen(
+          stateRef.current,
+          Date.now(),
+          dirtyRef.current,
+        );
         commit(next);
         follow(next);
       },
       pin: (id, v) => commit(tabs.setPinned(stateRef.current, id, v)),
       move: (id, i) => commit(tabs.move(stateRef.current, id, i)),
     };
-  }, [state, dirtyIds, router, go, commit, client]);
+  }, [state, dirtyIds, router, go, commit, client, page]);
 
   // One keyboard listener for tab shortcuts: [ and ] step through tabs, g 1..9
   // jump, g w closes, g t reopens. Shifted bindings, when added, must come
@@ -538,22 +572,24 @@ function TabsShell({
       const at = list.findIndex((t) => t.id === activeId);
       apiRef.current.activate(list[(at + by + list.length) % list.length].id);
     };
-    const bindings: Binding[] = [
-      { keys: ["BracketLeft"], run: () => step(-1) },
-      { keys: ["BracketRight"], run: () => step(1) },
-      ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({
-        keys: ["KeyG", `Digit${n}`],
-        run: () => {
-          const tab = now().tabs[n - 1];
-          if (tab) apiRef.current.activate(tab.id);
-        },
-      })),
-      {
-        keys: ["KeyG", "KeyW"],
-        run: () => apiRef.current.close(now().activeId),
-      },
-      { keys: ["KeyG", "KeyT"], run: () => apiRef.current.reopen() },
-    ];
+    const actions: Record<Exclude<TabAction, "go">, () => void> = {
+      previous: () => step(-1),
+      next: () => step(1),
+      close: () => apiRef.current.close(now().activeId),
+      reopen: () => apiRef.current.reopen(),
+    };
+    // Bound from TAB_KEYS, the same list the ? sheet shows.
+    const bindings: Binding[] = TAB_KEYS.flatMap((b): Binding[] =>
+      b.action === "go"
+        ? [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({
+            keys: [...b.keys, `Digit${n}`],
+            run: () => {
+              const tab = now().tabs[n - 1];
+              if (tab) apiRef.current.activate(tab.id);
+            },
+          }))
+        : [{ keys: b.keys, run: actions[b.action] }],
+    );
     const match = createMatcher(bindings);
     const onKey = (e: KeyboardEvent) => {
       // The command bar opens from anywhere with Ctrl/Cmd+K, and with / when
@@ -596,7 +632,6 @@ function TabsShell({
   const activeKey = queryKey(active.href);
   const loading = useIsFetching({ queryKey: activeKey }) > 0;
   const refresh = () => void client.refetchQueries({ queryKey: activeKey });
-  const name = page.nav.find((n) => n.active)?.label || page.title;
 
   return (
     <TabsContext.Provider value={api}>
@@ -609,126 +644,110 @@ function TabsShell({
         <a href="#react-workspace" className="react-skip">
           Skip to workspace
         </a>
-        <aside className="react-sidebar" id="desktop-workspace-navigation">
-          <Logo />
-          <div className="workspace-identity">
-            <span className="workspace-initial">P</span>
-            <div>
-              <strong>Payment workspace</strong>
-              <small>Self-hosted infrastructure</small>
-            </div>
-          </div>
-          <Navigation page={page} />
-          <div className="sidebar-bottom">
-            <span className="ownership-dot" />
-            <span>Your infrastructure. Your control.</span>
-          </div>
-        </aside>
-        <div className="react-workspace">
+        <header className="react-titlebar">
           <RuntimeProvider page={page} guard={false}>
-            <header className="react-header">
-              <div className="header-location">
-                <Sheet open={menu} onOpenChange={setMenu}>
-                  <SheetTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="mobile-workspace-trigger"
-                      aria-label="Open workspace navigation"
-                    >
-                      <Menu size={20} />
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent side="left" className="mobile-workspace-sheet">
-                    <SheetHeader>
-                      <SheetTitle>Paymux workspace</SheetTitle>
-                    </SheetHeader>
-                    <Navigation page={page} close={() => setMenu(false)} />
-                  </SheetContent>
-                </Sheet>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="desktop-sidebar-trigger"
-                  aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                  aria-expanded={!collapsed}
-                  aria-controls="desktop-workspace-navigation"
-                  onClick={() => {
-                    setCollapsed(!collapsed);
-                    try {
-                      localStorage.setItem(
-                        "paymux-sidebar-collapsed",
-                        String(!collapsed),
-                      );
-                    } catch {}
-                  }}
-                >
-                  {collapsed ? (
-                    <PanelLeftOpen aria-hidden="true" size={17} />
-                  ) : (
-                    <PanelLeftClose aria-hidden="true" size={17} />
-                  )}
-                </Button>
-                <span className="breadcrumb-root">Workspace</span>
-                <ChevronRight size={14} />
-                <strong>{name}</strong>
-              </div>
-              <div className="header-controls">
-                <Badge
-                  variant="secondary"
-                  className={
-                    page.mode.includes("test") ? "test-label" : "live-label"
-                  }
-                >
-                  {page.mode.replace(" mode", "").toUpperCase()}
-                </Badge>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="command-trigger"
-                  aria-label="Search and commands"
-                  onClick={openCommand}
-                >
-                  <Search size={14} />
-                  <span>Search</span>
-                  <kbd>Ctrl K</kbd>
-                </Button>
-                <RefreshWorkspace
-                  refresh={refresh}
-                  loading={loading}
-                  hasEdits={dirtyIds.has(state.activeId)}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={
-                    dark ? "Switch to light theme" : "Switch to dark theme"
-                  }
-                  onClick={toggleTheme}
-                >
-                  {dark ? <Sun size={17} /> : <Moon size={17} />}
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="account-trigger"
-                      aria-label="Account and mode"
-                    >
-                      {page.user.slice(0, 2).toUpperCase() || "PM"}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="account-menu">
-                    <DropdownMenuLabel>{page.user}</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {page.modeForm && <RenderNode node={page.modeForm} />}
-                    <DropdownMenuSeparator />
-                    {page.logoutForm && <RenderNode node={page.logoutForm} />}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </header>
+            <div className="titlebar-brand">
+              <Sheet open={menu} onOpenChange={setMenu}>
+                <SheetTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="mobile-workspace-trigger"
+                    aria-label="Open workspace navigation"
+                  >
+                    <Menu size={20} />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="mobile-workspace-sheet">
+                  <SheetHeader>
+                    <SheetTitle>Paymux workspace</SheetTitle>
+                  </SheetHeader>
+                  <Navigation page={page} close={() => setMenu(false)} />
+                </SheetContent>
+              </Sheet>
+              <Logo />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="desktop-sidebar-trigger"
+                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                aria-expanded={!collapsed}
+                aria-controls="desktop-workspace-navigation"
+                onClick={() => {
+                  setCollapsed(!collapsed);
+                  try {
+                    localStorage.setItem(
+                      "paymux-sidebar-collapsed",
+                      String(!collapsed),
+                    );
+                  } catch {}
+                }}
+              >
+                {collapsed ? (
+                  <PanelLeftOpen aria-hidden="true" size={17} />
+                ) : (
+                  <PanelLeftClose aria-hidden="true" size={17} />
+                )}
+              </Button>
+            </div>
             <TabStrip iconFor={iconFor} />
+            <div className="header-controls">
+              <Button
+                variant="outline"
+                size="sm"
+                className="command-trigger"
+                aria-label="Search and commands"
+                onClick={openCommand}
+              >
+                <Search size={14} />
+                <span>Search or jump to…</span>
+                <kbd>Ctrl K</kbd>
+              </Button>
+              <Badge
+                variant="secondary"
+                className={
+                  page.mode.includes("test") ? "test-label" : "live-label"
+                }
+              >
+                {page.mode.replace(" mode", "").toUpperCase()}
+              </Badge>
+              <RefreshWorkspace
+                refresh={refresh}
+                loading={loading}
+                hasEdits={dirtyIds.has(state.activeId)}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={
+                  dark ? "Switch to light theme" : "Switch to dark theme"
+                }
+                onClick={toggleTheme}
+              >
+                {dark ? <Sun size={17} /> : <Moon size={17} />}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="account-trigger"
+                    aria-label="Account and mode"
+                  >
+                    {page.user.slice(0, 2).toUpperCase() || "PM"}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="account-menu">
+                  <DropdownMenuLabel>{page.user}</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {page.modeForm && <RenderNode node={page.modeForm} />}
+                  <DropdownMenuItem asChild>
+                    <a href="/docs">API reference</a>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {page.logoutForm && <RenderNode node={page.logoutForm} />}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             {commandLoaded && (
               <Suspense fallback={null}>
                 <CommandBar
@@ -740,6 +759,11 @@ function TabsShell({
               </Suspense>
             )}
           </RuntimeProvider>
+        </header>
+        <aside className="react-sidebar" id="desktop-workspace-navigation">
+          <Navigation page={page} />
+        </aside>
+        <div className="react-workspace">
           {/* The active tab leads in DOM order so ids, label[for] and
               aria-controls resolve to the visible page. Keyed children move
               without remounting. */}
@@ -751,19 +775,12 @@ function TabsShell({
               onDirty={onDirty}
             />
           ))}
-          <div className="workspace-bottom">
-            <span>Paymux control plane</span>
-            <button
-              type="button"
-              className="shortcuts-link"
-              aria-label="Keyboard shortcuts"
-              onClick={() => setShortcutsOpen(true)}
-            >
-              Shortcuts <kbd>?</kbd>
-            </button>
-            <a href="/docs">API reference</a>
-          </div>
         </div>
+        <StatusBar
+          updatedAt={client.getQueryState(activeKey)?.dataUpdatedAt}
+          warnings={page.warnings}
+          onShortcuts={() => setShortcutsOpen(true)}
+        />
         <Dialog
           open={!!confirm}
           onOpenChange={(open) => {
@@ -800,16 +817,34 @@ function TabsShell({
   );
 }
 
+// The page the server already rendered into this document. Handed over
+// directly because the query cache drops unobserved data at once (gcTime 0),
+// which would refetch it and flash the loading state on every reload.
+let seed: { href: string; page: DashboardPage } | null = null;
+export function seedInitialPage(href: string, page: DashboardPage) {
+  seed = { href, page };
+}
+
 export function DashboardApp({ slot }: { slot?: React.ReactNode }) {
   const loc = useLocation();
   const router = useRouter();
   const href = hrefOf(loc);
+  // The side pane (?peek=) does not change the page's data; this key matches
+  // the one the tab views use.
+  const dataHref = withPeek(href, null);
   // The last page shown keeps the shell mounted while another one loads.
   const shown = useRef<DashboardPage | null>(null);
   const inShell = !!shown.current && !shown.current.auth;
   const { data, error, refetch } = useQuery({
-    queryKey: queryKey(href),
-    queryFn: ({ signal }) => fetchDashboard(href, signal),
+    queryKey: queryKey(dataHref),
+    queryFn: ({ signal }) => fetchDashboard(dataHref, signal),
+    // Used once: later visits to this URL fetch fresh data.
+    initialData: () => {
+      if (seed?.href !== dataHref) return undefined;
+      const page = seed.page;
+      seed = null;
+      return page;
+    },
     // Inside the shell the tab views fetch; this observer only reads.
     // Sign-in style pages have no tab, so this observer loads them.
     enabled: !inShell || isAuthHref(href),
@@ -818,7 +853,7 @@ export function DashboardApp({ slot }: { slot?: React.ReactNode }) {
   const page = shown.current;
   const { dark, setDark } = useChrome(page);
   useEffect(() => {
-    if (data && data.href !== href) {
+    if (data && data.href !== dataHref) {
       const url = new URL(data.href, window.location.origin);
       router.navigate({
         to: url.pathname,
@@ -826,7 +861,7 @@ export function DashboardApp({ slot }: { slot?: React.ReactNode }) {
         replace: true,
       });
     }
-  }, [data, href, router]);
+  }, [data, dataHref, router]);
   if (!page)
     return error ? (
       <div className="workspace-load-error">

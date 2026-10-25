@@ -7,11 +7,14 @@ import {
   type MutableRefObject,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { TriangleAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchDashboard } from "./adapter";
-import { PageContent } from "./render";
+import { ScreenContent } from "./screen-toolbar";
+import { PeekFrame } from "./peek-pane";
+import { withPeek } from "./peek";
 import { queryKey, RuntimeProvider } from "./runtime";
 import { useTableNav } from "./use-table-nav";
 import type { Tab } from "./tabs";
@@ -31,7 +34,9 @@ type BodyProps = {
 };
 
 function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
-  const href = tab.href;
+  // The page's data does not depend on the side pane (?peek=), so the pane
+  // opening or moving never refetches or redraws the list under it.
+  const href = withPeek(tab.href, null);
   const { data, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: queryKey(href),
     queryFn: ({ signal }) => fetchDashboard(href, signal),
@@ -85,12 +90,6 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
 
   return (
     <>
-      {active &&
-        shown.data?.warnings.map((message, i) => (
-          <div className="workspace-warning" role="status" key={i}>
-            {message}
-          </div>
-        ))}
       <section
         className="react-content"
         ref={section}
@@ -111,13 +110,15 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
             pinned={tab.pinned}
             onDirtyChange={onDirty}
           >
-            <PageContent
+            <ScreenContent
               key={
                 shown.data.href +
                 "-" +
                 shown.data.content.map((n) => n.attrs.id || n.tag).join("")
               }
               nodes={shown.data.content}
+              href={href}
+              syncHash={active}
             />
           </RuntimeProvider>
         ) : error ? (
@@ -185,13 +186,15 @@ export function TabView({
   );
   if (!active && (once || evicted)) return null;
   return (
-    <TabBody
-      tab={tab}
-      active={active}
-      dirty={dirty}
-      onDirty={reportDirty}
-      onOnce={setOnce}
-      scroll={scroll}
-    />
+    <PeekFrame active={active}>
+      <TabBody
+        tab={tab}
+        active={active}
+        dirty={dirty}
+        onDirty={reportDirty}
+        onOnce={setOnce}
+        scroll={scroll}
+      />
+    </PeekFrame>
   );
 }

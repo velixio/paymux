@@ -336,7 +336,7 @@ func TestWrongPasswordIsGenericAndCreatesNoSession(t *testing.T) {
 		}
 		// Identical page apart from echoed email and per-response CSRF/style nonces.
 		strip := func(s, email string) string {
-			s = regexp.MustCompile(`data-style-nonce="[A-Za-z0-9_-]{32}"`).ReplaceAllString(s, `data-style-nonce="NONCE"`)
+			s = regexp.MustCompile(`nonce="[A-Za-z0-9_-]{32}"`).ReplaceAllString(s, `nonce="NONCE"`)
 			return strings.ReplaceAll(csrfRE.ReplaceAllString(s, ""), email, "EMAIL")
 		}
 		if strip(b1, "alice@example.com") != strip(b2, "nobody@example.com") {

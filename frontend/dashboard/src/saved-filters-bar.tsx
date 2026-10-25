@@ -3,7 +3,7 @@ import { useRouter } from "@tanstack/react-router";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRuntime } from "./runtime";
-import { add, filterQuery, list, remove } from "./saved-filters";
+import { add, filterQuery, list, remove, sameQuery } from "./saved-filters";
 import { useOptionalTabs } from "./tabs-context";
 
 const storage = (): Storage | null => {
@@ -24,7 +24,8 @@ export function SavedFiltersBar({
   const { page } = useRuntime();
   const tabs = useOptionalTabs();
   const router = useRouter();
-  const path = new URL(page.href, location.origin).pathname;
+  const here = new URL(page.href, location.origin);
+  const path = here.pathname;
   const [filters, setFilters] = useState(() =>
     list(storage(), page.user, path),
   );
@@ -55,7 +56,11 @@ export function SavedFiltersBar({
         <div role="group" aria-label="Saved filters" className="saved-chips">
           {filters.map((f) => (
             <span className="saved-chip" key={f.name}>
-              <button type="button" onClick={() => apply(f.query)}>
+              <button
+                type="button"
+                aria-pressed={sameQuery(f.query, here.search)}
+                onClick={() => apply(f.query)}
+              >
                 {f.name}
               </button>
               <button
@@ -89,15 +94,26 @@ export function SavedFiltersBar({
               if (e.key === "Escape") setNaming(false);
             }}
           />
-          <Button size="sm" disabled={!name.trim()} onClick={save}>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!name.trim()}
+            onClick={save}
+          >
             Save
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setNaming(false)}>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => setNaming(false)}
+          >
             Cancel
           </Button>
         </span>
       ) : (
         <Button
+          type="button"
           variant="ghost"
           size="sm"
           className="save-filter"

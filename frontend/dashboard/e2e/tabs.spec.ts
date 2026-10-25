@@ -12,7 +12,9 @@ async function login(page: Page) {
 // Hidden tabs stay mounted, so scope every locator to the visible one.
 const visible = (page: Page) =>
   page.locator("section.react-content:not([hidden])");
-const tabs = (page: Page) => page.getByRole("tab");
+// Workspace tabs only: record pages have inner section tabs of their own.
+const tabs = (page: Page) =>
+  page.getByRole("tablist", { name: "Open pages" }).getByRole("tab");
 const sidebar = (page: Page, label: string) =>
   page
     .getByRole("navigation", { name: "Workspace navigation" })

@@ -5,7 +5,23 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/paymux/paymux/internal/store"
+	"github.com/paymux/paymux/internal/store/storetest"
 )
+
+// The server page stays hidden while the React workspace loads (dash.css);
+// without JavaScript a nonce'd <noscript> style shows it at once.
+func TestFrontendServerPageShownWithoutJavaScript(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		body := e.pageOK(e.roleClient("viewer"), "/dashboard/overview")
+		re := regexp.MustCompile(`<noscript><style nonce="[A-Za-z0-9_-]{32}">#paymux-server-page\{visibility:visible;animation:none\}</style></noscript>`)
+		if !re.MatchString(body) {
+			t.Fatal("dashboard pages need a nonce'd <noscript> style that shows the server page")
+		}
+	})
+}
 
 func TestFrontendStyleNonceKeepsScriptPolicyStrict(t *testing.T) {
 	first, second := http.Header{}, http.Header{}

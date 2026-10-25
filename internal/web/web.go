@@ -4,12 +4,17 @@
 package web
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
+	"path"
+	"regexp"
 	"sort"
+	"strings"
 
 	webassets "github.com/paymux/paymux/web"
 )
@@ -150,11 +155,31 @@ type LinkForm struct {
 	Name, Email, Phone string
 }
 
-// AssetHandler serves static/ from fsys under /assets/.
+// hashedAsset matches build output whose name carries a content hash
+// (vendor-react-Dph6fTCk.js, inter-latin-…-Dx4kXJAl.woff2): a new build gives
+// it a new name, so browsers may keep it for good.
+var hashedAsset = regexp.MustCompile(`-[A-Za-z0-9_-]{8}\.(js|css|woff2?)$`)
+
+// AssetHandler serves static/ from fsys under /assets/. Hashed files are
+// cached for a year; fixed-name files (main.js, style.css, css/…) carry an
+// ETag of their content and must be revalidated, so an upgraded binary is
+// picked up at once instead of a browser running an old dashboard.
 func AssetHandler(fsys fs.FS) http.Handler {
 	static, err := fs.Sub(fsys, "static")
 	if err != nil {
 		return http.NotFoundHandler()
 	}
-	return http.StripPrefix("/assets/", http.FileServerFS(static))
+	files := http.FileServerFS(static)
+	return http.StripPrefix("/assets/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		if hashedAsset.MatchString(name) {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else if data, err := fs.ReadFile(static, name); err == nil {
+			sum := sha256.Sum256(data)
+			w.Header().Set("Cache-Control", "no-cache")
+			// http.FileServer answers If-None-Match against this header.
+			w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:12])+`"`)
+		}
+		files.ServeHTTP(w, r)
+	}))
 }

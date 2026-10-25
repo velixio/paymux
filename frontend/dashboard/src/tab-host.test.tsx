@@ -19,6 +19,8 @@ import {
   storageName,
   tabByHref,
 } from "./host.test.helpers";
+import { parseDashboard } from "./adapter";
+import { seedInitialPage } from "./shell";
 
 beforeEach(resetHost);
 afterEach(() => {
@@ -388,4 +390,86 @@ test("copy button copies code text", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Copy sk_abc" }));
   await waitFor(() => expect(writeText).toHaveBeenCalledWith("sk_abc"));
   expect(screen.queryByRole("button", { name: "Copy not_in_cell" })).toBeNull();
+});
+
+test("a reload uses the server-rendered page: no request, no loading state", async () => {
+  const doc = new DOMParser().parseFromString(
+    pageHtml("Payments", "<p>Payments body</p>"),
+    "text/html",
+  );
+  seedInitialPage(
+    "/dashboard/payments",
+    parseDashboard(doc, "/dashboard/payments"),
+  );
+  const seen: boolean[] = [];
+  const watch = new MutationObserver(() =>
+    // Only a visible one counts: hidden tabs may wait for data unseen.
+    seen.push(
+      [...document.querySelectorAll(".workspace-loading")].some(
+        (el) => !el.closest("[hidden]"),
+      ),
+    ),
+  );
+  watch.observe(document.body, { childList: true, subtree: true });
+  await mount("/dashboard/payments");
+  watch.disconnect();
+  expect(sectionOf("Payments body")).not.toBeNull();
+  expect(calls["/dashboard/payments"] ?? 0).toBe(0);
+  expect(seen).not.toContain(true);
+});
+
+test("on a record, a link to another section opens in a tab and the record stays", async () => {
+  handlers["/dashboard/payments/pay_1"] = () =>
+    pageHtml(
+      "pay_1",
+      `<p><a href="/dashboard/payments">Back to payments</a></p><p><a href="/dashboard/logs?id=pay_1">Logs for this payment</a></p><p>Payment body</p>`,
+    );
+  handlers["/dashboard/logs"] = () => pageHtml("Logs", "<p>Logs body</p>");
+  await mount("/dashboard/payments/pay_1");
+  const before = api.state.tabs.length;
+  fireEvent.click(screen.getByRole("link", { name: "Logs for this payment" }));
+  await waitFor(() => expect(api.state.tabs).toHaveLength(before + 1));
+  expect(tabByHref("/dashboard/payments/pay_1")).toBeTruthy();
+  expect(api.state.tabs.find((t) => t.id === api.state.activeId)!.href).toBe(
+    "/dashboard/logs?id=pay_1",
+  );
+  await waitFor(() => expect(sectionOf("Logs body")).not.toBeNull());
+});
+
+test("on a record, a same-section link and the sidebar still navigate in place", async () => {
+  handlers["/dashboard/payments/pay_1"] = () =>
+    pageHtml(
+      "pay_1",
+      `<p><a href="/dashboard/payments">Back to payments</a></p><p>Payment body</p>`,
+    );
+  await mount("/dashboard/payments/pay_1");
+  const before = api.state.tabs.length;
+  fireEvent.click(screen.getByRole("link", { name: "Back to payments" }));
+  await waitFor(() =>
+    expect(api.state.tabs.find((t) => t.id === api.state.activeId)!.href).toBe(
+      "/dashboard/payments",
+    ),
+  );
+  expect(api.state.tabs).toHaveLength(before);
+  fireEvent.click(link("Apps"));
+  await waitFor(() =>
+    expect(api.state.tabs.find((t) => t.id === api.state.activeId)!.href).toBe(
+      "/dashboard/apps",
+    ),
+  );
+  expect(api.state.tabs).toHaveLength(before);
+});
+
+test("status pills show a readable label, a tone class and a dot", async () => {
+  handlers["/dashboard/payments"] = () =>
+    pageHtml(
+      "Payments",
+      `<table><tbody><tr><td><span class="status status-requires_action">requires_action</span></td><td><span class="status status-pending">pending</span></td></tr></tbody></table>`,
+    );
+  await mount("/dashboard/payments");
+  const pill = await screen.findByText("Requires action");
+  expect(pill.closest(".pill")!.classList.contains("pill-warn")).toBe(true);
+  expect(pill.closest(".pill")!.querySelector(".pill-dot")).not.toBeNull();
+  const pending = screen.getByText("Pending");
+  expect(pending.closest(".pill")!.classList.contains("pill-info")).toBe(true);
 });

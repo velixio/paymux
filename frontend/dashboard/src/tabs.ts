@@ -14,11 +14,12 @@ const MAX_CLOSED = 10;
 const HOME = "/dashboard/overview";
 
 // Identity of a page: pathname plus identifying query, sorted. The `classic`
-// switch, empty values and the hash do not identify a page.
+// switch, the side-pane `peek`, empty values and the hash do not identify a
+// page.
 export function tabKey(href: string): string {
   const u = new URL(href, "http://tabs.invalid");
   const q = [...u.searchParams.entries()]
-    .filter(([k, v]) => k !== "classic" && v !== "")
+    .filter(([k, v]) => k !== "classic" && k !== "peek" && v !== "")
     .sort(([a, x], [b, y]) =>
       a === b ? x.localeCompare(y) : a.localeCompare(b),
     )
@@ -187,20 +188,29 @@ export function closeOthers(s: TabState, id: string): TabState {
 export function closeRight(s: TabState, id: string): TabState {
   const i = s.tabs.findIndex((t) => t.id === id);
   if (i < 0) return s;
-  return remove(s, s.tabs.slice(i + 1), id);
+  // Pinned tabs stay, as in a browser.
+  return remove(
+    s,
+    s.tabs.slice(i + 1).filter((t) => !t.pinned),
+    id,
+  );
 }
 
-export function reopen(s: TabState, now: number): TabState {
+export function reopen(
+  s: TabState,
+  now: number,
+  dirtyIds: ReadonlySet<string> = new Set(),
+): TabState {
   const [tab, ...closed] = s.closed;
   if (!tab) return s;
   const same = s.tabs.find((t) => tabKey(t.href) === tabKey(tab.href));
   if (same) return activate({ ...s, closed }, same.id, now);
   const back: Tab = { ...tab, lastActive: now };
-  return {
-    tabs: settle([...s.tabs, back]),
-    activeId: back.id,
-    closed,
-  };
+  // The reopened tab counts towards the cap like any newly opened one.
+  return evict(
+    { tabs: settle([...s.tabs, back]), activeId: back.id, closed },
+    dirtyIds,
+  );
 }
 
 export function duplicate(s: TabState, id: string, now: number): TabState {
@@ -304,4 +314,47 @@ export function save(
   } catch {
     // Storage may be full or blocked; tabs then last for this page view only.
   }
+}
+
+// ---- links that leave the current section ----
+
+/** The section of a dashboard path: "payments" for /dashboard/payments/pay_1. */
+const sectionOf = (href: string) =>
+  new URL(href, "http://tabs.invalid").pathname.split("/")[2] ?? "";
+const isRecord = (href: string) => pathOf(href).split("/").length === 4;
+
+/**
+ * Whether a plain click on a content link should open it in a tab rather than
+ * replace the current work: it leads to another section, and the user is on
+ * a record (a record page, or the side pane over a list).
+ */
+export function leavesSection(
+  link: string,
+  current: string,
+  inPane: boolean,
+): boolean {
+  return (
+    sectionOf(link) !== sectionOf(current) && (inPane || isRecord(current))
+  );
+}
+
+/**
+ * Open href in a tab of its section: an already open, clean tab on the same
+ * page is reused (it shows href and is focused), otherwise a new tab opens.
+ */
+export function openInSection(
+  s: TabState,
+  href: string,
+  title: string,
+  now: number,
+  dirtyIds: ReadonlySet<string>,
+): TabState {
+  const same = s.tabs.find(
+    (t) =>
+      t.id !== s.activeId &&
+      pathOf(t.href) === pathOf(href) &&
+      !dirtyIds.has(t.id),
+  );
+  if (same) return activate(navigate(s, same.id, href, title), same.id, now);
+  return open(s, href, title, "new", now, dirtyIds);
 }
