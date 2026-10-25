@@ -7,7 +7,15 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { api, handlers, mount, pageHtml, resetHost } from "./host.test.helpers";
+import {
+  api,
+  calls,
+  handlers,
+  mount,
+  pageHtml,
+  resetHost,
+  sectionOf,
+} from "./host.test.helpers";
 
 const record = (id: string, status: string) =>
   `<h1>${id} <span class="status status-${status}">${status}</span></h1><p class="muted">about</p><dl><dt>Amount</dt><dd>10.00 INR</dd></dl><h3>Attempts</h3><p>${id} attempts</p><h3>Ledger</h3><p>${id} ledger</p>`;
@@ -355,4 +363,20 @@ test("in the pane, a link to another section opens in a tab; the list keeps its 
     "peek=pay_1",
   );
   expect(router).toBeTruthy();
+});
+
+test("opening and moving the pane never refetches or redraws the list", async () => {
+  await onList();
+  const fetched = calls["/dashboard/payments"];
+  const list = sectionOf("List body");
+  fireEvent.click(rowLink("pay_1"));
+  await screen.findByRole("complementary", { name: "Record preview" });
+  fireEvent.click(rowLink("pay_2"));
+  await waitFor(() =>
+    expect(
+      api.state.tabs.find((t) => t.id === api.state.activeId)!.href,
+    ).toContain("peek=pay_2"),
+  );
+  expect(calls["/dashboard/payments"]).toBe(fetched);
+  expect(sectionOf("List body")).toBe(list); // the same DOM, not a remount
 });
