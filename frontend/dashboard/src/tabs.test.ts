@@ -205,7 +205,8 @@ describe("close", () => {
     s = setPinned(s, s.tabs[1].id, true); // overview, p1 pinned; p2, p3
     const r = closeRight(s, s.tabs[0].id);
     expect(hrefs(r)).toEqual(["/dashboard/overview", `${D}p1`]);
-    expect(r.closed.map((t) => t.href)).toEqual([`${D}p2`, `${D}p3`]);
+    // closed is most recent first
+    expect(r.closed.map((t) => t.href)).toEqual([`${D}p3`, `${D}p2`]);
   });
 });
 
