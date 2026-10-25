@@ -10,6 +10,7 @@ import type { ViewNode } from "./adapter";
 import { PageContent, RenderNode } from "./render";
 import { WorkspaceLink } from "./runtime";
 import { extractToolbar, overflowEdges, type ToolbarModel } from "./toolbar";
+import { statusLabel, statusTone } from "./pill";
 
 function StatusChips({
   options,
@@ -66,7 +67,13 @@ function StatusChips({
           aria-pressed={o.selected}
           onClick={() => apply(o.value)}
         >
-          {o.label.replaceAll("_", " ")}
+          {o.value && (
+            <span
+              className={`pill-dot tone-${statusTone(o.value)}`}
+              aria-hidden="true"
+            />
+          )}
+          {o.value ? statusLabel(o.label) : o.label}
         </button>
       ))}
     </div>

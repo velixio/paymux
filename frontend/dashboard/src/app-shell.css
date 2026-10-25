@@ -1211,3 +1211,25 @@
     height: 40px;
   }
 }
+
+/* Status chips carry a dot in the tone of their status. */
+.app-shell .toolbar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.app-shell .pill-dot.tone-ok {
+  background: var(--status-ok-fg);
+}
+.app-shell .pill-dot.tone-bad {
+  background: var(--status-bad-fg);
+}
+.app-shell .pill-dot.tone-warn {
+  background: var(--status-warn-fg);
+}
+.app-shell .pill-dot.tone-info {
+  background: var(--status-info-fg);
+}
+.app-shell .pill-dot.tone-neutral {
+  background: var(--status-neutral-fg);
+}
