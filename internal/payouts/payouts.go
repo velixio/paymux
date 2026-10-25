@@ -352,31 +352,37 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (store.Payout, err
 // inReview returns the id of a needs_review payout of the app with the same
 // destination, amount and currency as in, or "".
 func (s *Service) inReview(ctx context.Context, in CreateInput, appID string) (string, error) {
-	var rows []store.Payout
-	err := s.o.DB.Read(ctx, func(q store.Querier) (err error) {
-		rows, err = store.ListPayouts(ctx, q, appID, in.Scope.Mode, StatusNeedsReview, "", 200)
-		return
-	})
-	if err != nil {
-		return "", err
-	}
-	for _, r := range rows {
-		if r.Amount != in.Amount || r.Currency != in.Currency {
-			continue
-		}
-		plain, err := s.o.Box.Open(r.BeneficiaryEnc, aad(r.ID))
+	after := ""
+	for {
+		var rows []store.Payout
+		err := s.o.DB.Read(ctx, func(q store.Querier) (err error) {
+			rows, err = store.ListPayouts(ctx, q, appID, in.Scope.Mode, StatusNeedsReview, after, reviewPageSize)
+			return
+		})
 		if err != nil {
 			return "", err
 		}
-		var b connector.Beneficiary
-		if err := json.Unmarshal(plain, &b); err != nil {
-			return "", err
+		for _, r := range rows {
+			if r.Amount != in.Amount || r.Currency != in.Currency {
+				continue
+			}
+			plain, err := s.o.Box.Open(r.BeneficiaryEnc, aad(r.ID))
+			if err != nil {
+				return "", err
+			}
+			var b connector.Beneficiary
+			if err := json.Unmarshal(plain, &b); err != nil {
+				return "", err
+			}
+			if b.AccountNumber == in.Beneficiary.AccountNumber && b.IFSC == in.Beneficiary.IFSC && b.UPI == in.Beneficiary.UPI {
+				return r.ID, nil
+			}
 		}
-		if b.AccountNumber == in.Beneficiary.AccountNumber && b.IFSC == in.Beneficiary.IFSC && b.UPI == in.Beneficiary.UPI {
-			return r.ID, nil
+		if len(rows) < reviewPageSize {
+			return "", nil
 		}
+		after = rows[len(rows)-1].ID
 	}
-	return "", nil
 }
 
 // byKey returns the payout the request's Idempotency-Key made before. It
@@ -398,6 +404,9 @@ func (s *Service) byKey(ctx context.Context, in CreateInput) (store.Payout, bool
 	}
 	return p, true, nil
 }
+
+// reviewPageSize is how many payouts in review inReview reads at a time.
+var reviewPageSize = 200
 
 // Get returns a payout of the scope's app and mode.
 func (s *Service) Get(ctx context.Context, sc core.Scope, id string) (store.Payout, error) {
@@ -602,9 +611,9 @@ func (s *Service) needsReview(ctx context.Context, id string, cause error) error
 	}
 	if s.o.Alerts != nil {
 		_ = s.o.Alerts.Raise(ctx, notify.Alert{Severity: notify.SeverityCritical, Kind: "payout.needs_review",
-			Message: fmt.Sprintf("Payout %s (%d %s to %s) could not be confirmed with the provider after %d attempts; it may or may not have been paid. It is polled by its reference; check the provider dashboard before sending it again.",
-				moved.ID, moved.Amount, moved.Currency, moved.BeneficiaryLabel, moved.SubmitAttempts),
-			Refs: map[string]string{"payout": moved.ID, "provider_account": moved.ProviderAccountID, "app": moved.AppID}})
+			Message: fmt.Sprintf("Payout %s (%d %s to %s, provider reference %s) could not be confirmed with the provider after %d attempts; it may or may not have been paid. It is polled by its reference; check the provider dashboard before sending it again.",
+				moved.ID, moved.Amount, moved.Currency, moved.BeneficiaryLabel, moved.ProviderRef, moved.SubmitAttempts),
+			Refs: map[string]string{"payout": moved.ID, "provider_ref": moved.ProviderRef, "provider_account": moved.ProviderAccountID, "app": moved.AppID}})
 	}
 	return nil
 }
@@ -630,8 +639,19 @@ func (s *Service) handlePoll(ctx context.Context, raw json.RawMessage) error {
 		return nil
 	}
 	logctx.Note(ctx, "payout_id", p.ID, "provider_account_id", p.ProviderAccountID, "app_id", p.AppID, "org_id", p.OrgID)
+	// A payout in needs_review is asked about for as long as it stays there:
+	// whatever goes wrong meanwhile is logged and the next check scheduled, so
+	// the job queue's attempt limit can never end the chain.
+	inReview := p.Status == StatusNeedsReview
+	again := func(err error) error {
+		s.o.Logger.Warn("payouts: checking a payout in needs_review failed; asking again later", "payout", p.ID, "err", err.Error())
+		return s.nextPoll(ctx, p.ID, pl.N)
+	}
 	po, err := s.payouter(ctx, p.ProviderAccountID)
 	if err != nil {
+		if inReview {
+			return again(err)
+		}
 		return err
 	}
 	snap, err := po.FetchPayout(ctx, connector.PayoutRef{ProviderRef: p.ProviderRef, ProviderPayoutID: p.ProviderPayoutID})
@@ -643,9 +663,16 @@ func (s *Service) handlePoll(ctx context.Context, raw json.RawMessage) error {
 		if errors.Is(err, connector.ErrNotFound) && synthesisedFailure(p) {
 			return nil // the provider never had it: our reading stands
 		}
+		if inReview {
+			return again(err)
+		}
 		return err
 	}
 	if err := payoutIsOurs(p, snap); err != nil {
+		s.alertNotOurs(ctx, p, err)
+		if inReview {
+			return again(err)
+		}
 		return jobs.Permanent(err) // not ours: polling again cannot fix that; the payout stays as it is
 	}
 	if err := s.apply(ctx, p.ID, snap); err != nil {
@@ -690,15 +717,35 @@ func terminal(status string) bool {
 // concluded ourselves (rawSynthesised): it is polled, and the provider's
 // answer replaces it.
 func (s *Service) apply(ctx context.Context, id string, snap connector.PayoutSnapshot) error {
-	return s.o.DB.Write(ctx, func(tx store.Tx) error { return s.applyTx(ctx, tx, id, snap) })
+	var refused store.Payout
+	err := s.o.DB.Write(ctx, func(tx store.Tx) error { return s.applyTx(ctx, tx, id, snap, &refused) })
+	if err == nil && refused.ID != "" {
+		s.o.Logger.Error("payouts: a success that does not state the amount and currency sent was not applied", "payout", refused.ID,
+			"sent", refused.Amount, "currency", refused.Currency, "stated", snap.Amount, "stated_currency", snap.Currency)
+		if s.o.Alerts != nil {
+			_ = s.o.Alerts.Raise(ctx, notify.Alert{Severity: notify.SeverityCritical, Kind: "payout.snapshot_mismatch",
+				Message: fmt.Sprintf("The provider reports payout %s (provider reference %s) as paid, but states %d %q where %d %s was sent; it was left as it is (%s). Check the provider dashboard.",
+					refused.ID, refused.ProviderRef, snap.Amount, snap.Currency, refused.Amount, refused.Currency, refused.Status),
+				Refs: map[string]string{"payout": refused.ID, "provider_ref": refused.ProviderRef, "provider_account": refused.ProviderAccountID, "app": refused.AppID}})
+		}
+	}
+	return err
 }
 
-func (s *Service) applyTx(ctx context.Context, tx store.Tx, id string, snap connector.PayoutSnapshot) error {
+// applyTx is apply inside a transaction. When the snapshot would move the payout
+// to succeeded without stating the amount and currency that were sent, nothing
+// is changed and *refused is set to the payout.
+func (s *Service) applyTx(ctx context.Context, tx store.Tx, id string, snap connector.PayoutSnapshot, refused *store.Payout) error {
 	p, err := store.GetPayoutForUpdate(ctx, tx, id)
 	if err != nil {
 		return err
 	}
 	prev := p.Status
+	if snap.Status == connector.PayoutSucceeded && !terminal(p.Status) && p.Status != StatusSucceeded &&
+		(snap.Amount != p.Amount || !strings.EqualFold(snap.Currency, p.Currency)) {
+		*refused = p
+		return nil
+	}
 	next := string(snap.Status)
 	switch snap.Status {
 	case connector.PayoutPending, connector.PayoutProcessing, connector.PayoutSucceeded, connector.PayoutFailed, connector.PayoutReversed:
@@ -780,15 +827,28 @@ func (s *Service) Resolve(ctx context.Context, id, status, reason string, actor 
 			Before: map[string]any{"status": p.Status}, After: map[string]any{"status": status, "reason": reason}}); err != nil {
 			return err
 		}
-		snap := connector.PayoutSnapshot{ProviderRef: p.ProviderRef, Status: connector.PayoutStatus(status), RawStatus: "manual"}
+		snap := connector.PayoutSnapshot{ProviderRef: p.ProviderRef, Status: connector.PayoutStatus(status), RawStatus: "manual",
+			Amount: p.Amount, Currency: p.Currency}
 		if status == StatusFailed {
 			snap.ErrorCode, snap.ErrorMessage = "manual", truncate("resolved by an operator: "+reason, 300)
 		}
-		if err := s.applyTx(ctx, tx, p.ID, snap); err != nil {
+		if err := s.applyTx(ctx, tx, p.ID, snap, &store.Payout{}); err != nil {
 			return err
 		}
 		out, err = store.GetPayout(ctx, tx, p.ID)
 		return err
 	})
 	return out, err
+}
+
+// alertNotOurs tells an operator that the provider answered for a payout with
+// another reference, id, amount or currency than ours; nothing is applied.
+func (s *Service) alertNotOurs(ctx context.Context, p store.Payout, cause error) {
+	if s.o.Alerts == nil {
+		return
+	}
+	_ = s.o.Alerts.Raise(ctx, notify.Alert{Severity: notify.SeverityCritical, Kind: "payout.snapshot_mismatch",
+		Message: fmt.Sprintf("The provider's answer for payout %s (provider reference %s) is not this payout's and was ignored: %v. Check the provider dashboard.",
+			p.ID, p.ProviderRef, cause),
+		Refs: map[string]string{"payout": p.ID, "provider_ref": p.ProviderRef, "provider_account": p.ProviderAccountID, "app": p.AppID}})
 }

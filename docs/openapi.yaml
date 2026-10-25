@@ -893,6 +893,7 @@ components:
                 - refund_amount_exceeds_balance
                 - conflict
                 - no_route
+                - payout_needs_review
                 - currency_not_accepted
                 - idempotency_key_reuse
                 - idempotency_in_progress
