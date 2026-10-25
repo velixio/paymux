@@ -158,6 +158,8 @@ func (p *payu) chargebackCall(ctx context.Context, method, path string, query ur
 		return connector.ErrRateLimited{RetryAfter: after}
 	case resp.StatusCode >= 500:
 		return fmt.Errorf("%w: HTTP %d", connector.ErrTemporary, resp.StatusCode)
+	case resp.StatusCode >= 400:
+		return fmt.Errorf("payu: Chargeback API HTTP %d: %s: %w", resp.StatusCode, strings.TrimSpace(string(raw[:min(len(raw), 300)])), connector.ErrRejected)
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
 		return fmt.Errorf("payu: Chargeback API HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw[:min(len(raw), 300)])))
 	}

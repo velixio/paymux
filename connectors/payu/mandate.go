@@ -391,7 +391,7 @@ func (p *payu) NotifyPreDebit(ctx context.Context, req connector.PreDebitRequest
 	if cerr := checkCredentials(msg); cerr != nil {
 		return cerr
 	}
-	return fmt.Errorf("payu: pre-debit notice refused: %s", msg)
+	return fmt.Errorf("payu: pre-debit notice refused: %s: %w", msg, connector.ErrRejected)
 }
 
 // siCharge is the var1 of si_transaction (the field names are from PayU's
@@ -499,7 +499,7 @@ func (p *payu) RevokeMandate(ctx context.Context, ref connector.MandateRef) erro
 	if strings.Contains(low, "not found") {
 		return connector.ErrNotFound
 	}
-	return fmt.Errorf("payu: revoking mandate: %s", msg)
+	return fmt.Errorf("payu: revoking mandate: %s: %w", msg, connector.ErrRejected)
 }
 
 // mandateCall is the var1 of check_mandate_status and mandate_revoke. PayU
