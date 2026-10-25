@@ -118,3 +118,17 @@ test("link buttons use the on-primary text colour, not the link colour", () => {
   expect(rule).toContain("color: var(--primary-foreground)");
   expect(rule).toContain("background: var(--primary)");
 });
+
+test("warning strip and mode labels take their colours from the tokens", () => {
+  const work = read("./workspace.css");
+  const rule = (selector: string) =>
+    work.match(
+      new RegExp(`\\n${selector.replace(".", "\\.")}\\s*\\{([^}]*)\\}`),
+    )?.[1] ?? "";
+  for (const selector of [".workspace-warning", ".live-label", ".test-label"]) {
+    // A fixed hex colour would ignore the palette and dark mode.
+    expect(rule(selector), selector).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+  }
+  expect(rule(".workspace-warning")).toContain("var(--status-warn-bg)");
+  expect(rule(".live-label")).toContain("var(--status-ok-bg)");
+});
