@@ -53,19 +53,32 @@ export function saveWidth(
   }
 }
 
-/** The record the pane shows: a valid /dashboard record path in ?peek=. */
-export function peekOf(search: string): string | null {
-  const value = new URLSearchParams(search).get("peek");
-  return value && value.startsWith("/dashboard/") && isRecordPath(value)
-    ? value
-    : null;
+// ?peek= holds just the id when the record belongs to the list it is shown
+// over (/dashboard/payments?peek=pay_1), so the address stays readable; a
+// record of another section keeps its full path (and older links still work).
+const SHORT_ID = /^[A-Za-z0-9_-]+$/;
+
+/** The record path the pane shows for a list href, or null. */
+export function peekOf(href: string): string | null {
+  const url = new URL(href, "http://peek.invalid");
+  const value = url.searchParams.get("peek");
+  if (!value) return null;
+  const path =
+    SHORT_ID.test(value) && value !== ".." && !isRecordPath(url.pathname)
+      ? `${url.pathname}/${value}`
+      : value;
+  return path.startsWith("/dashboard/") && isRecordPath(path) ? path : null;
 }
 
-/** href with ?peek= set to a record path, or removed when record is null. */
+/** href with ?peek= set for a record path, or removed when record is null. */
 export function withPeek(href: string, record: string | null): string {
   const url = new URL(href, "http://peek.invalid");
-  if (record) url.searchParams.set("peek", record);
-  else url.searchParams.delete("peek");
+  if (record) {
+    const own = record.startsWith(url.pathname + "/")
+      ? record.slice(url.pathname.length + 1)
+      : "";
+    url.searchParams.set("peek", SHORT_ID.test(own) ? own : record);
+  } else url.searchParams.delete("peek");
   return url.pathname + url.search;
 }
 

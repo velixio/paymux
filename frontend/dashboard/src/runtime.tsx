@@ -108,7 +108,7 @@ export function WorkspaceLink({
           const to = new URL(peekTo, location.origin);
           // The first open is a history step (Back closes the pane); moving to
           // another record replaces it.
-          const replace = !!peekOf(here.searchStr);
+          const replace = !!peekOf(here.pathname + here.searchStr);
           const navigate = () =>
             void router.navigate({
               to: to.pathname,

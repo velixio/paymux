@@ -82,7 +82,7 @@ export function PeekFrame({
   const router = useRouter();
   const tabs = useOptionalTabs();
   const wide = useWide();
-  const record = active && wide ? peekOf(loc.searchStr) : null;
+  const record = active && wide ? peekOf(loc.pathname + loc.searchStr) : null;
   const frame = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(() => loadWidth(store()));
   const dirty = useRef(false);
