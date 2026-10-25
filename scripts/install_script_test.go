@@ -79,8 +79,8 @@ func newFakeRelease(t *testing.T, signed bool) *fakeRelease {
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.served = append(f.served, r.URL.Path)
-		f.mu.Unlock()
 		body, ok := f.files[strings.TrimPrefix(r.URL.Path, "/releases/")]
+		f.mu.Unlock()
 		if !ok || !strings.HasPrefix(r.URL.Path, "/releases/") {
 			http.NotFound(w, r)
 			return
@@ -89,6 +89,13 @@ func newFakeRelease(t *testing.T, signed bool) *fakeRelease {
 	}))
 	t.Cleanup(f.srv.Close)
 	return f
+}
+
+// set replaces a file while the server may be reading.
+func (f *fakeRelease) set(path string, body []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.files[path] = body
 }
 
 func (f *fakeRelease) base() string { return f.srv.URL + "/releases" }
@@ -182,7 +189,7 @@ func TestInstallScriptInstallsTheLatestRelease(t *testing.T) {
 func TestInstallScriptRefusesAChecksumMismatch(t *testing.T) {
 	f := newFakeRelease(t, true)
 	osName, arch := installPlatform()
-	f.files["latest/download/paymux_"+osName+"_"+arch+".tar.gz"] = fakeArchive(t, "v6.6.6") // not what SHA256SUMS says
+	f.set("latest/download/paymux_"+osName+"_"+arch+".tar.gz", fakeArchive(t, "v6.6.6")) // not what SHA256SUMS says
 	r := runInstall(t, f, noCosign)
 	if r.err == nil || !strings.Contains(strings.ToLower(r.errs), "checksum") {
 		t.Fatalf("expected a refusal naming the checksum: err=%v stderr=%q", r.err, r.errs)
@@ -194,7 +201,7 @@ func TestInstallScriptRefusesAChecksumMismatch(t *testing.T) {
 
 func TestInstallScriptRefusesWhenSHA256SUMSHasNoEntry(t *testing.T) {
 	f := newFakeRelease(t, true)
-	f.files["latest/download/SHA256SUMS"] = []byte(strings.Repeat("a", 64) + "  something_else.tar.gz\n")
+	f.set("latest/download/SHA256SUMS", []byte(strings.Repeat("a", 64)+"  something_else.tar.gz\n"))
 	if r := runInstall(t, f, noCosign); r.err == nil || r.installed(t) {
 		t.Fatalf("installed without a checksum entry: err=%v stderr=%q", r.err, r.errs)
 	}
