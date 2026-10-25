@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 import {
@@ -8,6 +9,12 @@ import {
   TEXT_PAIRS,
   type Seeds,
 } from "./theme-derive";
+
+// The happy-dom environment replaces URL, so resolve through the module path.
+const themesRoot = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../web/themes",
+);
 
 const stripeLight: Seeds = {
   accent: "#635bff",
@@ -231,6 +238,16 @@ const fixtures: [string, Seeds, Seeds | undefined][] = [
   ],
   ["accent only", { accent: "#123456" }, undefined],
   [
+    "dark background, no text seed",
+    { accent: "#0b5e3a", background: "#000000" },
+    undefined,
+  ],
+  ["green accent", { accent: "#0b5e3a" }, { accent: "#0b5e3a" }],
+  ["purple accent", { accent: "#4b1a8f" }, undefined],
+  ["magenta accent", { accent: "#8f1a5e" }, undefined],
+  ["cyan accent", { accent: "#0b4f5e" }, undefined],
+  ["orange accent", { accent: "#8f4b1a" }, undefined],
+  [
     "sidebar text seed",
     {
       accent: "#635bff",
@@ -281,7 +298,7 @@ test("overrides cannot introduce status tokens or unknown names", () => {
 });
 
 test("every bundled theme with a dashboard block passes in light and dark", () => {
-  const dir = fileURLToPath(new URL("../../../web/themes/", import.meta.url));
+  const dir = `${themesRoot}/`;
   for (const name of readdirSync(dir)) {
     const f = `${dir}${name}/theme.json`;
     if (!existsSync(f)) continue;

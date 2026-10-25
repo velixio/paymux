@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
+import { contrast, TEXT_PAIRS } from "./theme-derive";
 
 const read = (rel: string) =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
@@ -18,20 +19,6 @@ function block(selector: string): Record<string, string> {
 
 const light = block(":root");
 const dark = block(".dark");
-
-function luminance(hex: string): number {
-  const n = parseInt(hex.slice(1), 16);
-  const [r, g, b] = [n >> 16, (n >> 8) & 255, n & 255].map((v) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-function contrast(a: string, b: string): number {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-  return (hi + 0.05) / (lo + 0.05);
-}
 
 const keys = [
   "--background",
@@ -78,11 +65,7 @@ test("text pairs reach 4.5:1 in both modes", () => {
     ["dark", dark],
   ] as const) {
     const pairs: [string, string][] = [
-      ["--foreground", "--background"],
-      ["--muted-foreground", "--background"],
-      ["--muted-foreground", "--sidebar"],
-      ["--accent-foreground", "--ui-accent"],
-      ["--primary-foreground", "--primary"],
+      ...TEXT_PAIRS,
       ...["ok", "warn", "bad", "info", "neutral"].map(
         (s) => [`--status-${s}-fg`, `--status-${s}-bg`] as [string, string],
       ),
