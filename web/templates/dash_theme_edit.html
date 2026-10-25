@@ -1,0 +1,42 @@
+{{define "title"}}{{if .ThemeForm.Creating}}New theme{{else}}Edit {{.ThemeForm.Name}}{{end}} - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+{{with .ThemeForm}}
+<h1>{{if .Creating}}New theme{{if .From}} from {{.From}}{{end}}{{else}}Edit {{.Name}}{{end}}</h1>
+<p class="muted">A theme is a few seed colours. Everything else, such as hover and selected states, borders and muted text, is worked out from them, and text colours are adjusted until they are easy to read. The dark version comes from the light colours unless you give your own.</p>
+<p><a href="/dashboard/appearance">Back to Appearance</a></p>
+{{end}}
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+{{with .ThemeForm}}
+<div data-theme-editor>
+<form method="post" action="{{if .Creating}}/dashboard/appearance/themes{{else}}/dashboard/appearance/themes/{{.Name}}{{end}}" class="stack theme-form">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+{{if .From}}<input type="hidden" name="from" value="{{.From}}">{{end}}
+{{if .Creating}}<label>Name<input class="field" name="name" value="{{.Name}}" required maxlength="40" pattern="[a-z0-9][a-z0-9-]*" autocomplete="off"></label>
+<small class="muted">Lower-case letters, digits and hyphens. A built-in theme's name cannot be used.</small>{{end}}
+<label>Version<input class="field" name="version" value="{{.Version}}" required maxlength="32"></label>
+<label>Description<input class="field" name="description" value="{{.Description}}" maxlength="200"></label>
+
+<fieldset><legend>Light colours</legend>
+{{template "theme_seeds" .Light}}
+</fieldset>
+
+<label class="check"><input type="checkbox" name="dark_enabled" value="1"{{if .DarkEnabled}} checked{{end}}> Choose the dark colours myself (otherwise they are worked out from the light ones)</label>
+<fieldset><legend>Dark colours</legend>
+{{template "theme_seeds" .Dark}}
+</fieldset>
+
+<label>Starts in
+<select class="field" name="scheme">
+<option value=""{{if eq .Scheme ""}} selected{{end}}>Follow the device setting</option>
+<option value="light"{{if eq .Scheme "light"}} selected{{end}}>Light</option>
+<option value="dark"{{if eq .Scheme "dark"}} selected{{end}}>Dark</option>
+</select></label>
+<small class="muted">Each person can still switch light or dark themselves.</small>
+{{if .Overrides}}<p class="muted">This theme also sets {{.Overrides}} colour{{if ne .Overrides 1}}s{{end}} by hand (advanced). They are kept as they are.</p>{{end}}
+<button class="btn" type="submit">{{if .Creating}}Create theme{{else}}Save theme{{end}}</button>
+</form>
+</div>
+{{end}}
+{{template "dash_close" .}}{{end}}

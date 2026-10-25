@@ -7,6 +7,7 @@
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 
 <h3>Themes</h3>
+{{if .CanManage}}<p><a class="btn small" href="/dashboard/appearance/themes/new">New theme</a></p>{{end}}
 <p class="muted">Worn by this dashboard, and the default for every app's customer pages (pay page, subscription checkout, invoices). Each person can pick their own on their account page. A theme without dashboard colours only styles customer pages; the dashboard then looks like <strong>{{.OrgThemeName}}</strong>.</p>
 <ul class="theme-cards">
 {{range .ThemeRows}}<li class="theme-card" id="theme-{{.Name}}" data-theme-card="{{.Name}}" data-kind="{{if .Bundled}}builtin{{else}}custom{{end}}" data-default="{{if .Current}}true{{else}}false{{end}}" data-users="{{.Users}}">
@@ -16,6 +17,7 @@
 <p>{{if .Usable}}{{.Description}}{{else}}<span class="error">Cannot be used: {{.Err}}</span>{{end}}</p>
 {{if .Usable}}<p class="muted">{{.Users}} {{if eq .Users 1}}person has{{else}}people have{{end}} chosen it.</p>
 <p class="theme-actions"><a href="/dashboard/appearance/preview/{{.Name}}">Preview</a>
+{{if $.CanManage}}<a href="/dashboard/appearance/themes/new?from={{.Name}}">Duplicate</a>{{if .Custom}} <a href="/dashboard/appearance/themes/{{.Name}}/edit">Edit</a>{{end}}{{end}}
 {{if and $.CanManage (not .Current)}}<form class="inline" method="post" action="/dashboard/appearance/theme">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <input type="hidden" name="theme" value="{{.Name}}">

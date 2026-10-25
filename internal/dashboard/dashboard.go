@@ -286,6 +286,7 @@ type view struct {
 	StyleNonce   string
 	// DashboardTheme names the theme the React dashboard wears; see effectiveDashboardTheme.
 	DashboardTheme string
+	ThemeForm      *themeFormView // the theme editor
 	// The account page's theme picker.
 	OrgThemeName string
 	ThemeChoices []themeChoice

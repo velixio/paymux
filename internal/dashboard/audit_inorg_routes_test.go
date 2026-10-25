@@ -36,6 +36,8 @@ var inOrgExempt = map[string]string{
 	"/{section}":                     "static sections, no object is loaded",
 	"/{$}":                           "redirects to the overview",
 	"/appearance/preview/{name}":     "a bundled theme preview, no object is loaded",
+	"/appearance/themes/{name}/edit": "themes are files of the installation, not org objects",
+	"/appearance/themes/{name}":      "themes are files of the installation, not org objects",
 	"/account/sessions/{id}/revoke":  "scoped to the signed-in user's own sessions",
 	"/settings/{key}":                "the key names a setting of the dashboard's own org",
 	"/alerts/{id}/acknowledge":       "Alerts.Acknowledge looks the alert up inside the org it is given",

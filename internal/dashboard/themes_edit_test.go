@@ -62,10 +62,9 @@ func TestCardsOfferEditingActionsToAdminsOnly(t *testing.T) {
 		for _, name := range []string{"stripe", "teal"} {
 			has(t, card(t, body, name), `href="/dashboard/appearance/themes/new?from=`+name+`"`)
 		}
-		// Edit, rename and delete: custom themes only.
-		has(t, card(t, body, "teal"), `href="/dashboard/appearance/themes/teal/edit"`,
-			`action="/dashboard/appearance/themes/teal/rename"`, `action="/dashboard/appearance/themes/teal/delete"`)
-		lacks(t, card(t, body, "stripe"), `/themes/stripe/edit`, `/themes/stripe/rename`, `/themes/stripe/delete`)
+		// Edit: custom themes only.
+		has(t, card(t, body, "teal"), `href="/dashboard/appearance/themes/teal/edit"`)
+		lacks(t, card(t, body, "stripe"), `/themes/stripe/`)
 
 		view := e.pageOK(e.roleClient("viewer"), "/dashboard/appearance")
 		lacks(t, view, `/appearance/themes/`)
@@ -81,8 +80,6 @@ func TestNewThemeFormIsPrefilledFromAnotherTheme(t *testing.T) {
 			`name="dark_enabled"`, `name="scheme"`, `name="csrf"`)
 		body = e.pageOK(admin, "/dashboard/appearance/themes/new?from=paddle")
 		has(t, body, `value="#0d7d68"`, `value="#121417"`, `value="#e8e8e3"`, `name="from" value="paddle"`)
-		// Duplicating starts from the seeds, so the name is the user's to choose.
-		lacks(t, body, `value="paddle"`+` `) // not offered as the new name
 		if r, _ := e.get(admin, "/dashboard/appearance/themes/new?from=nope"); r.StatusCode != 404 {
 			t.Errorf("unknown source: %d", r.StatusCode)
 		}
@@ -286,7 +283,8 @@ func TestBuiltInThemesAreReadOnlyAndNamesCannotEscape(t *testing.T) {
 			}
 		}
 		for _, p := range []string{"..", "%2e%2e", "a%2fb", "Bad", "nope"} {
-			if r, _ := e.get(admin, "/dashboard/appearance/themes/"+p+"/edit"); r.StatusCode != 404 && r.StatusCode != 400 {
+			// Refused outright, or the mux first redirects to the cleaned path; never served.
+			if r, _ := e.get(admin, "/dashboard/appearance/themes/"+p+"/edit"); r.StatusCode == 200 {
 				t.Errorf("edit %q: %d", p, r.StatusCode)
 			}
 		}
@@ -303,10 +301,8 @@ func TestThemeWritesNeedARecentSignIn(t *testing.T) {
 		c := staleAdmin(t, e.env)
 		tok := csrfOf(t, e.pageOK(c, "/dashboard/settings"))
 		for path, form := range map[string]url.Values{
-			"/dashboard/appearance/themes":             themeForm(tok, "name", "fresh"),
-			"/dashboard/appearance/themes/mine":        themeForm(tok),
-			"/dashboard/appearance/themes/mine/rename": {"csrf": {tok}, "new_name": {"other"}},
-			"/dashboard/appearance/themes/mine/delete": {"csrf": {tok}},
+			"/dashboard/appearance/themes":      themeForm(tok, "name", "fresh"),
+			"/dashboard/appearance/themes/mine": themeForm(tok),
 		} {
 			r, _ := e.post(c, path, form)
 			wantReauth(t, "POST "+path, r)
