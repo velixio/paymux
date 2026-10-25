@@ -312,3 +312,170 @@ func TestThemeWritesNeedARecentSignIn(t *testing.T) {
 		}
 	})
 }
+
+func TestCardsOfferRenameAndDeleteForCustomThemesOnly(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newThemedEnv(t, db)
+		e.writeTheme("teal", tealTheme, nil)
+		body := e.pageOK(e.roleClient("admin"), "/dashboard/appearance")
+		has(t, card(t, body, "teal"), `action="/dashboard/appearance/themes/teal/rename"`, `name="new_name"`, `action="/dashboard/appearance/themes/teal/delete"`)
+		lacks(t, card(t, body, "stripe"), `/rename`, `/delete`)
+		lacks(t, e.pageOK(e.roleClient("viewer"), "/dashboard/appearance"), `/rename`, `/delete`)
+	})
+}
+
+func TestRenameMakesEveryReferenceFollowAtOnce(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newThemedEnv(t, db)
+		e.writeTheme("mine", tealTheme, nil)
+		e.setOrg("theme", `"mine"`)
+		admin, viewer := e.roleClient("admin"), e.roleClient("viewer")
+		// Prime the settings cache: the rename must not leave the old value in it.
+		if v, _ := e.set.ResolveOrg(ctx, store.DefaultOrgID, "theme"); string(v.Raw) != `"mine"` {
+			t.Fatalf("setting = %s", v.Raw)
+		}
+		vtok := csrfOf(t, e.pageOK(viewer, "/dashboard/account"))
+		if r, _ := e.post(viewer, "/dashboard/account/theme", url.Values{"theme": {"mine"}, "csrf": {vtok}}); r.StatusCode != 303 {
+			t.Fatalf("viewer chooses: %d", r.StatusCode)
+		}
+		tok := csrfOf(t, e.pageOK(admin, "/dashboard/appearance"))
+		r, _ := e.post(admin, "/dashboard/appearance/themes/mine/rename", url.Values{"csrf": {tok}, "new_name": {"ours"}})
+		if r.StatusCode != 303 {
+			t.Fatalf("rename: %d", r.StatusCode)
+		}
+		if v, _ := e.set.ResolveOrg(ctx, store.DefaultOrgID, "theme"); string(v.Raw) != `"ours"` {
+			t.Errorf("the org default did not follow the rename: %s", v.Raw)
+		}
+		if got := themeOf(t, &e, viewer); got != "ours" {
+			t.Errorf("the user's choice did not follow: %q", got)
+		}
+		if got := themeOf(t, &e, admin); got != "ours" {
+			t.Errorf("the org default is not worn: %q", got)
+		}
+		body := e.pageOK(admin, "/dashboard/appearance")
+		has(t, card(t, body, "ours"), `data-default="true"`, `data-users="1"`)
+		lacks(t, body, `data-theme-card="mine"`)
+		if m := readManifest(t, e, "ours"); m["name"] != "ours" {
+			t.Errorf("manifest name: %v", m["name"])
+		}
+		if _, err := os.Stat(filepath.Join(e.themesDir, "mine")); err == nil {
+			t.Error("old directory remains")
+		}
+		rows := auditRows(t, db, "theme.rename")
+		if len(rows) != 1 || rows[0].Target != "mine" {
+			t.Errorf("audit: %+v", rows)
+		}
+	})
+}
+
+func TestRenameRefusals(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newThemedEnv(t, db)
+		e.writeTheme("mine", tealTheme, nil)
+		e.writeTheme("other", strings.Replace(tealTheme, `"teal"`, `"other"`, 1), nil)
+		alpha := e.seedApp("alpha")
+		admin := e.roleClient("admin")
+		tok := csrfOf(t, e.pageOK(admin, "/dashboard/appearance"))
+		rename := func(name, to string) (int, string) {
+			r, body := e.post(admin, "/dashboard/appearance/themes/"+name+"/rename", url.Values{"csrf": {tok}, "new_name": {to}})
+			return r.StatusCode, body
+		}
+		for what, to := range map[string]string{"bundled name": "stripe", "existing": "other", "traversal": "../x", "upper case": "Bad", "empty": ""} {
+			if code, _ := rename("mine", to); code != 400 {
+				t.Errorf("%s: %d, want 400", what, code)
+			}
+		}
+		if code, _ := rename("stripe", "mine2"); code != 403 {
+			t.Errorf("bundled source: %d", code)
+		}
+		if code, _ := rename("nope", "mine2"); code != 404 {
+			t.Errorf("missing: %d", code)
+		}
+		// An app's customer pages use it: blocked, with the apps named.
+		atok := csrfOf(t, e.pageOK(admin, "/dashboard/appearance"))
+		if r, _ := e.post(admin, "/dashboard/appearance/apps/"+alpha.ID, url.Values{"csrf": {atok}, "theme": {"mine"}, "language": {""}}); r.StatusCode != 303 {
+			t.Fatalf("app theme: %d", r.StatusCode)
+		}
+		code, body := rename("mine", "fresh")
+		if code != 400 {
+			t.Fatalf("rename while an app uses it: %d", code)
+		}
+		has(t, body, alpha.Name, "customer pages")
+		if _, err := os.Stat(filepath.Join(e.themesDir, "mine")); err != nil {
+			t.Error("a refused rename moved the theme")
+		}
+		if len(auditRows(t, db, "theme.rename")) != 0 {
+			t.Error("a refused rename was audited as done")
+		}
+	})
+}
+
+func TestDeleteIsRefusedWhileInUseAndListsWho(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newThemedEnv(t, db)
+		e.writeTheme("mine", tealTheme, nil)
+		e.writeTheme("spare", strings.Replace(tealTheme, `"teal"`, `"spare"`, 1), nil)
+		admin, viewer := e.roleClient("admin"), e.roleClient("viewer")
+		tok := csrfOf(t, e.pageOK(admin, "/dashboard/appearance"))
+		del := func(name string) (int, string) {
+			r, body := e.post(admin, "/dashboard/appearance/themes/"+name+"/delete", url.Values{"csrf": {tok}})
+			return r.StatusCode, body
+		}
+		e.setOrg("theme", `"mine"`)
+		code, body := del("mine")
+		if code != 400 {
+			t.Fatalf("delete the org default: %d", code)
+		}
+		has(t, body, "organisation default")
+		e.setOrg("theme", `"default"`)
+
+		vtok := csrfOf(t, e.pageOK(viewer, "/dashboard/account"))
+		_, _ = e.post(viewer, "/dashboard/account/theme", url.Values{"theme": {"mine"}, "csrf": {vtok}})
+		code, body = del("mine")
+		if code != 400 {
+			t.Fatalf("delete while a user chose it: %d", code)
+		}
+		has(t, body, "viewer@") // the people are named
+		if _, err := os.Stat(filepath.Join(e.themesDir, "mine")); err != nil {
+			t.Fatal("a refused delete removed the theme")
+		}
+
+		// Unused: gone at once, from disk and from the page, and audited.
+		code, _ = del("spare")
+		if code != 303 {
+			t.Fatalf("delete unused: %d", code)
+		}
+		if _, err := os.Stat(filepath.Join(e.themesDir, "spare")); err == nil {
+			t.Error("directory remains")
+		}
+		lacks(t, e.pageOK(admin, "/dashboard/appearance"), `data-theme-card="spare"`)
+		if rows := auditRows(t, db, "theme.delete"); len(rows) != 1 || rows[0].Target != "spare" {
+			t.Errorf("audit: %+v", rows)
+		}
+		if code, _ := del("stripe"); code != 403 {
+			t.Errorf("bundled: %d", code)
+		}
+		if code, _ := del("nope"); code != 404 {
+			t.Errorf("missing: %d", code)
+		}
+	})
+}
+
+func TestRenameAndDeleteNeedARecentSignIn(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newThemedEnv(t, db)
+		e.writeTheme("mine", tealTheme, nil)
+		c := staleAdmin(t, e.env)
+		tok := csrfOf(t, e.pageOK(c, "/dashboard/settings"))
+		for path, form := range map[string]url.Values{
+			"/dashboard/appearance/themes/mine/rename": {"csrf": {tok}, "new_name": {"other"}},
+			"/dashboard/appearance/themes/mine/delete": {"csrf": {tok}},
+		} {
+			r, _ := e.post(c, path, form)
+			wantReauth(t, "POST "+path, r)
+		}
+		if _, err := os.Stat(filepath.Join(e.themesDir, "mine")); err != nil {
+			t.Error("a stale sign-in changed the theme")
+		}
+	})
+}
