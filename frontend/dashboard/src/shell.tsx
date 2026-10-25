@@ -290,25 +290,28 @@ function useChrome(page: DashboardPage | null) {
   // The dashboard theme the page carries: its tokens, and its default scheme
   // until the user has toggled (the saved toggle always wins).
   const dashboardTheme = page?.dashboardTheme ?? null;
+  const dashboardThemeVersion = page?.dashboardThemeVersion ?? null;
   useEffect(() => {
     if (!page) return;
     let live = true;
-    void applyDashboardTheme(dashboardTheme).then((applied) => {
-      if (!live || !applied) return;
-      try {
-        if (localStorage.getItem("paymux-theme")) return;
-        setDark(
-          applied.scheme === "dark" ||
-            (applied.scheme !== "light" &&
-              matchMedia("(prefers-color-scheme:dark)").matches),
-        );
-      } catch {}
-    });
+    void applyDashboardTheme(dashboardTheme, dashboardThemeVersion).then(
+      (applied) => {
+        if (!live || !applied) return;
+        try {
+          if (localStorage.getItem("paymux-theme")) return;
+          setDark(
+            applied.scheme === "dark" ||
+              (applied.scheme !== "light" &&
+                matchMedia("(prefers-color-scheme:dark)").matches),
+          );
+        } catch {}
+      },
+    );
     return () => {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dashboardTheme, page !== null]);
+  }, [dashboardTheme, dashboardThemeVersion, page !== null]);
   return { dark, setDark };
 }
 

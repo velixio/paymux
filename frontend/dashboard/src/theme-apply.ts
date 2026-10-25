@@ -11,13 +11,15 @@ const HEX = /^#[0-9a-f]{6}$/i;
 // One request per theme name; a failed one is forgotten so the next try asks again.
 const manifests = new Map<string, Promise<Manifest | null>>();
 
-async function fetchManifest(name: string): Promise<Manifest | null> {
+async function fetchManifest(
+  name: string,
+  version?: string | null,
+): Promise<Manifest | null> {
   try {
+    const query = version ? `?v=${encodeURIComponent(version)}` : "";
     const res = await fetch(
-      `/theme/${encodeURIComponent(name)}/dashboard.json`,
-      {
-        credentials: "same-origin",
-      },
+      `/theme/${encodeURIComponent(name)}/dashboard.json${query}`,
+      { credentials: "same-origin" },
     );
     if (!res.ok) return null;
     const m = JSON.parse(await res.text()) as Manifest;
@@ -27,13 +29,24 @@ async function fetchManifest(name: string): Promise<Manifest | null> {
   }
 }
 
-function loadManifest(name: string): Promise<Manifest | null> {
-  let p = manifests.get(name);
+// Keyed by name and version: a newer version of a theme is a new request, and
+// the older ones of that name are dropped.
+const keyOf = (name: string, version?: string | null) =>
+  `${name}@${version ?? ""}`;
+
+function loadManifest(
+  name: string,
+  version?: string | null,
+): Promise<Manifest | null> {
+  const key = keyOf(name, version);
+  let p = manifests.get(key);
   if (!p) {
-    p = fetchManifest(name);
-    manifests.set(name, p);
+    for (const k of manifests.keys())
+      if (k.startsWith(`${name}@`)) manifests.delete(k);
+    p = fetchManifest(name, version);
+    manifests.set(key, p);
     void p.then((m) => {
-      if (!m && manifests.get(name) === p) manifests.delete(name);
+      if (!m && manifests.get(key) === p) manifests.delete(key);
     });
   }
   return p;
@@ -41,8 +54,9 @@ function loadManifest(name: string): Promise<Manifest | null> {
 
 /** Forget fetched manifests (all, or one name), for example after a theme is edited. */
 export function clearThemeCache(name?: string) {
-  if (name) manifests.delete(name);
-  else manifests.clear();
+  if (!name) return manifests.clear();
+  for (const k of manifests.keys())
+    if (k.startsWith(`${name}@`)) manifests.delete(k);
 }
 
 let latest = 0;
@@ -54,13 +68,14 @@ let latest = 0;
  */
 export async function applyDashboardTheme(
   name: string | null,
+  version?: string | null,
 ): Promise<{ scheme: string } | null> {
   const ticket = ++latest;
   const want = name || FALLBACK;
   // The derivation is a separate chunk; start loading it with the manifest.
   const derivation = import("./theme-derive");
   const m =
-    (await loadManifest(want)) ??
+    (await loadManifest(want, version)) ??
     (want === FALLBACK ? null : await loadManifest(FALLBACK));
   const { themeCss } = await derivation;
   if (!m || ticket !== latest) return null;

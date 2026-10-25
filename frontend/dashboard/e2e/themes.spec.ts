@@ -39,6 +39,20 @@ test("an admin makes a theme from Paddle, sets it as default; a user overrides i
   await page.goto("/dashboard/overview");
   await expect.poll(() => primary(page)).toBe("#b3261e");
 
+  // Editing the theme you wear shows at once, by navigating inside the app (no reload).
+  await page
+    .getByRole("link", { name: "Appearance", exact: true })
+    .first()
+    .click();
+  await page
+    .locator('[data-theme-card="harbour"]')
+    .getByRole("link", { name: "Edit" })
+    .click();
+  await page.locator('input[name="light_accent"]').fill("#0b5ed7");
+  await page.getByRole("button", { name: "Save theme" }).click();
+  await expect(page.locator('[data-theme-card="harbour"]')).toBeVisible();
+  await expect.poll(() => primary(page)).toBe("#0b5ed7");
+
   // A user's own choice beats the default.
   await page.goto("/dashboard/account");
   await page.locator('select[name="theme"]').selectOption("midnight");

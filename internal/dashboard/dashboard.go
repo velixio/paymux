@@ -288,8 +288,11 @@ type view struct {
 	StyleNonce   string
 	// DashboardTheme names the theme the React dashboard wears; see effectiveDashboardTheme.
 	DashboardTheme string
-	ThemeForm      *themeFormView // the theme editor
-	ImportForm     *importFormView
+	// DashboardThemeVersion changes whenever the theme's files do, so a browser
+	// already wearing the theme refetches its colours after an edit.
+	DashboardThemeVersion string
+	ThemeForm             *themeFormView // the theme editor
+	ImportForm            *importFormView
 	// The account page's theme picker.
 	OrgThemeName string
 	ThemeChoices []themeChoice
@@ -425,6 +428,11 @@ func (d *Dashboard) renderWith(w http.ResponseWriter, status int, rend *web.Rend
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		v.DashboardTheme = d.effectiveDashboardTheme(ctx, v.Self)
+	}
+	if v.DashboardTheme != "" && d.o.Themes != nil {
+		if th, err := d.o.Themes.Load(v.DashboardTheme); err == nil {
+			v.DashboardThemeVersion = th.Fingerprint
+		}
 	}
 	var buf bytes.Buffer
 	if err := rend.Render(&buf, page, v); err != nil {
