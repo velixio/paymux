@@ -70,6 +70,30 @@ are strict and there is no repair step. If one fails, fix the rows it names
   GROUP BY 1, 2 HAVING COUNT(*) > 1;
   ```
 
+- **0033, ledger invariants.** Amounts of payments, refunds and payouts must
+  be positive and `payments.amount_refunded` not negative (CHECK constraints
+  on PostgreSQL, triggers on SQLite); a refund is booked once per refund and a
+  dispute releases and loses once per dispute (unique indexes); and
+  `ledger_entries` refuses UPDATE and DELETE from then on. It fails on rows
+  that break one of these. List them before upgrading:
+
+  ```sql
+  SELECT id FROM payments WHERE amount <= 0 OR amount_refunded < 0;
+  SELECT id FROM refunds WHERE amount <= 0;
+  SELECT id FROM payouts WHERE amount <= 0;
+  SELECT refund_id, kind, COUNT(*) FROM ledger_entries WHERE refund_id IS NOT NULL
+  GROUP BY 1, 2 HAVING COUNT(*) > 1;
+  SELECT dispute_id, kind, COUNT(*) FROM ledger_entries
+  WHERE dispute_id IS NOT NULL AND kind <> 'dispute_hold' GROUP BY 1, 2 HAVING COUNT(*) > 1;
+  ```
+
+  The migration also adds `ledger_entries.attempt_id` and fills it for old
+  entries where the attempt is unambiguous; the rest stay empty and count as
+  the sale in revenue totals. Because the ledger is now append-only, a later
+  migration or script that must change ledger rows has to drop the triggers
+  (`ledger_entries_no_update` and `ledger_entries_no_delete` on SQLite,
+  `ledger_entries_no_change` on PostgreSQL) first and recreate them.
+
 ## `paymux update`
 
 ```sh

@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"io/fs"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -157,3 +158,50 @@ func TestLedgerConstraintsMigrationRefusesViolatingData(t *testing.T) {
 		})
 	}
 }
+
+// Entries from before the attempt was recorded are matched where that is
+// unambiguous: by the instant the attempt was captured, by the refund's attempt,
+// or by the payment's only captured attempt. Otherwise they stay without one.
+func TestLedgerConstraintsMigrationBackfillsTheAttempt(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		migrate := beforeLedgerConstraints(t, db)
+		att := func(id, pay string, updated int64) string {
+			return `INSERT INTO payment_attempts (id, org_id, mode, payment_id, provider_account_id, provider_ref, status, amount_received, created_at, updated_at)
+				VALUES ('` + id + `', 'o', 'test', '` + pay + `', 'pa', 'ref_` + id + `', 'captured', 500, 1, ` + itoa(updated) + `)`
+		}
+		led := func(id, kind, pay string, refund any, at int64) string {
+			r := "NULL"
+			if refund != nil {
+				r = "'" + refund.(string) + "'"
+			}
+			return `INSERT INTO ledger_entries (id, org_id, mode, kind, amount, currency, payment_id, refund_id, occurred_at)
+				VALUES ('` + id + `', 'o', 'test', '` + kind + `', 500, 'INR', '` + pay + `', ` + r + `, ` + itoa(at) + `)`
+		}
+		for _, q := range []string{
+			att("a_only", "p1", 99), led("l_only", "charge", "p1", nil, 7), // one captured attempt, other instant
+			att("a_sale", "p2", 10), att("a_dup", "p2", 20), led("l_sale", "charge", "p2", nil, 10), led("l_dup", "charge", "p2", nil, 20),
+			att("a_x", "p3", 30), att("a_y", "p3", 40), led("l_amb", "charge", "p3", nil, 5), // two attempts, no instant matches
+			`INSERT INTO refunds (id, org_id, app_id, mode, payment_id, attempt_id, amount, currency, status, provider_ref, initiated_by, created_at, updated_at)
+				VALUES ('r1', 'o', 'a', 'test', 'p2', 'a_dup', 500, 'INR', 'succeeded', 'rr', 'api', 1, 1)`,
+			led("l_ref", "refund", "p2", "r1", 30),
+		} {
+			if err := exec(t, db, q); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := migrate(); err != nil {
+			t.Fatal(err)
+		}
+		for id, want := range map[string]string{"l_only": "a_only", "l_sale": "a_sale", "l_dup": "a_dup", "l_amb": "", "l_ref": "a_dup"} {
+			var got string
+			_ = db.Read(context.Background(), func(q store.Querier) error {
+				return q.QueryRowContext(context.Background(), "SELECT COALESCE(attempt_id, '') FROM ledger_entries WHERE id = '"+id+"'").Scan(&got)
+			})
+			if got != want {
+				t.Errorf("%s: attempt %q, want %q", id, got, want)
+			}
+		}
+	})
+}
+
+func itoa(n int64) string { return strconv.FormatInt(n, 10) }
