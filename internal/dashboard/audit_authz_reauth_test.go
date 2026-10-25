@@ -122,7 +122,7 @@ func reauthConfigRoutes(app store.App, sinkURL string) []struct {
 		{"endpoint disable", a + "/endpoints/whe_none/disable", url.Values{}},
 		{"domain add", a + "/domains", url.Values{"host": {"pay.alpha.example"}}},
 		{"org setting", "/dashboard/settings/payment_ttl", url.Values{"value": {"45"}}},
-		{"org routing", "/dashboard/settings/routing", url.Values{}},
+		{"org routing", "/dashboard/settings/routing", routingForm()},
 		{"app setting", a + "/settings/payment_ttl", url.Values{"value": {"45"}}},
 		{"app setting reset", a + "/settings/payment_ttl/reset", url.Values{}},
 		{"theme", "/dashboard/appearance/theme", url.Values{"theme": {"pink"}}},
@@ -134,9 +134,10 @@ func TestAuditAuthzConfigWritesNeedRecentSignIn(t *testing.T) {
 	sink := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
 	defer sink.Close()
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
-		e := newEnv(t, db)
+		e := newThemedEnv(t, db)
+		e.writeTheme("pink", pinkTheme, nil)
 		app := e.seedApp("alpha")
-		c := staleAdmin(t, e)
+		c := staleAdmin(t, e.env)
 		tok := csrfOf(t, e.pageOK(c, "/dashboard/settings"))
 		for _, rt := range reauthConfigRoutes(app, sink.URL) {
 			f := url.Values{"csrf": {tok}}
@@ -154,7 +155,8 @@ func TestAuditAuthzConfigWritesWorkWithRecentSignIn(t *testing.T) {
 	sink := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
 	defer sink.Close()
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
-		e := newEnv(t, db)
+		e := newThemedEnv(t, db)
+		e.writeTheme("pink", pinkTheme, nil)
 		app := e.seedApp("alpha")
 		c := e.roleClient("admin")
 		tok := csrfOf(t, e.pageOK(c, "/dashboard/settings"))
@@ -169,4 +171,12 @@ func TestAuditAuthzConfigWritesWorkWithRecentSignIn(t *testing.T) {
 			}
 		}
 	})
+}
+
+// routingForm is a valid save of the routing editor, without the CSRF token.
+func routingForm() url.Values {
+	f := routeForm("", []map[string]string{{"r_name": "inr", "r_currency": "INR", "r_action": "route", "r_targets": "razorpay"}},
+		map[string]string{"ca_targets": "razorpay, whop"})
+	f.Del("csrf")
+	return f
 }
