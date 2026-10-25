@@ -1,0 +1,20 @@
+{
+  "name": "midnight",
+  "version": "1.0.0",
+  "description": "Near-black with a lime accent. Dark by default, with a light version.",
+  "dashboard": {
+    "scheme": "dark",
+    "seeds": {
+      "accent": "#4d7c0f",
+      "background": "#f6f7f2",
+      "sidebar": "#eceee5",
+      "text": "#16181d"
+    },
+    "dark_seeds": {
+      "accent": "#c6f36b",
+      "background": "#0c0d10",
+      "sidebar": "#111216",
+      "text": "#e9ebf0"
+    }
+  }
+}
