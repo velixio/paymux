@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build the release artifacts: one tar.gz per platform with the paymux binary
-# (static, CGO_ENABLED=0, version stamped in), a SHA256SUMS file and, when
+# (static, CGO_ENABLED=0, version stamped in; each also under a name without the
+# version, paymux_<os>_<arch>.tar.gz), a SHA256SUMS file and, when
 # cosign is installed, a signature over SHA256SUMS. No goreleaser needed.
 #
 #   scripts/release.sh v1.2.3          # version = the tag; default: git describe
@@ -68,6 +69,11 @@ for t in $TARGETS; do
   cp LICENSE NOTICE "$stage/$name/" 2>/dev/null || true
   # Entries are at the top level of the archive: paymux, LICENSE, NOTICE.
   (cd "$stage/$name" && tar "${TAR_OPTS[@]}" -czf "$OUT/$name.tar.gz" paymux $(ls LICENSE NOTICE 2>/dev/null))
+  # The same archive without the version in its name, for the stable links
+  # https://github.com/<owner>/<repo>/releases/latest/download/paymux_<os>_<arch>.tar.gz.
+  # A copy, listed in SHA256SUMS below like the others, so the signature and the
+  # build provenance cover it too. "paymux update" keeps to the versioned name.
+  cp "$OUT/$name.tar.gz" "$OUT/paymux_${os}_${arch}.tar.gz"
 done
 
 echo "==> SHA256SUMS"

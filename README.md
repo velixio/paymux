@@ -77,6 +77,19 @@ The complete list is in [docs/features.md](docs/features.md).
 
 ## 🚀 Quick start in 5 minutes
 
+### Download
+
+Prebuilt binaries of the latest release. Each link always points at the newest version; check it against `SHA256SUMS` (signed with cosign) from the same release page.
+
+| Platform | Download |
+|---|---|
+| Linux, x86-64 | [paymux_linux_amd64.tar.gz](https://github.com/velixio/paymux/releases/latest/download/paymux_linux_amd64.tar.gz) |
+| Linux, ARM64 | [paymux_linux_arm64.tar.gz](https://github.com/velixio/paymux/releases/latest/download/paymux_linux_arm64.tar.gz) |
+| macOS, Intel | [paymux_darwin_amd64.tar.gz](https://github.com/velixio/paymux/releases/latest/download/paymux_darwin_amd64.tar.gz) |
+| macOS, Apple silicon | [paymux_darwin_arm64.tar.gz](https://github.com/velixio/paymux/releases/latest/download/paymux_darwin_arm64.tar.gz) |
+
+### Build from source
+
 You need [Go](https://go.dev/dl/) and [Bun](https://bun.sh) to build from source. Go fetches the pinned toolchain by itself. You do **not** need a gateway account to try it: the built-in simulator plays one.
 
 ```bash
