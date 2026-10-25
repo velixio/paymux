@@ -54,7 +54,8 @@ func TestAuditLedgerDisputeHoldsCannotExceedReceived(t *testing.T) {
 
 // A-13. Two full-amount disputes on one payment, one lost and one won, in
 // either order: the dispute entries never take more than the payment received
-// out of the ledger, and a dispute that ends releases exactly what it held.
+// out of the ledger, and the lost one takes all of it, even when it was capped
+// at the open and the other dispute was won first.
 func TestDisputeHoldsOfTwoDisputesNetToAtMostTheAmountReceived(t *testing.T) {
 	for _, lostFirst := range []bool{true, false} {
 		each(t, func(t *testing.T, e *env) {
@@ -77,8 +78,10 @@ func TestDisputeHoldsOfTwoDisputesNetToAtMostTheAmountReceived(t *testing.T) {
 			if got < -p.AmountReceived {
 				t.Errorf("lostFirst=%v: disputes took %d from a payment that received %d", lostFirst, -got, p.AmountReceived)
 			}
-			if lostFirst && got != -p.AmountReceived {
-				t.Errorf("the lost dispute should cost the amount it held: dispute entries sum to %d, want %d", got, -p.AmountReceived)
+			// Whichever order they end in, the lost dispute takes the amount received:
+			// when the other one ended first, its share was freed and the hold is topped up.
+			if got != -p.AmountReceived {
+				t.Errorf("lostFirst=%v: dispute entries sum to %d, want %d", lostFirst, got, -p.AmountReceived)
 			}
 		})
 	}
@@ -135,6 +138,27 @@ func TestFullyCappedDisputeBooksNothing(t *testing.T) {
 		e.apply(s)
 		if len(e.ledger(p.ID)) != 1 {
 			t.Errorf("a capped dispute ended with %d dispute entries", len(e.ledger(p.ID)))
+		}
+	})
+}
+
+// A-13. Two full-amount disputes that are both lost take the amount received
+// once, not twice.
+func TestTwoLostDisputesNeverTakeMoreThanReceived(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p, _ := e.paid("pay_1")
+		a := e.snap("dsp_a", "pay_1", connector.DisputeNeedsResponse, time.Time{})
+		b := e.snap("dsp_b", "pay_1", connector.DisputeNeedsResponse, time.Time{})
+		e.apply(a)
+		e.apply(b)
+		a.Status, b.Status = connector.DisputeLost, connector.DisputeLost
+		e.apply(a)
+		e.apply(b)
+		if got := sum(e.ledger(p.ID)); got != -p.AmountReceived {
+			t.Errorf("dispute entries sum to %d, want %d", got, -p.AmountReceived)
+		}
+		if !e.payment(p.ID).HasFlag(disputes.FlagDisputeOverlap) {
+			t.Errorf("no overlap flag: %v", e.payment(p.ID).Flags)
 		}
 	})
 }
