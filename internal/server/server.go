@@ -61,7 +61,7 @@ func New(o Options) *Server {
 func (s *Server) HandleFunc(pattern string, fn http.HandlerFunc) {
 	s.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		if h, ok := r.Context().Value(keyRoute).(*routeHolder); ok {
-			h.pattern = pattern
+			h.set(pattern)
 		}
 		fn(w, r)
 	})
