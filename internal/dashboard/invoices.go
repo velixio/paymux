@@ -21,7 +21,7 @@ import (
 var docFlags = []string{tax.FlagPOSDefaulted, invoice.FlagFXPending, tax.FlagExportIGST, invoice.FlagRecipientInvalid,
 	invoice.FlagReissued, invoice.FlagCutoffPassed}
 
-type docFilter struct{ Entity, App, Type, Month, Flag string }
+type docFilter struct{ Entity, App, Type, Month, Flag, Q string }
 
 type docRow struct {
 	ID, Href, Number, Date, App, Entity, Party, Total, Flags, Note string
@@ -108,7 +108,7 @@ func firstNonBlank(ss ...string) string {
 func (d *Dashboard) invoicesPage(w http.ResponseWriter, r *http.Request, s *session) {
 	ctx := r.Context()
 	qv := r.URL.Query()
-	f := docFilter{Entity: qv.Get("entity"), App: qv.Get("app"), Type: qv.Get("type"), Month: qv.Get("month"), Flag: qv.Get("flag")}
+	f := docFilter{Entity: qv.Get("entity"), App: qv.Get("app"), Type: qv.Get("type"), Month: qv.Get("month"), Flag: qv.Get("flag"), Q: strings.TrimSpace(qv.Get("q"))}
 	if f.Type == "" {
 		f.Type = "invoice"
 	}
@@ -125,7 +125,7 @@ func (d *Dashboard) invoicesPage(w http.ResponseWriter, r *http.Request, s *sess
 		d.fail(w, err)
 		return
 	}
-	sf := store.DocFilter{OrgID: org, EntityID: f.Entity, AppID: f.App, Mode: d.mode(r, s), Flag: f.Flag}
+	sf := store.DocFilter{OrgID: org, EntityID: f.Entity, AppID: f.App, Mode: d.mode(r, s), Flag: f.Flag, Q: f.Q}
 	if f.Month != "" {
 		var err error
 		if sf.From, sf.To, err = monthBounds(f.Month); err != nil {
@@ -239,7 +239,7 @@ func (d *Dashboard) invoicesPage(w http.ResponseWriter, r *http.Request, s *sess
 	}
 	if more {
 		next := url.Values{}
-		for k, val := range map[string]string{"entity": f.Entity, "app": f.App, "type": f.Type, "month": f.Month, "flag": f.Flag} {
+		for k, val := range map[string]string{"entity": f.Entity, "app": f.App, "type": f.Type, "month": f.Month, "flag": f.Flag, "q": f.Q} {
 			if val != "" {
 				next.Set(k, val)
 			}

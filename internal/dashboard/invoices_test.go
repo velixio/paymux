@@ -404,3 +404,42 @@ func TestReissueFromDashboard(t *testing.T) {
 		_ = http.StatusOK
 	})
 }
+
+func TestInvoicesPageQFilter(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		alpha, _ := e.taxApp("alpha", supplierGSTIN)
+		p1 := e.pay(alpha, 118000, "INR", intraB2C) // Asha
+		p2 := e.pay(alpha, 118000, "INR", noState)  // Nina
+		p3 := e.pay(alpha, 1200, "USD", usBuyer)    // Bob
+		e.runJobs()
+		c := e.roleClient("viewer")
+		e.setMode(c, "live")
+		link := func(p store.Payment) string { return `href="/dashboard/invoices/` + e.invoicesOf(p.ID)[0].ID + `"` }
+		for _, tc := range []struct {
+			q         string
+			want, not []store.Payment
+		}{
+			{"asha", []store.Payment{p1}, []store.Payment{p2, p3}},
+			{"Bob", []store.Payment{p3}, []store.Payment{p1, p2}},
+			{e.invoicesOf(p2.ID)[0].Number, []store.Payment{p2}, []store.Payment{p1, p3}},
+			{"%", nil, []store.Payment{p1, p2, p3}},
+			{"nobody", nil, []store.Payment{p1, p2, p3}},
+		} {
+			body := e.pageOK(c, "/dashboard/invoices?q="+url.QueryEscape(tc.q))
+			for _, p := range tc.want {
+				has(t, body, link(p))
+			}
+			for _, p := range tc.not {
+				lacks(t, body, link(p))
+			}
+			has(t, body, `name="q"`, `placeholder="Invoice number or buyer"`)
+		}
+		// the search survives paging
+		body := e.pageOK(c, "/dashboard/invoices?q=INV")
+		has(t, body, `q=INV`)
+		if m := regexp.MustCompile(`href="([^"]*after=[^"]*)"`).FindStringSubmatch(body); m == nil || !strings.Contains(m[1], "q=INV") {
+			t.Errorf("next link drops q: %v", m)
+		}
+	})
+}

@@ -28,6 +28,9 @@ step "public website browser tests (same as the GitHub public-browser job)"
 (cd frontend && bunx playwright install chromium-headless-shell >/dev/null)
 bun run --cwd frontend test:home
 
+step "dashboard browser tests (seeded hub on a temp data dir)"
+bun run --cwd frontend test:dashboard
+
 step "signed webhook receiver example"
 python3 -m unittest discover -s examples/webhook-receiver -p 'test_*.py'
 

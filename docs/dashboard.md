@@ -65,6 +65,14 @@ Use **Logs** (permission `logs.read`: admins, or a custom role you give it) to i
 
 Use **Alerts** to triage retained operational alerts. Acknowledgement records that someone reviewed the alert; it does not repair the underlying condition. Review the audit log for administrative changes.
 
+## Tabs, revenue chart and shortcuts
+
+The dashboard keeps pages open as tabs. Overview is pinned. Alt-click a link (or open a page from the pinned Overview) to open it in a new tab; reload the browser and your tabs come back. A tab with unsaved edits shows a dot and asks before it closes. A page that shows a secret only once, such as a new API key, closes its content when you leave the tab, so copy the secret before switching. Shortcuts: `[` and `]` switch tabs, `g` then `1` to `9` jumps to a tab, `g w` closes the current tab, `g t` reopens the last closed one, `Ctrl+K` (or `/`) opens the command bar and `?` lists all shortcuts. In tables, `j` and `k` move between rows, `Enter` opens one and `Alt+Enter` opens it in a new tab.
+
+**Overview** starts with a revenue chart. Pick a range (Today, 7D, 30D, 3M, 6M, 12M, YTD, All time, or custom dates), a bucket (hour, day, week, month, quarter), an app and a currency. Gross, refunds and net come with the change against the previous period of the same length, and **Download CSV** exports the buckets. Amounts are shown in rupees by default: other currencies are converted at the exchange rate stored for each day. If a day has no rate the nearest stored one is used and the chart says it includes estimated conversions; a currency with no rate at all is listed as not included until you add rates on the **FX rates** page. Choose a currency in the picker to see its own amounts with no conversion.
+
+The command bar finds pages, open tabs and actions, opens a payment, subscription, invoice or dispute by its id, and searches payments, subscriptions and invoices for an email address or any text. On list pages, **Save filter** keeps the current filters as a chip in this browser; the invoice list also searches by invoice number or buyer.
+
 ## Themes and responsive behavior
 
 The React dashboard uses a compact application shell with a fixed header and independently scrolling content. Collapse the desktop sidebar to an icon rail using **Collapse sidebar**; **Expand sidebar** restores labels. The browser remembers the choice. Changing routes starts the content at the top, and changing sidebar size keeps current form edits.

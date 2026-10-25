@@ -64,6 +64,7 @@ export default defineConfig({
       input: fileURLToPath(new URL("src/main.tsx", import.meta.url)),
       output: {
         entryFileNames: "main.js",
+        chunkFileNames: "[name]-[hash].js",
         assetFileNames: (asset) =>
           asset.names.some((n) => n.endsWith(".css"))
             ? "style.css"

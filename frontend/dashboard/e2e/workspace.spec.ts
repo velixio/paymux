@@ -1,0 +1,109 @@
+import { expect, test, type Page } from "@playwright/test";
+import { OWNER_EMAIL, OWNER_PASSWORD } from "./global-setup";
+
+async function login(page: Page) {
+  await page.goto("/dashboard/login");
+  await page.getByLabel("Email address").fill(OWNER_EMAIL);
+  await page.getByLabel("Password").fill(OWNER_PASSWORD);
+  await page.getByRole("button", { name: /sign in|log in|continue/i }).click();
+  await page.waitForURL(/\/dashboard\/(overview)?$/);
+}
+
+test("login, overview shows revenue table, switch to 12M shows monthly rows, CSV downloads", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/dashboard/overview");
+
+  const table = page.locator("#revenue-data");
+  await expect(table).toBeAttached();
+  await expect(table).toHaveAttribute("data-currency", "INR");
+  await expect(table).toHaveAttribute("data-bucket", "day"); // 30D is daily
+  expect(await table.locator("tr[data-start]").count()).toBeGreaterThanOrEqual(
+    30,
+  );
+
+  await page.getByRole("link", { name: "12M", exact: true }).click();
+  await expect(page.locator("#revenue-data")).toHaveAttribute(
+    "data-bucket",
+    "month",
+  );
+  const rows = page.locator("#revenue-data tr[data-start]");
+  expect(await rows.count()).toBeGreaterThanOrEqual(12);
+  // the seeded mid-month payments land in their own month, and USD is converted
+  const gross = await rows.evaluateAll((trs) =>
+    trs.map((tr) => Number(tr.getAttribute("data-gross"))),
+  );
+  expect(gross.filter((g) => g > 0).length).toBeGreaterThanOrEqual(11);
+  await expect(page.locator("#revenue-data")).toHaveAttribute(
+    "data-converted",
+    "true",
+  );
+
+  // The CSV link carries the current query (12M); fetch it with the session.
+  const href = await page
+    .getByRole("link", { name: /download csv/i })
+    .getAttribute("href");
+  expect(href).toContain("range=12m");
+  const res = await page.request.get(href!);
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toContain("text/csv");
+  expect(res.headers()["content-disposition"]).toContain("revenue-12m-INR.csv");
+  const lines = (await res.text()).trim().split("\n");
+  expect(lines[0]).toBe("start,label,currency,gross,refunds,net");
+  expect(lines.length).toBeGreaterThanOrEqual(13);
+});
+
+// Only the visible tab's content counts: hidden tabs stay mounted.
+const visible = (page: Page) =>
+  page.locator("section.react-content:not([hidden])");
+
+test("overview shows chart", async ({ page }) => {
+  await login(page);
+  await page.goto("/dashboard/overview");
+  const chart = visible(page).locator(".revenue-chart");
+  await expect(chart.locator("svg")).toBeVisible();
+  const rowCount = await visible(page)
+    .locator("#revenue-data tr[data-start]")
+    .count();
+  await expect(chart.locator("[data-bar]")).toHaveCount(rowCount);
+  // The table is behind the toggle but still in the page.
+  await expect(visible(page).locator("#revenue-data")).toBeHidden();
+  await visible(page).getByRole("button", { name: "View as table" }).click();
+  await expect(visible(page).locator("#revenue-data")).toBeVisible();
+});
+
+test("switch to 12M shows monthly bars", async ({ page }) => {
+  await login(page);
+  await page.goto("/dashboard/overview");
+  await visible(page).getByRole("link", { name: "12M", exact: true }).click();
+  await expect(visible(page).locator("#revenue-data")).toHaveAttribute(
+    "data-bucket",
+    "month",
+  );
+  const bars = visible(page).locator(".revenue-chart [data-bar]");
+  expect(await bars.count()).toBeGreaterThanOrEqual(12);
+  await expect(bars.first()).toHaveAttribute("aria-label", /net/i);
+  // The pinned Overview tab was updated in place, not duplicated.
+  await expect(page.getByRole("tab")).toHaveCount(1);
+  await bars.nth((await bars.count()) - 1).focus();
+  await expect(visible(page).getByRole("tooltip")).toContainText("Gross");
+});
+
+test("ctrl+k finds a payment id and opens it", async ({ page }) => {
+  await login(page);
+  await page.goto("/dashboard/overview");
+  await expect(page.getByRole("tab")).toHaveCount(1);
+  await page.keyboard.press("Control+k");
+  const box = page.getByRole("combobox", { name: /search pages/i });
+  await expect(box).toBeFocused();
+  await box.fill("pay_e2e_033");
+  await expect(page.getByRole("option").first()).toContainText(
+    "Open payment pay_e2e_033",
+  );
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/dashboard\/payments\/pay_e2e_033$/);
+  await expect(visible(page).getByText("pay_e2e_033").first()).toBeVisible();
+  // The pinned Overview stays; the payment opened beside it.
+  await expect(page.getByRole("tab")).toHaveCount(2);
+});

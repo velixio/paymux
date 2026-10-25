@@ -457,3 +457,120 @@ func TestListObjectEvents(t *testing.T) {
 		}
 	})
 }
+
+func seedSeries(t *testing.T, db *store.DB, entries []store.LedgerEntry) {
+	t.Helper()
+	err := db.Write(ctx, func(tx store.Tx) error {
+		for _, p := range []store.Payment{
+			pay("pay_1", "app_a", "test", "succeeded", "", "", t0), pay("pay_2", "app_b", "test", "succeeded", "", "", t0),
+			pay("pay_3", "app_a", "live", "succeeded", "", "", t0),
+		} {
+			if err := store.InsertPayment(ctx, tx, p); err != nil {
+				return err
+			}
+		}
+		for i, e := range entries {
+			e.ID, e.OrgID = "led_"+string(rune('a'+i)), store.DefaultOrgID
+			if err := store.InsertLedgerEntry(ctx, tx, e); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLedgerSeriesDaily(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		seedBase(t, db)
+		seedSeries(t, db, []store.LedgerEntry{
+			{Kind: "charge", Amount: 10000, Currency: "INR", PaymentID: "pay_1", Mode: "test", OccurredAt: t0},
+			{Kind: "charge", Amount: 5000, Currency: "INR", PaymentID: "pay_1", Mode: "test", OccurredAt: t0.Add(time.Hour)},
+			{Kind: "refund", Amount: -3000, Currency: "INR", PaymentID: "pay_1", Mode: "test", OccurredAt: t0.Add(2 * time.Hour)},
+			{Kind: "charge", Amount: 700, Currency: "INR", PaymentID: "pay_2", Mode: "test", OccurredAt: t0.Add(25 * time.Hour)},
+			{Kind: "charge", Amount: 20, Currency: "USD", PaymentID: "pay_2", Mode: "test", OccurredAt: t0.Add(25 * time.Hour)},
+			{Kind: "charge", Amount: 99, Currency: "INR", PaymentID: "pay_1", Mode: "test", OccurredAt: t0.Add(-48 * time.Hour)}, // before From
+			{Kind: "charge", Amount: 98, Currency: "INR", PaymentID: "pay_1", Mode: "test", OccurredAt: t0.Add(72 * time.Hour)},  // at/after To
+			{Kind: "fee", Amount: -50, Currency: "INR", PaymentID: "pay_1", Mode: "test", OccurredAt: t0},
+			{Kind: "charge", Amount: 1234, Currency: "INR", PaymentID: "pay_3", Mode: "live", OccurredAt: t0},
+		})
+		var got []store.SeriesRow
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			got, err = store.LedgerSeries(ctx, q, store.SeriesFilter{OrgID: store.DefaultOrgID, Mode: "test",
+				From: t0.Add(-time.Hour), To: t0.Add(72 * time.Hour), OffsetSeconds: 19800})
+			return
+		})
+		day := t0.Add(19800*time.Second).UnixMilli() / 86_400_000
+		want := []store.SeriesRow{
+			{Slot: day, Currency: "INR", Gross: 15000, Refunds: 3000},
+			{Slot: day + 1, Currency: "INR", Gross: 700},
+			{Slot: day + 1, Currency: "USD", Gross: 20},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %+v want %+v", got, want)
+		}
+		// another org sees nothing
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			got, err = store.LedgerSeries(ctx, q, store.SeriesFilter{OrgID: "org_other", Mode: "test", From: t0.Add(-time.Hour), To: t0.Add(72 * time.Hour)})
+			return
+		})
+		if len(got) != 0 {
+			t.Fatalf("other org: %+v", got)
+		}
+	})
+}
+
+func TestLedgerSeriesHourlyAndApp(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		seedBase(t, db)
+		seedSeries(t, db, []store.LedgerEntry{
+			{Kind: "charge", Amount: 100, Currency: "INR", PaymentID: "pay_1", Mode: "test", OccurredAt: t0},
+			{Kind: "charge", Amount: 200, Currency: "INR", PaymentID: "pay_1", Mode: "test", OccurredAt: t0.Add(10 * time.Minute)},
+			{Kind: "refund", Amount: -50, Currency: "INR", PaymentID: "pay_1", Mode: "test", OccurredAt: t0.Add(time.Hour)},
+			{Kind: "charge", Amount: 999, Currency: "INR", PaymentID: "pay_2", Mode: "test", OccurredAt: t0}, // other app
+		})
+		var got []store.SeriesRow
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			got, err = store.LedgerSeries(ctx, q, store.SeriesFilter{OrgID: store.DefaultOrgID, Mode: "test", AppID: "app_a",
+				From: t0, To: t0.Add(3 * time.Hour), Hourly: true, OffsetSeconds: 19800})
+			return
+		})
+		h := t0.Add(19800*time.Second).UnixMilli() / 3_600_000
+		want := []store.SeriesRow{
+			{Slot: h, Currency: "INR", Gross: 300},
+			{Slot: h + 1, Currency: "INR", Refunds: 50},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %+v want %+v", got, want)
+		}
+	})
+}
+
+func TestFirstLedgerAt(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		seedBase(t, db)
+		first := func(mode string) (at time.Time, ok bool) {
+			_ = db.Read(ctx, func(q store.Querier) (err error) {
+				at, ok, err = store.FirstLedgerAt(ctx, q, store.DefaultOrgID, mode)
+				return
+			})
+			return
+		}
+		if _, ok := first("test"); ok {
+			t.Fatal("empty ledger reported an entry")
+		}
+		seedSeries(t, db, []store.LedgerEntry{
+			{Kind: "charge", Amount: 1, Currency: "INR", PaymentID: "pay_1", Mode: "test", OccurredAt: t0.Add(time.Hour)},
+			{Kind: "charge", Amount: 1, Currency: "INR", PaymentID: "pay_1", Mode: "test", OccurredAt: t0.Add(-time.Hour)},
+			{Kind: "charge", Amount: 1, Currency: "INR", PaymentID: "pay_3", Mode: "live", OccurredAt: t0.Add(-10 * time.Hour)},
+		})
+		if at, ok := first("test"); !ok || !at.Equal(t0.Add(-time.Hour)) {
+			t.Fatalf("got %v %v", at, ok)
+		}
+		if _, ok := first("sandbox"); ok {
+			t.Fatal("unknown mode reported an entry")
+		}
+	})
+}
