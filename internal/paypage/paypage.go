@@ -13,27 +13,20 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"net/mail"
 	"net/url"
-	"regexp"
 	"sort"
-	"strings"
 	"time"
 
+	"github.com/paymux/paymux/internal/billingform"
 	"github.com/paymux/paymux/internal/checkout"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/core/state"
 	"github.com/paymux/paymux/internal/domains"
 	"github.com/paymux/paymux/internal/settings"
 	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
 	"github.com/paymux/paymux/internal/web"
 	"github.com/paymux/paymux/pkg/connector"
 )
-
-// addressThreshold is Rs 50,000 in paise: from this amount an Indian buyer's
-// full address is required for the invoice (spec section 10).
-const addressThreshold = 5_000_000
 
 const maxForm = 1 << 20
 
@@ -200,7 +193,7 @@ func (h *Handler) pay(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, appName, err)
 		return
 	}
-	if need.show {
+	if need.Show {
 		h.billingForm(w, http.StatusOK, p, secret, appName, cust, need, "")
 		return
 	}
@@ -257,46 +250,13 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, appName string,
 
 // ---- billing details ----
 
-type billingNeed struct {
-	show, stateRequired, addressRequired bool
-}
-
-func (h *Handler) setting(ctx context.Context, appID, key string, dst any) error {
-	v, err := h.o.Settings.Resolve(ctx, appID, key)
-	if err != nil {
-		return err
-	}
-	return v.Decode(dst)
-}
-
 // billingNeed decides what the pay page must ask (spec sections 6.2 and 10).
-// state_required only applies while the app issues invoices.
-func (h *Handler) billingNeed(ctx context.Context, p store.Payment, c store.Customer) (billingNeed, error) {
-	var mode string
-	var issue bool
-	if err := h.setting(ctx, p.AppID, "billing_details", &mode); err != nil {
-		return billingNeed{}, err
+func (h *Handler) billingNeed(ctx context.Context, p store.Payment, c store.Customer) (billingform.Need, error) {
+	mode, issue, err := billingform.Settings(ctx, h.o.Settings, p.AppID)
+	if err != nil {
+		return billingform.Need{}, err
 	}
-	if err := h.setting(ctx, p.AppID, "issue_invoices", &issue); err != nil {
-		return billingNeed{}, err
-	}
-	// The buyer is Indian unless their stored country says otherwise (the API
-	// may supply it, or an earlier submission of this form did). A buyer abroad
-	// needs no State or PIN: the sale is an export.
-	india := p.Currency == "INR" && (c.Billing.Country == "" || strings.EqualFold(c.Billing.Country, "IN"))
-	if mode == "state_required" && !issue {
-		mode = "off"
-	}
-	n := billingNeed{
-		stateRequired:   india && (mode == "state_required" || mode == "required"),
-		addressRequired: india && (mode == "required" || issue && mode != "off" && p.Amount >= addressThreshold),
-	}
-	b := c.Billing
-	n.show = n.stateRequired && b.StateCode == "" ||
-		n.addressRequired && (b.Line1 == "" || b.PostalCode == "") ||
-		mode == "required" && c.Name == "" ||
-		mode == "optional" && p.CustomerID == ""
-	return n, nil
+	return billingform.NeedFor(mode, issue, p.Currency, p.Amount, c, p.CustomerID != ""), nil
 }
 
 func (h *Handler) csrf(paymentID, secret string) string {
@@ -305,32 +265,12 @@ func (h *Handler) csrf(paymentID, secret string) string {
 	return hex.EncodeToString(m.Sum(nil))
 }
 
-func (h *Handler) billingForm(w http.ResponseWriter, status int, p store.Payment, secret, appName string, c store.Customer, n billingNeed, msg string) {
+func (h *Handler) billingForm(w http.ResponseWriter, status int, p store.Payment, secret, appName string, c store.Customer, n billingform.Need, msg string) {
 	data := web.PayPage{AppName: appName, FormURL: "/pay/" + p.ID + "?t=" + url.QueryEscape(secret) + h.langQuery(w), CSRF: h.csrf(p.ID, secret),
-		Error: h.tr(w, msg), StateRequired: n.stateRequired, AddressRequired: n.addressRequired,
-		Billing: web.Billing{Name: c.Name, Email: c.Email, StateCode: c.Billing.StateCode, Line1: c.Billing.Line1,
-			PostalCode: c.Billing.PostalCode, GSTIN: c.Billing.GSTIN, LegalName: c.Billing.LegalName, Country: c.Billing.Country}}
-	if data.Billing.Country == "" && p.Currency == "INR" {
-		data.Billing.Country = "IN"
-	}
-	if p.Currency == "INR" {
-		codes := tax.StateCodes()
-		keys := make([]string, 0, len(codes))
-		for code := range codes {
-			keys = append(keys, code)
-		}
-		sort.Strings(keys)
-		for _, code := range keys {
-			data.IndiaStates = append(data.IndiaStates, web.StateOption{Code: code, Name: codes[code]})
-		}
-	}
+		Error: h.tr(w, msg)}
+	billingform.Fill(&data, c, p.Currency, n)
 	h.page(w, status, "pay_billing", data)
 }
-
-var pinRE = regexp.MustCompile(`^[1-9][0-9]{5}$`)
-
-// countryRE is an ISO 3166 alpha-2 code, upper case.
-var countryRE = regexp.MustCompile(`^[A-Z]{2}$`)
 
 func (h *Handler) billingPost(w http.ResponseWriter, r *http.Request) {
 	p, secret, ok := h.load(w, r)
@@ -364,7 +304,7 @@ func (h *Handler) billingPost(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, appName, err)
 		return
 	}
-	in, msg := h.parseBilling(r, p, need)
+	in, msg := billingform.Parse(r.PostForm, p.Currency, need)
 	if msg != "" {
 		// Re-show what the buyer typed.
 		cust.Name, cust.Email = in.Name, in.Email
@@ -377,73 +317,6 @@ func (h *Handler) billingPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/pay/"+p.ID+"?t="+url.QueryEscape(secret)+h.langQuery(w), http.StatusSeeOther)
-}
-
-func (h *Handler) parseBilling(r *http.Request, p store.Payment, need billingNeed) (core.BillingInput, string) {
-	f := r.PostForm
-	get := func(k string) string { return strings.TrimSpace(f.Get(k)) }
-	in := core.BillingInput{Name: get("name"), Email: get("email")}
-	b := &in.Billing
-	b.StateCode, b.Line1, b.PostalCode = get("state_code"), get("line1"), get("postal_code")
-	b.GSTIN, b.LegalName = strings.ToUpper(get("gstin")), get("legal_name")
-	if len(in.Name) > 200 || len(b.Line1) > 200 || len(b.LegalName) > 200 {
-		return in, "billing.err.too_long"
-	}
-	if in.Name == "" {
-		return in, "billing.err.name"
-	}
-	if in.Email != "" {
-		if a, err := mail.ParseAddress(in.Email); err != nil || a.Address != in.Email {
-			return in, "billing.err.email"
-		}
-	}
-	b.Country = strings.ToUpper(get("country"))
-	if b.Country == "" && p.Currency == "INR" {
-		b.Country = "IN"
-	}
-	if b.Country != "" && !countryRE.MatchString(b.Country) {
-		return in, "billing.err.country"
-	}
-	if b.Country != "" && b.Country != "IN" {
-		// A buyer abroad: an export. No Indian State, address check or GSTIN applies.
-		b.StateCode, b.GSTIN, b.LegalName = "", "", ""
-		return in, ""
-	}
-	if b.StateCode != "" {
-		if _, ok := tax.StateName(b.StateCode); !ok {
-			return in, "billing.err.state_invalid"
-		}
-	}
-	if need.stateRequired && b.StateCode == "" && b.GSTIN == "" {
-		return in, "billing.err.state_required"
-	}
-	if b.GSTIN != "" {
-		if err := tax.ValidGSTIN(b.GSTIN); err != nil {
-			return in, "billing.err.gstin"
-		}
-		if b.LegalName == "" {
-			return in, "billing.err.legal_name"
-		}
-		gst := tax.StateFromGSTIN(b.GSTIN)
-		switch {
-		case b.StateCode == "":
-			b.StateCode = gst
-		case b.StateCode != gst:
-			return in, "billing.err.gst_state"
-		}
-	}
-	if need.stateRequired && b.StateCode == "" {
-		return in, "billing.err.state_required"
-	}
-	if need.addressRequired {
-		if b.Line1 == "" {
-			return in, "billing.err.address"
-		}
-		if !pinRE.MatchString(b.PostalCode) {
-			return in, "billing.err.pin"
-		}
-	}
-	return in, ""
 }
 
 // ---- return ----

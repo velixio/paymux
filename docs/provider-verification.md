@@ -33,6 +33,15 @@ run its `sandbox_test.go` (skipped without credentials; see
 
 ## Razorpay
 
+Live-run notes (sandbox, through the public hub URL, 2026-10): the test card for
+a subscription is `4718 6091 0820 4366`, any future expiry, any CVV, any OTP. A
+subscription paid by card or UPI keeps its plan: `PATCH /subscriptions/{id}` for
+a new amount is refused, so Paymux says so up front (`the provider cannot change
+the plan of a card subscription; cancel it and start a new one`, 422
+`unsupported`) and the dashboard hides the amount form for it. A provider
+refusal that does come back is a 422 `provider_rejected` with the provider's
+message, on the API and on the dashboard page.
+
 - [ ] **Payment by id** (`connectors/razorpay/payments.go`): a payment's `order_id`
   and the order's `receipt` are the fields used to prove a payment is ours.
   Confirm both are always present on authorized and captured payments.
@@ -79,6 +88,16 @@ run its `sandbox_test.go` (skipped without credentials; see
   updated (mapped to `ErrUnsupported`). Not run against the test API.
 
 ## Stripe
+
+Live-run notes (sandbox, 2026-10): to see a renewal without waiting a month, move
+the subscription's `billing_cycle_anchor` to now (`billing_cycle_anchor=now`, API
+version 2024-06-20 and later): Stripe finalises and pays the next invoice at
+once, sends `invoice.paid`, and Paymux books it as a renewal (a `renewal`
+payment, the invoice and the `subscription.renewed` event), not as a first
+payment. A USD subscription of a buyer with no billing details taught the GST
+rule: the hosted subscription page now asks for the country (and the State for
+India) before it sends the buyer to Stripe, so the invoice is an export and not a
+sale in the supplier's State.
 
 Verified against Stripe test mode on 2026-10-18 (`connectors/stripe/sandbox_test.go`,
 `sandbox_flows_test.go`, `sandbox_more_test.go`): Checkout Sessions in INR, USD,

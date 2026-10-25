@@ -386,18 +386,7 @@ func (s *Service) SetBilling(ctx context.Context, paymentID string, in BillingIn
 				return mapStoreErr(err, "customer")
 			}
 		}
-		merge(&c.Name, in.Name)
-		merge(&c.Email, in.Email)
-		merge(&c.Phone, in.Phone)
-		b := &c.Billing
-		merge(&b.LegalName, in.Billing.LegalName)
-		merge(&b.GSTIN, in.Billing.GSTIN)
-		merge(&b.Line1, in.Billing.Line1)
-		merge(&b.Line2, in.Billing.Line2)
-		merge(&b.City, in.Billing.City)
-		merge(&b.StateCode, in.Billing.StateCode)
-		merge(&b.PostalCode, in.Billing.PostalCode)
-		merge(&b.Country, in.Billing.Country)
+		mergeBilling(&c, in)
 		if p.CustomerID != "" {
 			return store.UpdateCustomer(ctx, tx, c, now)
 		}
@@ -405,6 +394,35 @@ func (s *Service) SetBilling(ctx context.Context, paymentID string, in BillingIn
 			return err
 		}
 		return store.SetPaymentCustomer(ctx, tx, p.ID, c.ID, now)
+	})
+}
+
+func mergeBilling(c *store.Customer, in BillingInput) {
+	merge(&c.Name, in.Name)
+	merge(&c.Email, in.Email)
+	merge(&c.Phone, in.Phone)
+	b := &c.Billing
+	merge(&b.LegalName, in.Billing.LegalName)
+	merge(&b.GSTIN, in.Billing.GSTIN)
+	merge(&b.Line1, in.Billing.Line1)
+	merge(&b.Line2, in.Billing.Line2)
+	merge(&b.City, in.Billing.City)
+	merge(&b.StateCode, in.Billing.StateCode)
+	merge(&b.PostalCode, in.Billing.PostalCode)
+	merge(&b.Country, in.Billing.Country)
+}
+
+// SetCustomerBilling stores billing details on a customer (a subscription's
+// buyer, who gave them on the hosted page). Empty fields keep their stored value.
+// Every later invoice of the customer's subscriptions uses them.
+func (s *Service) SetCustomerBilling(ctx context.Context, customerID string, in BillingInput) error {
+	return s.db.Write(ctx, func(tx store.Tx) error {
+		c, err := store.GetCustomer(ctx, tx, customerID)
+		if err != nil {
+			return mapStoreErr(err, "customer")
+		}
+		mergeBilling(&c, in)
+		return store.UpdateCustomer(ctx, tx, c, s.nowUTC())
 	})
 }
 

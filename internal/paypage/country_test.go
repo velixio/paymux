@@ -55,3 +55,29 @@ func TestBillingFormSkippedForAnApiSuppliedForeignBuyer(t *testing.T) {
 		}
 	})
 }
+
+// A dollar payment without a known country used to be invoiced as a sale in the
+// supplier's state. The form asks for the country, which is required there, and
+// is skipped when the API already gave it.
+func TestBillingFormForADollarPaymentRequiresTheCountry(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		c := e.create(core.CreatePaymentInput{Currency: "USD", Amount: 1500})
+		if r := e.do("GET", c.path(), "", nil); r.status != 200 || !strings.Contains(r.body, `name="country"`) || !strings.Contains(r.body, "required") {
+			t.Fatalf("form: %d %s", r.status, r.body)
+		}
+		if r := e.billingPost(c, func(f url.Values) { f.Del("state_code") }); r.status != 400 {
+			t.Errorf("no country: %d", r.status)
+		}
+		if r := e.billingPost(c, func(f url.Values) { f.Del("state_code"); f.Set("country", "de") }); r.status != 303 {
+			t.Fatalf("with a country: %d %s", r.status, r.body)
+		}
+		cust, _ := e.core.GetCustomer(ctx, e.payment(c.id).CustomerID)
+		if cust.Billing.Country != "DE" || cust.Billing.StateCode != "" {
+			t.Errorf("customer = %+v", cust.Billing)
+		}
+		known := e.create(core.CreatePaymentInput{Currency: "USD", Amount: 1500, Customer: &core.CustomerInput{Name: "Bob", Billing: store.Billing{Country: "US"}}})
+		if r := e.do("GET", known.path(), "", nil); r.status != 303 {
+			t.Errorf("country known: %d", r.status)
+		}
+	})
+}

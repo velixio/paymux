@@ -244,7 +244,7 @@ func (s *Service) Update(ctx context.Context, sc core.Scope, id string, in Updat
 				// instead of asking the provider to refuse.
 				if conn, err := s.connectors.Get(ctx, sub.ProviderAccountID); err == nil {
 					if method := s.lastPaymentMethod(ctx, q, sub.ID); !conn.Info().CanChangeSubscriptionAmount(method) {
-						return newErr(ErrUnsupported, "the provider cannot change the plan of a %s subscription; cancel it and start a new one", method)
+						return newErr(ErrUnsupported, "%s", fixedPlanText(method))
 					}
 				}
 				providerID = sub.ProviderAccountID
@@ -501,6 +501,36 @@ func (s *Service) IssueCheckoutLink(ctx context.Context, sc core.Scope, id strin
 
 // lastPaymentMethod is the payment method of the subscription's most recent
 // attempt that has one ("" when none is known yet).
+// fixedPlanText is what to tell someone who asks to change the amount of a
+// subscription whose provider keeps the plan.
+func fixedPlanText(method string) string {
+	return fmt.Sprintf("the provider cannot change the plan of a %s subscription; cancel it and start a new one", method)
+}
+
+// AmountChange says whether the amount of the subscription can be changed, and
+// if not, why, in words for the person who asked. A merchant-triggered
+// subscription can always be changed (Paymux bills it); a provider-managed one
+// only where the provider keeps no fixed plan for the method it is paid with
+// (connector.Info.CanChangeSubscriptionAmount).
+func (s *Service) AmountChange(ctx context.Context, sub store.Subscription) (ok bool, why string) {
+	if terminal(sub.Status) || sub.Status == string(state.SubIncomplete) {
+		return false, "the amount of a " + sub.Status + " subscription cannot be changed"
+	}
+	if sub.BillingMode != string(connector.ProviderManaged) {
+		return true, ""
+	}
+	conn, err := s.connectors.Get(ctx, sub.ProviderAccountID)
+	if err != nil {
+		return true, "" // unknown here; the change itself will say
+	}
+	var method string
+	_ = s.db.Read(ctx, func(q store.Querier) error { method = s.lastPaymentMethod(ctx, q, sub.ID); return nil })
+	if !conn.Info().CanChangeSubscriptionAmount(method) {
+		return false, fixedPlanText(method)
+	}
+	return true, ""
+}
+
 func (s *Service) lastPaymentMethod(ctx context.Context, q store.Queryer, subID string) string {
 	cycles, err := store.ListCycles(ctx, q, subID)
 	if err != nil {

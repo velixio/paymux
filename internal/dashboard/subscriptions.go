@@ -3,16 +3,18 @@ package dashboard
 import (
 	"bytes"
 	"errors"
-	"github.com/paymux/paymux/connectors/simulator"
 	"net/http"
 	"net/url"
 	"strings"
 
+	"github.com/paymux/paymux/connectors/simulator"
 	"github.com/paymux/paymux/internal/authz"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/core/state"
+	"github.com/paymux/paymux/internal/redact"
 	"github.com/paymux/paymux/internal/store"
 	"github.com/paymux/paymux/internal/subscriptions"
+	"github.com/paymux/paymux/pkg/connector"
 )
 
 // Subscription pages: list, detail (periods, renewals with links to their
@@ -43,8 +45,13 @@ type subDetail struct {
 	CancelAtPeriodEnd, RequiresReauth                                                       bool
 	Open, CanCancel, CanLink, WaitingForCustomer                                            bool
 	CanSimulate                                                                             bool
-	Mandates                                                                                []mandateRow
-	Cycles                                                                                  []cycleRow
+	// CanChangeAmount offers the amount form; AmountNote says why not when the
+	// subscription is open but the provider keeps its plan. Prorations is true for
+	// the subscriptions Paymux bills itself.
+	CanChangeAmount, Prorations bool
+	AmountNote                  string
+	Mandates                    []mandateRow
+	Cycles                      []cycleRow
 }
 
 // subsView is the data of the dash_subscription* templates: the shared view
@@ -66,6 +73,7 @@ func (d *Dashboard) routesSubscriptions() {
 	m.HandleFunc("GET "+prefix+"/subscriptions", d.authed(authz.PaymentRead, d.subscriptionsPage))
 	m.HandleFunc("GET "+prefix+"/subscriptions/{id}", d.authed(authz.PaymentRead, d.subscriptionPage))
 	m.HandleFunc("POST "+prefix+"/subscriptions/{id}/cancel", d.authed(authz.PaymentCancel, d.subscriptionCancel))
+	m.HandleFunc("POST "+prefix+"/subscriptions/{id}/amount", d.authed(authz.PaymentCreate, d.subscriptionAmount))
 	m.HandleFunc("POST "+prefix+"/subscriptions/{id}/simulate-renewal", d.authed(authz.PaymentCreate, d.simulateRenewal))
 	m.HandleFunc("POST "+prefix+"/subscriptions/{id}/checkout-link", d.authed(authz.PaymentCreate, d.subscriptionLink))
 }
@@ -275,6 +283,11 @@ func (d *Dashboard) renderSubscription(w http.ResponseWriter, r *http.Request, s
 		WaitingForCustomer: sub.BillingMode == "merchant_triggered" && (sub.Status == string(state.SubIncomplete) || sub.PendingMandateID != "" || sub.RequiresReauthorization),
 		Renewals:           itoa(sub.RenewalsDone)}
 	det.CanLink = det.WaitingForCustomer && open && s.can(authz.PaymentCreate)
+	if open && s.can(authz.PaymentCreate) && sub.Status != string(state.SubIncomplete) {
+		ok, why := d.o.Subscriptions.AmountChange(ctx, sub)
+		det.CanChangeAmount, det.AmountNote = ok, why
+		det.Prorations = sub.BillingMode == "merchant_triggered"
+	}
 	det.CanSimulate = simulatedRenewable(sub, account) && s.can(authz.PaymentCreate)
 	if sub.TotalCount > 0 {
 		det.Renewals += " of " + itoa(sub.TotalCount)
@@ -343,6 +356,72 @@ func (d *Dashboard) subscriptionCancel(w http.ResponseWriter, r *http.Request, s
 	default:
 		d.fail(w, err)
 	}
+}
+
+// subscriptionAmount changes the amount from the next period on. Whatever the
+// service or the provider refuses is shown on the page in their words.
+func (d *Dashboard) subscriptionAmount(w http.ResponseWriter, r *http.Request, s *session) {
+	if !d.subsEnabled(w) {
+		return
+	}
+	ctx := r.Context()
+	var sub store.Subscription
+	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) { sub, err = store.GetSubscription(ctx, q, r.PathValue("id")); return })
+	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, sub.OrgID) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	amount, err := majorToMinor(r.PostForm.Get("amount"), sub.Currency)
+	if err != nil || amount <= 0 {
+		d.renderSubscription(w, r, s, http.StatusBadRequest, "Enter the new amount per period as a positive number, for example 599.00.", "", "")
+		return
+	}
+	proration := subscriptions.Proration(r.PostForm.Get("proration"))
+	res, err := d.o.Subscriptions.Update(ctx, core.Scope{AppID: sub.AppID, Mode: sub.Mode}, sub.ID, subscriptions.UpdateInput{Amount: amount, Proration: proration})
+	switch {
+	case err == nil:
+		if err := d.record(ctx, r, s, "subscription.update", sub.ID, map[string]int64{"amount": sub.Amount},
+			map[string]int64{"amount": amount, "pending_amount": res.Subscription.PendingAmount}); err != nil {
+			d.fail(w, err)
+			return
+		}
+		if res.CheckoutURL != "" {
+			d.renderSubscription(w, r, s, http.StatusOK, "", "The new amount is above the customer's mandate; they have to authorise a larger one. Send them this link.", res.CheckoutURL)
+			return
+		}
+		http.Redirect(w, r, prefix+"/subscriptions/"+sub.ID, http.StatusSeeOther)
+	case errors.Is(err, subscriptions.ErrNotFound):
+		http.NotFound(w, r)
+	case errors.Is(err, subscriptions.ErrInvalid):
+		d.renderSubscription(w, r, s, http.StatusBadRequest, err.Error(), "", "")
+	case errors.Is(err, subscriptions.ErrInvalidState), errors.Is(err, subscriptions.ErrAmountExceedsMandateLimit):
+		d.renderSubscription(w, r, s, http.StatusConflict, err.Error(), "", "")
+	case errors.Is(err, subscriptions.ErrUnsupported), errors.Is(err, connector.ErrUnsupported):
+		d.renderSubscription(w, r, s, http.StatusUnprocessableEntity, d.providerText(err), "", "")
+	case errors.Is(err, connector.ErrRejected):
+		d.renderSubscription(w, r, s, http.StatusUnprocessableEntity, "The provider refused the change: "+d.providerText(err), "", "")
+	default:
+		d.fail(w, err)
+	}
+}
+
+// providerText is the text of a refusal made fit for the page: secrets and
+// personal data removed, and not endless.
+func (d *Dashboard) providerText(err error) string {
+	msg := err.Error()
+	if d.o.LogRedact != nil {
+		msg = d.o.LogRedact(msg)
+	} else {
+		msg = redact.New().Text(msg)
+	}
+	if r := []rune(strings.TrimSpace(msg)); len(r) > 300 {
+		return string(r[:300]) + "..."
+	}
+	return strings.TrimSpace(msg)
 }
 
 func (d *Dashboard) subscriptionLink(w http.ResponseWriter, r *http.Request, s *session) {

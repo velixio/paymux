@@ -3,6 +3,7 @@
   "billing.name": "Full name",
   "billing.email": "Email",
   "billing.country": "Country (2-letter code, e.g. IN)",
+  "billing.err.country_required": "Please enter the country you are in, as a 2-letter code, for example US or DE.",
   "billing.err.country": "Please enter a 2-letter country code, for example IN.",
   "billing.state": "State",
   "billing.address": "Address",

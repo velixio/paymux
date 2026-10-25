@@ -55,6 +55,10 @@ Save and confirm the effective value. A validation error leaves the submitted va
 
 Routing settings include a route tester. Verify the intended application, currency, amount, country, and purpose before applying new traffic rules.
 
+## Subscriptions: changing the amount
+
+On a subscription's page, *Change the amount* sets a new amount per period (from the next period; for a subscription Paymux bills itself the difference can also be charged for the current one). The control follows what the provider can do (`connector.Info.CanChangeSubscriptionAmount`): where it keeps the plan of a subscription paid by a given method (Razorpay does for cards and UPI), the form is not shown and the page says *the provider cannot change the plan of a card subscription; cancel it and start a new one*. If a change is attempted anyway, or the provider refuses it, the page shows the same words or the provider's own message (with secrets removed) instead of a generic error. The change is audited as `subscription.update`. The other controls (cancel, a new checkout link for a customer who has to authorise a mandate, the simulator's renewal) appear only where they apply to the subscription's billing model.
+
 ## Disputes, reconciliation, and alerts
 
 Use **Disputes** to track due dates, inspect provider capabilities, upload evidence, and submit or accept supported actions. Some providers require manual dispute entry. An evidence file being uploaded locally is not equivalent to a successful provider submission.

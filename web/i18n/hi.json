@@ -3,6 +3,7 @@
   "billing.name": "पूरा नाम",
   "billing.email": "ईमेल",
   "billing.country": "देश (2 अक्षर का कोड, जैसे IN)",
+  "billing.err.country_required": "कृपया अपना देश 2 अक्षर के कोड में दर्ज करें, जैसे US या DE।",
   "billing.err.country": "कृपया 2 अक्षर का देश कोड दर्ज करें, जैसे IN।",
   "billing.state": "राज्य",
   "billing.address": "पता",

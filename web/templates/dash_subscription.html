@@ -60,6 +60,21 @@
 <button class="btn" type="submit">Simulate a renewal</button>
 </form>
 {{end}}
+{{if .CanChangeAmount}}
+<form method="post" action="/dashboard/subscriptions/{{.ID}}/amount" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<h4>Change the amount</h4>
+<p class="muted">The new amount applies from the next period.</p>
+<label>New amount per period<input class="field" name="amount" inputmode="decimal" placeholder="599.00" required></label>
+{{if .Prorations}}<label>Charge the difference for this period<select name="proration" class="field"><option value="none">No, from the next period</option><option value="next_invoice">On the next renewal</option><option value="immediate">Now</option></select></label>{{end}}
+<button class="btn" type="submit">Change amount</button>
+</form>
+{{else if .AmountNote}}
+<div class="stack">
+<h4>Change the amount</h4>
+<p class="muted" id="amount-note">{{.AmountNote}}</p>
+</div>
+{{end}}
 {{if .CanCancel}}
 <form method="post" action="/dashboard/subscriptions/{{.ID}}/cancel" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
