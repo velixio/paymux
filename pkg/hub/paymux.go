@@ -244,7 +244,8 @@ func (a *App) Start(ctx context.Context) error {
 		Logger: a.log, CutoffErr: invoice.ErrCreditNoteCutoff})
 	// Subscriptions and mandates: renewals run as jobs; provider notifications
 	// and returns reach the engine through the payment flow.
-	subs := subscriptions.New(subscriptions.Options{DB: db, Core: svc, Settings: set, Jobs: q, Emitter: emitter,
+	subCSRF := sha256.Sum256(append([]byte("paymux-sub-csrf-key|"), a.cfg.MasterKey...))
+	subs := subscriptions.New(subscriptions.Options{DB: db, Core: svc, Settings: set, Jobs: q, Emitter: emitter, CSRFKey: subCSRF[:],
 		BaseURL: a.cfg.BaseURL.String(), Mailer: notify.New(a.cfg), Logger: a.log,
 		Connectors: subscriptions.ConnectorsFunc(func(ctx context.Context, id string) (connector.Connector, error) {
 			live, err := conns.Get(ctx, id)
@@ -379,6 +380,7 @@ func (a *App) Start(ctx context.Context) error {
 	customerMux.HandleFunc("GET /l/{slug}", linkPages.Show)
 	customerMux.HandleFunc("POST /l/{slug}", linkPages.Submit)
 	customerMux.HandleFunc("GET /s/{id}", subs.ServeHosted)
+	customerMux.HandleFunc("POST /s/{id}", subs.SubmitBilling)
 	customerMux.Handle("GET /assets/", web.AssetHandler(overlay))
 	customerMux.Handle("GET /theme/", themes.Handler())
 	baseHost := a.cfg.BaseURL.Host
@@ -404,6 +406,7 @@ func (a *App) Start(ctx context.Context) error {
 	srv.HandleFunc("GET /l/{slug}", linkPages.Show)
 	srv.HandleFunc("POST /l/{slug}", linkPages.Submit)
 	srv.HandleFunc("GET /s/{id}", subs.ServeHosted)
+	srv.HandleFunc("POST /s/{id}", subs.SubmitBilling)
 	srv.HandleFunc("/dashboard/", dash.ServeHTTP)
 	// First-run setup: open only while there are no users (the token is in the log).
 	srv.HandleFunc("/setup", dash.SetupHandler().ServeHTTP)

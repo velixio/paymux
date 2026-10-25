@@ -11,6 +11,7 @@ package subscriptions
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -132,6 +133,9 @@ type Options struct {
 	// PAYMUX_DATA_DIR/custom); nil or a missing file falls back to the defaults.
 	Templates fs.FS
 	Logger    *slog.Logger
+	// CSRFKey keys the CSRF token of the billing form on the hosted page. Without
+	// one a random key is made, so forms do not survive a restart.
+	CSRFKey []byte
 }
 
 // Service implements the subscription operations.
@@ -147,6 +151,7 @@ type Service struct {
 	mailer     notify.Mailer
 	templates  fs.FS
 	log        *slog.Logger
+	csrfKey    []byte
 
 	pagesOnce sync.Once
 	pagesR    *web.Renderer
@@ -162,7 +167,11 @@ func New(o Options) *Service {
 	if o.Emitter == nil {
 		o.Emitter = events.EmitterFunc(func(context.Context, store.Tx, events.Event) error { return nil })
 	}
-	return &Service{db: o.DB, core: o.Core, settings: o.Settings, jobs: o.Jobs, emitter: o.Emitter, connectors: o.Connectors,
+	if len(o.CSRFKey) == 0 {
+		o.CSRFKey = make([]byte, 32)
+		_, _ = rand.Read(o.CSRFKey)
+	}
+	return &Service{csrfKey: o.CSRFKey, db: o.DB, core: o.Core, settings: o.Settings, jobs: o.Jobs, emitter: o.Emitter, connectors: o.Connectors,
 		baseURL: strings.TrimRight(o.BaseURL, "/"), now: o.Now, pagesOpt: o.Pages, mailer: o.Mailer, templates: o.Templates, log: o.Logger}
 }
 

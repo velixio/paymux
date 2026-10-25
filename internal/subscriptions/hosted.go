@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"github.com/paymux/paymux/internal/billingform"
 	"github.com/paymux/paymux/internal/domains"
 	"net/http"
 	"sort"
@@ -25,6 +26,9 @@ const (
 	CheckoutAction CheckoutKind = "action" // run Action
 	CheckoutDone   CheckoutKind = "done"   // nothing to set up (already active)
 	CheckoutClosed CheckoutKind = "closed" // canceled, ended or expired
+	// CheckoutBilling: the buyer's billing details are needed first; nothing has
+	// been started at the provider.
+	CheckoutBilling CheckoutKind = "billing"
 )
 
 // Checkout is the content of the hosted /s/{id} page.
@@ -34,19 +38,15 @@ type Checkout struct {
 	Connector    string
 	Subscription store.Subscription
 	AppName      string
+	// Customer and Need are set for CheckoutBilling.
+	Customer store.Customer
+	Need     billingform.Need
 }
 
-// OpenCheckout verifies the checkout token and returns what to render. The
-// first call creates the provider-side checkout (a provider subscription, or
-// the mandate registration) through CreateSubscriptionCheckout or
-// CreateMandateCheckout; its action is stored and reused by later loads of the
-// page. Unknown ids and wrong tokens are both ErrNotFound.
-func (s *Service) OpenCheckout(ctx context.Context, id, token string) (Checkout, error) {
-	var sub store.Subscription
-	var m store.Mandate
-	var cust store.Customer
-	var appName string
-	err := s.db.Read(ctx, func(q store.Querier) error {
+// loadCheckout reads what a hosted page needs and checks the token; it starts
+// nothing at the provider.
+func (s *Service) loadCheckout(ctx context.Context, id, token string) (sub store.Subscription, m store.Mandate, cust store.Customer, appName string, err error) {
+	err = s.db.Read(ctx, func(q store.Querier) error {
 		var err error
 		if sub, err = store.GetSubscription(ctx, q, id); err != nil {
 			return err
@@ -75,7 +75,20 @@ func (s *Service) OpenCheckout(ctx context.Context, id, token string) (Checkout,
 		return err
 	})
 	if err != nil {
-		return Checkout{}, mapNotFound(err, "checkout")
+		return sub, m, cust, appName, mapNotFound(err, "checkout")
+	}
+	return sub, m, cust, appName, nil
+}
+
+// OpenCheckout verifies the checkout token and returns what to render. The
+// first call creates the provider-side checkout (a provider subscription, or
+// the mandate registration) through CreateSubscriptionCheckout or
+// CreateMandateCheckout; its action is stored and reused by later loads of the
+// page. Unknown ids and wrong tokens are both ErrNotFound.
+func (s *Service) OpenCheckout(ctx context.Context, id, token string) (Checkout, error) {
+	sub, m, cust, appName, err := s.loadCheckout(ctx, id, token)
+	if err != nil {
+		return Checkout{}, err
 	}
 	co := Checkout{Subscription: sub, AppName: appName}
 	switch {
@@ -85,6 +98,19 @@ func (s *Service) OpenCheckout(ctx context.Context, id, token string) (Checkout,
 	case sub.Status != string(state.SubIncomplete) && sub.PendingMandateID == "" && !reauthRetry(sub):
 		co.Kind = CheckoutDone
 		return co, nil
+	}
+	// The buyer's country and State fix the tax of every invoice of the
+	// subscription, so they are asked before anything is started at the provider
+	// (the amount of a mandate for a tax-exclusive price depends on them too).
+	if sub.CheckoutAction == "" {
+		need, err := s.billingNeed(ctx, sub, cust)
+		if err != nil {
+			return Checkout{}, err
+		}
+		if need.Show {
+			co.Kind, co.Customer, co.Need = CheckoutBilling, cust, need
+			return co, nil
+		}
 	}
 	if needsFreshMandate(sub, m) {
 		var err error
@@ -207,6 +233,10 @@ func (s *Service) ServeHosted(w http.ResponseWriter, r *http.Request) {
 	pages = lk.Bind(pages)
 	page := web.PayPage{AppName: co.AppName}
 	tmpl := "pay_result"
+	if co.Kind == CheckoutBilling {
+		s.renderBilling(w, r, pages, lk.Lang, co, "", http.StatusOK)
+		return
+	}
 	switch co.Kind {
 	case CheckoutClosed:
 		page.Title, page.Message = tr("subscription.closed.title"), tr("subscription.closed.msg")
