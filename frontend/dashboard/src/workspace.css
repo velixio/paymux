@@ -1391,6 +1391,15 @@ main.dash:has(#paymux-react-root) {
 .react-content .saved-chip button:first-child:hover {
   color: var(--accent-foreground);
 }
+/* The saved filter the list is showing now, styled like the status chips. */
+.react-content .saved-chip:has(> button[aria-pressed="true"]) {
+  background: var(--ui-accent);
+  border-color: var(--ring);
+}
+.react-content .saved-chip > button[aria-pressed="true"] {
+  color: var(--accent-foreground);
+  font-weight: 600;
+}
 .react-content .saved-chip .saved-chip-remove {
   display: grid;
   place-items: center;
