@@ -64,6 +64,7 @@ tone("info", [
   "trialing",
   "under_review",
   "info",
+  "this_session",
 ]);
 // Everything else, e.g. canceled, expired, ended, refunded, is neutral.
 

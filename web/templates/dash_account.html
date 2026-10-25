@@ -11,7 +11,7 @@
 <tbody>
 {{range .Sessions}}<tr>
 <td>{{.Created}}</td><td>{{.LastSeen}}</td><td>{{.Expires}}</td>
-<td>{{if .Remembered}}Remembered{{else}}Standard{{end}}{{if .Current}} <strong>This session</strong>{{end}}</td>
+<td>{{if .Remembered}}Remembered{{else}}Standard{{end}}{{if .Current}} <span class="badge">This session</span>{{end}}</td>
 <td>{{.Network}}</td><td>{{.Device}}</td>
 <td>{{if not .Current}}<form class="inline" method="post" action="/dashboard/account/sessions/{{.ID}}/revoke">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
