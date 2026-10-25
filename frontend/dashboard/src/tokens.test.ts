@@ -119,7 +119,7 @@ test("link buttons use the on-primary text colour, not the link colour", () => {
   expect(rule).toContain("background: var(--primary)");
 });
 
-test("warning strip and mode labels take their colours from the tokens", () => {
+test("warning rows (status-bar popover) and mode labels take their colours from the tokens", () => {
   const work = read("./workspace.css");
   const rule = (selector: string) =>
     work.match(
@@ -129,7 +129,7 @@ test("warning strip and mode labels take their colours from the tokens", () => {
     // A fixed hex colour would ignore the palette and dark mode.
     expect(rule(selector), selector).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   }
-  // The strip sits on the page like the rest of the shell; only its icon
+  // The popover rows sit on the page like the rest of the shell; only their icon
   // carries the warning colour.
   expect(rule(".workspace-warning")).toContain("background: var(--card)");
   expect(rule(".workspace-warning svg")).toContain(

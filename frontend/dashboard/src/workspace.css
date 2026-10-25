@@ -67,35 +67,6 @@ main.dash:has(#paymux-react-root) {
   width: 32px;
   height: 32px;
 }
-.workspace-identity {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 13px 10px;
-  margin: 27px 4px 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.workspace-identity strong {
-  display: block;
-  font-size: 12px;
-  font-weight: 600;
-}
-.workspace-identity small {
-  display: block;
-  font-size: 10px;
-  color: var(--muted-foreground);
-}
-.workspace-initial {
-  width: 29px;
-  height: 29px;
-  background: var(--secondary);
-  color: var(--muted-foreground);
-  font-size: 12px;
-  display: grid;
-  place-items: center;
-  border-radius: 6px;
-}
 .navigation-group {
   padding-top: 16px;
 }
@@ -131,57 +102,12 @@ main.dash:has(#paymux-react-root) {
   opacity: 0.8;
   flex-shrink: 0;
 }
-.active-marker {
-  width: 5px;
-  height: 5px;
-  background: var(--primary);
-  border-radius: 50%;
-  margin-left: auto;
-}
-.sidebar-bottom {
-  margin-top: auto;
-  display: flex;
-  gap: 7px;
-  align-items: center;
-  font-size: 10px;
-  padding: 26px 12px 0;
-  color: var(--muted-foreground);
-}
-.ownership-dot {
-  width: 6px;
-  height: 6px;
-  background: var(--status-ok-fg);
-  border-radius: 50%;
-}
 .react-workspace {
   margin-left: 238px;
   min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-}
-.react-header {
-  min-height: 72px;
-  border-bottom: 1px solid var(--border);
-  background: var(--card);
-  padding: 14px 30px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-.header-location {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  font-size: 12px;
-}
-.header-location > svg,
-.breadcrumb-root {
-  color: var(--muted-foreground);
-}
-.header-location strong {
-  font-weight: 550;
 }
 .header-controls {
   display: flex;
@@ -717,19 +643,6 @@ main.dash:has(#paymux-react-root) {
   margin: 22px 0 26px;
   font-size: 12px;
 }
-.workspace-bottom {
-  display: flex;
-  justify-content: space-between;
-  gap: 15px;
-  margin: 0 34px;
-  padding: 15px 0;
-  border-top: 1px solid var(--border);
-  font-size: 10px;
-  color: var(--muted-foreground);
-}
-.workspace-bottom a {
-  color: var(--muted-foreground) !important;
-}
 .mobile-workspace-trigger {
   display: none;
 }
@@ -881,9 +794,6 @@ main.dash:has(#paymux-react-root) {
   .react-content {
     padding: 26px 23px;
   }
-  .react-header {
-    padding: 14px 23px;
-  }
   .header-controls {
     gap: 5px;
   }
@@ -900,18 +810,6 @@ main.dash:has(#paymux-react-root) {
   }
   .mobile-workspace-trigger {
     display: inline-flex;
-  }
-  .react-header {
-    padding: 12px 14px;
-    gap: 8px;
-    min-height: 65px;
-  }
-  .breadcrumb-root {
-    display: none;
-  }
-  .header-location {
-    gap: 6px;
-    font-size: 11px;
   }
   .header-controls {
     gap: 3px;
@@ -1037,9 +935,6 @@ main.dash:has(#paymux-react-root) {
     flex-basis: 100%;
     flex-grow: 1;
   }
-  .workspace-bottom {
-    margin: 0 14px;
-  }
   .auth-container {
     padding: 35px 14px;
   }
@@ -1093,10 +988,6 @@ main.dash:has(#paymux-react-root) {
     min-height: 44px;
     padding: 10px;
   }
-  .header-location .mobile-workspace-trigger {
-    width: 44px;
-    height: 44px;
-  }
   .navigation-item {
     min-height: 44px;
   }
@@ -1105,7 +996,6 @@ main.dash:has(#paymux-react-root) {
     text-transform: capitalize;
   }
 }
-
 #paymux-server-page table.grid {
   display: table;
 }
@@ -1130,7 +1020,6 @@ main.dash:has(#paymux-react-root) {
     max-width: none;
   }
 }
-
 /* Logs page: level badges, wrapped messages and JSON, and stacked rows on a phone. */
 .react-content .status-error {
   background: var(--status-bad-bg);
