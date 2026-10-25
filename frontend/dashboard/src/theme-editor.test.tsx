@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { setNonce } from "get-nonce";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   act,
@@ -176,3 +177,23 @@ test.each(["{bad", "null", "7"])(
     await waitFor(() => expect(preview()).toContain("--primary:#0d7d68"));
   },
 );
+
+test("the preview style is complete when it is appended (CSP)", async () => {
+  const seen: { nonce: string | null; text: string }[] = [];
+  const append = document.head.append.bind(document.head);
+  vi.spyOn(document.head, "append").mockImplementation((...nodes) => {
+    for (const n of nodes)
+      if (n instanceof HTMLStyleElement && n.id === "paymux-theme-preview")
+        seen.push({
+          nonce: n.getAttribute("nonce"),
+          text: n.textContent ?? "",
+        });
+    append(...nodes);
+  });
+  setNonce("n0nce");
+  await mount("/dashboard/appearance/themes/mine/edit");
+  await waitFor(() => expect(preview()).not.toBe(""));
+  expect(seen.length).toBeGreaterThan(0);
+  expect(seen[0].nonce).toBe("n0nce");
+  expect(seen[0].text).toContain("--primary:");
+});
