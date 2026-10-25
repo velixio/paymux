@@ -1,6 +1,26 @@
-# The full gate: scripts/ci.sh, with a real Postgres for the Postgres half of
-# the tests. Also callable from other workflows (release.yml runs it before
-# building anything).
+# The CI gate, as parallel jobs. scripts/ci.sh is the single source of what is
+# checked: `bash scripts/ci.sh` runs everything in sequence (for local use) and
+# each job here runs one group of it (`checks`, `test N/M`, `smoke`, `build`,
+# `browser`), so together the jobs run the same checks, none skipped or weakened.
+# The public website tests have their own job (`public-browser`) here.
+#
+# THE `ci` JOB IS AN AGGREGATOR AND ITS NAME MATTERS. Branch protection on main
+# requires the status checks named exactly `ci` and `public-browser`. The work
+# is split over several jobs, so `ci` does no work itself: it needs all of them,
+# runs `if: always()` (a skipped or failed needed job must not leave it
+# "skipped", which a required check would treat as passing or as missing), and
+# fails unless every needed job's result is `success`. Do not rename `ci` or
+# `public-browser`, and add every new job of the gate to the `needs:` list of `ci`.
+#
+# Caches. setup-go's built-in cache is keyed on go.sum only, so it is written
+# once and goes stale as the code changes. Instead each job restores the newest
+# Go build and module cache of its own kind (key: go.sum hash plus the run id,
+# found through restore-keys prefixes) and only a push to main saves a new one,
+# so pull requests never thrash the repository's 10 GB cache budget but start
+# from main's newest. The bun and Playwright caches are keyed on the lock file and
+# saved the same way. Release runs (a tag) only restore.
+#
+# Also callable from other workflows (release.yml runs it before building anything).
 name: CI
 
 on:
@@ -17,9 +37,62 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  ci:
+  # Trailers, gofmt, the React typecheck/docs check/unit tests/build, vet, the API
+  # snapshot, the capability matrix, the shard map, staticcheck and govulncheck.
+  checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 15
+    steps:
+      # TODO(review): pin these actions to commit SHAs before the first run.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (v4)
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 (v2)
+        with:
+          bun-version: 1.4.3
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0 (v5)
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: gocache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-checks-${{ hashFiles('go.sum') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            go-${{ runner.os }}-checks-${{ hashFiles('go.sum') }}-
+            go-${{ runner.os }}-checks-
+      - id: buncache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('frontend/bun.lock') }}
+      - name: scripts/ci.sh checks
+        run: ./scripts/ci.sh checks
+      - name: Save the Go cache (main only)
+        if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ steps.gocache.outputs.cache-primary-key }}
+      - name: Save the bun cache (main only)
+        if: ${{ !cancelled() && steps.buncache.outputs.cache-hit != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ steps.buncache.outputs.cache-primary-key }}
+
+  # The race test suite, split into shards by package (scripts/ci.sh explains the
+  # split). Every shard has a PostgreSQL service, so each runs both databases.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     services:
       postgres:
         image: postgres:17
@@ -34,13 +107,12 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
-      # make test-pg uses this server instead of starting its own container,
-      # and PAYMUX_REQUIRE_PG turns a missing database into a failure rather
-      # than a silent skip.
+      # The tests use this server instead of starting a container, and
+      # PAYMUX_REQUIRE_PG turns a missing database into a failure rather than a
+      # silent skip.
       PAYMUX_TEST_POSTGRES_URL: postgres://postgres:paymux@localhost:5432/paymux?sslmode=disable
       PAYMUX_REQUIRE_PG: "1"
     steps:
-      # TODO(review): pin these actions to commit SHAs before the first run.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (v4)
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 (v2)
         with:
@@ -48,10 +120,188 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0 (v5)
         with:
           go-version-file: go.mod
-          cache: true
-      - name: scripts/ci.sh
-        run: ./scripts/ci.sh
+          cache: false
+      - id: gocache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-test${{ matrix.shard }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            go-${{ runner.os }}-test${{ matrix.shard }}-${{ hashFiles('go.sum') }}-
+            go-${{ runner.os }}-test${{ matrix.shard }}-
+      - id: buncache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('frontend/bun.lock') }}
+      # The tests see the built dashboard bundle, as they did when the build ran
+      # before them in one job.
+      - name: Build the dashboard bundle
+        run: |
+          bun install --cwd frontend --frozen-lockfile
+          bun run --cwd frontend build:dashboard
+      - name: scripts/ci.sh test ${{ matrix.shard }}/3
+        run: ./scripts/ci.sh test ${{ matrix.shard }}/3
+      - name: Save the Go cache (main only)
+        if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ steps.gocache.outputs.cache-primary-key }}
+      - name: Save the bun cache (main only)
+        if: ${{ !cancelled() && steps.buncache.outputs.cache-hit != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && matrix.shard == 1 }}
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ steps.buncache.outputs.cache-primary-key }}
 
+  # The smoke test of the real binary on SQLite.
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (v4)
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 (v2)
+        with:
+          bun-version: 1.4.3
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0 (v5)
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: gocache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-smoke-${{ hashFiles('go.sum') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            go-${{ runner.os }}-smoke-${{ hashFiles('go.sum') }}-
+            go-${{ runner.os }}-smoke-
+      - id: buncache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('frontend/bun.lock') }}
+      - name: scripts/ci.sh smoke
+        run: ./scripts/ci.sh smoke
+      - name: Save the Go cache (main only)
+        if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ steps.gocache.outputs.cache-primary-key }}
+
+  # The cross builds (linux/amd64 and arm64) and the docker image build.
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (v4)
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 (v2)
+        with:
+          bun-version: 1.4.3
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0 (v5)
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: gocache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-build-${{ hashFiles('go.sum') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            go-${{ runner.os }}-build-${{ hashFiles('go.sum') }}-
+            go-${{ runner.os }}-build-
+      - id: buncache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('frontend/bun.lock') }}
+      - name: scripts/ci.sh build
+        run: ./scripts/ci.sh build
+      - name: Save the Go cache (main only)
+        if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ steps.gocache.outputs.cache-primary-key }}
+
+  # The dashboard browser tests (the hub on a seeded throw-away data directory).
+  dashboard-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 (v4)
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 (v2)
+        with:
+          bun-version: 1.4.3
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0 (v5)
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: gocache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-dashboard-${{ hashFiles('go.sum') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            go-${{ runner.os }}-dashboard-${{ hashFiles('go.sum') }}-
+            go-${{ runner.os }}-dashboard-
+      - id: buncache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('frontend/bun.lock') }}
+      - id: browsers
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-shell-${{ hashFiles('frontend/bun.lock') }}
+      - name: scripts/ci.sh browser
+        run: ./scripts/ci.sh browser
+      - name: Save the Go cache (main only)
+        if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ steps.gocache.outputs.cache-primary-key }}
+      - name: Save the Playwright browsers (main only)
+        if: ${{ !cancelled() && steps.browsers.outputs.cache-hit != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.browsers.outputs.cache-primary-key }}
+
+  # The aggregator: see the comment at the top. Its name is a required status check.
+  ci:
+    if: ${{ always() }}
+    needs: [checks, test, smoke, build, dashboard-browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: every job of the gate must have succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' >/dev/null
+
+  # The public website's browser tests. Its name is a required status check.
   public-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -63,7 +313,42 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0 (v5)
         with:
           go-version-file: go.mod
+          cache: false
+      - id: gocache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-website-${{ hashFiles('go.sum') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            go-${{ runner.os }}-website-${{ hashFiles('go.sum') }}-
+            go-${{ runner.os }}-website-
+      - id: buncache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('frontend/bun.lock') }}
+      - id: browsers
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('frontend/bun.lock') }}
       - run: bun install --cwd frontend --frozen-lockfile
       - run: bunx playwright install --with-deps chromium
         working-directory: frontend
       - run: bun run --cwd frontend test:home
+      - name: Save the Go cache (main only)
+        if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ steps.gocache.outputs.cache-primary-key }}
+      - name: Save the Playwright browsers (main only)
+        if: ${{ !cancelled() && steps.browsers.outputs.cache-hit != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.browsers.outputs.cache-primary-key }}

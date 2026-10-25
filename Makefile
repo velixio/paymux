@@ -48,19 +48,22 @@ run-home:
 docker:
 	docker build -f deploy/docker/Dockerfile --build-arg VERSION=$(VERSION) -t paymux:$(VERSION) -t paymux:latest .
 
+# PKGS narrows the test targets to some packages (scripts/ci.sh test N/M shards the suite).
+PKGS ?= ./...
+
 test:
-	go test -race -timeout 30m ./...
+	go test -race -timeout 30m $(PKGS)
 
 test-pg:
 	@set -e; \
 	if [ -n "$$PAYMUX_TEST_POSTGRES_URL" ]; then \
-		PAYMUX_REQUIRE_PG=1 go test -race -timeout 30m ./...; \
+		PAYMUX_REQUIRE_PG=1 go test -race -timeout 30m $(PKGS); \
 	elif command -v docker >/dev/null 2>&1; then \
 		cid=$$(docker run -d --rm -e POSTGRES_PASSWORD=paymux -e POSTGRES_DB=paymux -p 127.0.0.1::5432 postgres:17); \
 		trap 'docker rm -f $$cid >/dev/null 2>&1' EXIT; \
 		port=$$(docker port $$cid 5432/tcp | head -n1 | sed 's/.*://'); \
 		for i in $$(seq 1 60); do docker exec $$cid pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done; \
-		PAYMUX_TEST_POSTGRES_URL="postgres://postgres:paymux@127.0.0.1:$$port/paymux?sslmode=disable" PAYMUX_REQUIRE_PG=1 go test -race -timeout 30m ./...; \
+		PAYMUX_TEST_POSTGRES_URL="postgres://postgres:paymux@127.0.0.1:$$port/paymux?sslmode=disable" PAYMUX_REQUIRE_PG=1 go test -race -timeout 30m $(PKGS); \
 	else \
 		echo "set PAYMUX_TEST_POSTGRES_URL or install docker" >&2; exit 1; \
 	fi
