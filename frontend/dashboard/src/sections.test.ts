@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { ViewNode } from "./adapter";
-import { slugify, splitSections } from "./sections";
+import { slugify, splitHead, splitSections } from "./sections";
 
 const el = (
   tag: string,
@@ -87,5 +87,22 @@ describe("splitSections", () => {
     ])!;
     expect(s.head.map((n) => n.tag)).toEqual(["a", "h1", "nav", "a"]);
     expect(s.details.map((n) => n.tag)).toEqual(["dl"]);
+  });
+});
+
+describe("splitHead", () => {
+  test("separates the h1 header from the body, with or without sections", () => {
+    const { head, rest } = splitHead([
+      el("h1", "x"),
+      el("p", "d", { class: "muted" }),
+      el("dl"),
+      el("table"),
+    ]);
+    expect(head.map((n) => n.tag)).toEqual(["h1", "p"]);
+    expect(rest.map((n) => n.tag)).toEqual(["dl", "table"]);
+  });
+  test("no h1: everything is the body", () => {
+    expect(splitHead([el("dl")]).head).toEqual([]);
+    expect(splitHead([]).rest).toEqual([]);
   });
 });
