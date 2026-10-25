@@ -773,6 +773,20 @@ main.dash:has(#paymux-react-root) {
   display: grid;
   gap: 20px;
 }
+/* Placeholders keep their space but stay invisible for 150 ms, so a fast load
+   never paints them and a reload does not blink. */
+.workspace-loading,
+.revenue-chart-loading {
+  animation: paymux-delayed-show 0s 150ms both;
+}
+@keyframes paymux-delayed-show {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 .refreshing {
   animation: refresh 1s linear infinite;
 }
