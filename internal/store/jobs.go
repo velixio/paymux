@@ -90,6 +90,20 @@ func (db *DB) ClaimJobs(ctx context.Context, now time.Time, lease time.Duration,
 	return out, nil
 }
 
+// CancelUnclaimedJob marks the job with this dedupe key done if no worker has
+// claimed it yet (pending, never attempted), and reports whether it did. The
+// update and a claim exclude each other on the row: a job is either cancelled
+// here and never runs, or claimed first and left alone.
+func CancelUnclaimedJob(ctx context.Context, tx Tx, dedupeKey string, now time.Time) (bool, error) {
+	res, err := tx.ExecContext(ctx, `UPDATE jobs SET state = 'done', locked_until = NULL, updated_at = ?
+		WHERE dedupe_key = ? AND state = 'pending' AND attempts = 0`, now.UnixMilli(), dedupeKey)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 // CompleteJob marks the job done, but only if it is still the claim identified
 // by attempts (the claim token). It reports whether a row was updated; false
 // means a newer claim superseded this worker.

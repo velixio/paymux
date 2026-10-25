@@ -168,6 +168,39 @@ func (s *Service) applyRefundTx(ctx context.Context, tx store.Tx, refundID strin
 	}
 }
 
+// FailUnsentRefunds fails, inside the caller's transaction, the payment's
+// pending refunds of ours whose refund.submit job has never been claimed by a
+// worker, each through the ordinary failure path (refund.failed, the balance
+// freed). The job is cancelled in the same transaction, atomically with the
+// claim, so it never runs. A refund whose job has been tried, is running or is
+// done may be with the provider already; failing it would be final while the
+// provider's success could not move it, so it is left alone (the submit-time
+// check stops any further send, and the provider's answer settles it). Returns
+// how many it failed.
+func (s *Service) FailUnsentRefunds(ctx context.Context, tx store.Tx, paymentID, reason string) (int, error) {
+	rs, err := store.ListRefunds(ctx, tx, paymentID)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, r := range rs {
+		if r.Status != string(state.RefundPending) || r.ProviderRefundID != "" || r.InitiatedBy == "provider" {
+			continue
+		}
+		if cancelled, err := store.CancelUnclaimedJob(ctx, tx, JobRefundSubmit+":"+r.ID, s.nowUTC()); err != nil {
+			return n, err
+		} else if !cancelled {
+			continue
+		}
+		var alerts []notify.Alert // a failure raises none
+		if _, err := s.applyRefundTx(ctx, tx, r.ID, RefundSnapshot{Status: state.RefundFailed, FailureReason: reason}, &alerts); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
 // refundEventData adds the failure reason to a refund snapshot.
 type refundEventData struct {
 	RefundView
