@@ -22,7 +22,8 @@ func TestStartWarnsAboutReadableDatabaseFiles(t *testing.T) {
 	waitReady(t, r)
 	out := r.logs.String()
 	for _, f := range []string{"paymux.db", "logs.db"} {
-		if !strings.Contains(out, "readable by other users") || !strings.Contains(out, filepath.Join(dir, f)) || !strings.Contains(out, "chmod 600") {
+		if !strings.Contains(out, "readable by other users") || !strings.Contains(out, `/`+f+`"`) || // the logger masks the temp dir name
+			!strings.Contains(out, "chmod 600") {
 			t.Errorf("no warning naming %s and chmod 600:\n%s", f, out)
 		}
 	}

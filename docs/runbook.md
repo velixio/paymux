@@ -233,6 +233,8 @@ A live provider account whose stored config is a sandbox one (a sandbox or test 
 
 **Where it lives.** With SQLite the rows are in their own file, `<data dir>/logs.db`, so writing them never competes with payments for the database lock. `paymux backup` does not include it. It is always safe to delete (stop Paymux, remove the file, start Paymux); Paymux makes a new one and sets a damaged one aside as `logs.db.corrupt-<time>`. With PostgreSQL it is the `logs` table of the main database; add `--exclude-table-data=logs` to `pg_dump` to leave the rows out of a dump.
 
+**File modes.** The databases hold sealed secrets and customer data. Paymux creates them (and the `-wal` and `-shm` files SQLite adds) readable by its own user only, and the Docker image creates `/data` with mode 0700 for user 65532. A file that already existed keeps the mode it had: if one is readable by group or others, Paymux logs a warning at startup that names the file and `chmod 600`. It does not change the mode itself, because a backup agent may rely on it.
+
 **Settings of the log itself**
 
 | Variable | Default | Meaning |
