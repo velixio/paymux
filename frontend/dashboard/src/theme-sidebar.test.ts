@@ -14,6 +14,15 @@ function rule(css: string, selector: string): string {
   return css.match(new RegExp(`(?:^|\\n)${esc}\\s*\\{([^}]*)\\}`))?.[1] ?? "";
 }
 
+// The rule that remaps the page tokens for everything drawn on --sidebar:
+// [selector list, body].
+function surface(): [string, string] {
+  for (const m of shell.matchAll(/(?:^|\n)([^{}@]+)\{([^}]*)\}/g))
+    if (m[2].includes("--foreground: var(--sidebar-foreground)"))
+      return [m[1], m[2]];
+  return ["", ""];
+}
+
 test("sidebar text comes from --sidebar-foreground, not the page text tokens", () => {
   expect(rule(work, ".navigation-caption")).toContain(
     "color: var(--sidebar-foreground)",
@@ -33,7 +42,7 @@ test("sidebar text comes from --sidebar-foreground, not the page text tokens", (
 });
 
 test("everything drawn on the sidebar colour reads its text from the sidebar tokens", () => {
-  const scope = rule(shell, ".app-shell .sidebar-surface");
+  const scope = surface()[1];
   expect(scope).toContain("--foreground: var(--sidebar-foreground)");
   expect(scope).toContain("--muted-foreground: var(--sidebar-foreground)");
   expect(scope).toMatch(
@@ -52,17 +61,14 @@ test("everything drawn on the sidebar colour reads its text from the sidebar tok
 });
 
 test("the sidebar surfaces are the sidebar, titlebar, tab strip and status bar", () => {
-  const sel =
-    shell.match(
-      /(?:^|\n)((?:\.app-shell [^{}]*sidebar-surface[^{}]*,?\s*)+)\{/,
-    )?.[1] ?? "";
-  for (const s of [
+  const sel = surface()[0];
+  for (const x of [
     ".react-sidebar",
     ".react-titlebar",
     ".tab-strip",
     ".status-bar",
   ])
-    expect(sel, s).toContain(s);
+    expect(sel, x).toContain(x);
 });
 
 // color-mix(in srgb, a p%, b) as the browser computes it.
