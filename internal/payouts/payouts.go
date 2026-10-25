@@ -300,7 +300,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (store.Payout, err
 }
 
 // byKey returns the payout the request's Idempotency-Key made before. It
-// refuses a key that made a payout of another amount or currency.
+// refuses a key that made a payout of another amount, currency or destination.
 func (s *Service) byKey(ctx context.Context, in CreateInput) (store.Payout, bool, error) {
 	var p store.Payout
 	err := s.o.DB.Read(ctx, func(q store.Querier) (err error) {
@@ -313,7 +313,21 @@ func (s *Service) byKey(ctx context.Context, in CreateInput) (store.Payout, bool
 	if err != nil {
 		return store.Payout{}, false, err
 	}
-	if p.Amount != in.Amount || p.Currency != in.Currency {
+	same := p.Amount == in.Amount && p.Currency == in.Currency
+	if same {
+		// The destination too: otherwise the client is told its new payout was
+		// made when the old one, to someone else, is what it gets back.
+		var was connector.Beneficiary
+		raw, oerr := s.o.Box.Open(p.BeneficiaryEnc, aad(p.ID))
+		if oerr != nil {
+			return store.Payout{}, false, oerr
+		}
+		if err := json.Unmarshal(raw, &was); err != nil {
+			return store.Payout{}, false, err
+		}
+		same = was.AccountNumber == in.Beneficiary.AccountNumber && was.IFSC == in.Beneficiary.IFSC && was.UPI == in.Beneficiary.UPI
+	}
+	if !same {
 		return store.Payout{}, false, newErr(ErrKeyReuse, "this Idempotency-Key already made a different payout")
 	}
 	return p, true, nil

@@ -49,6 +49,31 @@ func TestIdempotencyKeyOnThePayoutSurvivesALostReservation(t *testing.T) {
 		if n := f.count("SELECT COUNT(*) FROM payouts"); n != 1 {
 			t.Fatalf("a reused key made %d payouts", n)
 		}
+		// Nor the same amount to another destination: the client would believe
+		// its new payout was made when the old one is what it gets back.
+		elsewhere := func(b map[string]any) map[string]any {
+			out := map[string]any{"amount": payoutBody["amount"], "currency": "INR", "narration": "other words", "beneficiary": b}
+			return out
+		}
+		for name, b := range map[string]map[string]any{
+			"account": {"name": "Asha Rao", "account_number": "999999999999", "ifsc": "HDFC0001234"},
+			"ifsc":    {"name": "Asha Rao", "account_number": "123456789012", "ifsc": "ICIC0001234"},
+			"upi":     {"name": "Asha Rao", "upi": "asha@okbank"},
+		} {
+			f.forgetReservations()
+			if r := f.do("POST", "/v1/payouts", w, elsewhere(b), "Idempotency-Key", "po-lost-1"); r.status != 409 || r.errType(t) != "idempotency_key_reuse" {
+				t.Errorf("another %s under the same key: %d %s", name, r.status, r.raw)
+			}
+		}
+		// The same destination with other words is the same payout.
+		f.forgetReservations()
+		same := elsewhere(map[string]any{"name": "Asha Rao", "account_number": "123456789012", "ifsc": "HDFC0001234"})
+		if r := f.do("POST", "/v1/payouts", w, same, "Idempotency-Key", "po-lost-1"); r.status != 201 || r.json(t)["id"] != first.json(t)["id"] {
+			t.Errorf("same destination, other narration: %d %s", r.status, r.raw)
+		}
+		if n := f.count("SELECT COUNT(*) FROM payouts"); n != 1 {
+			t.Fatalf("a reused key made %d payouts", n)
+		}
 	})
 }
 
