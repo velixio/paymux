@@ -167,6 +167,9 @@ func New(o Options) *Service {
 	if o.Emitter == nil {
 		o.Emitter = events.EmitterFunc(func(context.Context, store.Tx, events.Event) error { return nil })
 	}
+	if o.Logger == nil {
+		o.Logger = slog.Default()
+	}
 	if len(o.CSRFKey) == 0 {
 		o.CSRFKey = make([]byte, 32)
 		_, _ = rand.Read(o.CSRFKey)
