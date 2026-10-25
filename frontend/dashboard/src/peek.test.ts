@@ -49,70 +49,68 @@ import {
 } from "./peek";
 
 describe("peek URL parameter", () => {
-  test("peekOf reads a record path and rejects everything else", () => {
-    const enc = encodeURIComponent("/dashboard/payments/pay_1");
-    expect(peekOf(`?peek=${enc}`)).toBe("/dashboard/payments/pay_1");
-    expect(peekOf(`?status=failed&peek=${enc}`)).toBe(
-      "/dashboard/payments/pay_1",
-    );
+  const L = "/dashboard/payments";
+  test("peekOf reads the short id of the list's own record", () => {
+    expect(peekOf(`${L}?peek=pay_1`)).toBe(`${L}/pay_1`);
+    expect(peekOf(`${L}?status=failed&peek=pay_1`)).toBe(`${L}/pay_1`);
+  });
+
+  test("peekOf still reads the long form of older links", () => {
+    const enc = encodeURIComponent("/dashboard/subscriptions/sub_1");
+    expect(peekOf(`${L}?peek=${enc}`)).toBe("/dashboard/subscriptions/sub_1");
+  });
+
+  test("peekOf rejects everything that is not a record", () => {
     for (const bad of [
-      "",
-      "?peek=",
-      "?peek=/dashboard/payments",
-      "?peek=https://evil.example/dashboard/payments/pay_1",
-      "?peek=//evil.example/dashboard/payments/pay_1",
-      "?peek=/dashboard/payments/pay_1/refund",
-      "?peek=javascript:alert(1)",
-      "?other=1",
+      L,
+      `${L}?peek=`,
+      `${L}?peek=pay_1/refund`,
+      `${L}?peek=..`,
+      `${L}?peek=pay_1.pdf`,
+      `${L}?peek=javascript:alert(1)`,
+      `${L}?peek=/dashboard/payments`,
+      `${L}?peek=https://evil.example/dashboard/payments/pay_1`,
+      `${L}?peek=//evil.example/dashboard/payments/pay_1`,
+      `${L}?peek=/dashboard/payments/pay_1/refund`,
+      `${L}/pay_9?peek=pay_1`, // a short id only means something on a list
+      `${L}?other=1`,
     ])
       expect(peekOf(bad), bad).toBeNull();
   });
 
-  test("withPeek adds, replaces and removes the parameter, keeping the rest", () => {
-    expect(withPeek("/dashboard/payments", "/dashboard/payments/pay_1")).toBe(
-      "/dashboard/payments?peek=%2Fdashboard%2Fpayments%2Fpay_1",
-    );
-    expect(
-      withPeek(
-        "/dashboard/payments?status=failed&peek=%2Fdashboard%2Fpayments%2Fpay_1",
-        "/dashboard/payments/pay_2",
-      ),
-    ).toBe(
-      "/dashboard/payments?status=failed&peek=%2Fdashboard%2Fpayments%2Fpay_2",
-    );
-    expect(
-      withPeek(
-        "/dashboard/payments?status=failed&peek=%2Fdashboard%2Fpayments%2Fpay_1",
-        null,
-      ),
-    ).toBe("/dashboard/payments?status=failed");
-    expect(withPeek("/dashboard/payments?peek=%2Fx", null)).toBe(
-      "/dashboard/payments",
+  test("withPeek writes the short id for the list's own records", () => {
+    expect(withPeek(L, `${L}/pay_1`)).toBe(`${L}?peek=pay_1`);
+    expect(withPeek(`${L}?status=failed&peek=pay_1`, `${L}/pay_2`)).toBe(
+      `${L}?status=failed&peek=pay_2`,
     );
   });
 
+  test("withPeek keeps the full path for a record of another section", () => {
+    expect(withPeek(L, "/dashboard/subscriptions/sub_1")).toBe(
+      `${L}?peek=%2Fdashboard%2Fsubscriptions%2Fsub_1`,
+    );
+  });
+
+  test("withPeek removes the parameter, keeping the rest", () => {
+    expect(withPeek(`${L}?status=failed&peek=pay_1`, null)).toBe(
+      `${L}?status=failed`,
+    );
+    expect(withPeek(`${L}?peek=pay_1`, null)).toBe(L);
+  });
+
   test("peekClickTarget: a record link on a list page becomes list + peek", () => {
-    expect(
-      peekClickTarget(
-        "/dashboard/payments/pay_1",
-        "/dashboard/payments?status=failed",
-      ),
-    ).toBe(
-      "/dashboard/payments?status=failed&peek=%2Fdashboard%2Fpayments%2Fpay_1",
+    expect(peekClickTarget(`${L}/pay_1`, `${L}?status=failed`)).toBe(
+      `${L}?status=failed&peek=pay_1`,
     );
     // from a record page, a list link, a download or an external link: no peek
     expect(
       peekClickTarget("/dashboard/apps/app_1", "/dashboard/payments/pay_1"),
     ).toBeNull();
-    expect(
-      peekClickTarget("/dashboard/payments", "/dashboard/payments"),
-    ).toBeNull();
+    expect(peekClickTarget(L, L)).toBeNull();
     expect(
       peekClickTarget("/dashboard/invoices/inv_1.pdf", "/dashboard/invoices"),
     ).toBeNull();
-    expect(
-      peekClickTarget("/dashboard/payments/pay_1", "/dashboard/login"),
-    ).toBeNull();
+    expect(peekClickTarget(`${L}/pay_1`, "/dashboard/login")).toBeNull();
   });
 });
 
