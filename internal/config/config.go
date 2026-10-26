@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/paymux/paymux/internal/domains"
 )
 
 // Env is the deployment environment.
@@ -28,8 +30,11 @@ const (
 
 // Config is the validated bootstrap configuration.
 type Config struct {
-	Env                             Env
-	BaseURL                         *url.URL
+	Env     Env
+	BaseURL *url.URL
+	// CheckoutURL is PAYMUX_CHECKOUT_URL, the optional separate origin of the
+	// customer-facing pages. Nil when unset: they are served on BaseURL.
+	CheckoutURL                     *url.URL
 	Listen, InternalListen, DataDir string
 	DatabaseURL                     string // normalised; sqlite default resolved against DataDir
 	MasterKey                       []byte // 32 bytes
@@ -111,10 +116,28 @@ func Load(lookupEnv func(string) (string, bool)) (Config, error) {
 
 	if raw := get("PAYMUX_BASE_URL", ""); raw == "" {
 		bad("PAYMUX_BASE_URL is required")
-	} else if u, err := parseBaseURL(raw); err != nil {
+	} else if u, err := parseBaseURL("PAYMUX_BASE_URL", raw); err != nil {
 		errs = append(errs, err)
 	} else {
 		c.BaseURL = u
+	}
+	if raw := get("PAYMUX_CHECKOUT_URL", ""); raw != "" {
+		u, err := parseBaseURL("PAYMUX_CHECKOUT_URL", raw)
+		switch {
+		case err != nil:
+			errs = append(errs, err)
+		case u.Path != "" && u.Path != "/" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.User != nil:
+			bad("PAYMUX_CHECKOUT_URL must be an origin: no path, query or user name")
+		case net.ParseIP(domains.Normalize(u.Hostname())) != nil:
+			// The server sends requests addressed by IP straight to the base
+			// handler, so the checkout router would never see them.
+			bad("PAYMUX_CHECKOUT_URL must use a host name, not an IP address")
+		case c.BaseURL != nil && domains.Normalize(u.Hostname()) == domains.Normalize(c.BaseURL.Hostname()):
+			// Cookies are scoped by host name only, not by port or scheme.
+			bad("PAYMUX_CHECKOUT_URL must be on a different host than PAYMUX_BASE_URL, or the pages share the dashboard's cookies")
+		default:
+			c.CheckoutURL = u
+		}
 	}
 
 	c.Listen = get("PAYMUX_LISTEN", ":8080")
@@ -371,21 +394,42 @@ func isLocalHost(h string) bool {
 		strings.HasSuffix(h, ".localhost") || strings.HasSuffix(h, ".test")
 }
 
-func parseBaseURL(raw string) (*url.URL, error) {
+func parseBaseURL(name, raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" {
-		return nil, errors.New("PAYMUX_BASE_URL must be an absolute http(s) URL")
+		return nil, errors.New(name + " must be an absolute http(s) URL")
 	}
 	switch u.Scheme {
 	case "https":
 	case "http":
 		if !isLocalHost(u.Hostname()) {
-			return nil, errors.New("PAYMUX_BASE_URL may use http:// only for localhost, 127.0.0.1, *.localhost or *.test")
+			return nil, errors.New(name + " may use http:// only for localhost, 127.0.0.1, *.localhost or *.test")
 		}
 	default:
-		return nil, errors.New("PAYMUX_BASE_URL must use https:// (or http:// for local hosts)")
+		return nil, errors.New(name + " must use https:// (or http:// for local hosts)")
 	}
 	return u, nil
+}
+
+// CustomerURL is the origin of the customer-facing pages (pay page, payment
+// links, invoices, subscription checkouts, return pages): PAYMUX_CHECKOUT_URL
+// when set, else the base URL. Webhooks, the API and the dashboard always stay
+// on BaseURL.
+func (c Config) CustomerURL() *url.URL {
+	if c.CheckoutURL != nil {
+		return c.CheckoutURL
+	}
+	return c.BaseURL
+}
+
+// CheckoutURLWarning is the advice shown at startup when a production hub
+// serves the customer pages on the dashboard's origin; "" when there is
+// nothing to say.
+func CheckoutURLWarning(c Config) string {
+	if c.Env != EnvProduction || c.CheckoutURL != nil {
+		return ""
+	}
+	return "PAYMUX_CHECKOUT_URL is not set: customer pages share an origin (and cookies) with the dashboard, so a script on a payment page could reach it. Serve them from a second host name and set PAYMUX_CHECKOUT_URL (see docs/installation.md)"
 }
 
 // loadMasterKey reads exactly one of PAYMUX_MASTER_KEY or

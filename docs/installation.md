@@ -60,6 +60,17 @@ Use the [simulator quickstart](quickstart.md) for a local-only trial. For a depl
 
 The first administrator is created at `/setup` using the one-time code in the server log. There is no default password. Complete setup promptly and keep logs private. API keys and endpoint signing secrets are displayed once: save them in your application's secret store.
 
+## Two host names (recommended in production)
+
+Serve the customer pages from a second host name so that nothing running on a payment page (a provider's script, a remote connector's page) shares an origin, and so cookies, with the dashboard:
+
+| Host | Serves | Setting |
+|---|---|---|
+| `pay.example.com` | dashboard, `/v1` API, `/hooks`, `/setup`, `/docs` | `PAYMUX_BASE_URL=https://pay.example.com` |
+| `checkout.example.com` | `/pay/`, `/l/`, `/s/`, `/i/`, `/return/`, `/sim/`, `/assets/`, `/theme/` and nothing else (404) | `PAYMUX_CHECKOUT_URL=https://checkout.example.com` |
+
+Point both names at the same proxy and the same hub listener (`PAYMUX_LISTEN`); the hub tells them apart by `Host`. With the Caddy kit the second name needs no extra block: the catch-all block issues its certificate on demand and the hub's `tls-allow` answer approves it. With nginx, give the checkout host its own server block and certificate that proxies to the same upstream, and forward the `Host` header. Dashboard cookies are host-only, so the checkout host never receives them. Custom domains of apps work as before. Turning this on on a running hub changes the URLs registered at providers: see [upgrades](upgrades.md#release-note-the-customer-pages-get-their-own-host).
+
 ## Choose a database
 
 | Database | Appropriate use | Operational responsibility |

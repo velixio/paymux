@@ -59,7 +59,7 @@ func openCLI(ctx context.Context, env func(string) (string, bool), stderr io.Wri
 		return fail(err)
 	}
 	return &cliContext{cfg: cfg, db: db, svc: core.NewService(core.Options{DB: db, Settings: set}),
-		conns: connectors.New(connectors.Options{DB: db, Box: box, BaseURL: cfg.BaseURL}), scope: core.OrgScope{OrgID: org}}, nil
+		conns: connectors.New(connectors.Options{DB: db, Box: box, BaseURL: cfg.BaseURL, CheckoutURL: cfg.CheckoutURL}), scope: core.OrgScope{OrgID: org}}, nil
 }
 
 // resolveApp finds an app by slug, or by id.
@@ -168,7 +168,8 @@ func runDomain(ctx context.Context, args []string, env func(string) (string, boo
 		fmt.Fprintf(stderr, "paymux domain add: app %q: %v\n", *app, err)
 		return 1
 	}
-	if strings.EqualFold(strings.TrimSuffix(*host, "."), c.cfg.BaseURL.Hostname()) {
+	if h := strings.TrimSuffix(*host, "."); strings.EqualFold(h, c.cfg.BaseURL.Hostname()) ||
+		c.cfg.CheckoutURL != nil && strings.EqualFold(h, c.cfg.CheckoutURL.Hostname()) {
 		fmt.Fprintln(stderr, "paymux domain add: that is the hub's own host, not a custom domain")
 		return 1
 	}

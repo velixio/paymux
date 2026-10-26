@@ -45,7 +45,9 @@ pay.example.com {
 	}
 }
 
-# App custom domains: any other host name, certificate issued on demand.
+# App custom domains, and the checkout host if PAYMUX_CHECKOUT_URL is set
+# (the hub approves it in tls-allow): any other host name, certificate issued
+# on demand.
 # The hub itself serves only the customer-facing pages on these hosts
 # (pay page, return page, invoices), never the dashboard or the API.
 https:// {

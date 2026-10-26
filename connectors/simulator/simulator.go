@@ -195,10 +195,23 @@ func (c *conn) origin() (base, accountID string, err error) {
 	return u.Scheme + "://" + u.Host, strings.TrimPrefix(u.Path[strings.LastIndex(u.Path, "/"):], "/"), nil
 }
 
+// pageOrigin is the origin of the hub's /sim page: the checkout host when
+// PAYMUX_CHECKOUT_URL is set, else the base host. acc is the account id.
+func (c *conn) pageOrigin() (origin, acc string, err error) {
+	base, acc, err := c.origin()
+	if err != nil {
+		return "", "", err
+	}
+	if co, ok := c.deps.URLs.(interface{ CheckoutOrigin() string }); ok && co.CheckoutOrigin() != "" {
+		base = co.CheckoutOrigin()
+	}
+	return base, acc, nil
+}
+
 // CheckoutHosts: the simulator only sends the buyer to the hub's own /sim page,
 // whose origin (http in development) is Self.
 func (c *conn) CheckoutHosts() connector.CheckoutHosts {
-	base, _, err := c.origin()
+	base, _, err := c.pageOrigin()
 	if err != nil {
 		return connector.CheckoutHosts{}
 	}
@@ -207,7 +220,7 @@ func (c *conn) CheckoutHosts() connector.CheckoutHosts {
 
 // pageURL is the hosted page for a checkout reference.
 func (c *conn) pageURL(ref string) (string, error) {
-	base, acc, err := c.origin()
+	base, acc, err := c.pageOrigin()
 	if err != nil {
 		return "", err
 	}

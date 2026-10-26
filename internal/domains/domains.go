@@ -66,6 +66,29 @@ func IsCustomerRoute(path string) bool {
 	return false
 }
 
+// pagePrefixes are the customer pages. With a checkout origin the base host
+// redirects them there; /assets/ and /theme/ are not among them because the
+// dashboard needs them on the base host too.
+var pagePrefixes = []string{"/pay/", "/return/", "/i/", "/s/", "/l/", "/sim/"}
+
+func hasPrefix(path string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(path, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsCheckoutRoute reports whether path is served on the checkout host: the
+// customer pages, the simulator's page, the assets and themes they use, and
+// the endpoint their policy reports violations to (browsers do not follow a
+// redirect with a report, so it is served on both hosts).
+func IsCheckoutRoute(path string) bool {
+	return hasPrefix(path, pagePrefixes) || strings.HasPrefix(path, "/assets/") || strings.HasPrefix(path, "/theme/") ||
+		path == "/csp-report"
+}
+
 // Normalize lower-cases a host and strips any port.
 func Normalize(host string) string {
 	if h, _, err := net.SplitHostPort(host); err == nil {
@@ -82,11 +105,31 @@ type Router struct {
 	Lookup   Lookup
 	Base     http.Handler // everything on the base host
 	Customer http.Handler // customer routes on custom hosts (app id in context)
+
+	// CheckoutHost, CheckoutOrigin and Checkout are set when the customer pages
+	// have an origin of their own (PAYMUX_CHECKOUT_URL): that host serves the
+	// checkout routes through Checkout and nothing else, and the base host
+	// answers the customer pages with a 308 to CheckoutOrigin.
+	CheckoutHost   string
+	CheckoutOrigin string // scheme://host[:port], no trailing slash
+	Checkout       http.Handler
 }
 
 func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	host := Normalize(r.Host)
+	if rt.Checkout != nil && host == Normalize(rt.CheckoutHost) {
+		if !IsCheckoutRoute(r.URL.Path) {
+			http.NotFound(w, r)
+			return
+		}
+		rt.Checkout.ServeHTTP(w, r)
+		return
+	}
 	if host == Normalize(rt.BaseHost) {
+		if rt.Checkout != nil && hasPrefix(r.URL.Path, pagePrefixes) {
+			http.Redirect(w, r, rt.CheckoutOrigin+r.URL.RequestURI(), http.StatusPermanentRedirect)
+			return
+		}
 		rt.Base.ServeHTTP(w, r)
 		return
 	}
@@ -109,7 +152,10 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // TLSAllowOptions configures the handler for Caddy's on-demand TLS "ask".
 type TLSAllowOptions struct {
 	BaseHost string
-	Lookup   Lookup
+	// ExtraHosts are further hosts of the hub itself (the checkout host) that
+	// always get a certificate.
+	ExtraHosts []string
+	Lookup     Lookup
 	// Resolve returns the addresses a host name resolves to; nil uses the
 	// system resolver.
 	Resolve func(ctx context.Context, host string) ([]netip.Addr, error)
@@ -162,6 +208,12 @@ func (h *TLSAllow) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case host == Normalize(h.o.BaseHost):
 		w.WriteHeader(http.StatusOK)
 		return
+	}
+	for _, x := range h.o.ExtraHosts {
+		if host == Normalize(x) {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 	}
 	d, ok, err := h.o.Lookup.LookupHost(r.Context(), host)
 	if err != nil {

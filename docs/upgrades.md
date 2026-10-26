@@ -129,6 +129,17 @@ are strict and there is no repair step. If one fails, fix the rows it names
   (`ledger_entries_no_update` and `ledger_entries_no_delete` on SQLite,
   `ledger_entries_no_change` on PostgreSQL) first and recreate them.
 
+## Release note: the customer pages get their own host
+
+No migration. `PAYMUX_CHECKOUT_URL` is optional and unset by default, so an upgrade changes nothing until you set it. A production hub without it logs a startup warning. Setting it moves every customer-facing URL to the new host:
+
+1. Create the DNS name (for example `checkout.example.com`), point it at the proxy and make sure it gets a certificate (see [installation](installation.md#two-host-names-recommended-in-production)). Both names must reach the same hub.
+2. Set `PAYMUX_CHECKOUT_URL=https://checkout.example.com` (a different host name than `PAYMUX_BASE_URL`) and restart.
+3. Payment pages, payment links and invoices already sent keep working: the base host answers `/pay/`, `/l/`, `/s/`, `/i/`, `/return/` and `/sim/` with a 308 to the same path and query on the new host.
+4. New `checkout_url`, payment-link, invoice and subscription URLs, emails and provider return URLs use the new host. Return URLs are built per payment, so providers that take the return URL from each request need nothing. If you registered a fixed return, redirect or allowed domain at a provider (Razorpay, PayU, Zoho Payments, Whop dashboards), add the new host there; the old one keeps working through the redirect meanwhile.
+5. Webhook URLs (`/hooks/...`) do not change: they stay on `PAYMUX_BASE_URL`. Do not move them.
+6. If your reverse proxy restricts paths per host, allow the customer paths on the new host only and keep dashboard, API and `/hooks` on the base host.
+
 ## Release note: custom domains need a DNS TXT record
 
 Migration 0035 adds two nullable columns to `app_domains`; nothing can fail.
