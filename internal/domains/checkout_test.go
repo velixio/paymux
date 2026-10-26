@@ -20,7 +20,7 @@ func checkoutRouter() *Router {
 // only, and the base host sends them there.
 func TestCheckoutHostServesOnlyCustomerRoutes(t *testing.T) {
 	r := checkoutRouter()
-	for _, p := range []string{"/pay/pay_1", "/l/slug", "/s/sub_1", "/i/inv_1.pdf", "/return/pa_1/REF", "/sim/REF", "/assets/css/app.css", "/theme/x/y.css"} {
+	for _, p := range []string{"/pay/pay_1", "/l/slug", "/s/sub_1", "/i/inv_1.pdf", "/return/pa_1/REF", "/sim/REF", "/assets/css/app.css", "/theme/x/y.css", "/csp-report"} {
 		if w := do(r, "checkout.example.com", p); w.Code != 200 || w.Body.String() != "checkout:" {
 			t.Errorf("%s: %d %q", p, w.Code, w.Body.String())
 		}
@@ -48,7 +48,7 @@ func TestBaseHostRedirectsCustomerRoutesToTheCheckoutHost(t *testing.T) {
 		}
 	}
 	// Everything the dashboard needs stays on the base host.
-	for _, p := range []string{"/v1/payments", "/dashboard/", "/hooks/pa_1", "/assets/css/app.css", "/theme/x/y.css", "/setup", "/payx"} {
+	for _, p := range []string{"/v1/payments", "/dashboard/", "/hooks/pa_1", "/assets/css/app.css", "/theme/x/y.css", "/setup", "/payx", "/csp-report"} {
 		if w := do(r, "pay.example.com", p); w.Code != 200 || w.Body.String() != "base:" {
 			t.Errorf("%s on the base host: %d %q", p, w.Code, w.Body.String())
 		}
