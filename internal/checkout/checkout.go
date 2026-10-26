@@ -260,9 +260,18 @@ func (s *Service) reusable(ctx context.Context, paymentID string, accounts []sto
 		return Started{}, false
 	}
 	for _, pa := range accounts {
-		if pa.ID == a.ProviderAccountID {
-			return Started{Attempt: a, AccountID: pa.ID, Connector: pa.Connector, Action: action}, true
+		if pa.ID != a.ProviderAccountID {
+			continue
 		}
+		// The action was checked when it was made, but the account's hosts may
+		// have changed since (or it predates the check): it is shown again only
+		// if the connector as it is now still declares it. Otherwise a fresh
+		// checkout is made, which is checked like any other.
+		live, err := s.o.Conns.Get(ctx, pa.ID)
+		if err != nil || connectors.CheckNextAction(ctx, s.o.Logger, s.o.Alerts, pa.ID, live.Connector, action) != nil {
+			return Started{}, false
+		}
+		return Started{Attempt: a, AccountID: pa.ID, Connector: pa.Connector, Action: action}, true
 	}
 	return Started{}, false
 }
