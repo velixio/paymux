@@ -118,7 +118,7 @@ func TestDomainActivation(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
 		d := e.domain("pay.shop.example.org")
 		f := &fetcher{reply: func(string) (int, string, error) { return 200, d.Token + "\n", nil }}
-		dc := housekeeping.NewDomainChecker(housekeeping.DomainOptions{DB: e.db, Alerts: e.alerts, Fetch: f.fetch, Now: e.clk.Now})
+		dc := housekeeping.NewDomainChecker(housekeeping.DomainOptions{DB: e.db, Alerts: e.alerts, Fetch: f.fetch, LookupTXT: provedTXT(d), Now: e.clk.Now})
 		if err := dc.Run(ctx); err != nil {
 			t.Fatal(err)
 		}
@@ -147,7 +147,7 @@ func TestDomainActivationFailureModes(t *testing.T) {
 		}
 		for name, reply := range cases {
 			f := &fetcher{reply: reply}
-			dc := housekeeping.NewDomainChecker(housekeeping.DomainOptions{DB: e.db, Alerts: e.alerts, Fetch: f.fetch, Now: e.clk.Now})
+			dc := housekeeping.NewDomainChecker(housekeeping.DomainOptions{DB: e.db, Alerts: e.alerts, Fetch: f.fetch, LookupTXT: provedTXT(d), Now: e.clk.Now})
 			if err := dc.Run(ctx); err != nil {
 				t.Fatal(err)
 			}
@@ -162,7 +162,7 @@ func TestDomainActivationFailureModes(t *testing.T) {
 		// After 24 hours without success the domain is failed, with one alert.
 		e.clk.Add(25 * time.Hour)
 		f := &fetcher{reply: cases["not found"]}
-		dc := housekeeping.NewDomainChecker(housekeeping.DomainOptions{DB: e.db, Alerts: e.alerts, Fetch: f.fetch, Now: e.clk.Now})
+		dc := housekeeping.NewDomainChecker(housekeeping.DomainOptions{DB: e.db, Alerts: e.alerts, Fetch: f.fetch, LookupTXT: provedTXT(d), Now: e.clk.Now})
 		_ = dc.Run(ctx)
 		got := e.get(d.Host)
 		if got.Status != "failed" || !slices.Equal(e.alerts.kinds(), []string{"domain.failed"}) {
@@ -181,7 +181,7 @@ func TestDomainActivationFailureModes(t *testing.T) {
 			t.Errorf("after recheck %+v", got)
 		}
 		ok := &fetcher{reply: func(string) (int, string, error) { return 200, d.Token, nil }}
-		dc = housekeeping.NewDomainChecker(housekeeping.DomainOptions{DB: e.db, Alerts: e.alerts, Fetch: ok.fetch, Now: e.clk.Now})
+		dc = housekeeping.NewDomainChecker(housekeeping.DomainOptions{DB: e.db, Alerts: e.alerts, Fetch: ok.fetch, LookupTXT: provedTXT(d), Now: e.clk.Now})
 		_ = dc.Run(ctx)
 		if e.get(d.Host).Status != "active" {
 			t.Error("recheck did not lead to activation")
@@ -299,7 +299,7 @@ func TestSilenceDetector(t *testing.T) {
 func TestRegisterInstallsJobs(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
 		hk := housekeeping.New(housekeeping.Options{Core: e.core,
-			Domains: housekeeping.NewDomainChecker(housekeeping.DomainOptions{DB: e.db, Alerts: e.alerts, Fetch: (&fetcher{reply: func(string) (int, string, error) { return 404, "", nil }}).fetch, Now: e.clk.Now}),
+			Domains: housekeeping.NewDomainChecker(housekeeping.DomainOptions{DB: e.db, Alerts: e.alerts, Fetch: (&fetcher{reply: func(string) (int, string, error) { return 404, "", nil }}).fetch, LookupTXT: func(context.Context, string) ([]string, error) { return nil, nil }, Now: e.clk.Now}),
 			Silence: housekeeping.NewSilenceDetector(housekeeping.SilenceOptions{DB: e.db, Alerts: e.alerts, Now: e.clk.Now})})
 		if err := hk.Register(e.q); err != nil {
 			t.Fatal(err)
