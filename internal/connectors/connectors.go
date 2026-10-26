@@ -33,9 +33,12 @@ import (
 type Options struct {
 	DB      *store.DB
 	Box     *secrets.Box
-	BaseURL *url.URL // PAYMUX_BASE_URL
-	Logger  *slog.Logger
-	Now     func() time.Time
+	BaseURL *url.URL // PAYMUX_BASE_URL: webhooks
+	// CheckoutURL is PAYMUX_CHECKOUT_URL, the origin of the customer pages (return
+	// URLs, the simulator page); nil means BaseURL.
+	CheckoutURL *url.URL
+	Logger      *slog.Logger
+	Now         func() time.Time
 	// HTTPClient overrides the per-account client (tests point it at a fake
 	// provider). Nil builds connector.NewHTTPClient per account.
 	HTTPClient func(pa store.ProviderAccount, info connector.Info, secretValues []string) *http.Client
@@ -55,8 +58,10 @@ type Options struct {
 type Service struct {
 	o       Options
 	baseURL string
-	mu      sync.Mutex
-	cache   map[string]*cached
+	// checkoutURL is where customer pages live: the checkout URL, else baseURL.
+	checkoutURL string
+	mu          sync.Mutex
+	cache       map[string]*cached
 	// alerts and reported serve reportMismatch.
 	alerts   Alerter
 	reported map[string]string
@@ -81,7 +86,12 @@ func New(o Options) *Service {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	return &Service{o: o, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), cache: map[string]*cached{}, reported: map[string]string{}}
+	s := &Service{o: o, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), cache: map[string]*cached{}, reported: map[string]string{}}
+	s.checkoutURL = s.baseURL
+	if o.CheckoutURL != nil {
+		s.checkoutURL = strings.TrimRight(o.CheckoutURL.String(), "/")
+	}
+	return s
 }
 
 func configAAD(id string) []byte { return secrets.AADProviderConfig(id) }
@@ -743,10 +753,15 @@ type urls struct {
 
 func (u *urls) WebhookURL() string { return u.s.WebhookURL(u.account) }
 
+// CheckoutOrigin is the origin of the customer pages. The simulator, which
+// serves its own hosted page there, asks for it.
+func (u *urls) CheckoutOrigin() string { return u.s.checkoutURL }
+
 // ReturnURL points at the app's primary active custom domain when the
-// attempt's app has one, else at the base URL.
+// attempt's app has one, else at the checkout URL (the base URL unless
+// PAYMUX_CHECKOUT_URL is set).
 func (u *urls) ReturnURL(providerRef string) string {
-	base := u.s.baseURL
+	base := u.s.checkoutURL
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	_ = u.s.o.DB.Read(ctx, func(q store.Querier) error {
