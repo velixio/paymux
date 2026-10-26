@@ -96,11 +96,25 @@ func NewHTTPClient(o HTTPOptions) *http.Client {
 		}
 		t.bucket = &bucket{rate: o.RateLimit.RequestsPerSecond, burst: float64(burst), tokens: float64(burst), last: o.Now()}
 	}
-	c := &http.Client{Transport: t}
+	c := &http.Client{Transport: t, CheckRedirect: sameHostRedirects}
 	if o.DenyPrivate {
 		c.CheckRedirect = noRedirects
 	}
 	return c
+}
+
+// sameHostRedirects follows a redirect only to the host the request was made
+// to. Go strips Authorization and Cookie on a redirect to another host, but not
+// a provider's own credential headers (Cashfree's x-client-secret, say); such a
+// redirect is returned as it is instead of being followed.
+func sameHostRedirects(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("connector: stopped after 10 redirects")
+	}
+	if !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
+		return http.ErrUseLastResponse
+	}
+	return nil
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {
