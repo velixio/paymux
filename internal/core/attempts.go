@@ -24,10 +24,17 @@ const (
 	FlagLateSuccess      = "late_success"
 )
 
+// MaxAttempts bounds the attempts of one payment. Each attempt is a checkout
+// created at a provider, and the pay page makes one whenever the customer asks
+// to try again: without a bound, anyone holding the pay link could create rows
+// and provider calls at will.
+const MaxAttempts = 30
+
 // CreateAttempt records a new try of a payment at a provider account (status
-// created). Attempts are refused on canceled and expired payments; a new
-// attempt on a succeeded payment is allowed because a customer can pay twice,
-// which ApplyAttemptSnapshot then handles as a double success.
+// created). Attempts are refused on canceled and expired payments, and once the
+// payment has MaxAttempts; a new attempt on a succeeded payment is allowed
+// because a customer can pay twice, which ApplyAttemptSnapshot then handles as
+// a double success.
 func (s *Service) CreateAttempt(ctx context.Context, paymentID, providerAccountID string) (store.Attempt, error) {
 	var a store.Attempt
 	err := s.db.Write(ctx, func(tx store.Tx) error {
@@ -38,6 +45,12 @@ func (s *Service) CreateAttempt(ctx context.Context, paymentID, providerAccountI
 		switch state.PaymentStatus(p.Status) {
 		case state.PaymentCanceled, state.PaymentExpired:
 			return newErr(ErrInvalidState, "a payment that is %s cannot take new attempts", p.Status)
+		}
+		// Counted under the payment lock, so concurrent requests cannot pass together.
+		if prior, err := store.ListAttempts(ctx, tx, p.ID); err != nil {
+			return err
+		} else if len(prior) >= MaxAttempts {
+			return newErr(ErrInvalidState, "the payment has had %d attempts; no more can be started", len(prior))
 		}
 		pa, err := store.GetProviderAccount(ctx, tx, providerAccountID)
 		if err != nil {
