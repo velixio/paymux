@@ -61,6 +61,8 @@ Provider credentials grant provider-side access. Before adding a custom or remot
 
 ## Hosted pages and custom domains
 
+Payment pages run scripts that are not yours (a provider's checkout script, a remote connector's page). On the dashboard's own origin such a script could read dashboard pages. Set `PAYMUX_CHECKOUT_URL` to a second host name: the customer pages are then served there and nothing else is (dashboard, API and hooks answer 404), while the base host redirects the customer paths to it. Dashboard cookies are host-only (no `Domain` attribute), so the browser never sends them to the checkout host. A production hub without the setting logs a warning at startup.
+
 Checkout and hosted-document URLs contain access tokens. Avoid leaking them into public logs, analytics, shared screenshots, or referrer-sensitive redirects. Validate custom-domain ownership and proxy/TLS configuration before marking a domain ready.
 
 The public React site is a separate static application and makes no production payment requests from its sample demo. It should never collect live provider credentials.
