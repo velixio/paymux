@@ -193,6 +193,9 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	defer db.Close()
 	a.warnDatabaseTLS()
+	if msg := config.CheckoutURLWarning(a.cfg); msg != "" {
+		a.log.Warn(msg)
+	}
 	a.warnLooseFiles(db)
 
 	dialect := db.Dialect().Name()
@@ -245,7 +248,11 @@ func (a *App) Start(ctx context.Context) error {
 	breaker := routing.NewBreaker(nil)
 	rt := checkout.NewRouting(breaker).WithSettings(set).WithSuggester(a.suggestRoute)
 	reg := metrics.NewRegistry()
-	connOpts := connectors.Options{DB: db, Box: box, BaseURL: a.cfg.BaseURL, Logger: a.log, HTTPClient: a.connHTTP,
+	// Every URL a customer sees (pay page, links, invoices, subscription
+	// checkouts, return pages) is built on the checkout origin when there is one;
+	// webhooks, the API and the dashboard stay on the base URL.
+	customerURL := a.cfg.CustomerURL().String()
+	connOpts := connectors.Options{DB: db, Box: box, BaseURL: a.cfg.BaseURL, CheckoutURL: a.cfg.CheckoutURL, Logger: a.log, HTTPClient: a.connHTTP,
 		Observe: connectors.ProviderMetrics(reg)}
 	if dbl != nil {
 		connOpts.CallRecorder = func(pa store.ProviderAccount, info connector.Info) connector.CallRecorder {
@@ -262,7 +269,7 @@ func (a *App) Start(ctx context.Context) error {
 	// which a payment or refund succeeds.
 	mailer := notify.New(a.cfg)
 	inv := invoice.New(invoice.Options{DB: db, Box: box, Settings: set, Jobs: q, Emitter: emitter, Mailer: mailer,
-		BaseURL: a.cfg.BaseURL.String()})
+		BaseURL: customerURL})
 	inv.RegisterJobs(q)
 	// Ops alerts (PAYMUX_OPS_EMAILS and PAYMUX_OPS_WEBHOOK_URL) go through one
 	// rate-limited sender shared by every component that raises them.
@@ -292,14 +299,14 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter, Router: rt, Alerts: alerts,
 		OnPaymentSucceeded: onPaymentSucceeded, OnRefundSucceeded: inv.OnRefundSucceeded})
-	links = paylinks.New(paylinks.Options{DB: db, Core: svc, Emitter: emitter, Settings: set, BaseURL: a.cfg.BaseURL.String()})
+	links = paylinks.New(paylinks.Options{DB: db, Core: svc, Emitter: emitter, Settings: set, BaseURL: customerURL})
 	disp := disputes.New(disputes.Options{DB: db, Settings: set, Emitter: emitter, Alerts: alerts, Credit: inv, Conns: conns, Core: svc,
 		Logger: a.log, CutoffErr: invoice.ErrCreditNoteCutoff})
 	// Subscriptions and mandates: renewals run as jobs; provider notifications
 	// and returns reach the engine through the payment flow.
 	subCSRF := sha256.Sum256(append([]byte("paymux-sub-csrf-key|"), a.cfg.MasterKey...))
 	subs := subscriptions.New(subscriptions.Options{DB: db, Core: svc, Settings: set, Jobs: q, Emitter: emitter, CSRFKey: subCSRF[:],
-		BaseURL: a.cfg.BaseURL.String(), Mailer: notify.New(a.cfg), Logger: a.log,
+		BaseURL: customerURL, Mailer: notify.New(a.cfg), Logger: a.log,
 		Connectors: subscriptions.ConnectorsFunc(func(ctx context.Context, id string) (connector.Connector, error) {
 			live, err := conns.Get(ctx, id)
 			return live.Connector, err
@@ -343,7 +350,7 @@ func (a *App) Start(ctx context.Context) error {
 	if dbl != nil && dbl.red != nil {
 		redactMessage = dbl.red.Text // knows every account's secrets
 	}
-	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.BaseURL, Log: a.log, Invoices: inv, Subscriptions: subs, PaymentLinks: links, Payouts: payoutSvc, Redact: redactMessage})
+	api, err := httpapi.New(httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: a.cfg.CustomerURL(), Log: a.log, Invoices: inv, Subscriptions: subs, PaymentLinks: links, Payouts: payoutSvc, Redact: redactMessage})
 	if err != nil {
 		return err
 	}
@@ -379,7 +386,7 @@ func (a *App) Start(ctx context.Context) error {
 	pay := paypage.New(paypage.Options{Core: svc, Flow: flow, Settings: set, Renderer: renderer,
 		CSRFKey: csrf[:], Logger: a.log})
 	linkPages := paylinks.NewHosted(paylinks.HostedOptions{Service: links, Core: svc, Renderer: renderer, Settings: set, CSRFKey: csrf[:],
-		Secure: a.cfg.BaseURL.Scheme == "https", Logger: a.log})
+		Secure: a.cfg.CustomerURL().Scheme == "https", Logger: a.log})
 
 	a.registerMetrics(reg, db, dialect)
 	registerBusinessMetrics(reg, db, a.log, time.Now)
@@ -427,19 +434,33 @@ func (a *App) Start(ctx context.Context) error {
 
 	// Custom domains serve the customer routes only; everything else stays on
 	// the base host.
-	customerMux := http.NewServeMux()
-	pay.Register(paypage.StdMux(customerMux))
-	customerMux.HandleFunc("GET /i/{id}", inv.ServeHosted)
-	customerMux.HandleFunc("GET /l/{slug}", linkPages.Show)
-	customerMux.HandleFunc("POST /l/{slug}", linkPages.Submit)
-	customerMux.HandleFunc("GET /s/{id}", subs.ServeHosted)
-	customerMux.HandleFunc("POST /s/{id}", subs.SubmitBilling)
-	customerMux.Handle("GET /assets/", web.AssetHandler(overlay))
-	customerMux.Handle("GET /theme/", themes.Handler())
+	customerRoutes := func() *http.ServeMux {
+		m := http.NewServeMux()
+		pay.Register(paypage.StdMux(m))
+		m.HandleFunc("GET /i/{id}", inv.ServeHosted)
+		m.HandleFunc("GET /l/{slug}", linkPages.Show)
+		m.HandleFunc("POST /l/{slug}", linkPages.Submit)
+		m.HandleFunc("GET /s/{id}", subs.ServeHosted)
+		m.HandleFunc("POST /s/{id}", subs.SubmitBilling)
+		m.Handle("GET /assets/", web.AssetHandler(overlay))
+		m.Handle("GET /theme/", themes.Handler())
+		return m
+	}
+	customerMux := customerRoutes()
 	baseHost := a.cfg.BaseURL.Host
-	public := hostRouter(&domains.Router{BaseHost: baseHost, Lookup: svc, Base: srv.Handler(), Customer: customerMux}, srv.Handler())
+	router := &domains.Router{BaseHost: baseHost, Lookup: svc, Base: srv.Handler(), Customer: customerMux}
+	tlsAllow := domains.TLSAllowOptions{BaseHost: baseHost, Lookup: svc}
+	if co := a.cfg.CheckoutURL; co != nil {
+		// PAYMUX_CHECKOUT_URL: the customer pages (and the simulator's) get a host
+		// of their own that serves nothing else, and the base host redirects them.
+		checkoutMux := customerRoutes()
+		pay.RegisterSim(paypage.StdMux(checkoutMux))
+		router.CheckoutHost, router.CheckoutOrigin, router.Checkout = co.Host, strings.TrimRight(co.String(), "/"), checkoutMux
+		tlsAllow.ExtraHosts = []string{co.Host}
+	}
+	public := hostRouter(router, srv.Handler())
 	internalMux := http.NewServeMux()
-	internalMux.Handle("GET /internal/tls-allow", domains.TLSAllowHandler(baseHost, svc))
+	internalMux.Handle("GET /internal/tls-allow", domains.NewTLSAllow(tlsAllow))
 	internalMux.Handle("/", srv.InternalHandler())
 
 	// Operator dashboard and the shared static assets.
