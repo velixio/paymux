@@ -81,26 +81,61 @@ func (s *Service) Register(q *jobs.Queue) error {
 // marked failed.
 const DomainGrace = 24 * time.Hour
 
+// DomainTXTGrace is how long an active domain may stay without its DNS TXT
+// record before it goes back to pending. It covers domains activated before
+// the record was required.
+const DomainTXTGrace = 7 * 24 * time.Hour
+
+// domainRecheckEvery is how often an active domain without a proven TXT record
+// is looked up again.
+const domainRecheckEvery = time.Hour
+
+// Bounds on what is read from a TXT answer: a hostile zone may return anything.
+const (
+	maxTXTRecords = 20
+	maxTXTLen     = 512
+)
+
 // FetchFunc GETs a URL and returns the status and (limited) body.
 type FetchFunc func(ctx context.Context, url string) (status int, body string, err error)
 
-// DomainOptions configures a DomainChecker.
-type DomainOptions struct {
-	DB     *store.DB
-	Alerts Alerter
-	Fetch  FetchFunc // default: DefaultFetch(false)
-	Logger *slog.Logger
-	Now    func() time.Time
+// TXTFunc returns the TXT records of a DNS name.
+type TXTFunc func(ctx context.Context, name string) ([]string, error)
+
+// DefaultLookupTXT is the TXTFunc over the system resolver, with a 10 second
+// timeout.
+func DefaultLookupTXT(ctx context.Context, name string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	return net.DefaultResolver.LookupTXT(ctx, name)
 }
 
-// DomainChecker activates pending custom domains by fetching
-// https://<host>/.well-known/paymux/<token> over the public internet.
+// DomainOptions configures a DomainChecker.
+type DomainOptions struct {
+	DB        *store.DB
+	Alerts    Alerter
+	Fetch     FetchFunc // default: DefaultFetch(false)
+	LookupTXT TXTFunc   // default: DefaultLookupTXT
+	Logger    *slog.Logger
+	Now       func() time.Time
+}
+
+// DomainChecker proves custom domains. A pending domain needs both the DNS TXT
+// record _paymux-challenge.<host> = paymux-verify=<token> and the token at
+// https://<host>/.well-known/paymux/<token> over the public internet. The TXT
+// record comes first: once seen it is stored, which is what lets the hub's
+// TLS ask give the host a certificate, which the https fetch needs. The DNS
+// record proves the owner of the zone; a host that merely points at the hub
+// serves the token itself and proves nothing.
 type DomainChecker struct{ o DomainOptions }
 
 // NewDomainChecker builds a DomainChecker.
 func NewDomainChecker(o DomainOptions) *DomainChecker {
 	if o.Fetch == nil {
 		o.Fetch = DefaultFetch(false)
+	}
+	if o.LookupTXT == nil {
+		o.LookupTXT = DefaultLookupTXT
 	}
 	if o.Logger == nil {
 		o.Logger = slog.Default()
@@ -111,20 +146,72 @@ func NewDomainChecker(o DomainOptions) *DomainChecker {
 	return &DomainChecker{o: o}
 }
 
-// Run checks every pending domain once. A domain whose check succeeds becomes
-// active; one that has kept failing for DomainGrace since it was added becomes
-// failed (with one alert) and is left alone until an operator rechecks it.
+// txtProven looks up the challenge record of d. The second result is the
+// reason when it is not proven.
+func (c *DomainChecker) txtProven(ctx context.Context, d store.Domain) (bool, string) {
+	name := domains.ChallengeName(d.Host)
+	recs, err := c.o.LookupTXT(ctx, name)
+	if err != nil {
+		return false, fmt.Sprintf("looking up the DNS TXT record %s: %s", name, err)
+	}
+	want := domains.ChallengeValue(d.Token)
+	for i, r := range recs {
+		if i >= maxTXTRecords {
+			break
+		}
+		if len(r) <= maxTXTLen && strings.TrimSpace(r) == want {
+			return true, ""
+		}
+	}
+	return false, fmt.Sprintf("the DNS TXT record %s does not contain %s", name, want)
+}
+
+// Run checks every pending domain once, then the active domains that have no
+// proven TXT record yet. A pending domain whose checks succeed becomes active;
+// one that has kept failing for DomainGrace since it was added becomes failed
+// (with one alert) and is left alone until an operator rechecks it. An active
+// domain still without its TXT record DomainTXTGrace after that was first
+// noticed goes back to pending (with one alert), never deleted.
 func (c *DomainChecker) Run(ctx context.Context) error {
-	var pending []store.Domain
+	var pending, active []store.Domain
 	if err := c.o.DB.Read(ctx, func(q store.Querier) (err error) {
-		pending, err = store.ListDomainsByStatus(ctx, q, domains.StatusPending)
+		if pending, err = store.ListDomainsByStatus(ctx, q, domains.StatusPending); err != nil {
+			return err
+		}
+		active, err = store.ListDomainsByStatus(ctx, q, domains.StatusActive)
 		return
 	}); err != nil {
 		return err
 	}
 	for _, d := range pending {
-		now := c.o.Now().UTC()
-		status, errText := domains.StatusPending, ""
+		if err := c.checkPending(ctx, d); err != nil {
+			return err
+		}
+	}
+	for _, d := range active {
+		if err := c.checkActive(ctx, d); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *DomainChecker) checkPending(ctx context.Context, d store.Domain) error {
+	now := c.o.Now().UTC()
+	status, errText := domains.StatusPending, ""
+	proven, why := c.txtProven(ctx, d)
+	if proven != !d.TXTVerifiedAt.IsZero() {
+		at := now
+		if !proven {
+			at = time.Time{} // the record is gone: no certificate any more
+		}
+		if err := c.o.DB.Write(ctx, func(tx store.Tx) error { return store.SetDomainTXT(ctx, tx, d.ID, at) }); err != nil {
+			return err
+		}
+	}
+	if !proven {
+		errText = why
+	} else {
 		code, body, err := c.o.Fetch(ctx, "https://"+d.Host+"/.well-known/paymux/"+d.Token)
 		switch {
 		case err != nil:
@@ -136,22 +223,65 @@ func (c *DomainChecker) Run(ctx context.Context) error {
 		default:
 			status = domains.StatusActive
 		}
-		if errText != "" && now.Sub(d.CreatedAt) >= DomainGrace {
-			status = domains.StatusFailed
-		}
-		err = c.o.DB.Write(ctx, func(tx store.Tx) error { return store.UpdateDomainCheck(ctx, tx, d.ID, status, errText, now) })
+	}
+	if errText != "" && now.Sub(d.CreatedAt) >= DomainGrace {
+		status = domains.StatusFailed
+	}
+	err := c.o.DB.Write(ctx, func(tx store.Tx) error { return store.UpdateDomainCheck(ctx, tx, d.ID, status, errText, now) })
+	if err != nil {
+		return err
+	}
+	if status == domains.StatusFailed {
+		c.alert(ctx, d, "domain.failed",
+			fmt.Sprintf("Custom domain %s could not be activated: %s. Fix its DNS and recheck it.", d.Host, errText))
+	}
+	return nil
+}
+
+func (c *DomainChecker) checkActive(ctx context.Context, d store.Domain) error {
+	now := c.o.Now().UTC()
+	if !d.TXTVerifiedAt.IsZero() || !d.LastCheckAt.IsZero() && now.Sub(d.LastCheckAt) < domainRecheckEvery {
+		return nil
+	}
+	if proven, why := c.txtProven(ctx, d); proven {
+		return c.o.DB.Write(ctx, func(tx store.Tx) error {
+			if err := store.SetDomainTXT(ctx, tx, d.ID, now); err != nil {
+				return err
+			}
+			if err := store.SetDomainGrace(ctx, tx, d.ID, time.Time{}); err != nil {
+				return err
+			}
+			return store.UpdateDomainCheck(ctx, tx, d.ID, domains.StatusActive, "", now)
+		})
+	} else if !d.GraceStartedAt.IsZero() && now.Sub(d.GraceStartedAt) >= DomainTXTGrace {
+		why += fmt.Sprintf("; it has been missing since %s", d.GraceStartedAt.UTC().Format("2006-01-02"))
+		err := c.o.DB.Write(ctx, func(tx store.Tx) error { return store.DemoteDomain(ctx, tx, d.ID, why, now) })
 		if err != nil {
 			return err
 		}
-		if status == domains.StatusFailed && c.o.Alerts != nil {
-			if aerr := c.o.Alerts.Raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: "domain.failed",
-				Message: fmt.Sprintf("Custom domain %s could not be activated: %s. Fix its DNS and recheck it.", d.Host, errText),
-				Refs:    map[string]string{"domain": d.ID, "app": d.AppID}}); aerr != nil {
-				c.o.Logger.Warn("housekeeping: alert not delivered", "err", aerr)
+		c.alert(ctx, d, "domain.unverified",
+			fmt.Sprintf("Custom domain %s is no longer served: %s. Add the TXT record, then it activates again.", d.Host, why))
+		return nil
+	} else {
+		return c.o.DB.Write(ctx, func(tx store.Tx) error {
+			if d.GraceStartedAt.IsZero() {
+				if err := store.SetDomainGrace(ctx, tx, d.ID, now); err != nil {
+					return err
+				}
 			}
-		}
+			return store.UpdateDomainCheck(ctx, tx, d.ID, domains.StatusActive, why, now)
+		})
 	}
-	return nil
+}
+
+func (c *DomainChecker) alert(ctx context.Context, d store.Domain, kind, msg string) {
+	if c.o.Alerts == nil {
+		return
+	}
+	if err := c.o.Alerts.Raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: kind, Message: msg,
+		Refs: map[string]string{"domain": d.ID, "app": d.AppID}}); err != nil {
+		c.o.Logger.Warn("housekeeping: alert not delivered", "err", err)
+	}
 }
 
 // DefaultFetch returns a FetchFunc over the public internet: 10 second

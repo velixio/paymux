@@ -87,6 +87,8 @@ func GetDomainByHost(ctx context.Context, q Queryer, host string) (Domain, error
 	if checked.Valid {
 		d.LastCheckAt = fromMS(checked.Int64)
 	}
+	d.TXTVerifiedAt = fromNullMS(txt)
+	d.GraceStartedAt = fromNullMS(grace)
 	d.CreatedAt = fromMS(created)
 	return d, nil
 }
