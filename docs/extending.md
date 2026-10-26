@@ -201,6 +201,12 @@ ids or connector names, with the same rules as `OnRoute` in Go.
   hook fails. Time spent waiting for `fetch` does not count against the two
   seconds. A few runtimes are pooled, so hooks that run at the same time do not
   share state; do not rely on globals surviving between calls.
+- **One regular-expression match may take at most one second.** Patterns with
+  backreferences or lookaround run on an engine the interrupt above does not
+  reach, so each match has its own limit; a match that hits it throws and the
+  hook fails. Do not run such patterns over data a customer typed (names,
+  descriptions, metadata): a pattern like `/^((a+)+)\2$/` can take that long on
+  a short string.
 - **Memory and output are limited.** A call may add at most 128 MiB to the
   live heap; a script that does is interrupted and its runtime thrown away,
   like one that runs too long. The built-ins that can build a huge value in
