@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/internal/billing"
+	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/core"
 	"github.com/paymux/paymux/internal/events"
 	"github.com/paymux/paymux/internal/jobs"
@@ -133,6 +134,9 @@ type Options struct {
 	// PAYMUX_DATA_DIR/custom); nil or a missing file falls back to the defaults.
 	Templates fs.FS
 	Logger    *slog.Logger
+	// Alerts, when set, is told when a connector answers a checkout with a URL
+	// outside the hosts it declared.
+	Alerts connectors.Alerter
 	// CSRFKey keys the CSRF token of the billing form on the hosted page. Without
 	// one a random key is made, so forms do not survive a restart.
 	CSRFKey []byte
@@ -152,6 +156,7 @@ type Service struct {
 	templates  fs.FS
 	log        *slog.Logger
 	csrfKey    []byte
+	alerts     connectors.Alerter
 
 	pagesOnce sync.Once
 	pagesR    *web.Renderer
@@ -175,7 +180,7 @@ func New(o Options) *Service {
 		_, _ = rand.Read(o.CSRFKey)
 	}
 	return &Service{csrfKey: o.CSRFKey, db: o.DB, core: o.Core, settings: o.Settings, jobs: o.Jobs, emitter: o.Emitter, connectors: o.Connectors,
-		baseURL: strings.TrimRight(o.BaseURL, "/"), now: o.Now, pagesOpt: o.Pages, mailer: o.Mailer, templates: o.Templates, log: o.Logger}
+		baseURL: strings.TrimRight(o.BaseURL, "/"), now: o.Now, pagesOpt: o.Pages, mailer: o.Mailer, templates: o.Templates, log: o.Logger, alerts: o.Alerts}
 }
 
 // SetTemplates sets where email templates are looked up first (call before serving).

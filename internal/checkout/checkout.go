@@ -56,6 +56,9 @@ type Options struct {
 	// when a renewal payment changed, and handles returns from subscription
 	// and mandate checkouts (internal/subscriptions implements it).
 	Subs SubscriptionSink
+	// Alerts, when set, is told when a connector answers a checkout with a URL
+	// outside the hosts it declared.
+	Alerts connectors.Alerter
 }
 
 // ErrUnknownObject is wrapped by a SubscriptionSink when a notification names
@@ -257,6 +260,10 @@ func (s *Service) createCheckout(ctx context.Context, pa store.ProviderAccount, 
 	}
 	if !res.NextAction.Valid() {
 		return connector.CheckoutResult{}, fmt.Errorf("connector %s returned an invalid next action", pa.Connector)
+	}
+	// A refusal is an ordinary checkout error: routing goes on with the next account.
+	if err := connectors.CheckNextAction(ctx, s.o.Logger, s.o.Alerts, pa.ID, live.Connector, res.NextAction); err != nil {
+		return connector.CheckoutResult{}, err
 	}
 	return res, nil
 }

@@ -22,7 +22,7 @@ import (
 func (e *env) formPostCheckout() {
 	e.fake.Locked(func() {
 		e.fake.CheckoutFn = func(req connector.CheckoutRequest) (connector.CheckoutResult, error) {
-			return connector.CheckoutResult{NextAction: connector.NextAction{Kind: connector.ActionFormPost, URL: "https://secure.payu.example/_payment",
+			return connector.CheckoutResult{NextAction: connector.NextAction{Kind: connector.ActionFormPost, URL: "https://secure.payu.example.com/_payment",
 				Fields: map[string]string{"txnid": req.ProviderRef}}}, nil
 		}
 	})

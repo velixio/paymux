@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/paymux/paymux/internal/billingform"
+	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/domains"
 	"net/http"
 	"sort"
@@ -174,6 +175,10 @@ func (s *Service) OpenCheckout(ctx context.Context, id, token string) (Checkout,
 		res, err = mm.CreateMandateCheckout(ctx, req)
 	}
 	if err != nil {
+		return Checkout{}, err
+	}
+	// The page only ever sends the customer to hosts the connector declared.
+	if err := connectors.CheckNextAction(ctx, s.log, s.alerts, sub.ProviderAccountID, conn, res.NextAction); err != nil {
 		return Checkout{}, err
 	}
 	raw, _ := json.Marshal(res.NextAction)
