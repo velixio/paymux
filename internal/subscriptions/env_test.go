@@ -29,6 +29,7 @@ const supplierGSTIN = "27AAPFU0939F1ZV"
 type rec struct {
 	mu           sync.Mutex
 	badAction    *connector.NextAction // returned by the next checkouts instead of the usual one
+	noHosts      bool                  // the fakes declare no checkout hosts
 	charges      []connector.ChargeRequest
 	chargeTimes  []time.Time
 	notices      []connector.PreDebitRequest
@@ -74,11 +75,15 @@ type base struct {
 }
 
 func (b base) Info() connector.Info {
-	return connector.Info{Name: b.name, Version: "1", DisplayName: b.name, Currencies: []string{"INR"}, SubscriptionModes: b.modes,
+	i := connector.Info{Name: b.name, Version: "1", DisplayName: b.name, Currencies: []string{"INR"}, SubscriptionModes: b.modes,
 		MandateLimits: b.limits, PreDebitPerAttempt: b.r.perAttempt, MandateSetupAmount: 100,
 		RefundsVerificationDebit: !b.r.noReverse, MinChargeMinor: b.r.minCharge, PreDebitMinHours: b.r.noticeHours,
 		SubscriptionCurrencies: b.subCur, SubscriptionFixedMethods: b.r.fixedMethods,
 		CheckoutHosts: &connector.CheckoutHosts{Form: []string{"https://pg.example.com"}, Script: []string{"https://checkout.example.com"}}}
+	if b.r.noHosts {
+		i.CheckoutHosts = nil
+	}
+	return i
 }
 func (b base) CreateCheckout(context.Context, connector.CheckoutRequest) (connector.CheckoutResult, error) {
 	return connector.CheckoutResult{}, connector.ErrUnsupported
