@@ -80,6 +80,9 @@ func TestHostedPagesSendANonceCSP(t *testing.T) {
 		// A page without any provider: result and billing form carry the policy too.
 		r = e.do("GET", "/pay/pay_nonesuch?t=x", "", nil)
 		wantHostedCSP(t, "not found", r.header, r.body, 0)
+		// The return page of a provider is enforced too.
+		r = e.do("GET", "/return/pa_nonesuch/ref_nonesuch", "", nil)
+		wantHostedCSP(t, "return", r.header, r.body, 0)
 		r = e.do("GET", e.inrPayment(50000).path(), "", nil)
 		p = wantHostedCSP(t, "billing", r.header, r.body, 0)
 		if strings.Contains(p, "https://") {

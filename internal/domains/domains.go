@@ -39,7 +39,7 @@ func AppFrom(ctx context.Context) (string, bool) {
 }
 
 // customerPrefixes are the only routes served on app custom domains.
-var customerPrefixes = []string{"/pay/", "/return/", "/i/", "/s/", "/assets/", "/theme/", "/l/", "/.well-known/paymux/"}
+var customerPrefixes = []string{"/pay/", "/return/", "/i/", "/s/", "/assets/", "/theme/", "/l/", "/.well-known/paymux/", "/csp-report"}
 
 // IsCustomerRoute reports whether path may be served on a custom domain.
 func IsCustomerRoute(path string) bool {

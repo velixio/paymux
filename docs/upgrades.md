@@ -67,6 +67,18 @@ previous release reads.
   `CheckoutHosts` can no longer send the customer off the site; add the hosts
   to its `Info`.
 
+- **The hosted-page Content-Security-Policy is enforced.** It was report-only.
+  A script, frame, connection, image or form post to a host that is not in the
+  connector account's `CheckoutHosts` (built-in connectors: their `Info`;
+  remote connectors: the account's `checkout_hosts`; a custom connector in your
+  own build: its `Info`) is now blocked by the browser, and the action's own
+  script and form URLs are no longer allowed on top. Before upgrading, check
+  that each custom or remote connector lists every host its checkout loads
+  (watch `paymux_csp_violations_total` and the `csp: violation reported` log
+  line on a release that still had the report-only header, or test a checkout
+  in a browser with the console open). Violations are reported to
+  `/csp-report` on the same host.
+
 ## Upgrades that can refuse to start
 
 A few migrations add a uniqueness rule that data from an earlier release could

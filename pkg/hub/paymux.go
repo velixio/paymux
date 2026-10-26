@@ -424,11 +424,16 @@ func (a *App) Start(ctx context.Context) error {
 	pay.Register(srv)
 	pay.RegisterSim(srv) // base host only: custom domains serve no /sim
 	srv.HandleFunc("POST /hooks/{provider_account_id}", hooks.ServeHTTP)
+	cspViolations := reg.Counter("paymux_csp_violations_total", "Content-Security-Policy violations reported by browsers on the hosted pages.", "directive")
+	cspReports := web.NewCSPReports(web.CSPReportOptions{Logger: a.log, Count: func(d string) { cspViolations.Inc(d) },
+		ClientIP: func(r *http.Request) string { return clientip.From(r, a.cfg.TrustedProxies) }})
+	srv.HandleFunc("POST "+web.CSPReportPath, cspReports.ServeHTTP)
 
 	// Custom domains serve the customer routes only; everything else stays on
 	// the base host.
 	customerMux := http.NewServeMux()
 	pay.Register(paypage.StdMux(customerMux))
+	customerMux.Handle("POST "+web.CSPReportPath, cspReports)
 	customerMux.HandleFunc("GET /i/{id}", inv.ServeHosted)
 	customerMux.HandleFunc("GET /l/{slug}", linkPages.Show)
 	customerMux.HandleFunc("POST /l/{slug}", linkPages.Submit)
