@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/paymux/paymux/pkg/connector"
 	webassets "github.com/paymux/paymux/web"
 )
 
@@ -119,7 +120,10 @@ type PayPage struct {
 	// sdk
 	ScriptURL string
 	Launcher  string
-	Options   map[string]any
+	// Hosts are the hosts the connector account declared; the page's policy
+	// allows them and nothing else.
+	Hosts   connector.CheckoutHosts
+	Options map[string]any
 	// billing form
 	CSRF                           string
 	Error                          string

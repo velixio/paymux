@@ -149,6 +149,9 @@ type Started struct {
 	AccountID string
 	Connector string
 	Action    connector.NextAction
+	// Hosts are what the account's connector declared (connector.HostsOf): the
+	// hosted page's policy allows them and nothing else.
+	Hosts connector.CheckoutHosts
 }
 
 // StartCheckout routes the payment, creates an attempt on the first routed
@@ -239,7 +242,7 @@ func (s *Service) startCheckout(ctx context.Context, paymentID string, fresh boo
 			}
 		}
 		att.ProviderOrderID = res.ProviderOrderID
-		return Started{Attempt: att, AccountID: pa.ID, Connector: pa.Connector, Action: res.NextAction}, nil
+		return Started{Attempt: att, AccountID: pa.ID, Connector: pa.Connector, Action: res.NextAction, Hosts: s.hostsOf(ctx, pa.ID)}, nil
 	}
 	if prev != nil {
 		s.failAttempt(ctx, *prev, lastErr)
@@ -271,9 +274,19 @@ func (s *Service) reusable(ctx context.Context, paymentID string, accounts []sto
 		if err != nil || connectors.CheckNextAction(ctx, s.o.Logger, s.o.Alerts, pa.ID, live.Connector, action) != nil {
 			return Started{}, false
 		}
-		return Started{Attempt: a, AccountID: pa.ID, Connector: pa.Connector, Action: action}, true
+		return Started{Attempt: a, AccountID: pa.ID, Connector: pa.Connector, Action: action, Hosts: connector.HostsOf(live.Connector)}, true
 	}
 	return Started{}, false
+}
+
+// hostsOf returns the checkout hosts of an account's connector; an account
+// that cannot be built declares none, so its page allows no provider host.
+func (s *Service) hostsOf(ctx context.Context, accountID string) connector.CheckoutHosts {
+	live, err := s.o.Conns.Get(ctx, accountID)
+	if err != nil {
+		return connector.CheckoutHosts{}
+	}
+	return connector.HostsOf(live.Connector)
 }
 
 // noteAttempt tells the log scope of the request or job which payment and

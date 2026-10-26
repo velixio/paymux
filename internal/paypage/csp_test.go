@@ -20,10 +20,10 @@ var (
 // frame-ancestors (the report-only header cannot enforce it).
 func wantHostedCSP(t *testing.T, what string, h http.Header, body string, scripts int) string {
 	t.Helper()
-	policy := h.Get("Content-Security-Policy-Report-Only")
+	policy := h.Get("Content-Security-Policy")
 	m := nonceRE.FindStringSubmatch(policy)
 	if m == nil {
-		t.Fatalf("%s: no nonce policy in Content-Security-Policy-Report-Only %q", what, policy)
+		t.Fatalf("%s: no nonce policy in Content-Security-Policy %q", what, policy)
 	}
 	tags := scriptTagRE.FindAllString(body, -1)
 	if len(tags) != scripts {
@@ -34,8 +34,11 @@ func wantHostedCSP(t *testing.T, what string, h http.Header, body string, script
 			t.Errorf("%s: script %s does not carry the nonce %s", what, tag, m[1])
 		}
 	}
-	if got := h.Get("Content-Security-Policy"); got != "frame-ancestors 'none'" {
-		t.Errorf("%s: enforced CSP = %q, want frame-ancestors 'none'", what, got)
+	if !strings.Contains(policy, "frame-ancestors 'none'") || !strings.Contains(policy, "report-uri /csp-report") {
+		t.Errorf("%s: policy lacks frame-ancestors or report-uri: %s", what, policy)
+	}
+	if h.Get("Content-Security-Policy-Report-Only") != "" {
+		t.Errorf("%s: a report-only policy is still sent", what)
 	}
 	if h.Get("X-Frame-Options") != "DENY" || h.Get("X-Content-Type-Options") != "nosniff" || !strings.Contains(h.Get("Cache-Control"), "no-store") {
 		t.Errorf("%s: hardening headers changed: %v", what, h)
@@ -53,7 +56,7 @@ func TestHostedPagesSendANonceCSP(t *testing.T) {
 		})
 		r := e.do("GET", e.create(core.CreatePaymentInput{}).path(), "", nil)
 		p := wantHostedCSP(t, "form_post", r.header, r.body, 1)
-		if !strings.Contains(p, "form-action 'self' https://secure.payu.example.com") {
+		if !strings.Contains(p, "form-action 'self' https://*.example.com") {
 			t.Errorf("form_post: form host missing: %s", p)
 		}
 
@@ -65,17 +68,21 @@ func TestHostedPagesSendANonceCSP(t *testing.T) {
 		})
 		r = e.do("GET", e.create(core.CreatePaymentInput{}).path(), "", nil)
 		p = wantHostedCSP(t, "sdk", r.header, r.body, 2)
-		// The script host of the action, and the frame host the connector declared in Info.
-		if !strings.Contains(p, "https://checkout.example.com") || !strings.Contains(p, "frame-src https://frames.fake.example.com") {
+		// The hosts the connector declared (its account's CheckoutHosts), not the action's own URL.
+		if !strings.Contains(p, "script-src 'self' 'nonce-") || !strings.Contains(p, " https://*.example.com") || !strings.Contains(p, "frame-src https://frames.fake.example.com") ||
+			strings.Contains(p, "https://checkout.example.com") {
 			t.Errorf("sdk: provider hosts missing: %s", p)
 		}
-		if a, b := nonceRE.FindStringSubmatch(p), nonceRE.FindStringSubmatch(e.do("GET", e.create(core.CreatePaymentInput{}).path(), "", nil).header.Get("Content-Security-Policy-Report-Only")); a[1] == b[1] {
+		if a, b := nonceRE.FindStringSubmatch(p), nonceRE.FindStringSubmatch(e.do("GET", e.create(core.CreatePaymentInput{}).path(), "", nil).header.Get("Content-Security-Policy")); a[1] == b[1] {
 			t.Error("the nonce repeats between responses")
 		}
 
 		// A page without any provider: result and billing form carry the policy too.
 		r = e.do("GET", "/pay/pay_nonesuch?t=x", "", nil)
 		wantHostedCSP(t, "not found", r.header, r.body, 0)
+		// The return page of a provider is enforced too.
+		r = e.do("GET", "/return/pa_nonesuch/ref_nonesuch", "", nil)
+		wantHostedCSP(t, "return", r.header, r.body, 0)
 		r = e.do("GET", e.inrPayment(50000).path(), "", nil)
 		p = wantHostedCSP(t, "billing", r.header, r.body, 0)
 		if strings.Contains(p, "https://") {

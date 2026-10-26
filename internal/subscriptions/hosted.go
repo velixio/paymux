@@ -34,9 +34,11 @@ const (
 
 // Checkout is the content of the hosted /s/{id} page.
 type Checkout struct {
-	Kind         CheckoutKind
-	Action       connector.NextAction
-	Connector    string
+	Kind      CheckoutKind
+	Action    connector.NextAction
+	Connector string
+	// Hosts are what the account's connector declared (connector.HostsOf).
+	Hosts        connector.CheckoutHosts
 	Subscription store.Subscription
 	AppName      string
 	// Customer and Need are set for CheckoutBilling.
@@ -124,7 +126,7 @@ func (s *Service) OpenCheckout(ctx context.Context, id, token string) (Checkout,
 	if err != nil {
 		return Checkout{}, err
 	}
-	co.Kind, co.Connector = CheckoutAction, connectorName(conn)
+	co.Kind, co.Connector, co.Hosts = CheckoutAction, connectorName(conn), connector.HostsOf(conn)
 	if sub.CheckoutAction != "" {
 		if err := json.Unmarshal([]byte(sub.CheckoutAction), &co.Action); err != nil {
 			return co, err
@@ -263,7 +265,7 @@ func (s *Service) ServeHosted(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, co.Action.URL, http.StatusSeeOther)
 			return
 		case connector.ActionFormPost:
-			tmpl, page.FormURL, page.Launcher = "pay_form_post", co.Action.URL, co.Connector
+			tmpl, page.FormURL, page.Launcher, page.Hosts = "pay_form_post", co.Action.URL, co.Connector, co.Hosts
 			keys := make([]string, 0, len(co.Action.Fields))
 			for k := range co.Action.Fields {
 				keys = append(keys, k)
@@ -273,7 +275,7 @@ func (s *Service) ServeHosted(w http.ResponseWriter, r *http.Request) {
 				page.Fields = append(page.Fields, web.Field{Name: k, Value: co.Action.Fields[k]})
 			}
 		case connector.ActionSDK:
-			tmpl, page.ScriptURL, page.Launcher, page.Options = "pay_sdk", co.Action.ScriptURL, co.Connector, co.Action.Options
+			tmpl, page.ScriptURL, page.Launcher, page.Hosts, page.Options = "pay_sdk", co.Action.ScriptURL, co.Connector, co.Hosts, co.Action.Options
 		default:
 			http.Error(w, "unsupported checkout action", http.StatusBadGateway)
 			return

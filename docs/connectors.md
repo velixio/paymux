@@ -158,10 +158,12 @@ Paymux must respect:
 * `CheckoutHosts`: the https origins (`https://host`, or `https://*.host`) that
   an `sdk` or `form_post` checkout needs on the hosted payment page, by CSP
   directive (`Script`, `Frame`, `Form`, `Connect`, `Img`), for both the test
-  and the live endpoints. The page sends a nonce-based
-  `Content-Security-Policy-Report-Only` built from them; the script and form
-  URLs of the `NextAction` itself are allowed without being listed. Leave it
-  nil for a connector that only redirects. Entries that are not plain https
+  and the live endpoints. The page sends a nonce-based,
+  **enforced** `Content-Security-Policy` built from the hosts of the connector
+  account (`connector.HostsOf`) and from nothing else: the script and form URLs
+  of the `NextAction` are allowed because they are declared here, so a host that
+  is missing from the list is blocked by the browser. Leave it nil for a
+  connector that only redirects. Entries that are not plain https
   origins are dropped.
   It is also the allow-list of where the connector may send the customer: the
   hub refuses a checkout (payment, subscription or mandate) whose `sdk` script
@@ -441,8 +443,9 @@ connector can be written in any language, deployed and upgraded on its own.
 create and on update without it): the https origins the service may send the
 customer to, with the same lists as `connector.CheckoutHosts` (`script` for
 `sdk` checkouts, `form` for `form_post`, `redirect`; `frame`, `connect` and `img`
-are accepted too but do not widen the hosted page's policy for a remote
-account yet). Every entry must be `https://host[:port]`
+for what the provider's script loads). The hosted page's enforced policy is
+built from these lists alone, so a script, frame or form post on any other host
+is blocked. Every entry must be `https://host[:port]`
 or `https://*.host[:port]`, and at least one origin must be listed. The service
 speaks for the account, so the hub does not trust the URLs it returns: a next
 action (from `create_checkout`, `create_subscription_checkout` or

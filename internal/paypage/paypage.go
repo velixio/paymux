@@ -241,9 +241,9 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, appName string,
 			fields = append(fields, web.Field{Name: k, Value: v})
 		}
 		sort.Slice(fields, func(i, j int) bool { return fields[i].Name < fields[j].Name })
-		h.page(w, http.StatusOK, "pay_form_post", web.PayPage{AppName: appName, FormURL: a.URL, Fields: fields, Launcher: st.Connector})
+		h.page(w, http.StatusOK, "pay_form_post", web.PayPage{AppName: appName, FormURL: a.URL, Fields: fields, Launcher: st.Connector, Hosts: st.Hosts})
 	case connector.ActionSDK:
-		h.page(w, http.StatusOK, "pay_sdk", web.PayPage{AppName: appName, ScriptURL: a.ScriptURL, Launcher: st.Connector, Options: a.Options})
+		h.page(w, http.StatusOK, "pay_sdk", web.PayPage{AppName: appName, ScriptURL: a.ScriptURL, Launcher: st.Connector, Hosts: st.Hosts, Options: a.Options})
 	default:
 		h.serverError(w, appName, errors.New("unknown next action "+string(a.Kind)))
 	}
