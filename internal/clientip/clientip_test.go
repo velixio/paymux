@@ -28,3 +28,18 @@ func TestFrom(t *testing.T) {
 		}
 	}
 }
+
+func TestGroup(t *testing.T) {
+	for in, want := range map[string]string{
+		"203.0.113.5": "203.0.113.5",
+		"::ffff:203.0.113.5": "::ffff:203.0.113.5",
+		"2001:db8:1:2:aaaa::1": "2001:db8:1:2::/64",
+		"2001:db8:1:2:bbbb::9": "2001:db8:1:2::/64",
+		"2001:db8:1:3::1": "2001:db8:1:3::/64",
+		"junk": "junk",
+	} {
+		if got := Group(in); got != want {
+			t.Errorf("Group(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

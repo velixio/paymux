@@ -117,3 +117,17 @@ func TestCustomerLimitPrunesIdleKeys(t *testing.T) {
 		t.Fatalf("%d keys kept after idle, want 1", n)
 	}
 }
+
+func TestCustomerLimitIPv6SharesItsPrefix(t *testing.T) {
+	now := time.Unix(1_000_000, 0)
+	h := limited(t, 60, &now)
+	for i := 0; i < 20; i++ {
+		hit(h, "/pay/a", "[2001:db8:1:2::"+strconv.Itoa(i+1)+"]:1", "")
+	}
+	if hit(h, "/pay/a", "[2001:db8:1:2:ffff::9]:1", "").Code != 429 {
+		t.Fatal("addresses in one /64 got separate buckets")
+	}
+	if hit(h, "/pay/a", "[2001:db8:1:3::1]:1", "").Code != 204 {
+		t.Fatal("another /64 shares the bucket")
+	}
+}
