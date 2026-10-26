@@ -3,6 +3,7 @@
 <label>{{.Title}}{{if .Required}} *{{end}}
 {{if .Enum}}<select class="field" name="cfg_{{.Name}}">{{if not .Required}}<option value="">(not set)</option>{{end}}{{range .Enum}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Value}}</option>{{end}}</select>
 {{else if eq .Type "boolean"}}<input type="checkbox" name="cfg_{{.Name}}" value="1"{{if .Checked}} checked{{end}}>
+{{else if eq .Type "object"}}<textarea class="field" name="cfg_{{.Name}}" rows="6" spellcheck="false"{{if .Required}} required{{end}}>{{.Value}}</textarea>
 {{else if .Secret}}<input class="field" type="password" name="cfg_{{.Name}}" autocomplete="new-password" placeholder="{{if .HasValue}}set - leave blank to keep{{else}}secret{{end}}">
 {{else if or (eq .Type "integer") (eq .Type "number")}}<input class="field" type="number" step="any" name="cfg_{{.Name}}" value="{{.Value}}">
 {{else}}<input class="field" name="cfg_{{.Name}}" value="{{.Value}}"{{if .Required}} required{{end}}>{{end}}
