@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/paymux/paymux/internal/connectors"
@@ -90,7 +91,39 @@ func (s *Service) SubscriptionReturn(ctx context.Context, accountID, providerRef
 
 // Service runs the payment flow around the connectors.
 type Service struct {
-	o Options
+	o       Options
+	returns *fetchGate
+}
+
+// returnFetchEvery is how often the returns of one attempt may ask the
+// provider. The return URL is public to whoever holds it, and every fetch
+// spends the account's provider rate limit, which all its checkouts share.
+const returnFetchEvery = 5 * time.Second
+
+// fetchGate remembers, in memory, when each attempt last asked the provider.
+type fetchGate struct {
+	mu   sync.Mutex
+	last map[string]time.Time
+}
+
+// allow reports whether attempt id may ask the provider now, and if so
+// records it. A refused caller shows what is stored; webhooks and the poller
+// still catch up.
+func (g *fetchGate) allow(id string, now time.Time) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if len(g.last) > 10_000 { // forget attempts not seen lately
+		for k, t := range g.last {
+			if now.Sub(t) >= returnFetchEvery {
+				delete(g.last, k)
+			}
+		}
+	}
+	if t, ok := g.last[id]; ok && now.Sub(t) < returnFetchEvery {
+		return false
+	}
+	g.last[id] = now
+	return true
 }
 
 // New builds a Service.
@@ -107,7 +140,7 @@ func New(o Options) *Service {
 	if o.Routing == nil {
 		o.Routing = NewRouting(o.Breaker)
 	}
-	return &Service{o: o}
+	return &Service{o: o, returns: &fetchGate{last: map[string]time.Time{}}}
 }
 
 // Started is a checkout that was created at a provider.
@@ -427,6 +460,10 @@ func (s *Service) HandleReturn(ctx context.Context, accountID, providerRef strin
 		return store.Payment{}, err
 	}
 	noteAttempt(ctx, a)
+	if !s.returns.allow(a.ID, s.o.Now()) {
+		// A return of this attempt asked the provider a moment ago: show what is stored.
+		return s.o.Core.GetPaymentByID(ctx, a.PaymentID)
+	}
 	live, err := s.o.Conns.Get(ctx, accountID)
 	if err != nil {
 		return store.Payment{}, err
