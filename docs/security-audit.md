@@ -21,12 +21,13 @@ provider sandbox, live credential or production data was used.
   link or a return URL could make the hub call the provider's API, and add
   attempt rows, without limit. That spends the merchant's provider rate limit,
   which every checkout on the account shares.
-- **One medium issue was confirmed and is not fixed (B-7).** A remote
-  connector chooses the script, form and redirect URLs on the hub's own pay
-  page. The hosted-page CSP is still report-only (H-7). Whoever can configure
-  a remote account can therefore run script on the origin the dashboard
-  shares.
-- **Five low or informational issues were confirmed and fixed** (B-2 to B-6).
+- **A second medium issue (B-7) was confirmed and is fixed by Wave 6 of the
+  [remediation plan](security-remediation-plan.md).** A remote connector chose
+  the script, form and redirect URLs on the hub's own pay page, and the
+  hosted-page CSP was report-only (H-7), so whoever could configure a remote
+  account could run script on the origin the dashboard shares.
+- **Seven low or informational issues were confirmed and fixed** (B-2 to B-6
+  in the re-audit, B-8 and B-9 in Wave 6).
 - **The earlier fixes hold.** No regression was found in A-1 to A-19 or in the
   remediation items that were merged.
 - **Paymux is not declared production-safe by this re-audit.** See
@@ -58,9 +59,9 @@ stressed three things:
 | B-4 | Provider HTTP clients followed cross-host redirects with credential headers | Low | Fixed |
 | B-5 | `IsPrivateIP` missed six IANA special-purpose IPv6 ranges | Info | Fixed |
 | B-6 | A Cashfree amount with a huge exponent cost seconds of CPU | Info | Fixed |
-| B-7 | A remote connector controls the script, form and redirect URLs of the pay page; CSP is report-only | Medium | Open |
-| B-8 | A custom domain is claimed without a DNS challenge | Low | Open (plausible) |
-| B-9 | PayU's reverse hash does not cover `mihpayid`, which is part of the event id | Info | Open (plausible) |
+| B-7 | A remote connector controls the script, form and redirect URLs of the pay page; CSP is report-only | Medium | Fixed (#56, #58, #59) |
+| B-8 | A custom domain is claimed without a DNS challenge | Low | Fixed (#54) |
+| B-9 | PayU's reverse hash does not cover `mihpayid`, which is part of the event id | Info | Fixed (#55) |
 
 #### B-1: unbounded provider calls and attempts from the customer pages
 
@@ -164,10 +165,10 @@ stressed three things:
   4.3 s before the fix. Only signature-verified webhooks and Cashfree API
   responses reach this parser. Test: `TestAudit2AmountExponentCost`.
 
-#### B-7: a remote connector's URLs run on the hub origin (open)
+#### B-7: a remote connector's URLs ran on the hub origin
 
-- **Severity:** Medium. **Confidence:** high, from reading the code (no
-  test). **Status:** not fixed.
+- **Severity:** Medium. **Confidence:** high, from reading the code.
+  **Status:** Fixed in Wave 6 (PRs #56, #58 and #59).
 - **Where:**
   - `internal/paypage/paypage.go`, `render`: the `ActionSDK`,
     `ActionFormPost` and `ActionRedirect` URLs.
@@ -186,18 +187,41 @@ stressed three things:
   cookie if an admin opens that pay page. The redirect and form URLs are also
   an open redirect from the hub's domain. `html/template` already neutralises
   `javascript:` URLs.
-- **Why it is not fixed here:** the complete fix is architectural. Either
-  serve the pay pages from a separate origin, or enforce the CSP (the H-7
-  report-only period has not ended) and make remote accounts declare their
-  checkout hosts.
-- **Recommendation:**
-  1. Finish H-7 and switch to an enforced CSP.
-  2. Add `checkout_hosts` to a remote account's config, and refuse next
-     actions outside it.
-  3. Serve `/pay`, `/l`, `/s` and `/return` from a host other than the
-     dashboard's.
+- **Fix:** three layers.
+  - **Declared hosts (#56).** `NextAction.Allowed` (`pkg/connector/hosts.go`)
+    requires https and a host the connector declared: in `Script` for an sdk
+    action, in `Form` for a form post, and in `Redirect` for a redirect.
+    - Remote accounts must set `checkout_hosts`.
+    - `internal/connectors.CheckNextAction` applies the check to every new
+      checkout, to every stored one before it is shown again, and to
+      subscription and mandate checkouts.
+    - A refusal falls back to the next account and raises a critical
+      `provider.checkout_host_refused` alert.
+  - **Enforced CSP (#58).** The hosted-page policy is now
+    `Content-Security-Policy`, built from the declared hosts alone. Browsers
+    report violations to `/csp-report`, which counts them and is rate-limited.
+    This finishes H-7.
+  - **Separate origin (#59).** With the optional `PAYMUX_CHECKOUT_URL`, the
+    customer pages are served on their own host. That host serves nothing
+    else and gets no dashboard cookie, and the base host redirects the pages
+    there with a 308.
+- **Regression tests:**
+  - `TestCheckoutOutsideDeclaredHostsFallsBack`,
+    `TestCheckoutFromAConnectorWithoutHostsIsRefused` and
+    `TestStoredActionOutsideTheHostsIsNotReused` (`internal/checkout`).
+  - `TestSubscriptionCheckoutOutsideDeclaredHostsIsRefused` and
+    `TestStoredSubscriptionActionOutsideTheHostsIsRefused`
+    (`internal/subscriptions`).
+  - `TestHostedCSPIsEnforcedAndReports` and
+    `TestHostedCSPHasOnlyTheDeclaredHosts` (`internal/web`).
+  - `TestCheckoutOrigin` (`pkg/hub`).
+- **Residual risk:**
+  - A provider host missing from a built-in connector's list now blocks that
+    provider's checkout. Run V-1 again in each sandbox.
+  - Without `PAYMUX_CHECKOUT_URL`, a declared provider script still runs on
+    the dashboard's origin. Set it in production; a startup warning says so.
 
-#### B-8: custom domain claim without a DNS challenge (open, plausible)
+#### B-8: custom domain claim without a DNS challenge
 
 - **Where:** `internal/domains/domains.go` and
   `internal/housekeeping/housekeeping.go`.
@@ -206,16 +230,32 @@ stressed three things:
   own challenge. Whoever adds such a host first gets it.
 - **Impact:** with one org this stays within the operator. With several orgs
   it lets one tenant take another's dangling hostname.
-- **Recommendation:** a DNS TXT challenge before multi-org.
+- **Status:** Fixed in Wave 6 (#54).
+- **Fix:** a domain must also publish the TXT record
+  `_paymux-challenge.<host>` = `paymux-verify=<token>`.
+  - A pending domain gets a certificate only once that record has been seen.
+  - Active domains are looked up again every hour. One without its record is
+    demoted to pending, with an alert, after 7 days. It is never deleted.
+- **Regression tests:**
+  - `TestDomainWithoutTXTStaysPending`, `TestDomainWithWrongTXTTokenStaysPending`,
+    `TestActiveDomainWithoutTXTGetsGraceThenPending` and
+    `TestProvenActiveDomainWhoseRecordIsRemovedIsDemoted`
+    (`internal/housekeeping`).
+  - `TestTLSAskApprovesVerifiedDomainsAndPendingOnesThatPointHere`
+    (`internal/domains`).
 
-#### B-9: PayU event ids (open, plausible)
+#### B-9: PayU event ids
 
 - **Where:** `connectors/payu/payu.go` `reverseHash` and
   `connectors/payu/webhook.go` `ParseWebhook`.
 - **How:** the reverse hash does not cover `mihpayid` or `unmappedstatus`, and
   both are part of the synthesised event id. A captured signed webhook
   replayed with another `mihpayid` therefore gets a new event id.
-- **Impact:** only a repeated fetch of the truth. Not tested.
+- **Impact:** only a repeated fetch of the truth.
+- **Status:** Fixed in Wave 6 (#55). The event id is now
+  `payu:<txnid>:<status>`, built from signed fields only.
+- **Regression test:** `TestWebhookEventIDUsesOnlySignedFields`
+  (`connectors/payu`).
 
 #### Documentation correction
 
@@ -261,8 +301,8 @@ corrected.
   - TOTP has replay protection.
   - `PAYMUX_DEV_SKIP_2FA` is refused outside development.
   - Outbound webhooks match the endpoint's mode.
-- **Still open from the first audit:** H-7, with its CSP still report-only
-  (see B-7).
+- **H-7, still open after the first audit,** is fixed by B-7's enforced CSP
+  (#58).
 
 ### Code changes (uncommitted, branch `security-audit-2026-10-26`)
 
@@ -308,9 +348,10 @@ by `make test-pg`.
 
 Not established. Before live money:
 
-- Fix B-7, by an enforced CSP or a separate origin for the pay pages.
-- Finish V-1 for PayU and Whop in their sandboxes.
-- Put a per-IP rate limit in front of the customer routes.
+- Run V-1 again in every provider's sandbox, with the declared checkout hosts
+  and the enforced CSP (B-7) in place, and finish it for PayU and Whop.
+- In production, set `PAYMUX_CHECKOUT_URL` (B-7c) and `PAYMUX_TRUSTED_PROXIES`
+  (the per-IP limit of R-B1 depends on it).
 - Get an independent review of the connectors against real provider responses.
 
 Passing tests show that the attacks described here no longer work, not that

@@ -374,6 +374,20 @@ open. Order: B-7a and B-7b first (each one closes B-7 for every built-in
 connector and for remote accounts), then R-B1, then B-7c before launch. B-8
 and B-9 follow, and B-8 must be done before multi-org.
 
+**Status: every item is merged.**
+
+| Item | PR | Differences from the plan |
+|------|----|---------------------------|
+| B-7a | #56 | Stored next actions are checked too, before they are shown again. A refused subscription action returns an error instead of being recreated, so no provider subscription or mandate is orphaned. |
+| B-7b | #58 | Enforced straight away, without a report-only release first: B-7a already refuses any checkout outside the declared hosts. |
+| R-B1 | #57 | IPv6 clients are limited per /64 (`clientip.Group`). |
+| B-7c | #59 | `paymux doctor` does not exist, so the warning is printed at startup only. The checkout host also serves `/csp-report`. |
+| B-8 | #54 | Active domains are looked up again every hour, so a record removed after activation is noticed too. |
+| B-9 | #55 | None. |
+
+The hosted-page CSP has not yet run a release without violations; see
+[Done when](#done-when).
+
 ### B-7a: next-action URLs are checked against declared hosts (M)
 
 - **Goal:** a connector can send the customer only to hosts it declared:
