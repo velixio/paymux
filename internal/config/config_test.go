@@ -320,3 +320,22 @@ func TestJSHooksConfig(t *testing.T) {
 		wantErr(t, err, "PAYMUX_JS_HOOKS_ALLOWED_HOSTS")
 	}
 }
+
+func TestCustomerRate(t *testing.T) {
+	c, err := Load(base())
+	if err != nil || c.CustomerRate != 60 {
+		t.Fatalf("default = %d, %v; want 60", c.CustomerRate, err)
+	}
+	c, err = Load(base("PAYMUX_CUSTOMER_RATE", "0"))
+	if err != nil || c.CustomerRate != 0 {
+		t.Fatalf("0 = %d, %v; want 0 (disabled)", c.CustomerRate, err)
+	}
+	c, err = Load(base("PAYMUX_CUSTOMER_RATE", "120"))
+	if err != nil || c.CustomerRate != 120 {
+		t.Fatalf("120 = %d, %v", c.CustomerRate, err)
+	}
+	for _, bad := range []string{"-1", "abc", "1.5", "1000001"} {
+		_, err := Load(base("PAYMUX_CUSTOMER_RATE", bad))
+		wantErr(t, err, "PAYMUX_CUSTOMER_RATE")
+	}
+}
