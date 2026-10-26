@@ -57,12 +57,19 @@ previous release reads.
   refuses a checkout whose script, form or redirect URL is not on a host the
   connector declared (audit B-7a). The built-in connectors declare theirs; an
   account of the `remote` connector declares them in its config, and the config
-  is refused without them. Existing remote accounts stored without
-  `checkout_hosts` stop building at the first use after the upgrade, so add it
-  before upgrading (dashboard, provider account, config), for example
+  is refused without them. A remote account stored without `checkout_hosts`
+  cannot be built after the upgrade, so everything that needs the connector
+  fails for it, not only checkout: webhook verification, provider-refund
+  handling, reconciliation and the dashboard's connection test. **Add the field
+  right after upgrading** (dashboard, provider account, config; saving the
+  config rebuilds the account), for example
   `"checkout_hosts": {"redirect": ["https://pay.your-provider.com"]}` for a
   service that redirects, or `{"script": ["https://sdk.your-provider.com"]}`
   for one that opens an SDK. See "Remote connectors" in `docs/connectors.md`.
+  Checkouts already stored on open payments and subscriptions are checked again
+  when they are shown: one outside the declared hosts is not shown (a payment
+  gets a fresh checkout, a subscription page answers an error until the hosts
+  are fixed).
   A connector compiled into your own build (framework mode) with no
   `CheckoutHosts` can no longer send the customer off the site; add the hosts
   to its `Info`.
