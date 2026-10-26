@@ -51,6 +51,22 @@ know until you restart them. Migrations are written to be additive for that
 reason: they add columns and tables and avoid renaming or dropping what the
 previous release reads.
 
+## Release notes that need action
+
+- **Remote connector accounts must declare `checkout_hosts`.** The hub now
+  refuses a checkout whose script, form or redirect URL is not on a host the
+  connector declared (audit B-7a). The built-in connectors declare theirs; an
+  account of the `remote` connector declares them in its config, and the config
+  is refused without them. Existing remote accounts stored without
+  `checkout_hosts` stop building at the first use after the upgrade, so add it
+  before upgrading (dashboard, provider account, config), for example
+  `"checkout_hosts": {"redirect": ["https://pay.your-provider.com"]}` for a
+  service that redirects, or `{"script": ["https://sdk.your-provider.com"]}`
+  for one that opens an SDK. See "Remote connectors" in `docs/connectors.md`.
+  A connector compiled into your own build (framework mode) with no
+  `CheckoutHosts` can no longer send the customer off the site; add the hosts
+  to its `Info`.
+
 ## Upgrades that can refuse to start
 
 A few migrations add a uniqueness rule that data from an earlier release could
