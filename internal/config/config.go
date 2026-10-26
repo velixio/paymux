@@ -52,6 +52,11 @@ type Config struct {
 	// (localNetworks), so a reverse proxy on the LAN needs no setting.
 	TrustedProxies []netip.Prefix
 
+	// CustomerRate is the requests a minute one address may make to each
+	// customer route family (/pay, /return, /l, /s, /i); 0 turns it off
+	// (PAYMUX_CUSTOMER_RATE, default 60).
+	CustomerRate int
+
 	OpsEmails     []string // PAYMUX_OPS_EMAILS, bare addresses
 	OpsWebhookURL string   // PAYMUX_OPS_WEBHOOK_URL, Slack-compatible
 
@@ -213,6 +218,14 @@ func Load(lookupEnv func(string) (string, bool)) (Config, error) {
 			continue
 		}
 		c.TrustedProxies = append(c.TrustedProxies, pfx)
+	}
+	c.CustomerRate = 60
+	if raw := get("PAYMUX_CUSTOMER_RATE", ""); raw != "" {
+		if n, err := strconv.Atoi(raw); err != nil || n < 0 || n > 1_000_000 {
+			bad("PAYMUX_CUSTOMER_RATE must be a number of requests a minute (0-1000000; 0 turns the limit off)")
+		} else {
+			c.CustomerRate = n
+		}
 	}
 	for _, raw := range strings.Split(get("PAYMUX_OPS_EMAILS", ""), ",") {
 		if raw = strings.TrimSpace(raw); raw == "" {
