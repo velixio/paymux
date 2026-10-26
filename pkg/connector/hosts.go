@@ -68,3 +68,17 @@ func originMatches(decl, origin string) bool {
 	suffix := "." + strings.TrimPrefix(decl, "https://*.")
 	return len(origin) > len("https://")+len(suffix) && strings.HasSuffix(origin, suffix)
 }
+
+// HostsOf returns the checkout hosts the hub holds c to: what the connector
+// reports through CheckoutHoster (per account), else the static
+// Info.CheckoutHosts. A connector with neither declares none, so every
+// off-site URL it returns is refused.
+func HostsOf(c Connector) CheckoutHosts {
+	if h, ok := c.(CheckoutHoster); ok {
+		return h.CheckoutHosts()
+	}
+	if h := c.Info().CheckoutHosts; h != nil {
+		return *h
+	}
+	return CheckoutHosts{}
+}
