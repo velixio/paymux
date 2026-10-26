@@ -201,5 +201,9 @@ func (c *conn) pageURL(ref string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// With PAYMUX_CHECKOUT_URL the page is served on the checkout host.
+	if co, ok := c.deps.URLs.(interface{ CheckoutOrigin() string }); ok && co.CheckoutOrigin() != "" {
+		base = co.CheckoutOrigin()
+	}
 	return base + "/sim/" + url.PathEscape(ref) + "?pa=" + url.QueryEscape(acc), nil
 }
