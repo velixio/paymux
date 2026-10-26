@@ -63,6 +63,7 @@ type env struct {
 	events  []events.Event
 	pa1     string
 	pa2     string
+	alerts  *alertLog
 }
 
 func (e *env) emitted() []string {
@@ -79,7 +80,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 	t.Helper()
 	clk := &clock{t: time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)}
 	e := &env{t: t, db: db, clk: clk, set: settings.New(db), fake: fakeconn.Register("fake"),
-		breaker: routing.NewBreaker(clk.Now), scope: core.Scope{AppID: "app_1", Mode: "test"}}
+		breaker: routing.NewBreaker(clk.Now), alerts: &alertLog{}, scope: core.Scope{AppID: "app_1", Mode: "test"}}
 	e.q = jobs.New(db, jobs.Options{Clock: clk.Now})
 	box, err := secrets.NewBox(bytes.Repeat([]byte{5}, 32))
 	if err != nil {
@@ -95,7 +96,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 			e.events = append(e.events, ev)
 			return nil
 		})})
-	e.flow = checkout.New(checkout.Options{DB: db, Core: e.core, Conns: e.conns, Routing: rt, Breaker: e.breaker, Now: clk.Now})
+	e.flow = checkout.New(checkout.Options{DB: db, Core: e.core, Conns: e.conns, Routing: rt, Breaker: e.breaker, Alerts: e.alerts, Now: clk.Now})
 	if _, err := core.Bootstrap(ctx, db, e.set); err != nil {
 		t.Fatal(err)
 	}

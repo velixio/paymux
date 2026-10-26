@@ -28,6 +28,7 @@ const supplierGSTIN = "27AAPFU0939F1ZV"
 // rec records what the fake connectors were asked to do.
 type rec struct {
 	mu           sync.Mutex
+	badAction    *connector.NextAction // returned by the next checkouts instead of the usual one
 	charges      []connector.ChargeRequest
 	chargeTimes  []time.Time
 	notices      []connector.PreDebitRequest
@@ -76,7 +77,8 @@ func (b base) Info() connector.Info {
 	return connector.Info{Name: b.name, Version: "1", DisplayName: b.name, Currencies: []string{"INR"}, SubscriptionModes: b.modes,
 		MandateLimits: b.limits, PreDebitPerAttempt: b.r.perAttempt, MandateSetupAmount: 100,
 		RefundsVerificationDebit: !b.r.noReverse, MinChargeMinor: b.r.minCharge, PreDebitMinHours: b.r.noticeHours,
-		SubscriptionCurrencies: b.subCur, SubscriptionFixedMethods: b.r.fixedMethods}
+		SubscriptionCurrencies: b.subCur, SubscriptionFixedMethods: b.r.fixedMethods,
+		CheckoutHosts: &connector.CheckoutHosts{Form: []string{"https://pg.example.com"}, Script: []string{"https://checkout.example.com"}}}
 }
 func (b base) CreateCheckout(context.Context, connector.CheckoutRequest) (connector.CheckoutResult, error) {
 	return connector.CheckoutResult{}, connector.ErrUnsupported
@@ -108,7 +110,11 @@ type mandateConn struct{ base }
 func (c mandateConn) CreateMandateCheckout(_ context.Context, req connector.MandateRequest) (connector.CheckoutResult, error) {
 	c.r.mu.Lock()
 	c.r.mandateReqs = append(c.r.mandateReqs, req)
+	bad := c.r.badAction
 	c.r.mu.Unlock()
+	if bad != nil {
+		return connector.CheckoutResult{NextAction: *bad}, nil
+	}
 	return connector.CheckoutResult{NextAction: connector.NextAction{Kind: connector.ActionFormPost, URL: "https://pg.example.com/si",
 		Fields: map[string]string{"txnid": req.ProviderRef, "max": fmt.Sprint(req.MaxAmount)}}}, nil
 }
@@ -160,6 +166,9 @@ func (c managedConn) CreateSubscriptionCheckout(_ context.Context, req connector
 	defer c.r.mu.Unlock()
 	c.r.subReqs = append(c.r.subReqs, req)
 	c.r.nsub++
+	if c.r.badAction != nil {
+		return connector.CheckoutResult{ProviderOrderID: "sub_prov_bad", NextAction: *c.r.badAction}, nil
+	}
 	return connector.CheckoutResult{ProviderOrderID: fmt.Sprintf("sub_prov_%d", c.r.nsub),
 		NextAction: connector.NextAction{Kind: connector.ActionSDK, ScriptURL: "https://checkout.example.com/c.js",
 			Options: map[string]any{"subscription_id": fmt.Sprintf("sub_prov_%d", c.r.nsub)}}}, nil
@@ -212,6 +221,7 @@ func (m *recMailer) messages() []notify.Message {
 
 type env struct {
 	mailer *recMailer
+	alerts *alertLog
 	// verifyOnSwap makes confirmations of replacement mandates carry the verification debit.
 	verifyOnSwap bool
 	t            *testing.T
@@ -263,7 +273,7 @@ func (e *env) eventTypes() []string {
 // routeTo to change it.
 func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 	t.Helper()
-	e := &env{t: t, db: db, set: settings.New(db), now: start, mailer: &recMailer{}, r: &rec{mandates: map[string]connector.MandateSnapshot{}}}
+	e := &env{t: t, db: db, set: settings.New(db), now: start, mailer: &recMailer{}, alerts: &alertLog{}, r: &rec{mandates: map[string]connector.MandateSnapshot{}}}
 	e.r.now = e.clock
 	t.Cleanup(e.assertNoticeBeforeEveryCharge)
 	e.q = jobs.New(db, jobs.Options{Clock: e.clock, Jitter: func() float64 { return 0 }})
@@ -285,7 +295,7 @@ func newEnv(t *testing.T, db *store.DB, start time.Time) *env {
 		"pa_whop":    managedConn{base{name: "whop", modes: managedMod, subCur: []string{"INR", "USD"}, r: e.r}},
 	}
 	e.subs = subscriptions.New(subscriptions.Options{DB: db, Core: e.core, Settings: e.set, Jobs: e.q, Emitter: emitter, BaseURL: "https://pay.example.com", Mailer: e.mailer, CSRFKey: []byte("0123456789abcdef0123456789abcdef"),
-		Now: e.clock, Connectors: subscriptions.ConnectorsFunc(func(_ context.Context, id string) (connector.Connector, error) {
+		Now: e.clock, Alerts: e.alerts, Connectors: subscriptions.ConnectorsFunc(func(_ context.Context, id string) (connector.Connector, error) {
 			if c, ok := conns[id]; ok {
 				return c, nil
 			}
