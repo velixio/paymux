@@ -47,7 +47,7 @@ func TestRetriedInfoCarriesAFreshIDPerAttempt(t *testing.T) {
 	deps := connectortest.NewDeps(nil, now0)
 	deps.Clock = func() time.Time { cmu.Lock(); defer cmu.Unlock(); clock = clock.Add(time.Second); return clock }
 	deps.HTTP = connector.NewHTTPClient(connector.HTTPOptions{MaxRetries: 2, Backoff: time.Millisecond, Timeout: 5 * time.Second})
-	cfg, _ := json.Marshal(config{BaseURL: srv.URL + "/v1", Secret: testSecret, AllowInsecure: true})
+	cfg, _ := json.Marshal(config{BaseURL: srv.URL + "/v1", Secret: testSecret, AllowInsecure: true, CheckoutHosts: testHosts})
 	c, err := New(cfg, deps)
 	if err != nil {
 		t.Fatalf("discovery whose first attempt got a 503: %v", err)

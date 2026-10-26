@@ -34,7 +34,7 @@ func TestRemoteRejectsPrivateBaseURL(t *testing.T) {
 	build := func(url string, hc *http.Client) error {
 		deps := connectortest.NewDeps(nil, now0)
 		deps.HTTP = hc
-		_, err := New([]byte(fmt.Sprintf(`{"base_url":%q,"secret":%q}`, url, testSecret)), deps)
+		_, err := New([]byte(fmt.Sprintf(`{"base_url":%q,"secret":%q,%s}`, url, testSecret, testHostsJSON)), deps)
 		return err
 	}
 
@@ -77,7 +77,7 @@ func TestRemoteRejectsPrivateBaseURL(t *testing.T) {
 	defer redirector.Close()
 	deps := connectortest.NewDeps(nil, now0)
 	deps.HTTP = &http.Client{} // follows redirects by default
-	_, err := New([]byte(fmt.Sprintf(`{"base_url":%q,"secret":%q,"allow_insecure":true}`, redirector.URL, testSecret)), deps)
+	_, err := New([]byte(fmt.Sprintf(`{"base_url":%q,"secret":%q,"allow_insecure":true,%s}`, redirector.URL, testSecret, testHostsJSON)), deps)
 	if err == nil || hit.Load() != 0 {
 		t.Errorf("redirect followed: err=%v internal hits=%d", err, hit.Load())
 	}
@@ -89,7 +89,7 @@ func TestRemoteRejectsPrivateBaseURL(t *testing.T) {
 	local := httptest.NewServer(http.NotFoundHandler())
 	defer local.Close()
 	deps.HTTP = local.Client()
-	_, err = New([]byte(fmt.Sprintf(`{"base_url":%q,"secret":%q,"allow_insecure":true}`, local.URL, testSecret)), deps)
+	_, err = New([]byte(fmt.Sprintf(`{"base_url":%q,"secret":%q,"allow_insecure":true,%s}`, local.URL, testSecret, testHostsJSON)), deps)
 	if errors.Is(err, connector.ErrPrivateAddress) {
 		t.Errorf("allow_insecure did not lift the guard: %v", err)
 	}

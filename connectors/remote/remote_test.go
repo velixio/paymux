@@ -151,7 +151,7 @@ func serve(t *testing.T, c connector.Connector, wrap func(http.Handler) http.Han
 
 func dial(t *testing.T, srv *httptest.Server, secret string) connector.Connector {
 	t.Helper()
-	cfg, _ := json.Marshal(config{BaseURL: srv.URL + "/v1/", Secret: secret, AllowInsecure: true}) // httptest listens on loopback
+	cfg, _ := json.Marshal(config{BaseURL: srv.URL + "/v1/", Secret: secret, AllowInsecure: true, CheckoutHosts: testHosts}) // httptest listens on loopback
 	deps := connectortest.NewDeps(nil, now0)
 	deps.HTTP = srv.Client()
 	rc, err := New(cfg, deps)
@@ -362,7 +362,7 @@ func TestSecurity(t *testing.T) {
 
 	// A different secret: the remote rejects our requests (401), which discovery reports.
 	other := wire.SecretPrefix + base64.StdEncoding.EncodeToString([]byte("a completely different secret!!"))
-	cfg, _ := json.Marshal(config{BaseURL: good.URL, Secret: other, AllowInsecure: true})
+	cfg, _ := json.Marshal(config{BaseURL: good.URL, Secret: other, AllowInsecure: true, CheckoutHosts: testHosts})
 	deps := connectortest.NewDeps(nil, now0)
 	deps.HTTP = good.Client()
 	if _, err := New(cfg, deps); !errors.Is(err, connector.ErrInvalidCredentials) {
@@ -438,16 +438,16 @@ func TestNewValidatesConfig(t *testing.T) {
 	deps.HTTP = http.DefaultClient
 	for name, cfg := range map[string]string{
 		"not json":   `{`,
-		"no url":     fmt.Sprintf(`{"secret":%q}`, testSecret),
-		"bad scheme": fmt.Sprintf(`{"base_url":"ftp://x.example.com","secret":%q}`, testSecret),
-		"no secret":  `{"base_url":"https://x.example.com"}`,
-		"bad secret": `{"base_url":"https://x.example.com","secret":"not base64!"}`,
+		"no url":     fmt.Sprintf(`{"secret":%q,%s}`, testSecret, testHostsJSON),
+		"bad scheme": fmt.Sprintf(`{"base_url":"ftp://x.example.com","secret":%q,%s}`, testSecret, testHostsJSON),
+		"no secret":  `{"base_url":"https://x.example.com",` + testHostsJSON + `}`,
+		"bad secret": `{"base_url":"https://x.example.com","secret":"not base64!",` + testHostsJSON + `}`,
 	} {
 		if _, err := New(json.RawMessage(cfg), deps); err == nil {
 			t.Errorf("%s accepted", name)
 		}
 	}
-	if _, err := New(json.RawMessage(fmt.Sprintf(`{"base_url":"https://x.example.com","secret":%q}`, testSecret)), connector.Deps{}); err == nil {
+	if _, err := New(json.RawMessage(fmt.Sprintf(`{"base_url":"https://x.example.com","secret":%q,%s}`, testSecret, testHostsJSON)), connector.Deps{}); err == nil {
 		t.Error("accepted missing HTTP client")
 	}
 }
@@ -456,5 +456,60 @@ func TestRegistered(t *testing.T) {
 	_, i, ok := connector.Lookup("remote")
 	if !ok || i.Name != "remote" || len(i.ConfigSchema) == 0 {
 		t.Fatalf("registration: %+v %v", i, ok)
+	}
+}
+
+// testHosts is what the test accounts declare: the one place fullFake sends
+// the customer.
+var testHosts = &connector.CheckoutHosts{Redirect: []string{"https://x.example.com"}}
+
+const testHostsJSON = `"checkout_hosts":{"redirect":["https://x.example.com"]}`
+
+// A remote account must declare where its checkouts may send the customer; the
+// hub holds the service to it (audit B-7a).
+func TestNewRequiresCheckoutHosts(t *testing.T) {
+	deps := connectortest.NewDeps(nil, now0)
+	deps.HTTP = http.DefaultClient
+	base := fmt.Sprintf(`"base_url":"https://x.example.com","secret":%q`, testSecret)
+	for name, hosts := range map[string]string{
+		"missing":       ``,
+		"null":          `,"checkout_hosts":null`,
+		"empty":         `,"checkout_hosts":{}`,
+		"empty lists":   `,"checkout_hosts":{"redirect":[]}`,
+		"http origin":   `,"checkout_hosts":{"redirect":["http://x.example.com"]}`,
+		"path":          `,"checkout_hosts":{"redirect":["https://x.example.com/pay"]}`,
+		"keyword":       `,"checkout_hosts":{"script":["'unsafe-inline'"]}`,
+		"bare tld wild": `,"checkout_hosts":{"form":["https://*.com"]}`,
+		"one bad entry": `,"checkout_hosts":{"redirect":["https://x.example.com","*"]}`,
+		"wrong type":    `,"checkout_hosts":["https://x.example.com"]`,
+	} {
+		_, err := New(json.RawMessage(`{`+base+hosts+`}`), deps)
+		if err == nil || !strings.Contains(err.Error(), "checkout_hosts") {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestRemoteReportsItsCheckoutHosts(t *testing.T) {
+	h, err := wire.NewHandler(bare{&fullFake{}}, testSecret, func() time.Time { return now0 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	deps := connectortest.NewDeps(nil, now0)
+	deps.HTTP = srv.Client()
+	want := connector.CheckoutHosts{Script: []string{"https://sdk.example.com"}, Form: []string{"https://*.pay.example.com"},
+		Redirect: []string{"https://x.example.com"}, Self: "http://evil.example.com"}
+	cfg, _ := json.Marshal(map[string]any{"base_url": srv.URL, "secret": testSecret, "allow_insecure": true,
+		"checkout_hosts": map[string]any{"script": want.Script, "form": want.Form, "redirect": want.Redirect, "Self": want.Self, "self": want.Self}})
+	c, err := New(cfg, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := connector.HostsOf(c)
+	want.Self = "" // a remote cannot claim the hub's own origin
+	if !reflect.DeepEqual(h, want) {
+		t.Errorf("hosts = %+v, want %+v", h, want)
 	}
 }
