@@ -91,11 +91,11 @@
 {{end}}
 
 {{if eq .Tab "domains"}}
-<p class="muted">Custom domains serve this app's customer-facing pages (pay page, return page, invoices). Point the domain's DNS at this server; it becomes active once <code>/.well-known/paymux/&lt;token&gt;</code> answers.</p>
+<p class="muted">Custom domains serve this app's customer-facing pages (pay page, return page, invoices). Point the domain's DNS at this server and add the DNS TXT record shown for it. It becomes active once the TXT record is published and <code>/.well-known/paymux/&lt;token&gt;</code> answers.</p>
 <div class="table-scroll"><table class="grid">
-<thead><tr><th>Domain</th><th>Status</th><th>Activation URL</th><th>Last check</th></tr></thead>
+<thead><tr><th>Domain</th><th>Status</th><th>DNS TXT record and activation URL</th><th>Last check</th></tr></thead>
 <tbody>{{range .Domains}}<tr><td>{{.Host}}{{if .Primary}} <span class="flag">primary</span>{{end}}</td><td>{{.Status}}</td>
-<td><code class="wrap">{{.WellKnown}}</code><br><small class="muted">token {{.Token}}</small></td><td>{{.LastCheck}} {{.LastError}}</td></tr>
+<td>TXT <code class="wrap">{{.TXTName}}</code> = <code class="wrap">{{.TXTValue}}</code><br><code class="wrap">{{.WellKnown}}</code><br><small class="muted">token {{.Token}}</small></td><td>{{.LastCheck}} {{.LastError}}</td></tr>
 {{else}}<tr><td colspan="4" class="muted">No custom domains.</td></tr>{{end}}</tbody>
 </table></div>
 {{if .CanSettings}}<form method="post" action="/dashboard/apps/{{.ID}}/domains" class="stack">

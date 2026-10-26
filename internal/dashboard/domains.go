@@ -11,8 +11,8 @@ import (
 )
 
 type domainRow struct {
-	ID, Host, Status, Token, WellKnown, LastCheck, LastError string
-	Primary                                                  bool
+	ID, Host, Status, Token, WellKnown, TXTName, TXTValue, LastCheck, LastError string
+	Primary                                                                     bool
 }
 
 // whitelistReminder is one provider's note on registering a custom domain.
@@ -41,8 +41,9 @@ func (d *Dashboard) domainRows(ds []store.Domain) ([]domainRow, []checklistItem)
 	var rows []domainRow
 	var hosts []string
 	for _, dm := range ds {
+		txtName, txtValue := core.DomainChallenge(dm)
 		rows = append(rows, domainRow{ID: dm.ID, Host: dm.Host, Status: dm.Status, Token: dm.Token, Primary: dm.IsPrimary,
-			WellKnown: "https://" + dm.Host + "/.well-known/paymux/" + dm.Token, LastCheck: d.fmtTime(dm.LastCheckAt), LastError: dm.LastError})
+			TXTName: txtName, TXTValue: txtValue, WellKnown: "https://" + dm.Host + "/.well-known/paymux/" + dm.Token, LastCheck: d.fmtTime(dm.LastCheckAt), LastError: dm.LastError})
 		hosts = append(hosts, dm.Host)
 	}
 	var list []checklistItem

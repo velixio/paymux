@@ -34,9 +34,16 @@ func validHost(h string) bool {
 	return true
 }
 
+// DomainChallenge is the DNS TXT record that proves control of d's zone:
+// name _paymux-challenge.<host>, value paymux-verify=<token>.
+func DomainChallenge(d store.Domain) (name, value string) {
+	return domains.ChallengeName(d.Host), domains.ChallengeValue(d.Token)
+}
+
 // AddDomain registers a custom domain for an app (status pending). The first
 // domain of an app becomes its primary one. The returned Token is what the
-// activation check looks for at /.well-known/paymux/<token>.
+// activation check looks for at /.well-known/paymux/<token>, and the owner
+// must also publish the TXT record DomainChallenge returns.
 func (s *Service) AddDomain(ctx context.Context, actor audit.Actor, sc OrgScope, appID, host string) (store.Domain, error) {
 	if err := sc.validate(); err != nil {
 		return store.Domain{}, err
