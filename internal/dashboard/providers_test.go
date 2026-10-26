@@ -362,3 +362,37 @@ func TestProviderTestConnection(t *testing.T) {
 		}
 	})
 }
+
+// A property of type object (the remote connector's checkout_hosts) is edited
+// as a JSON document, and stored as an object, not a string.
+func TestProviderObjectPropertyIsEditedAsJSON(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		st := fakeconn.RegisterSchema("dashfake", `{"type":"object","required":["key_id","hosts"],"properties":{
+"key_id":{"type":"string","title":"Key id"},
+"hosts":{"type":"object","title":"Hosts"}}}`)
+		admin := e.roleClient("admin")
+		body := e.pageOK(admin, "/dashboard/providers/new?connector="+st.Name)
+		has(t, body, `<textarea`, `name="cfg_hosts"`)
+		form := func(hosts string) url.Values {
+			return url.Values{"connector": {st.Name}, "name": {"Remote"}, "mode": {"test"}, "cfg_key_id": {"k"}, "cfg_hosts": {hosts},
+				"currency": {"INR"}, "purpose": {"one_time"}, "csrf": {csrfOf(t, body)}}
+		}
+		for name, bad := range map[string]string{"not json": `{`, "array": `["https://a.example.com"]`, "string": `"x"`} {
+			if r, _ := e.post(admin, "/dashboard/providers", form(bad)); r.StatusCode != 400 {
+				t.Errorf("%s: %d", name, r.StatusCode)
+			}
+		}
+		r, b := e.post(admin, "/dashboard/providers", form(`{"redirect":["https://pay.example.com"]}`))
+		if r.StatusCode != 303 {
+			t.Fatalf("create: %d\n%s", r.StatusCode, b)
+		}
+		id := strings.TrimPrefix(r.Header.Get("Location"), "/dashboard/providers/")
+		cfg := e.openConfig(id)
+		hosts, ok := cfg["hosts"].(map[string]any)
+		if !ok || len(hosts) != 1 {
+			t.Fatalf("stored config %v", cfg)
+		}
+		has(t, e.pageOK(admin, "/dashboard/providers/"+id), `https://pay.example.com`)
+	})
+}
