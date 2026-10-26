@@ -296,6 +296,44 @@ func TestParseWebhook(t *testing.T) {
 	}
 }
 
+// The reverse hash does not cover mihpayid or unmappedstatus, so the event id
+// must not depend on them: replaying a signed body with those changed (the
+// hash stays valid) has to dedupe, while a different signed status is a new event.
+func TestWebhookEventIDUsesOnlySignedFields(t *testing.T) {
+	c := newConn(t, &fake{})
+	ctx := context.Background()
+	id := func(f url.Values) string {
+		t.Helper()
+		if err := c.VerifyWebhook(ctx, webhook(f)); err != nil {
+			t.Fatalf("variant does not verify: %v", err)
+		}
+		ns, err := c.ParseWebhook(ctx, webhook(f))
+		if err != nil || len(ns) != 1 {
+			t.Fatalf("%v %v", ns, err)
+		}
+		return ns[0].EventID
+	}
+	orig := id(successForm(testSalt, ""))
+	replay := successForm(testSalt, "")
+	replay.Set("mihpayid", "999999999999")
+	replay.Set("unmappedstatus", "bounced")
+	if got := id(replay); got != orig {
+		t.Errorf("unsigned fields changed the event id: %q vs %q", got, orig)
+	}
+	failed := successForm(testSalt, "")
+	failed.Set("status", "failure")
+	failed.Set("hash", reverseHash(testSalt, failed))
+	if got := id(failed); got == orig {
+		t.Errorf("a different status kept the event id %q", got)
+	}
+	other := successForm(testSalt, "")
+	other.Set("txnid", "pay_ref_02")
+	other.Set("hash", reverseHash(testSalt, other))
+	if got := id(other); got == orig {
+		t.Errorf("a different txnid kept the event id %q", got)
+	}
+}
+
 func TestFetchPaymentSendsHash(t *testing.T) {
 	f := &fake{verify: verifyBody("success", "captured")}
 	c := newConn(t, f)

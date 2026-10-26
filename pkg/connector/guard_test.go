@@ -52,7 +52,16 @@ func TestDenyPrivateClient(t *testing.T) {
 	} else {
 		resp.Body.Close()
 	}
-	if NewHTTPClient(HTTPOptions{}).CheckRedirect != nil {
-		t.Error("the default client's redirect policy changed")
+	// The default client follows redirects on the same host only: another host
+	// would receive the provider's credential headers.
+	check := NewHTTPClient(HTTPOptions{}).CheckRedirect
+	from, _ := http.NewRequest("GET", "https://api.example.com/a", nil)
+	same, _ := http.NewRequest("GET", "https://api.example.com/b", nil)
+	other, _ := http.NewRequest("GET", "https://evil.example.net/b", nil)
+	if err := check(same, []*http.Request{from}); err != nil {
+		t.Errorf("same-host redirect refused: %v", err)
+	}
+	if err := check(other, []*http.Request{from}); !errors.Is(err, http.ErrUseLastResponse) {
+		t.Errorf("cross-host redirect followed: %v", err)
 	}
 }

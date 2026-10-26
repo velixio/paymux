@@ -1,5 +1,325 @@
 # Security audit, October 2026
 
+This file holds two audits. The re-audit of 26 October 2026 comes first. The
+original audit of commit `677e9c0` follows unchanged from
+[Original audit](#original-audit-commit-677e9c0).
+
+## Re-audit, 26 October 2026 (commit `aa573bd`)
+
+The re-audit covered the tree after the remediation pull requests #15 to #52.
+It treated the earlier report and the
+[remediation plan](security-remediation-plan.md) as claims to check, not as
+facts. One reviewer covered the core money flow, idempotency, authentication,
+tenant scoping and the hosted pages. A second, independent reviewer covered the
+connectors, the remote connector, JS hooks and the outbound SSRF guards. No
+provider sandbox, live credential or production data was used.
+
+### Summary
+
+- **No critical or high-severity issue was found, and none is open.**
+- **One medium issue was confirmed and fixed (B-1).** Anyone holding a pay
+  link or a return URL could make the hub call the provider's API, and add
+  attempt rows, without limit. That spends the merchant's provider rate limit,
+  which every checkout on the account shares.
+- **One medium issue was confirmed and is not fixed (B-7).** A remote
+  connector chooses the script, form and redirect URLs on the hub's own pay
+  page. The hosted-page CSP is still report-only (H-7). Whoever can configure
+  a remote account can therefore run script on the origin the dashboard
+  shares.
+- **Five low or informational issues were confirmed and fixed** (B-2 to B-6).
+- **The earlier fixes hold.** No regression was found in A-1 to A-19 or in the
+  remediation items that were merged.
+- **Paymux is not declared production-safe by this re-audit.** See
+  [Production readiness](#re-audit-production-readiness).
+
+### Threat model (changes since the first audit)
+
+The assets, trust boundaries and attackers of the
+[first threat model](#threat-model) still apply. This re-audit added or
+stressed three things:
+
+- A **customer**, who holds a payment's client secret and the attempt's
+  return URL, is also an **availability** attacker against the provider
+  account's rate limit (B-1).
+- A **custom role holding `provider_account.manage`** controls what a remote
+  connector puts on the hub's pay page (B-7). That role can already re-point
+  the credentials of the account that money flows into. B-7 adds a path to the
+  dashboard's origin.
+- **JS hook authors** are trusted, but the data their hooks match against is
+  not (B-2).
+
+### Findings
+
+| ID | Finding | Severity | Status |
+|----|---------|----------|--------|
+| B-1 | Customer-triggered provider calls and attempts were unbounded (`/return` and `?fresh=1`) | Medium | Fixed |
+| B-2 | A backtracking regex in a JS hook ran past `CallTimeout` and kept its VM | Low | Fixed |
+| B-3 | Razorpay fetch by order id did not check the order's receipt | Low | Fixed |
+| B-4 | Provider HTTP clients followed cross-host redirects with credential headers | Low | Fixed |
+| B-5 | `IsPrivateIP` missed six IANA special-purpose IPv6 ranges | Info | Fixed |
+| B-6 | A Cashfree amount with a huge exponent cost seconds of CPU | Info | Fixed |
+| B-7 | A remote connector controls the script, form and redirect URLs of the pay page; CSP is report-only | Medium | Open |
+| B-8 | A custom domain is claimed without a DNS challenge | Low | Open (plausible) |
+| B-9 | PayU's reverse hash does not cover `mihpayid`, which is part of the event id | Info | Open (plausible) |
+
+#### B-1: unbounded provider calls and attempts from the customer pages
+
+- **Severity:** Medium (exploitable resource exhaustion). **Confidence:**
+  high. **Status:** Fixed.
+- **Where:**
+  - `internal/checkout/checkout.go`, `HandleReturn` (line 443). Every request
+    to `GET|POST /return/{pa}/{ref}` called `FetchPayment`.
+  - `internal/paypage/paypage.go`, `pay`, together with
+    `internal/core/attempts.go`, `CreateAttempt`. Every
+    `GET /pay/{id}?t=…&fresh=1` created an attempt and a provider checkout.
+  - Neither route has a rate limiter.
+- **Preconditions:** one return URL, which any customer has after starting a
+  checkout, or one pay link with its client secret.
+- **Attack:** a loop on either URL. Each request costs a provider API call of
+  up to 25 s, on the provider account's own rate limit. `?fresh=1` also
+  writes an attempt row each time.
+- **Impact:** the provider throttles the merchant's account, so other
+  customers' checkouts, refunds and polls fail. The database also grows
+  without bound. No money moves.
+- **Evidence:** `internal/paypage/audit2_resource_test.go`.
+  - `TestAudit2ReturnHammerIsNotOneProviderCallPerRequest` failed on
+    `aa573bd`: 40 returns made 40 provider fetches.
+  - `TestAudit2FreshCheckoutHammerIsBounded` failed on `aa573bd`: 60
+    requests made 60 attempts.
+- **Fix:**
+  - Returns of one attempt ask the provider at most once every
+    `returnFetchEvery` (5 s). The limit is kept in memory per attempt
+    (`fetchGate`, `checkout.go` line 98). In between, the page shows what is
+    stored, and webhooks and the poller still settle the payment.
+  - `CreateAttempt` refuses an attempt once the payment has `MaxAttempts`
+    (30). It counts under the payment row lock, so the cap holds across
+    concurrent requests and across instances (`attempts.go` line 52).
+- **Regression tests:** the two tests above. They also check that a return
+  after the interval fetches again.
+- **Residual risk:**
+  - The return limit is per process: with N instances, it is N fetches per
+    5 s.
+  - A genuine signed return that arrives within 5 s of a hammering request is
+    shown the stored state. That payment settles on the webhook or the next
+    poll.
+  - A per-IP limiter at the proxy is still recommended.
+
+#### B-2: JS hook regex outran its time limit
+
+- **Severity:** Low. It needs an operator-written hook that matches a
+  backtracking pattern against data a customer can influence. **Status:**
+  Fixed.
+- **Where:** `pkg/jsvm/jsvm.go`. goja runs patterns that Go's `regexp`
+  cannot (backreferences, lookaround) on `regexp2`, which the VM's interrupt
+  does not stop. `pkg/hub/js.go` line 68 calls `onRoute` from payment
+  creation.
+- **Impact:** the call ran without end. With the default pool of 4 VMs, four
+  such calls block routing hooks for good.
+- **Fix:** `regexp2.DefaultMatchTimeout` is capped at 1 s
+  (`maxRegexpMatch`). The match then fails and the call ends with the usual
+  time-limit error.
+- **Regression test:** `TestAudit2RegexBacktrackingIsInterruptible`
+  (`pkg/jsvm/audit2_regex_test.go`). It ran for 15 s and more before the fix,
+  and returns in about 1.1 s after it.
+- **Residual risk:** a single match can still take up to 1 s, more than a
+  short `CallTimeout`.
+
+#### B-3: Razorpay order fetch stamped the caller's reference
+
+- **Severity:** Low (defence in depth). **Status:** Fixed.
+- **Where:** `connectors/razorpay/payments.go`, `fetchOrder` (line 110).
+- **Evidence:** fetching order X with reference R returned a captured
+  snapshot that carried `ProviderRef=R` even though X's receipt was another
+  reference. That snapshot passes the reference half of
+  `hintedSnapshotIsOurs`.
+- **Why it was not exploitable:** `syncAttempt` always passes the order id the
+  attempt stored at checkout, and the payment-id branch (`paymentIsOurs`)
+  already checks the order or receipt.
+- **Fix:** an order whose receipt is another reference answers `ErrNotFound`.
+- **Regression test:** `TestAudit2FetchPaymentByOrderIgnoresReceipt`.
+
+#### B-4: credential headers forwarded on cross-host redirects
+
+- **Severity:** Low. It needs a provider endpoint that redirects to another
+  host. **Status:** Fixed.
+- **Where:** `pkg/connector/httpclient.go`, `NewHTTPClient`. Only the
+  `DenyPrivate` client refused redirects. Go drops `Authorization` and
+  `Cookie` on a cross-host redirect, but not Cashfree's `x-client-secret`.
+- **Fix:** `sameHostRedirects` (line 110) follows a redirect only to the same
+  host, up to 10 times. A cross-host redirect is returned to the connector
+  unfollowed.
+- **Tests:**
+  - `TestAudit2DefaultClientForwardsCustomHeaderOnRedirect` is the new
+    regression test.
+  - `TestDenyPrivateClient` asserted that the default policy is nil. It now
+    asserts the stricter policy.
+
+#### B-5 and B-6: hardening
+
+- **B-5:** `pkg/connector/guard.go` line 53 now also refuses `2001::/23`
+  (previously only `2001::/32`), `3fff::/20`, `5f00::/16` and `fec0::/10`.
+  Test: `TestAudit2IsPrivateIPTable`.
+- **B-6:** `connectors/cashfree/cashfree.go` line 139 refuses an amount
+  exponent above 20 in absolute value before `big.Rat`. A 2.8 KB body took
+  4.3 s before the fix. Only signature-verified webhooks and Cashfree API
+  responses reach this parser. Test: `TestAudit2AmountExponentCost`.
+
+#### B-7: a remote connector's URLs run on the hub origin (open)
+
+- **Severity:** Medium. **Confidence:** high, from reading the code (no
+  test). **Status:** not fixed.
+- **Where:**
+  - `internal/paypage/paypage.go`, `render`: the `ActionSDK`,
+    `ActionFormPost` and `ActionRedirect` URLs.
+  - `pkg/connector/types.go` line 183: `NextAction.Valid` checks only that the
+    URLs are not empty.
+  - `internal/web/csp.go` line 18: `HostedCSPHeader` is
+    `Content-Security-Policy-Report-Only`, and `HostedCSP` adds the action's
+    own script origin to the allow list.
+- **Preconditions:** a user with `provider_account.manage` (grantable to a
+  custom role) points a remote account at a server they control. Routing must
+  send a payment to it.
+- **Attack:** the remote answers with
+  `NextAction{Kind: sdk, ScriptURL: "https://attacker/x.js"}`. The script runs
+  on the base host, which also serves `/dashboard`. Same-origin script can
+  read the dashboard's pages, including CSRF tokens, with an admin's session
+  cookie if an admin opens that pay page. The redirect and form URLs are also
+  an open redirect from the hub's domain. `html/template` already neutralises
+  `javascript:` URLs.
+- **Why it is not fixed here:** the complete fix is architectural. Either
+  serve the pay pages from a separate origin, or enforce the CSP (the H-7
+  report-only period has not ended) and make remote accounts declare their
+  checkout hosts.
+- **Recommendation:**
+  1. Finish H-7 and switch to an enforced CSP.
+  2. Add `checkout_hosts` to a remote account's config, and refuse next
+     actions outside it.
+  3. Serve `/pay`, `/l`, `/s` and `/return` from a host other than the
+     dashboard's.
+
+#### B-8: custom domain claim without a DNS challenge (open, plausible)
+
+- **Where:** `internal/domains/domains.go` and
+  `internal/housekeeping/housekeeping.go`.
+- **How:** activation fetches `/.well-known/paymux/{token}` from the claimed
+  host. When that host's DNS already points at the hub, the hub answers its
+  own challenge. Whoever adds such a host first gets it.
+- **Impact:** with one org this stays within the operator. With several orgs
+  it lets one tenant take another's dangling hostname.
+- **Recommendation:** a DNS TXT challenge before multi-org.
+
+#### B-9: PayU event ids (open, plausible)
+
+- **Where:** `connectors/payu/payu.go` `reverseHash` and
+  `connectors/payu/webhook.go` `ParseWebhook`.
+- **How:** the reverse hash does not cover `mihpayid` or `unmappedstatus`, and
+  both are part of the synthesised event id. A captured signed webhook
+  replayed with another `mihpayid` therefore gets a new event id.
+- **Impact:** only a repeated fetch of the truth. Not tested.
+
+#### Documentation correction
+
+The comment on `ProcessProviderEvent` (`internal/checkout/jobs.go`) said that
+verified and unverified events take the same path. In fact, an event that
+fails its signature is stored as evidence and never processed
+(`internal/inbound/inbound.go`). Only verified events, and PayU's unsigned
+notice types, are queued. The code is stricter than the comment, which is
+corrected.
+
+### Previously fixed issues revalidated
+
+- **A-1 to A-19:** all 25 `audit_*_test.go` files pass, on SQLite at
+  baseline and on both databases after the changes.
+- **Merged items re-read in the code:**
+  - R-A5 and H-1: the key is stored on payouts and refunds, with unique
+    indexes in `0030`.
+  - R-A3: the captured provider-payment index in `0031`.
+  - H-2: `needs_review` for payouts.
+  - A-13: capped dispute holds.
+  - H-14: the dashboard refund nonce.
+  - H-3: admin-only settings.
+  - R-A9: recent sign-in on the remaining routes.
+  - H-5: renewals are fetched before booking.
+  - H-6: reuse of a link's payment that cannot be canceled.
+  - H-13: CHECK constraints or triggers, refund and dispute entries booked
+    once, and an append-only ledger, on SQLite and PostgreSQL.
+  - H-16: actions pinned to SHAs, `persist-credentials: false`, and
+    least-privilege permissions.
+- **Checked and sound in this pass:**
+  - Webhooks are hints: payment, refund, dispute and payout notifications are
+    re-fetched and scoped to the delivering account.
+  - Subscription and mandate notifications fall back to the event body only
+    for signed events or provider-confirmed PayU notices.
+  - Single-use links stay single-use.
+  - Hosted invoice and subscription tokens are compared in constant time.
+  - API key scopes keep `nil` and `[]` apart, and delegation is checked on
+    rotation too.
+  - Simulator actions work only on test-mode simulator accounts.
+  - OAuth state is single-use and bound to the user and org.
+  - Theme values are validated.
+  - Passwords use argon2id, and login is throttled per IP and per account.
+  - TOTP has replay protection.
+  - `PAYMUX_DEV_SKIP_2FA` is refused outside development.
+  - Outbound webhooks match the endpoint's mode.
+- **Still open from the first audit:** H-7, with its CSP still report-only
+  (see B-7).
+
+### Code changes (uncommitted, branch `security-audit-2026-10-26`)
+
+- **Source changes:**
+  - `internal/checkout/checkout.go`, `internal/core/attempts.go` (B-1)
+  - `internal/checkout/jobs.go` (comment only)
+  - `pkg/jsvm/jsvm.go`, and `go.mod` (`regexp2` becomes a direct requirement;
+    no new module) (B-2)
+  - `connectors/razorpay/payments.go` (B-3)
+  - `pkg/connector/httpclient.go` (B-4)
+  - `pkg/connector/guard.go` (B-5)
+  - `connectors/cashfree/cashfree.go` (B-6)
+- **Existing test made stricter:** `pkg/connector/guard_test.go`.
+- **New tests:** seven `audit2_*_test.go` files. The ones in
+  `internal/outbound` and `internal/housekeeping` are regression guards that
+  passed before the changes too: 12 loopback forms, no redirect, no
+  environment proxy.
+
+### Tests executed
+
+Go 1.27.3 on linux/amd64. PostgreSQL 17 ran in a throwaway container started
+by `make test-pg`.
+
+| Command | Baseline (`aa573bd`) | After |
+|---------|----------------------|-------|
+| `go build ./...` | OK | OK |
+| `go vet ./...`, `go vet -tags loadtest ./...` | OK | OK |
+| gofmt | clean | clean |
+| staticcheck v0.8.2 | not run | OK |
+| govulncheck v1.9.0 | not run | 0 affecting; 1 module-level advisory in `golang.org/x/crypto` (GO-2026-5932, no fix released, not called) |
+| `go run ./scripts/apisnap -check` | not run | OK |
+| `go test -race ./...` (SQLite) | exit 0 | exit 0: 80 packages pass, 0 fail |
+| `make test-pg` (PostgreSQL, `-race`) | not run | exit 0: 80 packages pass, 0 fail |
+
+**Not run:**
+
+- the frontend, browser and smoke steps of `scripts/ci.sh` (no frontend code
+  changed);
+- fuzzing beyond the seed corpora;
+- anything against a provider sandbox.
+
+### Re-audit production readiness
+
+Not established. Before live money:
+
+- Fix B-7, by an enforced CSP or a separate origin for the pay pages.
+- Finish V-1 for PayU and Whop in their sandboxes.
+- Put a per-IP rate limit in front of the customer routes.
+- Get an independent review of the connectors against real provider responses.
+
+Passing tests show that the attacks described here no longer work, not that
+the system is secure.
+
+---
+
+## Original audit (commit `677e9c0`)
+
 An evidence-based audit of the whole repository at commit `677e9c0`. It covers
 money flows, the ledger, idempotency, authentication and tenant isolation,
 webhooks, SSRF, secrets and logging, extensions, the web surface, operations

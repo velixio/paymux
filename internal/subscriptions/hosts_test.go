@@ -84,3 +84,37 @@ func TestSubscriptionCheckoutOutsideDeclaredHostsIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// The action stored on the subscription is checked again whenever the page is
+// opened: a checkout saved before the connector's hosts changed is refused, not
+// shown. It is kept, not recreated (a new provider subscription or mandate per
+// load would orphan the old one), so the page works again once the hosts do.
+func TestStoredSubscriptionActionOutsideTheHostsIsRefused(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, t0)
+		c := e.mustCreate(nil)
+		first, err := e.subs.OpenCheckout(ctx, c.Subscription.ID, tokenOf(c))
+		if err != nil || first.Action.URL == "" {
+			t.Fatalf("first open: %+v %v", first, err)
+		}
+		e.r.mu.Lock()
+		e.r.noHosts = true
+		e.r.mu.Unlock()
+		if _, err := e.subs.OpenCheckout(ctx, c.Subscription.ID, tokenOf(c)); !errors.Is(err, connectors.ErrNextActionRefused) {
+			t.Fatalf("the stored action was shown: %v", err)
+		}
+		if len(e.alerts.all()) != 1 {
+			t.Errorf("alerts = %+v", e.alerts.all())
+		}
+		if got := e.sub(c.Subscription.ID); got.CheckoutAction == "" {
+			t.Error("the stored action was cleared")
+		}
+		e.r.mu.Lock()
+		e.r.noHosts = false
+		e.r.mu.Unlock()
+		again, err := e.subs.OpenCheckout(ctx, c.Subscription.ID, tokenOf(c))
+		if err != nil || again.Action.URL != first.Action.URL {
+			t.Fatalf("after the hosts are back: %+v %v", again, err)
+		}
+	})
+}

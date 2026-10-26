@@ -57,8 +57,22 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/dlclark/regexp2/v2"
 	"github.com/dop251/goja"
 )
+
+// maxRegexpMatch bounds one regular-expression match in a script. goja runs
+// patterns Go's regexp cannot (backreferences, lookaround) on regexp2, whose
+// matcher the VM's interrupt does not reach: a backtracking pattern on event
+// data would otherwise run past CallTimeout and keep its VM out of the pool.
+// The match then fails with an error, which ends the call.
+const maxRegexpMatch = time.Second
+
+func init() {
+	if regexp2.DefaultMatchTimeout > maxRegexpMatch {
+		regexp2.DefaultMatchTimeout = maxRegexpMatch
+	}
+}
 
 // Defaults for the limits in Options.
 const (

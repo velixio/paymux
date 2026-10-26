@@ -128,3 +128,35 @@ func TestCheckoutFromAConnectorWithoutHostsIsRefused(t *testing.T) {
 		}
 	})
 }
+
+// A next action stored before the account's hosts changed (or before the hosts
+// were enforced) is not shown again: the attempt is not reusable, and a fresh
+// checkout is made, which is checked like any other.
+func TestStoredActionOutsideTheHostsIsNotReused(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		e.sdkCheckouts(nil)
+		p := e.payment2()
+		first, err := e.flow.StartCheckout(ctx, p.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The connector's declaration no longer covers the stored action.
+		e.fake.Locked(func() { e.fake.NoHosts = true })
+		if st, err := e.flow.StartCheckout(ctx, p.ID); !errors.Is(err, checkout.ErrCheckoutFailed) {
+			t.Fatalf("the stored action was shown again: %+v %v", st.Action, err)
+		}
+		if n := e.checkoutCalls(); n < 2 {
+			t.Errorf("%d provider checkouts: the stored one was reused without a check", n)
+		}
+		if len(e.alerts.all()) == 0 {
+			t.Error("no alert for the refused stored action")
+		}
+		// With the hosts declared again the payment can be paid (the first attempt
+		// is open and its action is declared again, so it may be shown).
+		e.fake.Locked(func() { e.fake.NoHosts = false })
+		if _, err := e.flow.StartCheckout(ctx, p.ID); err != nil {
+			t.Fatal(err)
+		}
+		_ = first
+	})
+}
