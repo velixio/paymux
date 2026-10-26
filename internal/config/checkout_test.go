@@ -28,6 +28,29 @@ func TestCheckoutURLRules(t *testing.T) {
 	}
 }
 
+// A bare "?" is an empty query that url.URL only remembers in ForceQuery.
+func TestCheckoutURLRejectsAForcedQuery(t *testing.T) {
+	_, err := Load(base("PAYMUX_CHECKOUT_URL", "https://checkout.example.com/?"))
+	wantErr(t, err, "PAYMUX_CHECKOUT_URL must be an origin")
+}
+
+// Hosts are compared the way routing compares them: lower case, no trailing dot.
+func TestCheckoutURLHostIsNormalisedLikeRouting(t *testing.T) {
+	for _, u := range []string{"https://pay.example.com.", "https://PAY.Example.COM.:8443", "https://Pay.example.com"} {
+		_, err := Load(base("PAYMUX_CHECKOUT_URL", u))
+		wantErr(t, err, "PAYMUX_CHECKOUT_URL must be on a different host")
+	}
+}
+
+// Requests addressed by IP go straight to the base handler, never to the
+// checkout router, so an IP-literal checkout host could not work.
+func TestCheckoutURLRejectsAnIPHost(t *testing.T) {
+	for _, u := range []string{"https://203.0.113.7", "https://203.0.113.7:8443", "https://[2001:db8::7]", "http://127.0.0.1:9000"} {
+		_, err := Load(base("PAYMUX_CHECKOUT_URL", u))
+		wantErr(t, err, "PAYMUX_CHECKOUT_URL must use a host name, not an IP address")
+	}
+}
+
 func TestCheckoutURLWarning(t *testing.T) {
 	prod, err := Load(base())
 	if err != nil {
