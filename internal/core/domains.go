@@ -86,7 +86,7 @@ func (s *Service) LookupHost(ctx context.Context, host string) (domains.Domain, 
 	if err != nil {
 		return domains.Domain{}, false, err
 	}
-	return domains.Domain{AppID: d.AppID, Status: d.Status}, true, nil
+	return domains.Domain{AppID: d.AppID, Status: d.Status, TXTVerified: !d.TXTVerifiedAt.IsZero()}, true, nil
 }
 
 // VerifyDomainToken reports whether token is the activation token of host. It

@@ -23,7 +23,22 @@ const (
 type Domain struct {
 	AppID  string
 	Status string
+	// TXTVerified is set once the DNS TXT challenge (ChallengeName,
+	// ChallengeValue) was seen. Only then may a pending domain get a
+	// certificate, which its activation fetch needs.
+	TXTVerified bool
 }
+
+// ChallengePrefix is prepended to a host to get the name of its challenge TXT
+// record.
+const ChallengePrefix = "_paymux-challenge."
+
+// ChallengeName is the DNS name whose TXT record proves control of host.
+func ChallengeName(host string) string { return ChallengePrefix + Normalize(host) }
+
+// ChallengeValue is the TXT record value that proves control of a domain with
+// the given token.
+func ChallengeValue(token string) string { return "paymux-verify=" + token }
 
 // Lookup finds a custom domain by normalised host.
 type Lookup interface {
@@ -111,10 +126,13 @@ type TLSAllowOptions struct {
 //
 //   - the base host,
 //   - a domain whose ownership was verified (active), and
-//   - a domain still pending verification only while its A or AAAA records
-//     already lead to the hub, that is, include one of the base host's.
+//   - a domain still pending activation only once its DNS TXT challenge was
+//     proven (the activation check needs a certificate to fetch its token over
+//     https) and while its A or AAAA records already lead to the hub, that is,
+//     include one of the base host's.
 //
-// Everything else, including a pending domain whose DNS cannot be read, is 403.
+// Everything else, including a pending domain without the TXT proof or whose
+// DNS cannot be read, is 403.
 type TLSAllow struct{ o TLSAllowOptions }
 
 // NewTLSAllow builds the handler.
@@ -155,7 +173,7 @@ func (h *TLSAllow) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case d.Status == StatusActive:
 		w.WriteHeader(http.StatusOK)
 		return
-	case d.Status == StatusPending && h.pointsHere(r.Context(), host):
+	case d.Status == StatusPending && d.TXTVerified && h.pointsHere(r.Context(), host):
 		w.WriteHeader(http.StatusOK)
 		return
 	}
