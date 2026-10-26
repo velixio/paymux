@@ -3,7 +3,7 @@ module github.com/paymux/paymux
 go 1.27.3
 
 require (
-	github.com/dlclark/regexp2/v2 v2.8.1
+	github.com/dlclark/regexp2/v2 v2.9.1
 	github.com/dop251/goja v0.0.0-20261016120441-313b6b662e53
 	github.com/go-pdf/fpdf v0.9.0
 	github.com/jackc/pgx/v5 v5.11.0
