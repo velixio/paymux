@@ -81,9 +81,12 @@ func hasPrefix(path string, prefixes []string) bool {
 }
 
 // IsCheckoutRoute reports whether path is served on the checkout host: the
-// customer pages, the simulator's page and the assets and themes they use.
+// customer pages, the simulator's page, the assets and themes they use, and
+// the endpoint their policy reports violations to (browsers do not follow a
+// redirect with a report, so it is served on both hosts).
 func IsCheckoutRoute(path string) bool {
-	return hasPrefix(path, pagePrefixes) || strings.HasPrefix(path, "/assets/") || strings.HasPrefix(path, "/theme/")
+	return hasPrefix(path, pagePrefixes) || strings.HasPrefix(path, "/assets/") || strings.HasPrefix(path, "/theme/") ||
+		path == "/csp-report"
 }
 
 // Normalize lower-cases a host and strips any port.
