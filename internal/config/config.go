@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/paymux/paymux/internal/domains"
 )
 
 // Env is the deployment environment.
@@ -119,9 +121,13 @@ func Load(lookupEnv func(string) (string, bool)) (Config, error) {
 		switch {
 		case err != nil:
 			errs = append(errs, err)
-		case u.Path != "" && u.Path != "/" || u.RawQuery != "" || u.Fragment != "" || u.User != nil:
+		case u.Path != "" && u.Path != "/" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.User != nil:
 			bad("PAYMUX_CHECKOUT_URL must be an origin: no path, query or user name")
-		case c.BaseURL != nil && strings.EqualFold(u.Hostname(), c.BaseURL.Hostname()):
+		case net.ParseIP(domains.Normalize(u.Hostname())) != nil:
+			// The server sends requests addressed by IP straight to the base
+			// handler, so the checkout router would never see them.
+			bad("PAYMUX_CHECKOUT_URL must use a host name, not an IP address")
+		case c.BaseURL != nil && domains.Normalize(u.Hostname()) == domains.Normalize(c.BaseURL.Hostname()):
 			// Cookies are scoped by host name only, not by port or scheme.
 			bad("PAYMUX_CHECKOUT_URL must be on a different host than PAYMUX_BASE_URL, or the pages share the dashboard's cookies")
 		default:
