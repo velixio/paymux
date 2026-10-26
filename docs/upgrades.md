@@ -94,6 +94,28 @@ are strict and there is no repair step. If one fails, fix the rows it names
   (`ledger_entries_no_update` and `ledger_entries_no_delete` on SQLite,
   `ledger_entries_no_change` on PostgreSQL) first and recreate them.
 
+## Release note: custom domains need a DNS TXT record
+
+Migration 0035 adds two nullable columns to `app_domains`; nothing can fail.
+What changes is how a custom domain is proven. Fetching
+`https://<host>/.well-known/paymux/<token>` is no longer enough, because a
+hostname whose DNS already points at the hub serves that token itself. A domain
+now also needs a DNS TXT record:
+
+| Name | Value |
+|------|-------|
+| `_paymux-challenge.<host>` | `paymux-verify=<token>` |
+
+The app's *Domains* tab shows the exact name and value per domain. A pending
+domain gets its certificate (and so its activation check) only after the TXT
+record was seen.
+
+**Before upgrading, add one TXT record per active domain.** After the upgrade
+each active domain is looked up again (hourly until the record is found). One
+without the record keeps working for 7 days, then goes back to *pending* with
+an ops alert (`domain.unverified`); it is never deleted, and it becomes active
+again as soon as the record exists.
+
 ## Updating from the dashboard
 
 Admins can update a server from **Update** in the dashboard menu (action
