@@ -12,6 +12,7 @@ import (
 	_ "github.com/paymux/paymux/connectors/whop"
 	_ "github.com/paymux/paymux/connectors/zoho"
 	"github.com/paymux/paymux/internal/web"
+	"github.com/paymux/paymux/pkg/connector"
 )
 
 // What a connector declares per directive. The hosts come from the provider
@@ -34,7 +35,11 @@ func TestEveryConnectorDeclaresItsCheckoutHosts(t *testing.T) {
 		{"zoho", "connect-src", []string{"https://*.zoho.com", "https://*.zoho.in"}},
 	}
 	for _, c := range cases {
-		got := directive(t, web.HostedCSP("n", c.connector, "", ""), c.directive)
+		_, info, ok := connector.Lookup(c.connector)
+		if !ok || info.CheckoutHosts == nil {
+			t.Fatalf("%s declares no hosts", c.connector)
+		}
+		got := directive(t, web.HostedCSP("n", *info.CheckoutHosts), c.directive)
 		for _, h := range c.want {
 			if !strings.Contains(" "+got+" ", " "+h+" ") {
 				t.Errorf("%s: %s lacks %s (%s)", c.connector, c.directive, h, got)
@@ -43,7 +48,12 @@ func TestEveryConnectorDeclaresItsCheckoutHosts(t *testing.T) {
 	}
 	// Redirecting connectors need no host: their page stays on the hub.
 	for _, name := range []string{"stripe", "whop", "simulator"} {
-		if p := web.HostedCSP("n", name, "", ""); strings.Contains(p, "https://") {
+		_, info, _ := connector.Lookup(name)
+		var h connector.CheckoutHosts
+		if info.CheckoutHosts != nil {
+			h = *info.CheckoutHosts
+		}
+		if p := web.HostedCSP("n", h); strings.Contains(p, "https://") {
 			t.Errorf("%s: unexpected host in %s", name, p)
 		}
 	}

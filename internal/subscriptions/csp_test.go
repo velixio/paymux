@@ -22,10 +22,10 @@ var (
 // frame-ancestors stays.
 func wantHostedCSP(t *testing.T, what string, h http.Header, body string, scripts int) string {
 	t.Helper()
-	policy := h.Get("Content-Security-Policy-Report-Only")
+	policy := h.Get("Content-Security-Policy")
 	m := nonceRE.FindStringSubmatch(policy)
 	if m == nil {
-		t.Fatalf("%s: no nonce policy in Content-Security-Policy-Report-Only %q", what, policy)
+		t.Fatalf("%s: no nonce policy in Content-Security-Policy %q", what, policy)
 	}
 	tags := scriptTagRE.FindAllString(body, -1)
 	if len(tags) != scripts {
@@ -36,8 +36,11 @@ func wantHostedCSP(t *testing.T, what string, h http.Header, body string, script
 			t.Errorf("%s: script %s does not carry the nonce %s", what, tag, m[1])
 		}
 	}
-	if got := h.Get("Content-Security-Policy"); got != "frame-ancestors 'none'" {
-		t.Errorf("%s: enforced CSP = %q", what, got)
+	if !strings.Contains(policy, "frame-ancestors 'none'") || !strings.Contains(policy, "report-uri /csp-report") {
+		t.Errorf("%s: policy lacks frame-ancestors or report-uri: %s", what, policy)
+	}
+	if h.Get("Content-Security-Policy-Report-Only") != "" {
+		t.Errorf("%s: a report-only policy is still sent", what)
 	}
 	if h.Get("X-Frame-Options") != "DENY" || h.Get("X-Content-Type-Options") != "nosniff" {
 		t.Errorf("%s: hardening headers changed: %v", what, h)
@@ -65,7 +68,8 @@ func TestHostedCheckoutSendsANonceCSP(t *testing.T) {
 		u, _ = url.Parse(c.CheckoutURL)
 		_, body, hdr = fetch(t, srv.URL+u.RequestURI())
 		p = wantHostedCSP(t, "sdk", hdr, body, 2)
-		if !strings.Contains(p, "https://checkout.example.com") || !strings.Contains(p, "https://checkout.razorpay.com") || !strings.Contains(p, "https://api.razorpay.com") {
+		// The connector instance's declared hosts, not the registry entry of the same name.
+		if !strings.Contains(p, "script-src 'self' 'nonce-") || !strings.Contains(p, " https://checkout.example.com") || strings.Contains(p, "razorpay.com") {
 			t.Errorf("sdk: provider hosts missing: %s", p)
 		}
 
