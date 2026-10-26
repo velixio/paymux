@@ -43,12 +43,13 @@ func ask(h *TLSAllow, domain string) int {
 // Caddy gets a certificate for whatever this handler approves, and Let's
 // Encrypt limits how many it hands out. Anyone who can register a domain in
 // the dashboard must not be able to spend them on names that are not pointed at
-// the hub: a verified domain is approved, a pending one only when its DNS
-// already leads here.
+// the hub: a verified domain is approved, a pending one only when its DNS TXT
+// challenge was proven and its A/AAAA records already lead here.
 func TestTLSAskApprovesVerifiedDomainsAndPendingOnesThatPointHere(t *testing.T) {
 	res := &fakeResolver{addrs: map[string][]netip.Addr{
 		"pay.example.com":         ips("203.0.113.10", "2001:db8::10"),
 		"pay.pending.example":     ips("203.0.113.10"),
+		"pay.unproven.example":    ips("203.0.113.10"), // points here but its DNS TXT proof is missing
 		"pay.pendingv6.example":   ips("2001:db8::10"),
 		"pay.elsewhere.example":   ips("198.51.100.7"),
 		"pay.mixed.example":       ips("198.51.100.7", "203.0.113.10"),
@@ -56,20 +57,22 @@ func TestTLSAskApprovesVerifiedDomainsAndPendingOnesThatPointHere(t *testing.T) 
 	}}
 	lookup := fakeLookup{
 		"pay.voicestudio.example": {AppID: "app_vs", Status: StatusActive},
-		"pay.pending.example":     {AppID: "a", Status: StatusPending},
-		"pay.pendingv6.example":   {AppID: "a", Status: StatusPending},
-		"pay.elsewhere.example":   {AppID: "a", Status: StatusPending},
-		"pay.mixed.example":       {AppID: "a", Status: StatusPending},
-		"pay.nodns.example":       {AppID: "a", Status: StatusPending},
+		"pay.pending.example":     {AppID: "a", Status: StatusPending, TXTVerified: true},
+		"pay.pendingv6.example":   {AppID: "a", Status: StatusPending, TXTVerified: true},
+		"pay.elsewhere.example":   {AppID: "a", Status: StatusPending, TXTVerified: true},
+		"pay.mixed.example":       {AppID: "a", Status: StatusPending, TXTVerified: true},
+		"pay.nodns.example":       {AppID: "a", Status: StatusPending, TXTVerified: true},
+		"pay.unproven.example":    {AppID: "a", Status: StatusPending}, // no TXT proof yet
 		"pay.bad.example":         {AppID: "a", Status: StatusFailed},
 	}
 	h := NewTLSAllow(TLSAllowOptions{BaseHost: "pay.example.com", Lookup: lookup, Resolve: res.resolve})
 	for domain, want := range map[string]int{
 		"pay.example.com":         200, // the hub itself
 		"pay.voicestudio.example": 200, // verified
-		"pay.pending.example":     200, // pending, A record is the hub's
+		"pay.pending.example":     200, // pending, TXT proven, A record is the hub's
 		"pay.pendingv6.example":   200, // pending, AAAA record is the hub's
 		"pay.mixed.example":       200, // one of its addresses is the hub's
+		"pay.unproven.example":    403, // pending, points here, TXT proof missing: no certificate
 		"pay.elsewhere.example":   403, // pending, points somewhere else
 		"pay.nodns.example":       403, // pending, does not resolve
 		"pay.bad.example":         403, // failed verification
@@ -93,7 +96,7 @@ func TestTLSAskApprovesVerifiedDomainsAndPendingOnesThatPointHere(t *testing.T) 
 // If the hub's own address cannot be found out, no pending domain is approved.
 func TestTLSAskFailsClosedWhenTheHubsAddressIsUnknown(t *testing.T) {
 	res := &fakeResolver{addrs: map[string][]netip.Addr{"pay.pending.example": ips("203.0.113.10")}}
-	h := NewTLSAllow(TLSAllowOptions{BaseHost: "pay.example.com", Lookup: fakeLookup{"pay.pending.example": {AppID: "a", Status: StatusPending}}, Resolve: res.resolve})
+	h := NewTLSAllow(TLSAllowOptions{BaseHost: "pay.example.com", Lookup: fakeLookup{"pay.pending.example": {AppID: "a", Status: StatusPending, TXTVerified: true}}, Resolve: res.resolve})
 	if got := ask(h, "pay.pending.example"); got != 403 {
 		t.Errorf("pending with an unresolvable hub: %d", got)
 	}
