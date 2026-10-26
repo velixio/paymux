@@ -304,6 +304,7 @@ Provider menus change; the descriptions above name the settings to look for, not
 | `PAYMUX_MASTER_KEY` / `PAYMUX_MASTER_KEY_FILE` | exactly one required | Base64, 32 bytes. |
 | `PAYMUX_TZ` | `Asia/Kolkata` | Time zone of "today", reconciliation time and date filters. |
 | `PAYMUX_TRUSTED_PROXIES` | local network | Comma-separated CIDRs/addresses of reverse proxies whose `X-Forwarded-For` is believed (for the sign-in limit, sessions and audit). The default is the local network (loopback, private and link-local ranges); `none` believes no proxy. A host on a trusted network can set the client address Paymux records, so name the proxy's exact address where the LAN is shared. A `/0` block is refused. |
+| `PAYMUX_CUSTOMER_RATE` | `60` | Requests a minute per client address and customer route family (`/pay/`, `/return/`, `/l/`, `/s/`, `/i/`), burst 20; over it the answer is 429 with `Retry-After`. `0` disables. Behind a proxy, set `PAYMUX_TRUSTED_PROXIES` so customers are told apart. |
 | `PAYMUX_ALLOW_PRIVATE_WEBHOOKS` | `false` | Allow outgoing webhooks to private/loopback addresses (development). |
 | `PAYMUX_SMTP_HOST`, `_PORT` (587), `_USERNAME`, `_PASSWORD`, `_FROM` | unset | Outgoing mail over STARTTLS. Mail and credentials are never sent in clear text. |
 | `PAYMUX_OPS_EMAILS`, `PAYMUX_OPS_WEBHOOK_URL` | unset | Where ops alerts go (email and a Slack-compatible webhook). Identical alerts are sent at most every 10 minutes. |

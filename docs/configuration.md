@@ -24,6 +24,7 @@ Configuration examples below use placeholder domains and credentials. Copy `.env
 | `PAYMUX_MASTER_KEY_OLD_FILE` | none | A file with earlier master keys (separated by commas or new lines); combined with the variable above. |
 | `PAYMUX_TZ` | `Asia/Kolkata` | Date boundaries, scheduling, and date filters. Use an IANA time-zone name. |
 | `PAYMUX_TRUSTED_PROXIES` | Local network | Comma-separated trusted proxy addresses or CIDRs, or `none`. Unset, any address on the local network (loopback, 10/8, 172.16/12, 192.168/16, link-local, fc00::/7) is believed, so a reverse proxy on the LAN needs no setting; a host on those networks can then set the client address Paymux records. A `/0` network is rejected. |
+| `PAYMUX_CUSTOMER_RATE` | `60` | Requests a minute one client address may make to each customer route family (`/pay/`, `/return/`, `/l/`, `/s/`, `/i/`), with a burst of 20; past it the page answers 429 with `Retry-After`. `0` turns the limit off. The address is the connection's, or the `X-Forwarded-For` client when the connection comes from a trusted proxy. Webhooks and `/v1` have their own limits. |
 | `PAYMUX_ENV_FILE` | `.env` | Optional dotenv file loaded by CLI commands. |
 
 Generate a key once, then preserve it separately from the database:
