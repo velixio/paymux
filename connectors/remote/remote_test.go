@@ -507,9 +507,9 @@ func TestRemoteReportsItsCheckoutHosts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := connector.HostsOf(c)
+	got := connector.HostsOf(c)
 	want.Self = "" // a remote cannot claim the hub's own origin
-	if !reflect.DeepEqual(h, want) {
-		t.Errorf("hosts = %+v, want %+v", h, want)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("hosts = %+v, want %+v", got, want)
 	}
 }
