@@ -150,6 +150,16 @@ func New(raw json.RawMessage, deps connector.Deps) (connector.Connector, error) 
 	return &zoho{cfg: cfg, deps: deps, api: &client{http: hc, kv: deps.KV, now: deps.Now, cfg: cfg}}, nil
 }
 
+// CheckoutHosts adds the account's hosted checkout page (an operator-set URL)
+// to the redirect targets; the widget and its hosts are the same for everyone.
+func (z *zoho) CheckoutHosts() connector.CheckoutHosts {
+	h := *info.CheckoutHosts
+	if u, err := url.Parse(z.cfg.HostedCheckoutURL); err == nil && u.Scheme == "https" && u.Host != "" {
+		h.Redirect = []string{"https://" + strings.ToLower(u.Host)}
+	}
+	return h
+}
+
 func (z *zoho) Info() connector.Info {
 	i := info
 	i.Name = "zoho"
