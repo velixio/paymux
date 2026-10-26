@@ -299,7 +299,7 @@ func (a *App) Start(ctx context.Context) error {
 	// and returns reach the engine through the payment flow.
 	subCSRF := sha256.Sum256(append([]byte("paymux-sub-csrf-key|"), a.cfg.MasterKey...))
 	subs := subscriptions.New(subscriptions.Options{DB: db, Core: svc, Settings: set, Jobs: q, Emitter: emitter, CSRFKey: subCSRF[:],
-		BaseURL: a.cfg.BaseURL.String(), Mailer: notify.New(a.cfg), Logger: a.log,
+		BaseURL: a.cfg.BaseURL.String(), Mailer: notify.New(a.cfg), Logger: a.log, Alerts: alerts,
 		Connectors: subscriptions.ConnectorsFunc(func(ctx context.Context, id string) (connector.Connector, error) {
 			live, err := conns.Get(ctx, id)
 			return live.Connector, err
@@ -311,7 +311,7 @@ func (a *App) Start(ctx context.Context) error {
 			return live.Connector, err
 		})})
 	payoutSvc.RegisterJobs(q)
-	flow := checkout.New(checkout.Options{DB: db, Core: svc, Conns: conns, Routing: rt, Breaker: breaker, Logger: a.log, Disputes: disp, Subs: subs, Payouts: payoutSvc})
+	flow := checkout.New(checkout.Options{DB: db, Core: svc, Conns: conns, Routing: rt, Breaker: breaker, Logger: a.log, Disputes: disp, Subs: subs, Payouts: payoutSvc, Alerts: alerts})
 	svc.SetAttemptSyncer(flow) // expiring a payment asks the provider first
 	if err := flow.Register(q); err != nil {
 		return err

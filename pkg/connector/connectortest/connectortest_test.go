@@ -20,7 +20,8 @@ type mock struct {
 }
 
 func (m *mock) Info() connector.Info {
-	return connector.Info{Name: "mock", Version: "1", DisplayName: "Mock", ConfigSchema: json.RawMessage(`{}`), Currencies: []string{"INR", "JPY"}}
+	return connector.Info{Name: "mock", Version: "1", DisplayName: "Mock", ConfigSchema: json.RawMessage(`{}`), Currencies: []string{"INR", "JPY"},
+		CheckoutHosts: &connector.CheckoutHosts{Redirect: []string{"https://x.example.com"}}}
 }
 
 func (m *mock) CreateCheckout(_ context.Context, r connector.CheckoutRequest) (connector.CheckoutResult, error) {

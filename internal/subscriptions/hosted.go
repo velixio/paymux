@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/paymux/paymux/internal/billingform"
+	"github.com/paymux/paymux/internal/connectors"
 	"github.com/paymux/paymux/internal/domains"
 	"net/http"
 	"sort"
@@ -125,7 +126,17 @@ func (s *Service) OpenCheckout(ctx context.Context, id, token string) (Checkout,
 	}
 	co.Kind, co.Connector = CheckoutAction, connectorName(conn)
 	if sub.CheckoutAction != "" {
-		return co, json.Unmarshal([]byte(sub.CheckoutAction), &co.Action)
+		if err := json.Unmarshal([]byte(sub.CheckoutAction), &co.Action); err != nil {
+			return co, err
+		}
+		// Checked on every load: the stored action may predate the check or the
+		// connector's current hosts. It is refused, not recreated: a new provider
+		// subscription or mandate per load would orphan the first. The page works
+		// again once the hosts do.
+		if err := connectors.CheckNextAction(ctx, s.log, s.alerts, sub.ProviderAccountID, conn, co.Action); err != nil {
+			return Checkout{}, err
+		}
+		return co, nil
 	}
 	customer := connector.Customer{Name: cust.Name, Email: cust.Email, Phone: cust.Phone}
 	var res connector.CheckoutResult
@@ -174,6 +185,10 @@ func (s *Service) OpenCheckout(ctx context.Context, id, token string) (Checkout,
 		res, err = mm.CreateMandateCheckout(ctx, req)
 	}
 	if err != nil {
+		return Checkout{}, err
+	}
+	// The page only ever sends the customer to hosts the connector declared.
+	if err := connectors.CheckNextAction(ctx, s.log, s.alerts, sub.ProviderAccountID, conn, res.NextAction); err != nil {
 		return Checkout{}, err
 	}
 	raw, _ := json.Marshal(res.NextAction)

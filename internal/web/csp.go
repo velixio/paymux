@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 
 	"github.com/paymux/paymux/pkg/connector"
@@ -23,12 +22,6 @@ func NewNonce() string {
 	_, _ = rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
 }
-
-// originRE is the only shape of source a connector may declare: an https
-// origin, optionally with a leading wildcard label. Anything else (keywords,
-// schemes, paths, spaces, semicolons) is dropped, so a connector cannot widen
-// the policy to 'unsafe-inline' or smuggle in another directive.
-var originRE = regexp.MustCompile(`^https://(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:[0-9]{1,5})?$`)
 
 // HostedCSP returns the policy of a hosted payment page. The scripts of the
 // page itself carry nonce. connectorName (may be empty) selects the hosts the
@@ -63,7 +56,7 @@ func sources(base string, list []string) string {
 	out := base
 	seen := map[string]bool{}
 	for _, o := range list {
-		if !originRE.MatchString(o) || seen[o] {
+		if !connector.ValidOrigin(o) || seen[o] {
 			continue
 		}
 		seen[o] = true

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/pkg/connector"
+	"github.com/paymux/paymux/pkg/connector/connectortest"
 )
 
 func subJSON(status string) map[string]any {
@@ -28,6 +29,7 @@ func TestSubscriptionCheckoutCreatesAnInlinePrice(t *testing.T) {
 	if res.ProviderOrderID != "cs_test_s1" || res.NextAction.Kind != connector.ActionRedirect || res.NextAction.URL != "https://checkout.stripe.com/c/pay/cs_test_s1" {
 		t.Fatalf("res = %+v", res)
 	}
+	connectortest.CheckAllowed(t, c, res.NextAction)
 	c0 := f.to("POST /v1/checkout/sessions")[0]
 	for k, v := range map[string]string{
 		"mode": "subscription", "client_reference_id": "SUBREF01",

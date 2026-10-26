@@ -39,6 +39,8 @@ func ReportDecodeError(resp *http.Response, err error)
 
 func ResetRegistryForTest()
 
+func ValidOrigin(o string) bool
+
 func WithAttemptHook(ctx context.Context, fn func(*http.Request)) context.Context
 
 type Beneficiary struct {
@@ -111,13 +113,19 @@ type ChargeRequest struct {
 	Currency    string     `json:"currency"`
 }
 
+type CheckoutHoster interface{ CheckoutHosts() CheckoutHosts }
+
 type CheckoutHosts struct {
-	Script  []string `json:"script,omitempty"`
-	Frame   []string `json:"frame,omitempty"`
-	Form    []string `json:"form,omitempty"`
-	Connect []string `json:"connect,omitempty"`
-	Img     []string `json:"img,omitempty"`
+	Script   []string `json:"script,omitempty"`
+	Frame    []string `json:"frame,omitempty"`
+	Form     []string `json:"form,omitempty"`
+	Connect  []string `json:"connect,omitempty"`
+	Img      []string `json:"img,omitempty"`
+	Redirect []string `json:"redirect,omitempty"`
+	Self     string   `json:"-"`
 }
+
+func HostsOf(c Connector) CheckoutHosts
 
 type CheckoutRequest struct {
 	PaymentID   string            `json:"payment_id"`
@@ -340,6 +348,8 @@ type NextAction struct {
 	ScriptURL string            `json:"script_url,omitempty"`
 	Options   map[string]any    `json:"options,omitempty"`
 }
+
+func (n NextAction) Allowed(h CheckoutHosts) error
 
 func (n NextAction) Valid() bool
 
@@ -642,6 +652,8 @@ func (w WebhookRequest) Header(name string) string
 
 
 package connectortest // import "github.com/paymux/paymux/pkg/connector/connectortest"
+
+func CheckAllowed(t *testing.T, c any, na connector.NextAction)
 
 func CheckNotifications(ns []connector.Notification) error
 

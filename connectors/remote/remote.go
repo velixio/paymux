@@ -5,7 +5,8 @@
 // the remote decides which optional capabilities exist, and this connector
 // implements exactly those interfaces.
 //
-// Account config: {"base_url": "https://connector.example.com/v1", "secret": "whsec_..."}.
+// Account config: {"base_url": "https://connector.example.com/v1", "secret": "whsec_...",
+// "checkout_hosts": {"redirect": ["https://pay.example.com"]}}.
 // base_url must be https unless its host is loopback, and must not point at a
 // loopback, private or link-local address (169.254.169.254, 10.0.0.0/8, ...):
 // the host builds the HTTP client with a dial-time guard (Info.DenyPrivateNetwork)
@@ -46,9 +47,12 @@ var info = connector.Info{
 	Version:     "1",
 	// base_url is operator-supplied, so the host guards the client (SSRF).
 	DenyPrivateNetwork: true,
-	ConfigSchema: json.RawMessage(`{"type":"object","required":["base_url","secret"],"properties":{
+	ConfigSchema: json.RawMessage(`{"type":"object","required":["base_url","secret","checkout_hosts"],"properties":{
 		"base_url":{"type":"string","title":"Base URL of the connector service","x-endpoint":true},
-		"secret":{"type":"string","title":"Signing secret (whsec_...)","x-secret":true}}}`),
+		"secret":{"type":"string","title":"Signing secret (whsec_...)","x-secret":true},
+		"checkout_hosts":{"type":"object","title":"Origins the service may send the customer to","description":"Lists of https origins (https://host or https://*.host): script (sdk), form (form_post), redirect, plus frame, connect and img for the hosted page's policy.","properties":{
+			"script":{"type":"array","items":{"type":"string"}},"form":{"type":"array","items":{"type":"string"}},"redirect":{"type":"array","items":{"type":"string"}},
+			"frame":{"type":"array","items":{"type":"string"}},"connect":{"type":"array","items":{"type":"string"}},"img":{"type":"array","items":{"type":"string"}}}}}}`),
 }
 
 func init() { connector.Register("remote", New, info) }
@@ -60,6 +64,32 @@ type config struct {
 	// For tests only: the signature authenticates messages but does not
 	// encrypt them, and customer data travels in the bodies.
 	AllowInsecure bool `json:"allow_insecure,omitempty"`
+	// CheckoutHosts are the origins the service may send the customer to. The
+	// hub refuses a checkout whose script, form or redirect URL is elsewhere, so
+	// a service that is compromised or buggy cannot turn the pay page into a
+	// phishing redirect.
+	CheckoutHosts *connector.CheckoutHosts `json:"checkout_hosts"`
+}
+
+// checkCheckoutHosts requires a declaration with at least one origin, every
+// one a valid https origin.
+func checkCheckoutHosts(h *connector.CheckoutHosts) error {
+	if h == nil {
+		return errors.New("remote: checkout_hosts is required (the origins the service may send the customer to)")
+	}
+	n := 0
+	for name, list := range map[string][]string{"script": h.Script, "frame": h.Frame, "form": h.Form, "connect": h.Connect, "img": h.Img, "redirect": h.Redirect} {
+		for _, o := range list {
+			if !connector.ValidOrigin(o) {
+				return fmt.Errorf("remote: checkout_hosts.%s: %q is not an https origin (https://host or https://*.host)", name, o)
+			}
+			n++
+		}
+	}
+	if n == 0 {
+		return errors.New("remote: checkout_hosts declares no origin")
+	}
+	return nil
 }
 
 // checkBaseURL requires https, except for a loopback host (a service on the
@@ -94,7 +124,12 @@ type remote struct {
 	signer *wire.Signer
 	deps   connector.Deps
 	info   connector.Info
+	hosts  connector.CheckoutHosts
 }
+
+// CheckoutHosts is what the account's config declares; the hub checks the
+// service's next actions against it (connector.CheckoutHoster).
+func (r *remote) CheckoutHosts() connector.CheckoutHosts { return r.hosts }
 
 // New discovers the remote's Info and returns a connector with exactly the
 // optional interfaces it declares.
@@ -111,6 +146,9 @@ func New(raw json.RawMessage, deps connector.Deps) (connector.Connector, error) 
 	if u, _ := url.Parse(cfg.BaseURL); !cfg.AllowInsecure && (isLoopback(u.Hostname()) || (net.ParseIP(u.Hostname()) != nil && connector.IsPrivateIP(net.ParseIP(u.Hostname())))) {
 		return nil, fmt.Errorf("%w: base_url %s (set allow_insecure for local development)", connector.ErrPrivateAddress, u.Hostname())
 	}
+	if err := checkCheckoutHosts(cfg.CheckoutHosts); err != nil {
+		return nil, err
+	}
 	signer, err := wire.NewSigner(cfg.Secret)
 	if err != nil {
 		return nil, fmt.Errorf("remote: %w", err)
@@ -123,7 +161,7 @@ func New(raw json.RawMessage, deps connector.Deps) (connector.Connector, error) 
 	hc := *deps.HTTP
 	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	deps.HTTP = &hc
-	r := &remote{base: strings.TrimRight(cfg.BaseURL, "/"), signer: signer, deps: deps}
+	r := &remote{base: strings.TrimRight(cfg.BaseURL, "/"), signer: signer, deps: deps, hosts: *cfg.CheckoutHosts}
 	var ri connector.Info
 	if err := r.call(context.Background(), wire.MethodInfo, nil, &ri); err != nil {
 		return nil, fmt.Errorf("remote: discovery: %w", err)

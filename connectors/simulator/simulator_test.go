@@ -370,6 +370,7 @@ func TestMandates(t *testing.T) {
 	if err != nil || res.ProviderOrderID == "" || !strings.Contains(res.NextAction.URL, "/sim/mref_1") {
 		t.Fatalf("mandate checkout %+v %v", res, err)
 	}
+	connectortest.CheckAllowed(t, h.c, res.NextAction)
 	mid := res.ProviderOrderID
 	if m, err := h.c.FetchMandate(ctx, connector.MandateRef{ProviderMandateID: mid}); err != nil || m.Status != "pending" || m.SetupPayment != nil {
 		t.Fatalf("pending mandate %+v %v", m, err)
@@ -435,6 +436,7 @@ func TestProviderManagedSubscriptions(t *testing.T) {
 	if err != nil || res.ProviderOrderID == "" || !strings.Contains(res.NextAction.URL, "/sim/sref_1") {
 		t.Fatalf("subscription checkout %+v %v", res, err)
 	}
+	connectortest.CheckAllowed(t, h.c, res.NextAction)
 	sid := res.ProviderOrderID
 	if s, err := h.c.FetchSubscription(ctx, connector.SubscriptionRef{ProviderSubscriptionID: sid}); err != nil || s.Status != "incomplete" || s.ProviderRef != "sref_1" {
 		t.Fatalf("before authorisation %+v %v", s, err)

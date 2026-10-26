@@ -151,6 +151,11 @@ func fillFields(fields []cfgField, existing map[string]any, post url.Values) []c
 			f.Value = post.Get(key)
 		case existing != nil && f.Type == "boolean":
 			f.Checked, _ = existing[f.Name].(bool)
+		case existing != nil && f.Type == "object":
+			if v, ok := existing[f.Name]; ok {
+				b, _ := json.MarshalIndent(v, "", "  ")
+				f.Value = string(b)
+			}
 		case existing != nil:
 			if v, ok := existing[f.Name]; ok {
 				f.Value = fmt.Sprint(v)
@@ -207,6 +212,12 @@ func buildConfig(fields []cfgField, post url.Values, existing map[string]any) (j
 				return nil, fieldErr(f.Title + " must be a number")
 			}
 			cfg[f.Name] = n
+		case f.Type == "object":
+			var obj map[string]any
+			if err := json.Unmarshal([]byte(raw), &obj); err != nil || obj == nil {
+				return nil, fieldErr(f.Title + " must be a JSON object")
+			}
+			cfg[f.Name] = obj
 		default:
 			cfg[f.Name] = raw
 		}

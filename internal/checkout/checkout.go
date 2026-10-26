@@ -57,6 +57,9 @@ type Options struct {
 	// when a renewal payment changed, and handles returns from subscription
 	// and mandate checkouts (internal/subscriptions implements it).
 	Subs SubscriptionSink
+	// Alerts, when set, is told when a connector answers a checkout with a URL
+	// outside the hosts it declared.
+	Alerts connectors.Alerter
 }
 
 // ErrUnknownObject is wrapped by a SubscriptionSink when a notification names
@@ -257,9 +260,18 @@ func (s *Service) reusable(ctx context.Context, paymentID string, accounts []sto
 		return Started{}, false
 	}
 	for _, pa := range accounts {
-		if pa.ID == a.ProviderAccountID {
-			return Started{Attempt: a, AccountID: pa.ID, Connector: pa.Connector, Action: action}, true
+		if pa.ID != a.ProviderAccountID {
+			continue
 		}
+		// The action was checked when it was made, but the account's hosts may
+		// have changed since (or it predates the check): it is shown again only
+		// if the connector as it is now still declares it. Otherwise a fresh
+		// checkout is made, which is checked like any other.
+		live, err := s.o.Conns.Get(ctx, pa.ID)
+		if err != nil || connectors.CheckNextAction(ctx, s.o.Logger, s.o.Alerts, pa.ID, live.Connector, action) != nil {
+			return Started{}, false
+		}
+		return Started{Attempt: a, AccountID: pa.ID, Connector: pa.Connector, Action: action}, true
 	}
 	return Started{}, false
 }
@@ -290,6 +302,10 @@ func (s *Service) createCheckout(ctx context.Context, pa store.ProviderAccount, 
 	}
 	if !res.NextAction.Valid() {
 		return connector.CheckoutResult{}, fmt.Errorf("connector %s returned an invalid next action", pa.Connector)
+	}
+	// A refusal is an ordinary checkout error: routing goes on with the next account.
+	if err := connectors.CheckNextAction(ctx, s.o.Logger, s.o.Alerts, pa.ID, live.Connector, res.NextAction); err != nil {
+		return connector.CheckoutResult{}, err
 	}
 	return res, nil
 }

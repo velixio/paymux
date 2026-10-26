@@ -69,6 +69,7 @@ func TestMandateCheckoutFormAndGoldenSIHash(t *testing.T) {
 	if na.Kind != connector.ActionFormPost || na.URL != "https://test.payu.in/_payment" {
 		t.Fatalf("action = %+v", na)
 	}
+	connectortest.CheckAllowed(t, m, na)
 	f := na.Fields
 	if f["si"] != "1" || f["api_version"] != "7" || f["pg"] != "UPI" || f["txnid"] != "MANDREF01" || f["amount"] != "1.00" ||
 		f["udf1"] != "mdt_01" || f["surl"] != "https://pay.example.com/return/acc/MANDREF01" || f["si_details"] != goldenSIDetails || f["hash"] != goldenSIHash {

@@ -85,6 +85,9 @@ type State struct {
 	// merchant of record, as a remote connector can after discovery although
 	// its registry entry cannot say.
 	LiveMerchantOfRecord bool
+	// NoHosts makes the connector instances declare no checkout hosts, so the
+	// hub refuses every URL they return.
+	NoHosts bool
 }
 
 var seq atomic.Int64
@@ -130,6 +133,22 @@ func (s *State) Locked(fn func()) { s.mu.Lock(); defer s.mu.Unlock(); fn() }
 
 // Conn is the connector instance.
 type Conn struct{ st *State }
+
+// CheckoutHosts implements connector.CheckoutHoster: the fake may send the
+// customer to any example.com host, so a test that wants a refusal uses another
+// domain. The hosted page's policy (Info) is not widened by this.
+func (c *Conn) CheckoutHosts() connector.CheckoutHosts {
+	c.st.mu.Lock()
+	none := c.st.NoHosts
+	c.st.mu.Unlock()
+	if none {
+		return connector.CheckoutHosts{}
+	}
+	h := *c.Info().CheckoutHosts
+	open := []string{"https://*.example.com"}
+	h.Script, h.Form, h.Redirect = open, open, open
+	return h
+}
 
 // Info implements connector.Connector.
 func (c *Conn) Info() connector.Info {
