@@ -65,7 +65,7 @@ func (l *CustomerLimit) Wrap(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if wait, ok := l.take(fam+clientip.From(r, l.trusted), l.now()); !ok {
+		if wait, ok := l.take(fam+clientip.Group(clientip.From(r, l.trusted)), l.now()); !ok {
 			secs := int(math.Ceil(wait.Seconds()))
 			if secs < 1 {
 				secs = 1

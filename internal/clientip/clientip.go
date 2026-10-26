@@ -49,3 +49,18 @@ func From(r *http.Request, trusted []netip.Prefix) string {
 	}
 	return peer.String()
 }
+
+// Group is the address, or for IPv6 its /64 prefix: one subscriber usually
+// holds a whole /64, so limits keyed by address would be dodged by rotating
+// through it. IPv4, IPv4-in-IPv6 and anything unparsable are returned as is.
+func Group(ip string) string {
+	a, err := netip.ParseAddr(ip)
+	if err != nil || !a.Is6() || a.Is4In6() {
+		return ip
+	}
+	p, err := a.Prefix(64)
+	if err != nil {
+		return ip
+	}
+	return p.String()
+}
