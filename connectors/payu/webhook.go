@@ -61,8 +61,11 @@ func (p *payu) VerifyWebhook(_ context.Context, req connector.WebhookRequest) er
 }
 
 // ParseWebhook turns a verified payment webhook into a Notification. PayU has
-// no event id, so one is synthesized from the payu id and the statuses; a
-// retried delivery therefore dedupes while a later status change does not.
+// no event id, so one is synthesized from the transaction id and the status; a
+// retried delivery therefore dedupes while a later status change does not. Only
+// fields the reverse hash covers are used: mihpayid and unmappedstatus are not
+// signed, so a replay with those changed must not look like a new event. The
+// payment is found by txnid; mihpayid stays a hint.
 func (p *payu) ParseWebhook(ctx context.Context, req connector.WebhookRequest) ([]connector.Notification, error) {
 	if n, ok := parseMandateNotice(req.Body); ok {
 		return p.mandateNotification(ctx, n)
@@ -88,7 +91,7 @@ func (p *payu) ParseWebhook(ctx context.Context, req connector.WebhookRequest) (
 	}
 	return []connector.Notification{{
 		Kind:       connector.NotifyPayment,
-		EventID:    "payu:" + f.Get("mihpayid") + ":" + f.Get("status") + ":" + f.Get("unmappedstatus"),
+		EventID:    "payu:" + f.Get("txnid") + ":" + f.Get("status"),
 		EventType:  "payment." + f.Get("status"),
 		OccurredAt: snap.CreatedAt,
 		Payment:    &snap,

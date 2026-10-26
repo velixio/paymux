@@ -63,9 +63,10 @@ func (s *Service) Register(q *jobs.Queue) error {
 // ProcessProviderEvent handles provider_event.process and .fetch_only jobs.
 // A webhook is only a hint: for every notification it looks the object up
 // among the delivering account's own attempts and refunds, fetches the
-// provider's truth through the connector and applies that. Verified and
-// unverified events take the same path, so a forged event can at most cause
-// a fetch. Objects Paymux does not know are recorded, not guessed.
+// provider's truth through the connector and applies that. Only verified
+// events, and event types the provider never signs (fetch_only), get here: an
+// event whose signature fails is kept as evidence and never processed.
+// Objects Paymux does not know are recorded, not guessed.
 func (s *Service) ProcessProviderEvent(ctx context.Context, payload json.RawMessage) error {
 	var jp inbound.JobPayload
 	if err := json.Unmarshal(payload, &jp); err != nil {

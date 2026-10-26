@@ -263,6 +263,16 @@ that imports Paymux as a library:
   and `pkg/jsvm` are part of the API snapshot (`scripts/apisnap/pkg.txt`). These
   moves were made before there were framework-mode users.
 
+## PayU webhook event ids
+
+PayU payment webhooks now get their event id from the transaction id and the
+status (`payu:<txnid>:<status>`), the fields PayU's reverse hash signs. Before,
+it also used `mihpayid` and `unmappedstatus`, which the hash does not cover, so
+a captured webhook replayed with another `mihpayid` was treated as new. Event
+ids of deliveries stored before the upgrade keep the old form, so a webhook PayU
+re-sends across the upgrade may be processed once more; this is harmless, since
+the payment is fetched from PayU by `txnid` and applied idempotently.
+
 ## Writing migrations that keep the promise
 
 - Forward only, in lockstep for `internal/migrations/sqlite` and `internal/migrations/postgres`;
