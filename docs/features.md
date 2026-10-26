@@ -10,7 +10,7 @@ The complete feature list of Paymux. The [README](../README.md) has the short ve
 - **Hosted pay page.** The customer sees a themed, translated page that asks for billing details only where the rules require them, then goes to the provider.
 - **Payment links.** A shareable page `/l/{slug}` creates a payment for whoever opens it: fixed price or "customer chooses" between a minimum and maximum, reusable or single-use, optional expiry. Created through the API or the dashboard, and served on custom domains too.
 - **Routing.** Rules at app level, then org level, then a catch-all; per-account accepted currencies and purposes; a circuit breaker skips accounts that keep failing.
-- **Custom domains** with on-demand TLS (Caddy asks the hub which hosts to certify) and a domain checklist.
+- **Custom domains** with on-demand TLS (Caddy asks the hub which hosts to certify) and a domain checklist. A domain is proven by a DNS TXT record (`_paymux-challenge.<host>`) and the activation file, so a name that merely points at the hub cannot be claimed.
 
 **Money you can reconcile**
 

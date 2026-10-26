@@ -61,7 +61,7 @@ Provider credentials grant provider-side access. Before adding a custom or remot
 
 ## Hosted pages and custom domains
 
-Checkout and hosted-document URLs contain access tokens. Avoid leaking them into public logs, analytics, shared screenshots, or referrer-sensitive redirects. Validate custom-domain ownership and proxy/TLS configuration before marking a domain ready.
+Checkout and hosted-document URLs contain access tokens. Avoid leaking them into public logs, analytics, shared screenshots, or referrer-sensitive redirects. A custom domain is activated only when the zone owner has published the DNS TXT record `_paymux-challenge.<host>` = `paymux-verify=<token>` and `https://<host>/.well-known/paymux/<token>` answers; a hostname that only points at the hub proves nothing. Validate proxy/TLS configuration before marking a domain ready.
 
 The public React site is a separate static application and makes no production payment requests from its sample demo. It should never collect live provider credentials.
 
