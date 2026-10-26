@@ -3,11 +3,11 @@ package dashboard
 import (
 	"errors"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"strings"
 
 	"github.com/paymux/paymux/internal/auth"
+	"github.com/paymux/paymux/internal/clientip"
 	"github.com/paymux/paymux/internal/secrets"
 	"github.com/paymux/paymux/internal/store"
 )
@@ -26,20 +26,7 @@ func totpAAD(userID string) []byte { return secrets.AADTOTP(userID) }
 // limitKey is the per-address sign-in key. IPv6 clients are grouped by /64: a
 // single customer has billions of addresses in theirs.
 func (d *Dashboard) limitKey(email string, r *http.Request) string {
-	return strings.ToLower(strings.TrimSpace(email)) + "|" + clientGroup(d.clientIP(r))
-}
-
-// clientGroup is the address, or for IPv6 its /64 prefix.
-func clientGroup(ip string) string {
-	a, err := netip.ParseAddr(ip)
-	if err != nil || !a.Is6() || a.Is4In6() {
-		return ip
-	}
-	p, err := a.Prefix(64)
-	if err != nil {
-		return ip
-	}
-	return p.String()
+	return strings.ToLower(strings.TrimSpace(email)) + "|" + clientip.Group(d.clientIP(r))
 }
 
 // dummyPasswordHash lets an unknown or disabled account cost the same time as
@@ -80,7 +67,7 @@ func (d *Dashboard) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	key := d.limitKey(email, r)
 	now := d.o.Now()
 	// Before any hashing: one address may only try so often, success or not.
-	ipKey := clientGroup(d.clientIP(r))
+	ipKey := clientip.Group(d.clientIP(r))
 	if d.attempts.locked(ipKey, now) {
 		again(http.StatusTooManyRequests, msgLockedOut)
 		return

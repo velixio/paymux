@@ -437,7 +437,11 @@ func (a *App) Start(ctx context.Context) error {
 	customerMux.Handle("GET /assets/", web.AssetHandler(overlay))
 	customerMux.Handle("GET /theme/", themes.Handler())
 	baseHost := a.cfg.BaseURL.Host
-	public := hostRouter(&domains.Router{BaseHost: baseHost, Lookup: svc, Base: srv.Handler(), Customer: customerMux}, srv.Handler())
+	// A per-address ceiling on the customer routes, on the base host and on
+	// custom domains alike.
+	custLimit := server.NewCustomerLimit(a.cfg.CustomerRate, a.cfg.TrustedProxies)
+	baseHandler := custLimit.Wrap(srv.Handler())
+	public := hostRouter(&domains.Router{BaseHost: baseHost, Lookup: svc, Base: baseHandler, Customer: custLimit.Wrap(customerMux)}, baseHandler)
 	internalMux := http.NewServeMux()
 	internalMux.Handle("GET /internal/tls-allow", domains.TLSAllowHandler(baseHost, svc))
 	internalMux.Handle("/", srv.InternalHandler())
