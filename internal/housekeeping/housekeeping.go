@@ -86,7 +86,7 @@ const DomainGrace = 24 * time.Hour
 // the record was required.
 const DomainTXTGrace = 7 * 24 * time.Hour
 
-// domainRecheckEvery is how often an active domain without a proven TXT record
+// domainRecheckEvery is how often an active domain
 // is looked up again.
 const domainRecheckEvery = time.Hour
 
@@ -240,7 +240,7 @@ func (c *DomainChecker) checkPending(ctx context.Context, d store.Domain) error 
 
 func (c *DomainChecker) checkActive(ctx context.Context, d store.Domain) error {
 	now := c.o.Now().UTC()
-	if !d.TXTVerifiedAt.IsZero() || !d.LastCheckAt.IsZero() && now.Sub(d.LastCheckAt) < domainRecheckEvery {
+	if !d.LastCheckAt.IsZero() && now.Sub(d.LastCheckAt) < domainRecheckEvery {
 		return nil
 	}
 	if proven, why := c.txtProven(ctx, d); proven {
@@ -264,6 +264,9 @@ func (c *DomainChecker) checkActive(ctx context.Context, d store.Domain) error {
 		return nil
 	} else {
 		return c.o.DB.Write(ctx, func(tx store.Tx) error {
+			if err := store.SetDomainTXT(ctx, tx, d.ID, time.Time{}); err != nil { // a proof that is gone no longer allows a certificate
+				return err
+			}
 			if d.GraceStartedAt.IsZero() {
 				if err := store.SetDomainGrace(ctx, tx, d.ID, now); err != nil {
 					return err

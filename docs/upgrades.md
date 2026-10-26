@@ -111,7 +111,7 @@ domain gets its certificate (and so its activation check) only after the TXT
 record was seen.
 
 **Before upgrading, add one TXT record per active domain.** After the upgrade
-each active domain is looked up again (hourly until the record is found). One
+each active domain is looked up again (hourly, so a record removed later is noticed too). One
 without the record keeps working for 7 days, then goes back to *pending* with
 an ops alert (`domain.unverified`); it is never deleted, and it becomes active
 again as soon as the record exists.
