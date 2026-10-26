@@ -52,6 +52,7 @@ func TestMandateEnrollmentSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	connectortest.CheckAllowed(t, c, res.NextAction)
 	var cust map[string]any
 	_ = json.Unmarshal(f.bodies["POST /api/v1/customers"], &cust)
 	if cust["name"] != "Asha" || cust["email"] != "asha@example.com" || cust["phone"] != "9876543210" || cust["phone_country_code"] != "IN" {

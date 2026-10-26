@@ -5,8 +5,11 @@
 // It wraps the built-in Razorpay connector, but any connector.Connector
 // works: replace the New call in build with your own connector's constructor.
 // Paymux side: create a provider account of connector "remote" with the
-// config {"base_url": "https://this-service:8090", "secret": "<REMOTE_SECRET>"}
+// config {"base_url": "https://this-service:8090", "secret": "<REMOTE_SECRET>",
+// "checkout_hosts": {"script": ["https://checkout.razorpay.com"]}}
 // (add "allow_insecure": true to use http://127.0.0.1:8090 in local development).
+// checkout_hosts is required: Paymux sends the customer only to the hosts the
+// account declares, so list the origins your connector's checkouts use.
 //
 // Configuration (environment):
 //

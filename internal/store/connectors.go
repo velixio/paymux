@@ -49,6 +49,9 @@ type Domain struct {
 	ID, OrgID, AppID, Host, Status, Token, LastError string
 	IsPrimary                                        bool
 	LastCheckAt, CreatedAt                           time.Time
+	// TXTVerifiedAt is when the DNS challenge was last seen; GraceStartedAt is
+	// when an active domain was first found without it. Zero when unset.
+	TXTVerifiedAt, GraceStartedAt time.Time
 }
 
 // InsertDomain inserts d. A host that exists already returns ErrConflict.
@@ -72,11 +75,11 @@ func CountDomains(ctx context.Context, q Queryer, appID string) (int, error) {
 func GetDomainByHost(ctx context.Context, q Queryer, host string) (Domain, error) {
 	var d Domain
 	var primary int
-	var checked sql.NullInt64
+	var checked, txt, grace sql.NullInt64
 	var created int64
 	err := q.QueryRowContext(ctx, `SELECT id, org_id, app_id, host, is_primary, status, token, last_check_at,
-		COALESCE(last_error,''), created_at FROM app_domains WHERE host = ?`, host).
-		Scan(&d.ID, &d.OrgID, &d.AppID, &d.Host, &primary, &d.Status, &d.Token, &checked, &d.LastError, &created)
+		COALESCE(last_error,''), created_at, txt_verified_at, grace_started_at FROM app_domains WHERE host = ?`, host).
+		Scan(&d.ID, &d.OrgID, &d.AppID, &d.Host, &primary, &d.Status, &d.Token, &checked, &d.LastError, &created, &txt, &grace)
 	if err != nil {
 		return Domain{}, notFound(err)
 	}
@@ -84,6 +87,8 @@ func GetDomainByHost(ctx context.Context, q Queryer, host string) (Domain, error
 	if checked.Valid {
 		d.LastCheckAt = fromMS(checked.Int64)
 	}
+	d.TXTVerifiedAt = fromNullMS(txt)
+	d.GraceStartedAt = fromNullMS(grace)
 	d.CreatedAt = fromMS(created)
 	return d, nil
 }
@@ -346,9 +351,41 @@ func UpdateDomainCheck(ctx context.Context, tx Tx, id, status, errText string, n
 }
 
 // ResetDomain puts a failed domain back to pending with a fresh activation
-// grace period (created_at is the start of the grace period).
+// grace period (created_at is the start of the grace period). The DNS proof
+// has to be seen again.
 func ResetDomain(ctx context.Context, tx Tx, id string, now time.Time) error {
-	_, err := tx.ExecContext(ctx, "UPDATE app_domains SET status = 'pending', last_error = NULL, created_at = ? WHERE id = ?", ms(now), id)
+	_, err := tx.ExecContext(ctx, `UPDATE app_domains SET status = 'pending', last_error = NULL, created_at = ?,
+		txt_verified_at = NULL, grace_started_at = NULL WHERE id = ?`, ms(now), id)
+	return err
+}
+
+// SetDomainTXT records the DNS challenge as seen (verified) or, with a zero
+// time, as not seen.
+func SetDomainTXT(ctx context.Context, tx Tx, id string, at time.Time) error {
+	var v any
+	if !at.IsZero() {
+		v = ms(at)
+	}
+	_, err := tx.ExecContext(ctx, "UPDATE app_domains SET txt_verified_at = ? WHERE id = ?", v, id)
+	return err
+}
+
+// SetDomainGrace records when an active domain was first found without its
+// DNS proof; a zero time clears it.
+func SetDomainGrace(ctx context.Context, tx Tx, id string, at time.Time) error {
+	var v any
+	if !at.IsZero() {
+		v = ms(at)
+	}
+	_, err := tx.ExecContext(ctx, "UPDATE app_domains SET grace_started_at = ? WHERE id = ?", v, id)
+	return err
+}
+
+// DemoteDomain puts an active domain back to pending (never deleting it) with
+// a fresh activation grace period and no DNS proof.
+func DemoteDomain(ctx context.Context, tx Tx, id, errText string, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `UPDATE app_domains SET status = 'pending', last_error = ?, last_check_at = ?, created_at = ?,
+		txt_verified_at = NULL, grace_started_at = NULL WHERE id = ?`, nullIfEmpty(errText), ms(now), ms(now), id)
 	return err
 }
 

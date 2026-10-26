@@ -57,6 +57,9 @@ type Options struct {
 	// when a renewal payment changed, and handles returns from subscription
 	// and mandate checkouts (internal/subscriptions implements it).
 	Subs SubscriptionSink
+	// Alerts, when set, is told when a connector answers a checkout with a URL
+	// outside the hosts it declared.
+	Alerts connectors.Alerter
 }
 
 // ErrUnknownObject is wrapped by a SubscriptionSink when a notification names
@@ -146,6 +149,9 @@ type Started struct {
 	AccountID string
 	Connector string
 	Action    connector.NextAction
+	// Hosts are what the account's connector declared (connector.HostsOf): the
+	// hosted page's policy allows them and nothing else.
+	Hosts connector.CheckoutHosts
 }
 
 // StartCheckout routes the payment, creates an attempt on the first routed
@@ -236,7 +242,7 @@ func (s *Service) startCheckout(ctx context.Context, paymentID string, fresh boo
 			}
 		}
 		att.ProviderOrderID = res.ProviderOrderID
-		return Started{Attempt: att, AccountID: pa.ID, Connector: pa.Connector, Action: res.NextAction}, nil
+		return Started{Attempt: att, AccountID: pa.ID, Connector: pa.Connector, Action: res.NextAction, Hosts: s.hostsOf(ctx, pa.ID)}, nil
 	}
 	if prev != nil {
 		s.failAttempt(ctx, *prev, lastErr)
@@ -257,11 +263,30 @@ func (s *Service) reusable(ctx context.Context, paymentID string, accounts []sto
 		return Started{}, false
 	}
 	for _, pa := range accounts {
-		if pa.ID == a.ProviderAccountID {
-			return Started{Attempt: a, AccountID: pa.ID, Connector: pa.Connector, Action: action}, true
+		if pa.ID != a.ProviderAccountID {
+			continue
 		}
+		// The action was checked when it was made, but the account's hosts may
+		// have changed since (or it predates the check): it is shown again only
+		// if the connector as it is now still declares it. Otherwise a fresh
+		// checkout is made, which is checked like any other.
+		live, err := s.o.Conns.Get(ctx, pa.ID)
+		if err != nil || connectors.CheckNextAction(ctx, s.o.Logger, s.o.Alerts, pa.ID, live.Connector, action) != nil {
+			return Started{}, false
+		}
+		return Started{Attempt: a, AccountID: pa.ID, Connector: pa.Connector, Action: action, Hosts: connector.HostsOf(live.Connector)}, true
 	}
 	return Started{}, false
+}
+
+// hostsOf returns the checkout hosts of an account's connector; an account
+// that cannot be built declares none, so its page allows no provider host.
+func (s *Service) hostsOf(ctx context.Context, accountID string) connector.CheckoutHosts {
+	live, err := s.o.Conns.Get(ctx, accountID)
+	if err != nil {
+		return connector.CheckoutHosts{}
+	}
+	return connector.HostsOf(live.Connector)
 }
 
 // noteAttempt tells the log scope of the request or job which payment and
@@ -290,6 +315,10 @@ func (s *Service) createCheckout(ctx context.Context, pa store.ProviderAccount, 
 	}
 	if !res.NextAction.Valid() {
 		return connector.CheckoutResult{}, fmt.Errorf("connector %s returned an invalid next action", pa.Connector)
+	}
+	// A refusal is an ordinary checkout error: routing goes on with the next account.
+	if err := connectors.CheckNextAction(ctx, s.o.Logger, s.o.Alerts, pa.ID, live.Connector, res.NextAction); err != nil {
+		return connector.CheckoutResult{}, err
 	}
 	return res, nil
 }

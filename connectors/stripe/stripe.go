@@ -44,10 +44,12 @@ const configSchema = `{
 }`
 
 var info = connector.Info{
-	Version:      "0.1.0",
-	DisplayName:  "Stripe",
-	Capabilities: []connector.Capability{connector.CapRefund, connector.CapList, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapSettle, connector.CapSubscriptionManager},
-	ConfigSchema: json.RawMessage(configSchema),
+	Version:     "0.1.0",
+	DisplayName: "Stripe",
+	// Checkout is Stripe's hosted page; the hub redirects the buyer to nothing else.
+	CheckoutHosts: &connector.CheckoutHosts{Redirect: []string{"https://checkout.stripe.com"}},
+	Capabilities:  []connector.Capability{connector.CapRefund, connector.CapList, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapSettle, connector.CapSubscriptionManager},
+	ConfigSchema:  json.RawMessage(configSchema),
 	// A common subset; Stripe supports many more. An account narrows it.
 	Currencies: []string{"USD", "EUR", "GBP", "INR", "AUD", "CAD", "SGD", "HKD", "JPY", "CHF", "SEK", "NOK", "DKK", "NZD", "AED", "BRL", "MXN", "PLN", "CZK", "KRW", "MYR", "THB"},
 	// TODO(spec): the methods depend on the account's Checkout settings.

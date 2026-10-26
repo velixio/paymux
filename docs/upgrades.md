@@ -51,6 +51,41 @@ know until you restart them. Migrations are written to be additive for that
 reason: they add columns and tables and avoid renaming or dropping what the
 previous release reads.
 
+## Release notes that need action
+
+- **Remote connector accounts must declare `checkout_hosts`.** The hub now
+  refuses a checkout whose script, form or redirect URL is not on a host the
+  connector declared (audit B-7a). The built-in connectors declare theirs; an
+  account of the `remote` connector declares them in its config, and the config
+  is refused without them. A remote account stored without `checkout_hosts`
+  cannot be built after the upgrade, so everything that needs the connector
+  fails for it, not only checkout: webhook verification, provider-refund
+  handling, reconciliation and the dashboard's connection test. **Add the field
+  right after upgrading** (dashboard, provider account, config; saving the
+  config rebuilds the account), for example
+  `"checkout_hosts": {"redirect": ["https://pay.your-provider.com"]}` for a
+  service that redirects, or `{"script": ["https://sdk.your-provider.com"]}`
+  for one that opens an SDK. See "Remote connectors" in `docs/connectors.md`.
+  Checkouts already stored on open payments and subscriptions are checked again
+  when they are shown: one outside the declared hosts is not shown (a payment
+  gets a fresh checkout, a subscription page answers an error until the hosts
+  are fixed).
+  A connector compiled into your own build (framework mode) with no
+  `CheckoutHosts` can no longer send the customer off the site; add the hosts
+  to its `Info`.
+
+- **The hosted-page Content-Security-Policy is enforced.** It was report-only.
+  A script, frame, connection, image or form post to a host that is not in the
+  connector account's `CheckoutHosts` (built-in connectors: their `Info`;
+  remote connectors: the account's `checkout_hosts`; a custom connector in your
+  own build: its `Info`) is now blocked by the browser, and the action's own
+  script and form URLs are no longer allowed on top. Before upgrading, check
+  that each custom or remote connector lists every host its checkout loads
+  (watch `paymux_csp_violations_total` and the `csp: violation reported` log
+  line on a release that still had the report-only header, or test a checkout
+  in a browser with the console open). Violations are reported to
+  `/csp-report` on the same host.
+
 ## Upgrades that can refuse to start
 
 A few migrations add a uniqueness rule that data from an earlier release could
@@ -104,6 +139,28 @@ No migration. `PAYMUX_CHECKOUT_URL` is optional and unset by default, so an upgr
 4. New `checkout_url`, payment-link, invoice and subscription URLs, emails and provider return URLs use the new host. Return URLs are built per payment, so providers that take the return URL from each request need nothing. If you registered a fixed return, redirect or allowed domain at a provider (Razorpay, PayU, Zoho Payments, Whop dashboards), add the new host there; the old one keeps working through the redirect meanwhile.
 5. Webhook URLs (`/hooks/...`) do not change: they stay on `PAYMUX_BASE_URL`. Do not move them.
 6. If your reverse proxy restricts paths per host, allow the customer paths on the new host only and keep dashboard, API and `/hooks` on the base host.
+
+## Release note: custom domains need a DNS TXT record
+
+Migration 0035 adds two nullable columns to `app_domains`; nothing can fail.
+What changes is how a custom domain is proven. Fetching
+`https://<host>/.well-known/paymux/<token>` is no longer enough, because a
+hostname whose DNS already points at the hub serves that token itself. A domain
+now also needs a DNS TXT record:
+
+| Name | Value |
+|------|-------|
+| `_paymux-challenge.<host>` | `paymux-verify=<token>` |
+
+The app's *Domains* tab shows the exact name and value per domain. A pending
+domain gets its certificate (and so its activation check) only after the TXT
+record was seen.
+
+**Before upgrading, add one TXT record per active domain.** After the upgrade
+each active domain is looked up again (hourly, so a record removed later is noticed too). One
+without the record keeps working for 7 days, then goes back to *pending* with
+an ops alert (`domain.unverified`); it is never deleted, and it becomes active
+again as soon as the record exists.
 
 ## Updating from the dashboard
 

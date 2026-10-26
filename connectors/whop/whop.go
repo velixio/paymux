@@ -52,10 +52,12 @@ const configSchema = `{
 }`
 
 var info = connector.Info{
-	Version:      "0.1.0",
-	DisplayName:  "Whop",
-	Capabilities: []connector.Capability{connector.CapRefund, connector.CapSubscriptionManager, connector.CapDisputeRead, connector.CapDisputeRespond},
-	ConfigSchema: json.RawMessage(configSchema),
+	Version:     "0.1.0",
+	DisplayName: "Whop",
+	// Checkout is the purchase page on whop.com.
+	CheckoutHosts: &connector.CheckoutHosts{Redirect: []string{"https://whop.com"}},
+	Capabilities:  []connector.Capability{connector.CapRefund, connector.CapSubscriptionManager, connector.CapDisputeRead, connector.CapDisputeRespond},
+	ConfigSchema:  json.RawMessage(configSchema),
 	// Two-decimal currencies only; Whop settles in the organisation currency,
 	// so the core records the FX separately.
 	Currencies: []string{"USD", "EUR", "GBP", "CAD", "AUD", "NZD", "SGD", "HKD", "CHF", "SEK", "NOK", "DKK", "PLN",

@@ -44,7 +44,9 @@ func TestDomainsTab(t *testing.T) {
 
 		body = e.pageOK(admin, page+"?tab=domains")
 		has(t, body, "pay.alpha.example", "checkout.alpha.example", "pending", "primary",
-			"https://pay.alpha.example/.well-known/paymux/"+doms[0].Token, "https://checkout.alpha.example/.well-known/paymux/"+doms[1].Token)
+			"https://pay.alpha.example/.well-known/paymux/"+doms[0].Token, "https://checkout.alpha.example/.well-known/paymux/"+doms[1].Token,
+			"_paymux-challenge.pay.alpha.example", "paymux-verify="+doms[0].Token,
+			"_paymux-challenge.checkout.alpha.example", "paymux-verify="+doms[1].Token)
 		// the whitelist reminder, per provider and per domain
 		for _, provider := range []string{"Razorpay", "PayU", "Zoho", "Whop"} {
 			has(t, body, provider)

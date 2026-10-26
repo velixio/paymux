@@ -306,7 +306,7 @@ func (a *App) Start(ctx context.Context) error {
 	// and returns reach the engine through the payment flow.
 	subCSRF := sha256.Sum256(append([]byte("paymux-sub-csrf-key|"), a.cfg.MasterKey...))
 	subs := subscriptions.New(subscriptions.Options{DB: db, Core: svc, Settings: set, Jobs: q, Emitter: emitter, CSRFKey: subCSRF[:],
-		BaseURL: customerURL, Mailer: notify.New(a.cfg), Logger: a.log,
+		BaseURL: customerURL, Mailer: notify.New(a.cfg), Logger: a.log, Alerts: alerts,
 		Connectors: subscriptions.ConnectorsFunc(func(ctx context.Context, id string) (connector.Connector, error) {
 			live, err := conns.Get(ctx, id)
 			return live.Connector, err
@@ -318,7 +318,7 @@ func (a *App) Start(ctx context.Context) error {
 			return live.Connector, err
 		})})
 	payoutSvc.RegisterJobs(q)
-	flow := checkout.New(checkout.Options{DB: db, Core: svc, Conns: conns, Routing: rt, Breaker: breaker, Logger: a.log, Disputes: disp, Subs: subs, Payouts: payoutSvc})
+	flow := checkout.New(checkout.Options{DB: db, Core: svc, Conns: conns, Routing: rt, Breaker: breaker, Logger: a.log, Disputes: disp, Subs: subs, Payouts: payoutSvc, Alerts: alerts})
 	svc.SetAttemptSyncer(flow) // expiring a payment asks the provider first
 	if err := flow.Register(q); err != nil {
 		return err
@@ -431,12 +431,17 @@ func (a *App) Start(ctx context.Context) error {
 	pay.Register(srv)
 	pay.RegisterSim(srv) // base host only: custom domains serve no /sim
 	srv.HandleFunc("POST /hooks/{provider_account_id}", hooks.ServeHTTP)
+	cspViolations := reg.Counter("paymux_csp_violations_total", "Content-Security-Policy violations reported by browsers on the hosted pages.", "directive")
+	cspReports := web.NewCSPReports(web.CSPReportOptions{Logger: a.log, Count: func(d string) { cspViolations.Inc(d) },
+		ClientIP: func(r *http.Request) string { return clientip.From(r, a.cfg.TrustedProxies) }})
+	srv.HandleFunc("POST "+web.CSPReportPath, cspReports.ServeHTTP)
 
 	// Custom domains serve the customer routes only; everything else stays on
 	// the base host.
 	customerRoutes := func() *http.ServeMux {
 		m := http.NewServeMux()
 		pay.Register(paypage.StdMux(m))
+		m.Handle("POST "+web.CSPReportPath, cspReports)
 		m.HandleFunc("GET /i/{id}", inv.ServeHosted)
 		m.HandleFunc("GET /l/{slug}", linkPages.Show)
 		m.HandleFunc("POST /l/{slug}", linkPages.Submit)
@@ -448,17 +453,21 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	customerMux := customerRoutes()
 	baseHost := a.cfg.BaseURL.Host
-	router := &domains.Router{BaseHost: baseHost, Lookup: svc, Base: srv.Handler(), Customer: customerMux}
+	// A per-address ceiling on the customer routes, on the base host, on custom
+	// domains and on the checkout host alike.
+	custLimit := server.NewCustomerLimit(a.cfg.CustomerRate, a.cfg.TrustedProxies)
+	baseHandler := custLimit.Wrap(srv.Handler())
+	router := &domains.Router{BaseHost: baseHost, Lookup: svc, Base: baseHandler, Customer: custLimit.Wrap(customerMux)}
 	tlsAllow := domains.TLSAllowOptions{BaseHost: baseHost, Lookup: svc}
 	if co := a.cfg.CheckoutURL; co != nil {
 		// PAYMUX_CHECKOUT_URL: the customer pages (and the simulator's) get a host
 		// of their own that serves nothing else, and the base host redirects them.
 		checkoutMux := customerRoutes()
 		pay.RegisterSim(paypage.StdMux(checkoutMux))
-		router.CheckoutHost, router.CheckoutOrigin, router.Checkout = co.Host, strings.TrimRight(co.String(), "/"), checkoutMux
+		router.CheckoutHost, router.CheckoutOrigin, router.Checkout = co.Host, strings.TrimRight(co.String(), "/"), custLimit.Wrap(checkoutMux)
 		tlsAllow.ExtraHosts = []string{co.Host}
 	}
-	public := hostRouter(router, srv.Handler())
+	public := hostRouter(router, baseHandler)
 	internalMux := http.NewServeMux()
 	internalMux.Handle("GET /internal/tls-allow", domains.NewTLSAllow(tlsAllow))
 	internalMux.Handle("/", srv.InternalHandler())

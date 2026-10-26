@@ -364,6 +364,7 @@ func Run(t *testing.T, factory connector.Factory, fx Fixtures) {
 		if !res.NextAction.Valid() {
 			t.Fatalf("invalid NextAction: %+v", res.NextAction)
 		}
+		CheckAllowed(t, c, res.NextAction)
 		if fx.CheckNextAction != nil {
 			fx.CheckNextAction(t, res.NextAction)
 		}
@@ -449,5 +450,20 @@ func forbidKinds(t *testing.T, ty reflect.Type, seen map[reflect.Type]bool) {
 		for i := 0; i < ty.NumField(); i++ {
 			forbidKinds(t, ty.Field(i).Type, seen)
 		}
+	}
+}
+
+// CheckAllowed fails the test unless the hub would let the connector send the
+// customer to na: the URL is on the hosts the connector declares (CheckoutHoster,
+// else Info.CheckoutHosts). Run checks CreateCheckout with it; a connector test
+// can check its subscription and mandate checkouts too.
+func CheckAllowed(t *testing.T, c any, na connector.NextAction) {
+	t.Helper()
+	cc, ok := c.(connector.Connector)
+	if !ok {
+		t.Fatalf("%T is not a connector", c)
+	}
+	if err := na.Allowed(connector.HostsOf(cc)); err != nil {
+		t.Errorf("the hub would refuse this checkout: %v", err)
 	}
 }

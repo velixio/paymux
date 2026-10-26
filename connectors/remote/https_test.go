@@ -13,7 +13,7 @@ func TestRemoteRequiresHTTPS(t *testing.T) {
 	deps := connectortest.NewDeps(nil, now0)
 	deps.HTTP = &http.Client{Transport: refuse{}} // never reaches the network
 	try := func(url string, insecure bool) error {
-		cfg := fmt.Sprintf(`{"base_url":%q,"secret":%q,"allow_insecure":%t}`, url, testSecret, insecure)
+		cfg := fmt.Sprintf(`{"base_url":%q,"secret":%q,"allow_insecure":%t,%s}`, url, testSecret, insecure, testHostsJSON)
 		_, err := New([]byte(cfg), deps)
 		return err
 	}

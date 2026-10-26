@@ -53,14 +53,31 @@ type MandateLimit struct {
 // checkout runs, for both its test and live endpoints. They feed the
 // Content-Security-Policy of /pay, /l and /s. Leave it nil for a connector
 // that only redirects: its page then stays on the hub's own origin. The
-// script and form URLs of the NextAction itself are allowed without being
-// listed here.
+// script and form URLs of the NextAction itself are allowed on the page's
+// policy without being listed here, but NextAction.Allowed still requires the
+// host in Script, Form or Redirect: the hub refuses a checkout that sends the
+// buyer anywhere else.
 type CheckoutHosts struct {
 	Script  []string `json:"script,omitempty"`  // script-src: the provider SDK
 	Frame   []string `json:"frame,omitempty"`   // frame-src: the checkout frames the SDK opens
 	Form    []string `json:"form,omitempty"`    // form-action: where a form_post goes
 	Connect []string `json:"connect,omitempty"` // connect-src: the SDK's own API calls
 	Img     []string `json:"img,omitempty"`     // img-src: logos and icons the SDK shows
+	// Redirect lists where a redirect action may send the buyer (the provider's
+	// hosted checkout page). It is not part of the page policy: a redirect
+	// leaves the page.
+	Redirect []string `json:"redirect,omitempty"`
+	// Self is the hub's own origin (http allowed), for a built-in connector whose
+	// checkout is a page of the hub (the simulator). It is never read from a
+	// remote connector or an account config.
+	Self string `json:"-"`
+}
+
+// CheckoutHoster is implemented by a connector whose checkout hosts depend on
+// its account (a remote connector's config, Zoho's hosted checkout URL). The
+// hub then checks next actions against it instead of Info.CheckoutHosts.
+type CheckoutHoster interface {
+	CheckoutHosts() CheckoutHosts
 }
 
 // Info describes a connector.

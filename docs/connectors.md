@@ -158,11 +158,30 @@ Paymux must respect:
 * `CheckoutHosts`: the https origins (`https://host`, or `https://*.host`) that
   an `sdk` or `form_post` checkout needs on the hosted payment page, by CSP
   directive (`Script`, `Frame`, `Form`, `Connect`, `Img`), for both the test
-  and the live endpoints. The page sends a nonce-based
-  `Content-Security-Policy-Report-Only` built from them; the script and form
-  URLs of the `NextAction` itself are allowed without being listed. Leave it
-  nil for a connector that only redirects. Entries that are not plain https
+  and the live endpoints. The page sends a nonce-based,
+  **enforced** `Content-Security-Policy` built from the hosts of the connector
+  account (`connector.HostsOf`) and from nothing else: the script and form URLs
+  of the `NextAction` are allowed because they are declared here, so a host that
+  is missing from the list is blocked by the browser. Leave it nil for a
+  connector that only redirects. Entries that are not plain https
   origins are dropped.
+  It is also the allow-list of where the connector may send the customer: the
+  hub refuses a checkout (payment, subscription or mandate) whose `sdk` script
+  URL is not in `Script`, whose `form_post` URL is not in `Form`, or whose
+  `redirect` URL is not in `Redirect` (add the provider's hosted checkout host
+  there; a connector that only redirects sets just `Redirect`). The URL must be
+  https and match an entry exactly (host and port); `https://*.host` matches
+  one or more labels in front of `host`, never `host` itself. A refused
+  checkout is an ordinary checkout error, so routing falls back to the next
+  account; it is logged with the URL and raises a `provider.checkout_host_refused`
+  ops alert naming the account. A connector whose hosts depend on its account
+  (Zoho's operator-set hosted checkout URL) implements
+  `connector.CheckoutHoster` and returns them per account; the hub uses that
+  instead of `Info.CheckoutHosts`. The simulator is the one connector that
+  redirects to the hub itself: it reports the hub's own origin (`Self`, http
+  allowed, redirect only) through `CheckoutHoster`; `Self` is not part of the
+  JSON form, so a remote connector cannot claim it. `connectortest.Run` and
+  `connectortest.CheckAllowed` check a connector's checkout against its hosts.
 * `MerchantOfRecord`: true when the provider sells to the customer (Whop). No
   GST invoice is issued for its payments.
 * `SubscriptionModes`: `provider_managed` (the provider bills and retries) and/or
@@ -416,8 +435,23 @@ connector can be written in any language, deployed and upgraded on its own.
 **Paymux side.** Create a provider account of connector `remote` with
 
 ```json
-{"base_url": "https://connector.example.com/v1", "secret": "whsec_<base64>"}
+{"base_url": "https://connector.example.com/v1", "secret": "whsec_<base64>",
+ "checkout_hosts": {"redirect": ["https://pay.connector.example.com"]}}
 ```
+
+**Checkout hosts.** `checkout_hosts` is required (the account is refused on
+create and on update without it): the https origins the service may send the
+customer to, with the same lists as `connector.CheckoutHosts` (`script` for
+`sdk` checkouts, `form` for `form_post`, `redirect`; `frame`, `connect` and `img`
+for what the provider's script loads). The hosted page's enforced policy is
+built from these lists alone, so a script, frame or form post on any other host
+is blocked. Every entry must be `https://host[:port]`
+or `https://*.host[:port]`, and at least one origin must be listed. The service
+speaks for the account, so the hub does not trust the URLs it returns: a next
+action (from `create_checkout`, `create_subscription_checkout` or
+`create_mandate_checkout`) outside these hosts is refused and alerted, and the
+payment falls back to another account. The service's own `Info.checkout_hosts`
+is ignored for this check.
 
 **Discovery.** `GET {base_url}/info` returns the connector's `Info` (JSON of
 `connector.Info`). The remote decides the optional capabilities: the remote
