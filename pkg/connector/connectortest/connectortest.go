@@ -457,9 +457,13 @@ func forbidKinds(t *testing.T, ty reflect.Type, seen map[reflect.Type]bool) {
 // customer to na: the URL is on the hosts the connector declares (CheckoutHoster,
 // else Info.CheckoutHosts). Run checks CreateCheckout with it; a connector test
 // can check its subscription and mandate checkouts too.
-func CheckAllowed(t *testing.T, c connector.Connector, na connector.NextAction) {
+func CheckAllowed(t *testing.T, c any, na connector.NextAction) {
 	t.Helper()
-	if err := na.Allowed(connector.HostsOf(c)); err != nil {
+	cc, ok := c.(connector.Connector)
+	if !ok {
+		t.Fatalf("%T is not a connector", c)
+	}
+	if err := na.Allowed(connector.HostsOf(cc)); err != nil {
 		t.Errorf("the hub would refuse this checkout: %v", err)
 	}
 }

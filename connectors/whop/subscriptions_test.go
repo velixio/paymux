@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/paymux/paymux/pkg/connector"
+	"github.com/paymux/paymux/pkg/connector/connectortest"
 )
 
 func subMgr(t *testing.T, f *fake) connector.SubscriptionManager {
@@ -37,6 +38,7 @@ func TestCreateSubscriptionCheckoutBuildsARenewalPlan(t *testing.T) {
 	if res.ProviderOrderID != "ch_1" || res.NextAction.Kind != connector.ActionRedirect || res.NextAction.URL != "https://whop.com/checkout/ch_1" {
 		t.Fatalf("res = %+v", res)
 	}
+	connectortest.CheckAllowed(t, m, res.NextAction)
 	var body struct {
 		Plan struct {
 			CompanyID, PlanType, Currency string

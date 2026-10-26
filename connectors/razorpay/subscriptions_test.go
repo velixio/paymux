@@ -37,6 +37,7 @@ func TestCreateSubscriptionCheckoutCachesPlans(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	connectortest.CheckAllowed(t, m, res.NextAction)
 	if res.ProviderOrderID != "sub_Nx5" || res.NextAction.Kind != connector.ActionSDK || res.NextAction.ScriptURL != checkoutScript {
 		t.Fatalf("res = %+v", res)
 	}

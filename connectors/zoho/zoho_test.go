@@ -269,6 +269,7 @@ func TestCheckoutHostedRedirect(t *testing.T) {
 	if err != nil || res.NextAction.Kind != connector.ActionRedirect || res.NextAction.URL != "https://pay.zoho.example.com/checkout?payments_session_id=ps_1" {
 		t.Fatalf("res=%+v err=%v", res, err)
 	}
+	connectortest.CheckAllowed(t, c, res.NextAction)
 	for _, r := range []connector.CheckoutRequest{{ProviderRef: "r", Amount: 100, Currency: "USD"}, {ProviderRef: "r", Currency: "INR"}} {
 		if _, err := c.CreateCheckout(context.Background(), r); err == nil {
 			t.Errorf("accepted %+v", r)
