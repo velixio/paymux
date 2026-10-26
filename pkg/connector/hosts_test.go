@@ -32,7 +32,9 @@ func TestNextActionAllowed(t *testing.T) {
 		Form:     []string{"https://pay.example.com:8443"},
 		Redirect: []string{"https://*.example.org", "https://exact.example.net"},
 	}
-	redirect := func(u string) connector.NextAction { return connector.NextAction{Kind: connector.ActionRedirect, URL: u} }
+	redirect := func(u string) connector.NextAction {
+		return connector.NextAction{Kind: connector.ActionRedirect, URL: u}
+	}
 	form := func(u string) connector.NextAction {
 		return connector.NextAction{Kind: connector.ActionFormPost, URL: u, Fields: map[string]string{"a": "b"}}
 	}
