@@ -105,6 +105,11 @@ func (r *razorpay) fetchOrder(ctx context.Context, orderID, providerRef string) 
 	if err := r.api.do(ctx, "GET", "/v1/orders/"+url.PathEscape(orderID), nil, nil, &o, nil); err != nil {
 		return connector.PaymentSnapshot{}, err
 	}
+	// The order must be the one made for this reference (its receipt), or the
+	// caller's reference would be stamped onto someone else's payment.
+	if providerRef != "" && o.Receipt != "" && o.Receipt != providerRef {
+		return connector.PaymentSnapshot{}, connector.ErrNotFound
+	}
 	var c collection[paymentEntity]
 	if err := r.api.do(ctx, "GET", "/v1/orders/"+url.PathEscape(orderID)+"/payments", nil, nil, &c, nil); err != nil {
 		return connector.PaymentSnapshot{}, err

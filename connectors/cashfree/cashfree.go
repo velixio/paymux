@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/paymux/paymux/pkg/connector"
@@ -132,7 +133,12 @@ func (a *amount) UnmarshalJSON(b []byte) error {
 	if s == "null" {
 		s = ""
 	}
-	if strings.ContainsAny(s, "eE") { // 1e2: normalise to plain decimal
+	if i := strings.IndexAny(s, "eE"); i >= 0 { // 1e2: normalise to plain decimal
+		// A huge exponent (1e999999) costs big.Rat seconds of CPU per value; no
+		// real amount needs more than a few digits of it.
+		if exp, err := strconv.Atoi(s[i+1:]); err != nil || exp > 20 || exp < -20 {
+			return fmt.Errorf("cashfree: bad amount %q", s)
+		}
 		r, ok := new(big.Rat).SetString(s)
 		if !ok {
 			return fmt.Errorf("cashfree: bad amount %q", s)
