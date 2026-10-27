@@ -376,11 +376,11 @@ Also keep an occasional offline copy: `sqlite3 /var/lib/paymux/paymux.db ".backu
 
 1. Read the release notes for migrations or setting changes.
 2. Take a backup (an extra `litestream` snapshot, `sqlite3 .backup`, or `pg_dump`).
-3. Get the new binary and check it. A release has one archive per platform (`paymux_<version>_<os>_<arch>.tar.gz`, linux and darwin, amd64 and arm64), a `SHA256SUMS` file and, when it was signed, `SHA256SUMS.sig` and `SHA256SUMS.pem`:
+3. Get the new binary and check it. A release has one archive per platform (`paymux_<version>_<os>_<arch>.tar.gz`, linux and darwin, amd64 and arm64), a `SHA256SUMS` file and, when it was signed, the Sigstore bundle `SHA256SUMS.sigstore.json` (v0.1.0: `SHA256SUMS.sig` and `SHA256SUMS.pem`, verified with `--signature SHA256SUMS.sig --certificate SHA256SUMS.pem`):
 
    ```sh
    sha256sum -c --ignore-missing SHA256SUMS
-   cosign verify-blob --certificate SHA256SUMS.pem --signature SHA256SUMS.sig \
+   cosign verify-blob --bundle SHA256SUMS.sigstore.json --new-bundle-format \
      --certificate-identity-regexp '^https://github.com/OWNER/REPO/' \
      --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
    tar -xzf paymux_v1.2.3_linux_amd64.tar.gz paymux && ./paymux version

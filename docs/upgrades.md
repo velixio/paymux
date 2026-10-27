@@ -129,6 +129,21 @@ are strict and there is no repair step. If one fails, fix the rows it names
   (`ledger_entries_no_update` and `ledger_entries_no_delete` on SQLite,
   `ledger_entries_no_change` on PostgreSQL) first and recreate them.
 
+## Release note: releases are signed with a Sigstore bundle
+
+No migration. The release workflow installs cosign v3, which writes the
+signature over `SHA256SUMS` as one Sigstore bundle, `SHA256SUMS.sigstore.json`,
+instead of `SHA256SUMS.sig` and `SHA256SUMS.pem`. `paymux update`, the
+dashboard's update and `install.sh` verify the bundle when a release has one,
+and the old pair otherwise, so v0.1.0 still verifies.
+
+- **Upgrade cosign** on the machines that verify releases to v3 (or v2.6 or
+  later). An older cosign cannot read the bundle, and the update then refuses
+  to install.
+- **Verifying by hand** is now
+  `cosign verify-blob --bundle SHA256SUMS.sigstore.json --new-bundle-format`
+  with the same `--certificate-identity-regexp` and `--certificate-oidc-issuer`.
+
 ## Release note: the customer pages get their own host
 
 No migration. `PAYMUX_CHECKOUT_URL` is optional and unset by default, so an upgrade changes nothing until you set it. A production hub without it logs a startup warning. Setting it moves every customer-facing URL to the new host:
@@ -217,8 +232,10 @@ host, if you hit rate limits) and then:
 2. checks its SHA-256 against the release's `SHA256SUMS` and refuses to install
    anything it cannot verify (no `SHA256SUMS`, no entry for the file, or a
    different hash);
-3. verifies the cosign signature of `SHA256SUMS` (`SHA256SUMS.sig` with the
-   certificate `SHA256SUMS.pem`) with `cosign`, which must be installed. By
+3. verifies the cosign signature of `SHA256SUMS` with `cosign`, which must be
+   installed: the Sigstore bundle `SHA256SUMS.sigstore.json` when the release
+   has one, otherwise (v0.1.0) `SHA256SUMS.sig` with the certificate
+   `SHA256SUMS.pem`. A bundle needs cosign v3, or v2.6 or later. By
    default the signer has to be the release workflow of the repository on a
    version tag (`https://github.com/<owner>/<name>/.github/workflows/release.yml@refs/tags/v…`,
    issued by `https://token.actions.githubusercontent.com`); `--repo` changes
@@ -243,8 +260,9 @@ update elsewhere with `--dest` and move the file.
 
 Release layout it expects, per release tag `vX.Y.Z`: one `.tar.gz` per platform
 named `paymux_X.Y.Z_<os>_<arch>.tar.gz` holding a file called `paymux`, and a
-`SHA256SUMS` file in `sha256sum` format covering them; `SHA256SUMS.sig` (and
-`SHA256SUMS.pem`) are optional.
+`SHA256SUMS` file in `sha256sum` format covering them; the signature,
+`SHA256SUMS.sigstore.json` (or `SHA256SUMS.sig` with `SHA256SUMS.pem`), is
+optional.
 
 ## How the guarantee is tested
 
