@@ -95,9 +95,14 @@ main() {
   say "Downloading $ARCHIVE${VERSION:+ ($VERSION)} ..."
   fetch "$URL_DIR/$ARCHIVE" "$TMP/$ARCHIVE" || die "could not download $URL_DIR/$ARCHIVE"
   fetch "$URL_DIR/SHA256SUMS" "$TMP/SHA256SUMS" || die "could not download $URL_DIR/SHA256SUMS"
-  SIGNED=1
-  fetch "$URL_DIR/SHA256SUMS.sig" "$TMP/SHA256SUMS.sig" 2>/dev/null || SIGNED=0
-  fetch "$URL_DIR/SHA256SUMS.pem" "$TMP/SHA256SUMS.pem" 2>/dev/null || SIGNED=0
+  # A release is signed by a Sigstore bundle (cosign v3), or, before that
+  # (v0.1.0), by SHA256SUMS.sig with its certificate SHA256SUMS.pem.
+  SIGNED=bundle
+  if ! fetch "$URL_DIR/SHA256SUMS.sigstore.json" "$TMP/SHA256SUMS.sigstore.json" 2>/dev/null; then
+    SIGNED=pair
+    fetch "$URL_DIR/SHA256SUMS.sig" "$TMP/SHA256SUMS.sig" 2>/dev/null || SIGNED=none
+    fetch "$URL_DIR/SHA256SUMS.pem" "$TMP/SHA256SUMS.pem" 2>/dev/null || SIGNED=none
+  fi
 
   # ---- checksum (always) ----
 
@@ -111,18 +116,24 @@ main() {
 
   REPO_RE="$(printf '%s' "$REPO" | sed 's/[][\.*^$+?(){}|]/\\&/g')"
   IDENTITY_RE="^https://github\\.com/${REPO_RE}/\\.github/workflows/release\\.yml@refs/tags/v[^/]+\$"
-  VERIFY_HELP="to verify it yourself: cosign verify-blob --certificate SHA256SUMS.pem --signature SHA256SUMS.sig --certificate-identity-regexp '$IDENTITY_RE' --certificate-oidc-issuer $OIDC_ISSUER SHA256SUMS"
+  if [ "$SIGNED" = bundle ]; then
+    set -- --bundle "$TMP/SHA256SUMS.sigstore.json" --new-bundle-format
+    VERIFY_HELP="to verify it yourself: cosign verify-blob --bundle SHA256SUMS.sigstore.json --new-bundle-format --certificate-identity-regexp '$IDENTITY_RE' --certificate-oidc-issuer $OIDC_ISSUER SHA256SUMS"
+  else
+    set -- --signature "$TMP/SHA256SUMS.sig" --certificate "$TMP/SHA256SUMS.pem"
+    VERIFY_HELP="to verify it yourself: cosign verify-blob --certificate SHA256SUMS.pem --signature SHA256SUMS.sig --certificate-identity-regexp '$IDENTITY_RE' --certificate-oidc-issuer $OIDC_ISSUER SHA256SUMS"
+  fi
   require="${PAYMUX_REQUIRE_SIGNATURE:-}"
 
-  if [ "$SIGNED" -eq 0 ]; then
-    [ -z "$require" ] || die "this release is not signed (no SHA256SUMS.sig and SHA256SUMS.pem), and PAYMUX_REQUIRE_SIGNATURE is set; nothing was installed"
+  if [ "$SIGNED" = none ]; then
+    [ -z "$require" ] || die "this release is not signed (no SHA256SUMS.sigstore.json, nor SHA256SUMS.sig and SHA256SUMS.pem), and PAYMUX_REQUIRE_SIGNATURE is set; nothing was installed"
     warn "this release is not signed: only the checksum was verified"
   elif ! command -v "$COSIGN" >/dev/null 2>&1; then
     [ -z "$require" ] || die "cosign is not installed, so the signature cannot be verified, and PAYMUX_REQUIRE_SIGNATURE is set; install cosign (https://docs.sigstore.dev/cosign/) and run this again"
     warn "cosign is not installed: the signature was not verified, only the checksum (which comes from the same release)"
     warn "$VERIFY_HELP"
   else
-    if "$COSIGN" verify-blob --signature "$TMP/SHA256SUMS.sig" --certificate "$TMP/SHA256SUMS.pem" \
+    if "$COSIGN" verify-blob "$@" \
       --certificate-identity-regexp "$IDENTITY_RE" --certificate-oidc-issuer "$OIDC_ISSUER" "$TMP/SHA256SUMS" >"$TMP/cosign.out" 2>&1; then
       say "Signature verified with cosign."
     else

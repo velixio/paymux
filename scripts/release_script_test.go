@@ -115,8 +115,10 @@ func TestReleaseScriptBuildsChecksumsAndStampsTheVersion(t *testing.T) {
 	if !strings.Contains(text, "cosign") {
 		t.Errorf("the script should say what it did about signing:\n%s", text)
 	}
-	if _, err := os.Stat(filepath.Join(out, "SHA256SUMS.sig")); err == nil {
-		t.Error("nothing should be signed when cosign is skipped")
+	for _, f := range []string{"SHA256SUMS.sig", "SHA256SUMS.sigstore.json"} {
+		if _, err := os.Stat(filepath.Join(out, f)); err == nil {
+			t.Errorf("nothing should be signed when cosign is skipped (%s exists)", f)
+		}
 	}
 }
 
@@ -166,8 +168,8 @@ func TestReleaseScriptSignsWithCosignWhenInstalled(t *testing.T) {
 	shim := t.TempDir()
 	log := filepath.Join(shim, "calls.txt")
 	script := "#!/bin/sh\necho \"$@\" >> '" + log + "'\n" +
-		// cosign writes the files it is asked to write
-		"while [ $# -gt 0 ]; do case \"$1\" in --output-signature) echo sig > \"$2\";; --output-certificate) echo cert > \"$2\";; esac; shift; done\n"
+		// cosign writes the bundle it is asked to write
+		"while [ $# -gt 0 ]; do case \"$1\" in --bundle) echo '{}' > \"$2\";; esac; shift; done\n"
 	if err := os.WriteFile(filepath.Join(shim, "cosign"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -180,10 +182,19 @@ func TestReleaseScriptSignsWithCosignWhenInstalled(t *testing.T) {
 	if !strings.Contains(string(calls), "sign-blob") || !strings.Contains(string(calls), "SHA256SUMS") {
 		t.Fatalf("cosign was not asked to sign SHA256SUMS: %q\n%s", calls, text)
 	}
-	for _, f := range []string{"SHA256SUMS.sig", "SHA256SUMS.pem"} {
-		if _, err := os.Stat(filepath.Join(out, f)); err != nil {
-			t.Errorf("missing %s", f)
+	// cosign v3 writes one Sigstore bundle; it has no flags for a detached
+	// signature and certificate. --new-bundle-format makes cosign v2 write the
+	// same bundle.
+	for _, want := range []string{"--bundle SHA256SUMS.sigstore.json", "--new-bundle-format"} {
+		if !strings.Contains(string(calls), want) {
+			t.Errorf("cosign args lack %q: %s", want, calls)
 		}
+	}
+	if strings.Contains(string(calls), "--output-signature") || strings.Contains(string(calls), "--output-certificate") {
+		t.Errorf("cosign v3 has no --output-signature or --output-certificate: %s", calls)
+	}
+	if _, err := os.Stat(filepath.Join(out, "SHA256SUMS.sigstore.json")); err != nil {
+		t.Error("missing SHA256SUMS.sigstore.json")
 	}
 }
 

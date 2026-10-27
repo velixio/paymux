@@ -48,7 +48,7 @@ func runUpdate(ctx context.Context, args []string, lookup func(string) (string, 
 	target := fs.String("version", "", "install this release tag instead of the latest")
 	dest := fs.String("dest", "", "binary to replace (default: the running one)")
 	force := fs.Bool("force", false, "update a development build, or reinstall the same or an older release")
-	cosignKey := fs.String("cosign-key", "", "cosign public key to verify SHA256SUMS.sig with")
+	cosignKey := fs.String("cosign-key", "", "cosign public key to verify the release signature (SHA256SUMS.sigstore.json, or SHA256SUMS.sig) with")
 	cosignIdentity := fs.String("cosign-identity", "", "expected signer identity for keyless cosign verification")
 	cosignIssuer := fs.String("cosign-issuer", "", "expected OIDC issuer for keyless cosign verification")
 	skipSig := fs.Bool("insecure-skip-signature", false, "install without verifying the cosign signature (the SHA-256 check still applies)")

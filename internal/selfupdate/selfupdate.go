@@ -330,11 +330,24 @@ func SelfTest(ctx context.Context, bin, tag string) error {
 	return nil
 }
 
-// verifySignature checks SHA256SUMS.sig with cosign. The signature protects the
+// BundleAsset is the Sigstore bundle a release is signed with (cosign v3):
+// signature, certificate and transparency-log proof over SHA256SUMS in one file.
+// Releases signed before it (v0.1.0) carry SHA256SUMS.sig and SHA256SUMS.pem.
+const BundleAsset = "SHA256SUMS.sigstore.json"
+
+// signed reports whether rel carries a signature over SHA256SUMS in either form.
+func signed(rel Release) bool {
+	_, bundle := rel.Asset(BundleAsset)
+	_, sig := rel.Asset("SHA256SUMS.sig")
+	return bundle || sig
+}
+
+// verifySignature checks the signature over SHA256SUMS with cosign: the bundle
+// when the release has one, otherwise SHA256SUMS.sig. The signature protects the
 // checksum file, which in turn covers the download. It verifies against key, or
 // against the keyless identity and issuer given, or by default against the
 // release workflow of repo. Anything that stops it from verifying is an error.
-func (c *Client) verifySignature(ctx context.Context, sig Asset, rel Release, sums []byte, repo, key, identity, issuer string) (string, error) {
+func (c *Client) verifySignature(ctx context.Context, rel Release, sums []byte, repo, key, identity, issuer string) (string, error) {
 	const skipHint = "; use --insecure-skip-signature to install on the checksum alone"
 	if identity != "" && issuer == "" {
 		return "", errors.New("--cosign-identity needs --cosign-issuer; refusing to install")
@@ -343,21 +356,61 @@ func (c *Client) verifySignature(ctx context.Context, sig Asset, rel Release, su
 	if err != nil {
 		return "", errors.New("the signature of the release cannot be verified because cosign is not installed (https://docs.sigstore.dev/cosign/); refusing to install" + skipHint)
 	}
-	sigBytes, err := c.download(ctx, sig.URL, maxSmallAsset)
-	if err != nil {
-		return "", fmt.Errorf("downloading the signature: %w", err)
-	}
 	dir, err := os.MkdirTemp("", "paymux-cosign-")
 	if err != nil {
 		return "", err
 	}
 	defer os.RemoveAll(dir)
-	sumsFile, sigFile := filepath.Join(dir, "SHA256SUMS"), filepath.Join(dir, "SHA256SUMS.sig")
+	sumsFile := filepath.Join(dir, "SHA256SUMS")
 	if err := os.WriteFile(sumsFile, sums, 0o600); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(sigFile, sigBytes, 0o600); err != nil {
+	args, err := c.signatureArgs(ctx, rel, dir, repo, key, identity, issuer)
+	if err != nil {
 		return "", err
+	}
+	args = append(args, sumsFile)
+	cctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	if out, err := exec.CommandContext(cctx, cosign, args...).CombinedOutput(); err != nil {
+		return "", fmt.Errorf("the SHA256SUMS signature did not verify, nothing was installed: %v: %s (use --insecure-skip-signature only if you accept an unverified release)", err, strings.TrimSpace(string(out)))
+	}
+	return "signature verified with cosign", nil
+}
+
+// fetchTo downloads asset a into dir and returns the file's path.
+func (c *Client) fetchTo(ctx context.Context, a Asset, dir, name, what string) (string, error) {
+	b, err := c.download(ctx, a.URL, maxSmallAsset)
+	if err != nil {
+		return "", fmt.Errorf("downloading the %s: %w", what, err)
+	}
+	file := filepath.Join(dir, name)
+	return file, os.WriteFile(file, b, 0o600)
+}
+
+// signatureArgs are cosign's verify-blob arguments for rel's signature, the
+// SHA256SUMS file aside.
+func (c *Client) signatureArgs(ctx context.Context, rel Release, dir, repo, key, identity, issuer string) ([]string, error) {
+	const skipHint = "; use --insecure-skip-signature to install on the checksum alone"
+	if b, ok := rel.Asset(BundleAsset); ok {
+		// The bundle carries the certificate: only who must have signed is given.
+		file, err := c.fetchTo(ctx, b, dir, BundleAsset, "signature bundle")
+		if err != nil {
+			return nil, err
+		}
+		args := []string{"verify-blob", "--bundle", file, "--new-bundle-format"}
+		switch {
+		case key != "":
+			return append(args, "--key", key), nil
+		case identity != "":
+			return append(args, "--certificate-identity", identity, "--certificate-oidc-issuer", issuer), nil
+		}
+		return append(args, "--certificate-identity-regexp", ReleaseIdentityRegexp(repo), "--certificate-oidc-issuer", ReleaseOIDCIssuer), nil
+	}
+	sig, _ := rel.Asset("SHA256SUMS.sig")
+	sigFile, err := c.fetchTo(ctx, sig, dir, "SHA256SUMS.sig", "signature")
+	if err != nil {
+		return nil, err
 	}
 	args := []string{"verify-blob", "--signature", sigFile}
 	switch {
@@ -377,25 +430,19 @@ func (c *Client) verifySignature(ctx context.Context, sig Asset, rel Release, su
 		// The built-in identity: the release workflow of this repository, on a tag.
 		cert, ok := rel.Asset("SHA256SUMS.pem")
 		if !ok {
-			return "", errors.New("the release has a signature but no SHA256SUMS.pem certificate to check it against; refusing to install" + skipHint)
+			return nil, errors.New("the release has a signature but no SHA256SUMS.pem certificate to check it against; refusing to install" + skipHint)
 		}
 		b, err := c.download(ctx, cert.URL, maxSmallAsset)
 		if err != nil {
-			return "", fmt.Errorf("downloading the signing certificate: %w", err)
+			return nil, fmt.Errorf("downloading the signing certificate: %w", err)
 		}
 		certFile := filepath.Join(dir, "SHA256SUMS.pem")
 		if err := os.WriteFile(certFile, b, 0o600); err != nil {
-			return "", err
+			return nil, err
 		}
 		args = append(args, "--certificate", certFile, "--certificate-identity-regexp", ReleaseIdentityRegexp(repo), "--certificate-oidc-issuer", ReleaseOIDCIssuer)
 	}
-	args = append(args, sumsFile)
-	cctx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
-	if out, err := exec.CommandContext(cctx, cosign, args...).CombinedOutput(); err != nil {
-		return "", fmt.Errorf("the SHA256SUMS signature did not verify, nothing was installed: %v: %s (use --insecure-skip-signature only if you accept an unverified release)", err, strings.TrimSpace(string(out)))
-	}
-	return "signature verified with cosign", nil
+	return args, nil
 }
 
 // InstallOptions are what Install needs besides the release.
@@ -403,8 +450,8 @@ type InstallOptions struct {
 	Repo    string // owner/name, for the signer identity
 	Dest    string // the binary to replace
 	Current string // the running version, for the progress lines
-	// Signature: by default SHA256SUMS.sig is verified against the release
-	// workflow of Repo. CosignKey, or CosignIdentity with CosignIssuer, verify
+	// Signature: by default the release's bundle (or, for older releases,
+	// SHA256SUMS.sig) is verified against the release workflow of Repo. CosignKey, or CosignIdentity with CosignIssuer, verify
 	// against something else; SkipSignature installs on the checksum alone.
 	CosignKey, CosignIdentity, CosignIssuer string
 	SkipSignature                           bool
@@ -474,14 +521,13 @@ func (c *Client) Install(ctx context.Context, rel Release, o InstallOptions) (In
 	// The signature over SHA256SUMS is checked unless the caller said not to:
 	// against the key or identity given, otherwise against the release workflow
 	// of Repo. There is no fallback to the checksum alone.
-	sig, signed := rel.Asset("SHA256SUMS.sig")
 	switch {
 	case o.SkipSignature:
 		logf("WARNING: the signature of this release was NOT verified (--insecure-skip-signature); only the checksum protects this download")
-	case !signed:
-		return Installed{}, fmt.Errorf("release %s is not signed (it has no SHA256SUMS.sig); refusing to install. Use --insecure-skip-signature to install it on the checksum alone", rel.Tag)
+	case !signed(rel):
+		return Installed{}, fmt.Errorf("release %s is not signed (it has no %s or SHA256SUMS.sig); refusing to install. Use --insecure-skip-signature to install it on the checksum alone", rel.Tag, BundleAsset)
 	default:
-		msg, err := c.verifySignature(ctx, sig, rel, sums, o.Repo, o.CosignKey, o.CosignIdentity, o.CosignIssuer)
+		msg, err := c.verifySignature(ctx, rel, sums, o.Repo, o.CosignKey, o.CosignIdentity, o.CosignIssuer)
 		if err != nil {
 			return Installed{}, err
 		}

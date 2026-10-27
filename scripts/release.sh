@@ -2,7 +2,8 @@
 # Build the release artifacts: one tar.gz per platform with the paymux binary
 # (static, CGO_ENABLED=0, version stamped in; each also under a name without the
 # version, paymux_<os>_<arch>.tar.gz), a SHA256SUMS file and, when
-# cosign is installed, a signature over SHA256SUMS. No goreleaser needed.
+# cosign is installed, a Sigstore bundle signing SHA256SUMS
+# (SHA256SUMS.sigstore.json). No goreleaser needed.
 #
 #   scripts/release.sh v1.2.3          # version = the tag; default: git describe
 #   OUT=dist/release scripts/release.sh v1.2.3
@@ -16,9 +17,11 @@
 #
 # Verify a download:
 #   sha256sum -c --ignore-missing SHA256SUMS
-#   cosign verify-blob --certificate SHA256SUMS.pem --signature SHA256SUMS.sig \
+#   cosign verify-blob --bundle SHA256SUMS.sigstore.json --new-bundle-format \
 #     --certificate-identity-regexp '^https://github.com/<owner>/<repo>/' \
 #     --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
+# v0.1.0, signed before cosign v3, carries SHA256SUMS.sig and SHA256SUMS.pem: verify
+# those with --signature SHA256SUMS.sig --certificate SHA256SUMS.pem.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -98,10 +101,12 @@ elif ! command -v cosign >/dev/null 2>&1; then
   echo "cosign: not installed, skipping the signature (SHA256SUMS is still written)"
 elif [ -n "${COSIGN_KEY:-}" ]; then
   echo "cosign: signing SHA256SUMS with the key in COSIGN_KEY"
-  (cd "$OUT" && cosign sign-blob --yes --key "$COSIGN_KEY" --output-signature SHA256SUMS.sig SHA256SUMS)
+  (cd "$OUT" && cosign sign-blob --yes --key "$COSIGN_KEY" --new-bundle-format --bundle SHA256SUMS.sigstore.json SHA256SUMS)
 else
   echo "cosign: signing SHA256SUMS (keyless)"
-  (cd "$OUT" && cosign sign-blob --yes --output-signature SHA256SUMS.sig --output-certificate SHA256SUMS.pem SHA256SUMS)
+  # One bundle holds the signature, the certificate and the transparency-log
+  # proof. cosign v3 can write nothing else; --new-bundle-format makes v2 do the same.
+  (cd "$OUT" && cosign sign-blob --yes --new-bundle-format --bundle SHA256SUMS.sigstore.json SHA256SUMS)
 fi
 
 echo "==> done: $OUT"

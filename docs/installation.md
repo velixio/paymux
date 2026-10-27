@@ -40,7 +40,7 @@ Each release also publishes `install.sh`, covered by the release's `SHA256SUMS` 
 curl -fsSL https://github.com/velixio/paymux/releases/latest/download/install.sh | sh
 ```
 
-It supports Linux and macOS on amd64 and arm64. It downloads the archive for the machine and `SHA256SUMS`, always checks the checksum, checks the cosign signature of `SHA256SUMS` against the release workflow of the repository when `cosign` is installed (the same check as `paymux update`), unpacks only the `paymux` binary, runs its `version`, and installs it. Without `cosign` it installs on the checksum alone, prints a warning and the `cosign verify-blob` command to run yourself. The checksum comes from the same release page as the archive, so it detects a damaged download, not a tampered release; only the signature does that.
+It supports Linux and macOS on amd64 and arm64. It downloads the archive for the machine and `SHA256SUMS`, always checks the checksum, checks the cosign signature of `SHA256SUMS` against the release workflow of the repository when `cosign` is installed (the same check as `paymux update`), unpacks only the `paymux` binary, runs its `version`, and installs it. Without `cosign` it installs on the checksum alone, prints a warning and the `cosign verify-blob` command to run yourself. The checksum comes from the same release page as the archive, so it detects a damaged download, not a tampered release; only the signature does that. The signature is a Sigstore bundle, `SHA256SUMS.sigstore.json`, which needs cosign v3 (or v2.6 or later); v0.1.0 is signed with `SHA256SUMS.sig` and `SHA256SUMS.pem`, and is checked that way.
 
 | Setting | Meaning |
 |---|---|

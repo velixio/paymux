@@ -108,12 +108,14 @@ curl -fsSL https://github.com/velixio/paymux/releases/latest/download/install.sh
 
 ```bash
 f=paymux_linux_amd64.tar.gz; base=https://github.com/velixio/paymux/releases/latest/download
-curl -LO $base/$f -LO $base/SHA256SUMS -LO $base/SHA256SUMS.sig -LO $base/SHA256SUMS.pem
-cosign verify-blob --certificate SHA256SUMS.pem --signature SHA256SUMS.sig \
+curl -LO $base/$f -LO $base/SHA256SUMS -LO $base/SHA256SUMS.sigstore.json
+cosign verify-blob --bundle SHA256SUMS.sigstore.json --new-bundle-format \
   --certificate-identity-regexp '^https://github\.com/velixio/paymux/\.github/workflows/release\.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS && tar xzf $f
 ```
+
+The signature is a Sigstore bundle, so use cosign v3 (v2.6 also works with `--new-bundle-format`). v0.1.0 was signed before the bundle: for it, download `SHA256SUMS.sig` and `SHA256SUMS.pem` and verify with `--signature SHA256SUMS.sig --certificate SHA256SUMS.pem` instead.
 
 Later, `paymux update` installs a newer release and checks the same signature.
 
