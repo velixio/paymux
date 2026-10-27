@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Documentation from "./docs";
@@ -33,10 +34,18 @@ afterEach(() => {
   router.pathname = "/docs";
 });
 
+// Guides are fetched on demand: wait until the page has its text.
+async function settle() {
+  await waitFor(() =>
+    expect(screen.queryByText(/Loading the guide|Searching…/)).toBeNull(),
+  );
+}
+
 describe("documentation experience", () => {
-  it("renders repository content, named navigation, tables, and code", () => {
+  it("renders repository content, named navigation, tables, and code", async () => {
     router.pathname = "/docs/api";
     render(<Documentation />);
+    await settle();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
       "Application integration",
     );
@@ -60,12 +69,14 @@ describe("documentation experience", () => {
       "Application integration · Paymux documentation",
     );
   });
-  it("searches body content and shows a usable empty state", () => {
+  it("searches body content and shows a usable empty state", async () => {
     render(<Documentation />);
+    await settle();
     const search = screen.getByRole("searchbox", {
       name: "Search documentation",
     });
     fireEvent.change(search, { target: { value: "HMAC-SHA256" } });
+    await settle();
     expect(
       screen.getByRole("heading", { name: "Search the documentation" }),
     ).toBeTruthy();
@@ -86,8 +97,9 @@ describe("documentation experience", () => {
       "Paymux documentation",
     );
   });
-  it("supports mobile disclosure, adjacent guides and an unknown slug", () => {
+  it("supports mobile disclosure, adjacent guides and an unknown slug", async () => {
     const view = render(<Documentation />);
+    await settle();
     const toggle = screen.getByRole("button", { name: "Browse all guides" });
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
@@ -103,7 +115,6 @@ describe("documentation experience", () => {
     ).toBeTruthy();
   });
   it("copies the exact visible example text", async () => {
-    vi.useFakeTimers();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -111,6 +122,8 @@ describe("documentation experience", () => {
     });
     router.pathname = "/docs/api";
     render(<Documentation />);
+    await settle();
+    vi.useFakeTimers();
     await act(async () =>
       fireEvent.click(screen.getAllByRole("button", { name: "Copy" })[0]),
     );
@@ -135,6 +148,7 @@ it("renders long guides and scrolls a hash anchor after navigation", async () =>
       return 0;
     });
   render(<Documentation />);
+  await settle();
   expect(scroll).toHaveBeenCalledOnce();
   expect(screen.getAllByRole("heading", { level: 3 }).length).toBeGreaterThan(
     0,
@@ -144,9 +158,10 @@ it("renders long guides and scrolls a hash anchor after navigation", async () =>
   history.replaceState(null, "", "/");
 });
 
-it("ends the reading sequence without inventing another guide", () => {
+it("ends the reading sequence without inventing another guide", async () => {
   router.pathname = "/docs/testing";
   render(<Documentation />);
+  await settle();
   const pagination = screen.getByRole("navigation", {
     name: "Adjacent guides",
   });

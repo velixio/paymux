@@ -23,17 +23,48 @@ import {
 } from "./docs/catalog";
 import "./docs.css";
 
-const rawGuides = import.meta.glob<string>("../../../docs/*.md", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
-const content: Record<string, string> = Object.fromEntries(
-  Object.entries(rawGuides).map(([file, text]) => [
-    file.replace(/^(\.\.\/)+/, ""),
-    text,
-  ]),
+// Each guide is its own chunk, fetched when it is opened: bundled together the
+// Markdown made the documentation chunk larger than everything else combined.
+const guideLoaders: Record<string, () => Promise<string>> = Object.fromEntries(
+  Object.entries(
+    import.meta.glob<string>("../../../docs/*.md", {
+      query: "?raw",
+      import: "default",
+    }),
+  ).map(([file, load]) => [file.replace(/^(\.\.\/)+/, ""), load]),
 );
+
+// Guides fetched so far, kept for the life of the page.
+const loaded: Record<string, string> = {};
+
+async function loadGuides(sources: string[]): Promise<void> {
+  await Promise.all(
+    sources
+      .filter((source) => !(source in loaded) && guideLoaders[source])
+      .map(async (source) => {
+        loaded[source] = await guideLoaders[source]();
+      }),
+  );
+}
+
+// useGuides fetches the given guides and returns everything fetched so far,
+// re-rendering as they arrive.
+function useGuides(sources: string[]): Record<string, string> {
+  const key = sources.join("\n");
+  const [, setVersion] = useState(0);
+  useEffect(() => {
+    let current = true;
+    if (sources.every((source) => source in loaded)) return;
+    loadGuides(sources).then(() => {
+      if (current) setVersion((version) => version + 1);
+    });
+    return () => {
+      current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return loaded;
+}
 
 function CodeBlock({ children }: { children?: ReactNode }) {
   const id = useId();
@@ -56,9 +87,25 @@ export default function Documentation() {
   const guide = guides.find((item) => item.slug === slug);
   const [query, setQuery] = useState("");
   const [navigationOpen, setNavigationOpen] = useState(false);
+  // The open guide, and every guide once a search needs their text.
+  const content = useGuides(
+    query.trim()
+      ? guides.map((item) => item.source)
+      : guide
+        ? [guide.source]
+        : [],
+  );
   const source = guide ? content[guide.source] : "";
+  const loading =
+    !!guide && !(guide.source in content) && guide.source in guideLoaders;
   const outline = headings(source || "");
-  const results = searchGuides(query, content);
+  // A search reads every guide: until all have arrived its count would be wrong.
+  const searching =
+    !!query.trim() &&
+    guides.some(
+      (item) => !(item.source in content) && item.source in guideLoaders,
+    );
+  const results = searching ? [] : searchGuides(query, content);
   const index = guide ? guides.indexOf(guide) : -1;
   useEffect(() => {
     setQuery("");
@@ -66,14 +113,22 @@ export default function Documentation() {
     document.title = `${guide?.title ?? "Guide not found"} · Paymux documentation`;
   }, [pathname, guide]);
   // Keep /docs#routing and /docs#webhooks links from older site versions useful.
+  // The guide's headings exist once its text has arrived.
+  const ready = Boolean(source);
   useEffect(() => {
-    if (location.hash)
+    if (location.hash && ready)
       requestAnimationFrame(() =>
         document
           .getElementById(decodeURIComponent(location.hash.slice(1)))
           ?.scrollIntoView(),
       );
-  }, [pathname]);
+  }, [pathname, ready]);
+  if (loading)
+    return (
+      <section className="page-intro" aria-busy="true">
+        <p role="status">Loading the guide…</p>
+      </section>
+    );
   if (!guide || !source)
     return (
       <section className="page-intro">
@@ -173,10 +228,11 @@ export default function Documentation() {
             <span className="docs-breadcrumb">Documentation / Search</span>
             <h1 id="search-title">Search the documentation</h1>
             <p role="status" aria-live="polite">
-              {results.length} {results.length === 1 ? "guide" : "guides"}{" "}
-              matching “{query.trim()}”
+              {searching
+                ? "Searching…"
+                : `${results.length} ${results.length === 1 ? "guide" : "guides"} matching “${query.trim()}”`}
             </p>
-            {results.length ? (
+            {searching ? null : results.length ? (
               <div>
                 {results.map((item) => (
                   <SiteLink
