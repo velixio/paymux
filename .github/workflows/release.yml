@@ -42,7 +42,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1 (v3)
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          # cosign v3 signs SHA256SUMS as a Sigstore bundle (scripts/release.sh);
+          # pinned so that a bump of the installer cannot change it unseen.
+          cosign-release: v3.0.6
       - name: Build, checksum and sign
         env:
           TAG: ${{ github.ref_name }}
