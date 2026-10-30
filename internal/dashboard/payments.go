@@ -259,6 +259,12 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 			HasBilling: cust.Billing.Line1 != "" || cust.Billing.Line2 != "" || cust.Billing.City != "" || cust.Billing.StateCode != "" ||
 				cust.Billing.PostalCode != "" || cust.Billing.Country != ""}
 	}
+	activeRefunds := map[string]int64{}
+	for _, rf := range refunds {
+		if rf.Status == string(state.RefundPending) || rf.Status == string(state.RefundSucceeded) {
+			activeRefunds[rf.AttemptID] += rf.Amount
+		}
+	}
 	for _, a := range attempts {
 		name := provider[a.ProviderAccountID]
 		if name == "" {
@@ -269,8 +275,9 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 			OrderID: a.ProviderOrderID, PaymentID: a.ProviderPaymentID, Method: a.Method, FailureCode: a.FailureCode,
 			FailureMessage: a.FailureMessage, Created: d.fmtTime(a.CreatedAt), Duplicate: a.Duplicate,
 			MethodSummary: methodSummary, MethodMeta: methodMeta})
-		if a.Status == string(state.AttemptCaptured) && !a.Duplicate {
-			det.Pickable = append(det.Pickable, attemptOpt{ID: a.ID, Label: a.ID + " - " + fmtMoney(a.AmountReceived, a.CurrencyReceived) + " via " + name})
+		remaining := max(a.AmountReceived-activeRefunds[a.ID], 0)
+		if a.Status == string(state.AttemptCaptured) && !a.Duplicate && remaining > 0 {
+			det.Pickable = append(det.Pickable, attemptOpt{ID: a.ID, Label: a.ID + " - " + fmtMoney(remaining, a.CurrencyReceived) + " refundable via " + name})
 		}
 		if a.Status == string(state.AttemptCaptured) && !a.Duplicate && p.Mode == "test" && connectorOf[a.ProviderAccountID] == simulator.Name {
 			det.SimAttempts = append(det.SimAttempts, attemptOpt{ID: a.ID, Label: a.ID + " - " + fmtMoney(a.AmountReceived, a.CurrencyReceived)})

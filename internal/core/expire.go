@@ -66,7 +66,13 @@ func (s *Service) askProviderFirst(ctx context.Context, paymentID string) (skip 
 		if a.CreatedAt.UnixMilli() <= cutoff || (a.NextAction == "" && a.ProviderOrderID == "" && a.ProviderPaymentID == "") {
 			continue
 		}
-		if _, err := s.syncer.SyncAttempt(ctx, a.ID); err != nil {
+		var err error
+		if latest, ok := s.syncer.(latestAttemptSyncer); ok {
+			_, err = latest.SyncAttemptLatest(ctx, a.ID)
+		} else {
+			_, err = s.syncer.SyncAttempt(ctx, a.ID)
+		}
+		if err != nil {
 			return true // the provider could not be asked: not now
 		}
 	}

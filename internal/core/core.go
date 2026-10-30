@@ -161,6 +161,12 @@ type AttemptSyncer interface {
 	SyncAttempt(ctx context.Context, attemptID string) (ApplyResult, error)
 }
 
+// latestAttemptSyncer is optionally implemented by a provider flow that can
+// reconcile retries made under one provider order.
+type latestAttemptSyncer interface {
+	SyncAttemptLatest(ctx context.Context, attemptID string) (ApplyResult, error)
+}
+
 // SetAttemptSyncer sets the syncer used before a payment is expired (call
 // before serving).
 func (s *Service) SetAttemptSyncer(a AttemptSyncer) { s.syncer = a }

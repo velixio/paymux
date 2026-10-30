@@ -357,8 +357,24 @@ func TestPaymentDetailShowsTimeline(t *testing.T) {
 		has(t, body, `action="/dashboard/payments/pay_d1/refund"`, "/replay", "att_ok")
 		// only captured, non-duplicate attempts can be picked for a refund
 		opt := regexpFind(t, `(?s)(<select name="attempt_id".*?</select>)`, body)
-		has(t, opt, "att_ok")
+		has(t, opt, "att_ok", "85.00 INR refundable")
 		lacks(t, opt, "att_fail")
+	})
+}
+
+func TestPaymentDetailHidesRefundFormWhenFullyRefunded(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		f := e.detailFixture()
+		if err := e.db.Write(ctx, func(tx store.Tx) error {
+			return store.InsertRefund(ctx, tx, store.Refund{ID: "ref_rest", OrgID: store.DefaultOrgID, AppID: f.app.ID,
+				Mode: "live", PaymentID: f.pay.ID, AttemptID: "att_ok", Amount: 8500, Currency: "INR", Status: "succeeded",
+				ProviderRef: "pr_ref_rest", InitiatedBy: "api", CreatedAt: e.clk.Now(), UpdatedAt: e.clk.Now()})
+		}); err != nil {
+			t.Fatal(err)
+		}
+		body := e.pageOK(e.roleClient("operator"), "/dashboard/payments/"+f.pay.ID)
+		lacks(t, body, `action="/dashboard/payments/pay_d1/refund"`, "All remaining refundable funds", "refundable via")
 	})
 }
 
@@ -457,6 +473,18 @@ func TestRefundFromDashboard(t *testing.T) {
 		if len(aud) != 1 || aud[0].ActorType != "user" || aud[0].ActorID != opID || aud[0].Target != mine.ID {
 			t.Fatalf("audit %+v", aud)
 		}
+		for name, form := range map[string]url.Values{
+			"not a number": {"amount": {"abc"}},
+			"negative":     {"amount": {"-5"}},
+			"too precise":  {"amount": {"1.005"}},
+			"bad attempt":  {"amount": {"1.00"}, "attempt_id": {"att_nope"}},
+		} {
+			form.Set("csrf", tok)
+			form.Set("nonce", nonce())
+			if r, _ := e.post(op, path, form); r.StatusCode != 400 {
+				t.Errorf("%s: %d", name, r.StatusCode)
+			}
+		}
 
 		// blank amount refunds everything still refundable: 100.00 - 15.00 - 25.50 = 59.50
 		r, _ = e.post(op, path, url.Values{"amount": {""}, "csrf": {tok}, "nonce": {nonce()}})
@@ -471,23 +499,9 @@ func TestRefundFromDashboard(t *testing.T) {
 		if sum != 10000 {
 			t.Fatalf("refunded total %d, want 10000", sum)
 		}
-		// nothing left
-		r, body = e.post(op, path, url.Values{"amount": {"1.00"}, "csrf": {tok}, "nonce": {nonce()}})
-		if r.StatusCode != 400 || !strings.Contains(body, "exceeds the refundable balance") {
-			t.Fatalf("over-refund: %d", r.StatusCode)
-		}
-		for name, form := range map[string]url.Values{
-			"not a number": {"amount": {"abc"}},
-			"negative":     {"amount": {"-5"}},
-			"too precise":  {"amount": {"1.005"}},
-			"bad attempt":  {"amount": {"1.00"}, "attempt_id": {"att_nope"}},
-		} {
-			form.Set("csrf", tok)
-			form.Set("nonce", nonce())
-			if r, _ := e.post(op, path, form); r.StatusCode != 400 {
-				t.Errorf("%s: %d", name, r.StatusCode)
-			}
-		}
+		// Nothing remains refundable, so the dashboard must not offer another refund.
+		body = e.pageOK(op, "/dashboard/payments/"+f.pay.ID)
+		lacks(t, body, `action="/dashboard/payments/pay_d1/refund"`, "All remaining refundable funds", "refundable via")
 		if r, _ := e.post(op, "/dashboard/payments/pay_nope/refund", url.Values{"csrf": {tok}}); r.StatusCode != 404 {
 			t.Errorf("unknown payment: %d", r.StatusCode)
 		}

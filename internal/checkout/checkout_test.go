@@ -965,6 +965,37 @@ func TestPollDuePollsOnTheLadder(t *testing.T) {
 	})
 }
 
+func TestPollDueFindsSuccessfulRetryOnSameProviderOrder(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p, st := startedAttempt(t, e)
+		orderID := st.Attempt.ProviderOrderID
+		failed := connector.PaymentSnapshot{ProviderRef: st.Attempt.ProviderRef, ProviderOrderID: orderID,
+			ProviderPaymentID: "pay_failed", Status: connector.PaymentFailed, RawStatus: "failed", Amount: 50000, Currency: "INR"}
+		e.setPayment(st.Attempt.ProviderRef, failed)
+		if _, err := e.flow.SyncAttempt(ctx, st.Attempt.ID); err != nil {
+			t.Fatal(err)
+		}
+
+		retry := succeeded(50000, "INR", "pay_retry")
+		retry.ProviderRef, retry.ProviderOrderID = st.Attempt.ProviderRef, orderID
+		e.fake.Locked(func() { e.fake.Payments = map[string]connector.PaymentSnapshot{"retry": retry} })
+		if err := e.db.Write(ctx, func(tx store.Tx) error {
+			_, err := tx.ExecContext(ctx, "UPDATE payment_attempts SET status = 'pending', next_poll_at = ? WHERE id = ?", e.clk.Now().Add(-time.Second).UnixMilli(), st.Attempt.ID)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := e.flow.PollDue(ctx); err != nil {
+			t.Fatal(err)
+		}
+		got, attempt := e.get(p.ID), e.attempts(p.ID)[0]
+		if got.Status != "succeeded" || attempt.ProviderPaymentID != "pay_retry" {
+			t.Fatalf("poll did not find retry: payment=%+v attempt=%+v", got, attempt)
+		}
+	})
+}
+
 func TestPollDueStopsAfter72Hours(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
 		_, st := startedAttempt(t, e)

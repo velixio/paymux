@@ -380,7 +380,10 @@ func (s *Service) PollDue(ctx context.Context) error {
 		return err
 	}
 	for _, it := range attempts {
-		if _, err := s.SyncAttempt(ctx, it.ID); err != nil {
+		// Poll by provider order/reference, not a payment id from an earlier
+		// failed try. Providers such as Razorpay allow a customer to retry the
+		// same order with a new provider payment id.
+		if _, err := s.SyncAttemptLatest(ctx, it.ID); err != nil {
 			s.o.Logger.Warn("poll: attempt", "attempt", it.ID, "err", err)
 		}
 		delay := PollDelay(it.PollCount + 1)
