@@ -192,15 +192,22 @@ await checkout({ checkoutUrl: checkout_url });
 ```
 
 To keep the Paymux URL out of the browser entirely, select
-`provider_action` under **Apps → your app → Settings → checkout_mode**. Resolve
-the action on the merchant backend and return only that JSON:
+`provider_action` under **Apps → your app → Settings → checkout_mode**. Payment
+creation immediately creates the provider order and returns its executable
+action, so the merchant backend returns only `payment.checkout`:
 
 ```ts
-const action = await paymux.payments.checkoutAction(
-  payment.id,
-  { billing: { name: "Asha Rao", country: "IN", state_code: "27" } },
-  { idempotencyKey: "order-123-checkout-v1" },
+const payment = await paymux.payments.create(
+  {
+    amount: 49900,
+    currency: "INR",
+    order_ref: "order-123",
+    customer: { name: "Asha Rao", billing: { country: "IN", state_code: "27" } },
+  },
+  { idempotencyKey: "order-123-payment-v1" },
 );
+
+return payment.checkout;
 ```
 
 ```ts
@@ -208,6 +215,9 @@ import { executeCheckout } from "@paymux-js/sdk/checkout";
 
 await executeCheckout(await merchantBackend.startCheckout("order-123"));
 ```
+
+Use `payments.checkoutAction` only to recover a failed provider launch or to
+request an intentionally fresh attempt.
 
 The browser entry point never receives the Paymux API key. Fulfill the order
 only after a verified webhook or authenticated backend lookup. See the complete

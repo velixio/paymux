@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/velixio/paymux/internal/authz"
 	"github.com/velixio/paymux/internal/billingform"
@@ -21,6 +23,19 @@ type customerReq struct {
 	Email       string      `json:"email"`
 	Phone       string      `json:"phone"`
 	Billing     *billingReq `json:"billing"`
+}
+
+func (c customerReq) billingValues() url.Values {
+	values := url.Values{"name": {c.Name}, "email": {c.Email}}
+	if b := c.Billing; b != nil {
+		values.Set("country", b.Country)
+		values.Set("state_code", b.StateCode)
+		values.Set("line1", b.Line1)
+		values.Set("postal_code", b.PostalCode)
+		values.Set("gstin", b.GSTIN)
+		values.Set("legal_name", b.LegalName)
+	}
+	return values
 }
 
 type billingReq struct {
@@ -48,8 +63,9 @@ type createPaymentReq struct {
 
 type createdPaymentResp struct {
 	core.PaymentView
-	CheckoutMode string `json:"checkout_mode"`
-	CheckoutURL  string `json:"checkout_url,omitempty"`
+	CheckoutMode string              `json:"checkout_mode"`
+	CheckoutURL  string              `json:"checkout_url,omitempty"`
+	Checkout     *checkoutActionResp `json:"checkout,omitempty"`
 }
 
 // checkoutMode resolves the App's response mode, preserving hosted checkout
@@ -81,11 +97,6 @@ func (a *API) createPayment(w http.ResponseWriter, r *http.Request, pr core.Prin
 		a.fail(w, r, http.StatusBadRequest, "invalid_request", "amount is required (integer, minor units)")
 		return
 	}
-	mode, err := a.checkoutMode(r, pr.AppID)
-	if err != nil {
-		a.fail(w, r, http.StatusInternalServerError, "internal", "checkout mode could not be loaded")
-		return
-	}
 	in := core.CreatePaymentInput{Scope: scope(pr), Amount: *req.Amount, Currency: req.Currency, OrderRef: req.OrderRef,
 		Description: req.Description, Metadata: req.Metadata, ReturnURL: req.ReturnURL,
 		Country: req.Country, AllowedConnectors: req.AllowedConnectors}
@@ -96,14 +107,54 @@ func (a *API) createPayment(w http.ResponseWriter, r *http.Request, pr core.Prin
 				City: b.City, StateCode: b.StateCode, PostalCode: b.PostalCode, Country: b.Country}
 		}
 	}
+	if err := core.ValidateCreatePaymentInput(&in); err != nil {
+		a.failCore(w, r, err)
+		return
+	}
+	req.Currency = in.Currency
+	mode, err := a.checkoutMode(r, pr.AppID)
+	if err != nil {
+		a.fail(w, r, http.StatusInternalServerError, "internal", "checkout mode could not be loaded")
+		return
+	}
+	if mode == "provider_action" {
+		if a.checkout == nil || a.settings == nil {
+			a.fail(w, r, http.StatusNotFound, "not_found", "provider-action checkout is unavailable")
+			return
+		}
+		if r.Header.Get("Idempotency-Key") == "" {
+			a.fail(w, r, http.StatusBadRequest, "invalid_request", "provider-action payment creation requires an Idempotency-Key")
+			return
+		}
+		if failure := a.validateProviderActionBilling(r.Context(), pr.AppID, req); failure != nil {
+			a.fail(w, r, failure.status, failure.typ, failure.message)
+			return
+		}
+	}
 	res, err := a.core.CreatePayment(r.Context(), in)
 	if err != nil {
 		a.failCore(w, r, err)
 		return
 	}
-	out := createdPaymentResp{PaymentView: core.ViewPayment(res.Payment), CheckoutMode: mode}
+	payment := res.Payment
+	out := createdPaymentResp{PaymentView: core.ViewPayment(payment), CheckoutMode: mode}
 	if mode == "hosted" {
 		out.CheckoutURL = a.baseURL + "/pay/" + res.Payment.ID + "?t=" + url.QueryEscape(res.ClientSecret)
+	} else {
+		resolved, failure := a.resolveCheckoutAction(r.Context(), payment, checkoutActionReq{})
+		if failure != nil {
+			// A Paymux payment now exists. Retain this response under the request's
+			// idempotency key so a retry cannot create a second payable payment.
+			retainIdempotencyOnFailure(w)
+			if failure.err != nil {
+				a.log.Error("httpapi: provider-action checkout", "payment", payment.ID, "err", failure.err)
+			}
+			a.failPayment(w, r, failure.status, failure.typ, failure.message, payment.ID)
+			return
+		}
+		payment = resolved.payment
+		out.PaymentView = core.ViewPayment(payment)
+		out.Checkout = &resolved.response
 	}
 	writeJSON(w, http.StatusCreated, out)
 }
@@ -137,6 +188,114 @@ type checkoutActionResp struct {
 	Action    *connector.NextAction `json:"action,omitempty"`
 }
 
+type checkoutActionFailure struct {
+	status  int
+	typ     string
+	message string
+	err     error
+}
+
+type resolvedCheckoutAction struct {
+	response checkoutActionResp
+	payment  store.Payment
+}
+
+func (a *API) validateProviderActionBilling(ctx context.Context, appID string, req createPaymentReq) *checkoutActionFailure {
+	mode, issue, err := billingform.Settings(ctx, a.settings, appID)
+	if err != nil {
+		return &checkoutActionFailure{http.StatusInternalServerError, "internal", "billing policy could not be loaded", err}
+	}
+	var customer store.Customer
+	hasCustomer := req.Customer != nil
+	if c := req.Customer; c != nil {
+		customer.Name, customer.Email = c.Name, c.Email
+		if b := c.Billing; b != nil {
+			customer.Billing = store.Billing{LegalName: b.LegalName, GSTIN: b.GSTIN, Line1: b.Line1, Line2: b.Line2,
+				City: b.City, StateCode: b.StateCode, PostalCode: b.PostalCode, Country: b.Country}
+		}
+	}
+	currency := strings.ToUpper(strings.TrimSpace(req.Currency))
+	need := billingform.NeedFor(mode, issue, currency, *req.Amount, customer, hasCustomer)
+	if need.Show {
+		return &checkoutActionFailure{status: http.StatusUnprocessableEntity, typ: "billing_required",
+			message: "provider-action checkout requires customer billing details during payment creation"}
+	}
+	if req.Customer != nil && req.Customer.Billing != nil {
+		if _, message := billingform.Parse(req.Customer.billingValues(), currency, need); message != "" {
+			return &checkoutActionFailure{status: http.StatusUnprocessableEntity, typ: "invalid_billing",
+				message: "billing details are incomplete or invalid (" + message + ")"}
+		}
+	}
+	return nil
+}
+
+func (a *API) resolveCheckoutAction(ctx context.Context, p store.Payment, req checkoutActionReq) (*resolvedCheckoutAction, *checkoutActionFailure) {
+	switch state.PaymentStatus(p.Status) {
+	case state.PaymentSucceeded, state.PaymentCanceled, state.PaymentNeedsReview, state.PaymentExpired:
+		return &resolvedCheckoutAction{response: checkoutActionResp{Kind: "complete", PaymentID: p.ID, Status: p.Status}, payment: p}, nil
+	}
+	if a.now().After(p.ExpiresAt) {
+		return &resolvedCheckoutAction{response: checkoutActionResp{Kind: "complete", PaymentID: p.ID, Status: string(state.PaymentExpired)}, payment: p}, nil
+	}
+	switch state.PaymentStatus(p.Status) {
+	case state.PaymentCreated, state.PaymentRequiresAction, state.PaymentFailed:
+	default:
+		return nil, &checkoutActionFailure{status: http.StatusConflict, typ: "state_conflict", message: "payment cannot be started in its current state"}
+	}
+	var customer store.Customer
+	var err error
+	if p.CustomerID != "" {
+		customer, err = a.core.GetCustomer(ctx, p.CustomerID)
+		if err != nil {
+			return nil, &checkoutActionFailure{http.StatusInternalServerError, "internal", "customer details could not be loaded", err}
+		}
+	}
+	billingMode, issueInvoices, err := billingform.Settings(ctx, a.settings, p.AppID)
+	if err != nil {
+		return nil, &checkoutActionFailure{http.StatusInternalServerError, "internal", "billing policy could not be loaded", err}
+	}
+	need := billingform.NeedFor(billingMode, issueInvoices, p.Currency, p.Amount, customer, p.CustomerID != "")
+	if req.Billing != nil {
+		in, message := billingform.Parse(req.Billing.values(), p.Currency, need)
+		if message != "" {
+			return nil, &checkoutActionFailure{status: http.StatusUnprocessableEntity, typ: "invalid_billing",
+				message: "billing details are incomplete or invalid (" + message + ")"}
+		}
+		if err := a.core.SetBilling(ctx, p.ID, in); err != nil {
+			return nil, &checkoutActionFailure{http.StatusInternalServerError, "internal", "billing details could not be saved", err}
+		}
+		need.Show = false
+	}
+	if need.Show {
+		return nil, &checkoutActionFailure{status: http.StatusUnprocessableEntity, typ: "billing_required",
+			message: "provider-action checkout requires the merchant backend to supply the required billing details"}
+	}
+	start := a.checkout.StartCheckout
+	if req.Fresh {
+		start = a.checkout.StartFreshCheckout
+	}
+	started, err := start(ctx, p.ID)
+	if err != nil {
+		switch {
+		case errors.Is(err, checkout.ErrCheckoutFailed):
+			return nil, &checkoutActionFailure{http.StatusBadGateway, "provider_unavailable", "no payment provider is available; try checkout-action", err}
+		case errors.Is(err, core.ErrNoRoute), errors.Is(err, core.ErrCurrencyNotAccepted):
+			return nil, &checkoutActionFailure{http.StatusUnprocessableEntity, "no_route", "no payment method is available", err}
+		case errors.Is(err, core.ErrInvalidState):
+			return nil, &checkoutActionFailure{http.StatusConflict, "state_conflict", "payment cannot be started in its current state", err}
+		default:
+			return nil, &checkoutActionFailure{http.StatusInternalServerError, "internal", "checkout could not be started", err}
+		}
+	}
+	latest, err := a.core.GetPayment(ctx, core.Scope{AppID: p.AppID, Mode: p.Mode}, p.ID)
+	if err != nil {
+		return nil, &checkoutActionFailure{http.StatusInternalServerError, "internal", "payment status could not be loaded", err}
+	}
+	action := started.Action
+	return &resolvedCheckoutAction{payment: latest, response: checkoutActionResp{Kind: "checkout", PaymentID: p.ID,
+		Status: latest.Status, Launcher: started.Connector, Action: &action}}, nil
+}
+
 // createCheckoutAction is called by the merchant backend. It returns only
 // public provider-launch data, so the checkout URL and customer token never
 // need to enter the merchant's browser.
@@ -150,76 +309,19 @@ func (a *API) createCheckoutAction(w http.ResponseWriter, r *http.Request, pr co
 		a.failCore(w, r, err)
 		return
 	}
-	switch state.PaymentStatus(p.Status) {
-	case state.PaymentSucceeded, state.PaymentCanceled, state.PaymentNeedsReview, state.PaymentExpired:
-		writeJSON(w, http.StatusOK, checkoutActionResp{Kind: "complete", PaymentID: p.ID, Status: p.Status})
-		return
-	}
-	if a.now().After(p.ExpiresAt) {
-		writeJSON(w, http.StatusOK, checkoutActionResp{Kind: "complete", PaymentID: p.ID, Status: string(state.PaymentExpired)})
-		return
-	}
-	switch state.PaymentStatus(p.Status) {
-	case state.PaymentCreated, state.PaymentRequiresAction, state.PaymentFailed:
-		// These states can safely start or retry customer checkout.
-	default:
-		a.fail(w, r, http.StatusConflict, "state_conflict", "payment cannot be started in its current state")
-		return
-	}
 	var req checkoutActionReq
 	if !a.decodeBody(w, r, body, &req, true) {
 		return
 	}
-	var customer store.Customer
-	if p.CustomerID != "" {
-		customer, err = a.core.GetCustomer(r.Context(), p.CustomerID)
-		if err != nil {
-			a.fail(w, r, http.StatusInternalServerError, "internal", "customer details could not be loaded")
-			return
+	resolved, failure := a.resolveCheckoutAction(r.Context(), p, req)
+	if failure != nil {
+		if failure.err != nil && failure.status == http.StatusInternalServerError {
+			a.log.Error("httpapi: provider-action checkout", "payment", p.ID, "err", failure.err)
 		}
-	}
-	billingMode, issueInvoices, err := billingform.Settings(r.Context(), a.settings, p.AppID)
-	if err != nil {
-		a.fail(w, r, http.StatusInternalServerError, "internal", "billing policy could not be loaded")
+		a.fail(w, r, failure.status, failure.typ, failure.message)
 		return
 	}
-	need := billingform.NeedFor(billingMode, issueInvoices, p.Currency, p.Amount, customer, p.CustomerID != "")
-	if req.Billing != nil {
-		in, message := billingform.Parse(req.Billing.values(), p.Currency, need)
-		if message != "" {
-			a.fail(w, r, http.StatusUnprocessableEntity, "invalid_billing", "billing details are incomplete or invalid ("+message+")")
-			return
-		}
-		if err := a.core.SetBilling(r.Context(), p.ID, in); err != nil {
-			a.fail(w, r, http.StatusInternalServerError, "internal", "billing details could not be saved")
-			return
-		}
-		need.Show = false
-	}
-	if need.Show {
-		a.fail(w, r, http.StatusUnprocessableEntity, "billing_required", "provider-action checkout requires the merchant backend to supply the required billing details")
-		return
-	}
-	start := a.checkout.StartCheckout
-	if req.Fresh {
-		start = a.checkout.StartFreshCheckout
-	}
-	started, err := start(r.Context(), p.ID)
-	switch {
-	case err == nil:
-		action := started.Action
-		writeJSON(w, http.StatusOK, checkoutActionResp{Kind: "checkout", PaymentID: p.ID, Status: p.Status,
-			Launcher: started.Connector, Action: &action})
-	case errors.Is(err, checkout.ErrCheckoutFailed):
-		a.fail(w, r, http.StatusBadGateway, "provider_unavailable", "no payment provider is available; try again")
-	case errors.Is(err, core.ErrNoRoute), errors.Is(err, core.ErrCurrencyNotAccepted):
-		a.fail(w, r, http.StatusUnprocessableEntity, "no_route", "no payment method is available")
-	case errors.Is(err, core.ErrInvalidState):
-		a.fail(w, r, http.StatusConflict, "state_conflict", "payment cannot be started in its current state")
-	default:
-		a.log.Error("httpapi: provider-action checkout", "payment", p.ID, "err", err)
-		a.fail(w, r, http.StatusInternalServerError, "internal", "checkout could not be started")
-	}
+	writeJSON(w, http.StatusOK, resolved.response)
 }
 
 func (a *API) getPayment(w http.ResponseWriter, r *http.Request, pr core.Principal, _ []byte) {

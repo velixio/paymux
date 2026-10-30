@@ -22,14 +22,22 @@ const (
 
 // recorder buffers a handler's response so it can be stored before sending.
 type recorder struct {
-	header http.Header
-	status int
-	buf    bytes.Buffer
+	header        http.Header
+	status        int
+	buf           bytes.Buffer
+	retainFailure bool
 }
 
 func (r *recorder) Header() http.Header         { return r.header }
 func (r *recorder) WriteHeader(code int)        { r.status = code }
 func (r *recorder) Write(b []byte) (int, error) { return r.buf.Write(b) }
+func (r *recorder) retainIdempotencyFailure()   { r.retainFailure = true }
+
+func retainIdempotencyOnFailure(w http.ResponseWriter) {
+	if r, ok := w.(interface{ retainIdempotencyFailure() }); ok {
+		r.retainIdempotencyFailure()
+	}
+}
 
 // idempotent runs h under the request's Idempotency-Key. The first request
 // reserves the key, runs, and stores its response (sealed); a repeat with the
@@ -78,7 +86,7 @@ func (a *API) idempotent(w http.ResponseWriter, r *http.Request, pr core.Princip
 	}()
 	h(rec, r, pr, body)
 
-	if rec.status < 500 {
+	if rec.status < 500 || rec.retainFailure {
 		// The handler's effect (a payout, a refund) may have committed, so the
 		// key is never freed from here on: a client that hung up must not be
 		// able to run the request again. Storing the response therefore does

@@ -25,7 +25,10 @@ info:
     `Idempotent-Replay: true`). The same key with a different request returns
     409 `idempotency_key_reuse`. A repeat while the first is still running
     returns 409 `idempotency_in_progress`. Responses with status 5xx are not
-    stored, so those requests can be retried.
+    stored, so those requests can be retried. The exception is a provider-action
+    payment whose provider checkout fails after the payment is stored: that 5xx
+    response is retained to prevent a second payment, and its error includes
+    `payment_id` for retrying through the checkout-action endpoint.
 
     **Return URLs are not proof of payment.** After paying, the customer is sent to the
     payment's `return_url` with `status` (and the payment id) in the query string. That
@@ -37,6 +40,7 @@ info:
     seconds; the request is not processed.
 
     **Errors** share one shape: `{"error": {"type", "message", "request_id"}}`.
+    An error after a payment was created also includes `payment_id`.
     The same id is in the `X-Request-Id` header of every response. Send your own
     `X-Request-Id` (letters, digits and hyphens, up to 64 characters) to match a
     call to your records, and quote the id when you ask for help: it finds the
@@ -64,10 +68,13 @@ paths:
       x-required-scope: payments:write
       summary: Create a payment
       description: |
-        Creates a payment in status `created`. Apps in `hosted` checkout mode
+        Creates a payment. Apps in `hosted` checkout mode
         receive a `checkout_url` of the form `<PAYMUX_BASE_URL>/pay/<id>?t=<secret>`.
-        Apps in `provider_action` mode omit that browser credential; the merchant
-        backend calls the checkout-action endpoint instead.
+        Apps in `provider_action` mode omit that browser credential, immediately
+        create the provider order, and return an executable `checkout` action in
+        this response. The checkout-action endpoint remains available for retries
+        and explicitly fresh attempts. An `Idempotency-Key` is required in this
+        mode because payment and provider checkout creation are one operation.
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -94,12 +101,23 @@ paths:
         "422":
           description: |
             `no_route` (no provider account can take this payment) or
-            `currency_not_accepted` (a routing rule rejects it; the message is the rule's).
+            `currency_not_accepted` (a routing rule rejects it; the message is the rule's),
+            or `billing_required` / `invalid_billing` for provider-action checkout.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "413":
           $ref: "#/components/responses/InvalidRequest"
+        "500":
+          description: Payment checkout could not be started (`internal`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: The payment exists, but every routed provider was temporarily unavailable (`provider_unavailable`). The error contains `payment_id`; retry it with the checkout-action endpoint.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     get:
       operationId: listPayments
       x-required-scope: payments:read
@@ -969,6 +987,10 @@ components:
             request_id:
               type: string
               description: The id of this request, also sent as the X-Request-Id header. It identifies the matching rows of the hub's Logs page.
+            payment_id:
+              type: string
+              pattern: "^pay_[0-9a-z]{26}$"
+              description: Present when a payment exists even though its initial provider checkout failed.
     PaymentStatus:
       type: string
       enum: [created, requires_action, processing, succeeded, failed, expired, canceled, needs_review]
@@ -1090,6 +1112,10 @@ components:
               type: string
               format: uri
               description: "`<PAYMUX_BASE_URL>/pay/<id>?t=<secret>`. Present only for hosted mode and shown only in this response."
+            checkout:
+              allOf:
+                - $ref: "#/components/schemas/CheckoutAction"
+              description: Present in provider_action mode and ready for `executeCheckout` in the browser SDK.
     CheckoutActionRequest:
       type: object
       properties:

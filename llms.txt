@@ -2,7 +2,7 @@
 
 > Paymux is a self-hosted payment hub that gives merchant applications one API for payments, refunds, subscriptions, invoices, payouts, and normalized webhooks across payment providers.
 
-Paymux offers hosted, browser-resolved, and backend-resolved checkout. For no Paymux URL in the browser, set the App's `checkout_mode` to `provider_action`, resolve the action with the server SDK, and pass only that action to `executeCheckout` in the merchant UI. All flows use the same provider routing and signed app webhooks.
+Paymux offers hosted, browser-resolved, and backend-resolved checkout. For no Paymux URL in the browser, set the App's `checkout_mode` to `provider_action`; payment creation returns an executable `checkout` action that the merchant passes to `executeCheckout` in its UI. All flows use the same provider routing and signed app webhooks.
 
 ## Merchant integration
 
@@ -19,6 +19,7 @@ Paymux offers hosted, browser-resolved, and backend-resolved checkout. For no Pa
 - Create payments on the merchant backend. Never expose a Paymux API key to browser code.
 - Derive amounts, currency, and order ownership from trusted server-side data.
 - Supply a stable, unique idempotency key for every mutation.
+- In provider-action mode, include required billing data during payment creation and return only `payment.checkout` to the authenticated order owner. Use `checkoutAction` only for recovery or a fresh attempt.
 - In hosted or browser-resolved mode, return only the customer-specific `checkout_url` to its authenticated customer.
 - In hosted or browser-resolved mode, store `checkout_url` as a short-lived server-side secret until payment expiry so the same payment can reopen after a retry; it cannot be recovered by retrieving the payment.
 - For merchant-site checkout, call `checkout` from `@paymux-js/sdk/checkout`; do not recreate provider-specific browser integrations.

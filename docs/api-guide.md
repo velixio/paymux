@@ -40,10 +40,12 @@ curl --fail-with-body "$PAYMUX_URL/v1/payments" \
 The response is a payment object with `checkout_mode`. In the default `hosted`
 mode it also has a `checkout_url`; store its `id` against your order and redirect
 the buyer to that URL. Do not log the checkout token. With the App set to
-`provider_action`, no checkout URL is returned: the merchant backend calls
-`POST /v1/payments/{id}/checkout-action` and gives only that action JSON to
-`executeCheckout` from the browser SDK. A `201` means the payment was created,
-not that money has been collected.
+`provider_action`, no checkout URL is returned: the same response contains a
+`checkout` action, and the merchant backend gives only that action JSON to
+`executeCheckout` from the browser SDK. Use
+`POST /v1/payments/{id}/checkout-action` only for recovery or a fresh attempt.
+A `201` means the payment and provider checkout were created, not that money
+has been collected.
 
 In `hosted` mode, to keep the buyer on the storefront until the selected
 provider opens, pass the same `checkout_url` to the

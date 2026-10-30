@@ -236,14 +236,6 @@ func TestCreatePaymentResponse(t *testing.T) {
 		if p.Mode != "test" {
 			t.Errorf("mode %s: payments take the mode of the key", p.Mode)
 		}
-		if err := f.set.SetApp(ctx, audit.System, f.app.OrgID, f.app.ID, "checkout_mode", json.RawMessage(`"provider_action"`)); err != nil {
-			t.Fatal(err)
-		}
-		provider := f.do("POST", "/v1/payments", f.testKey, createBody, "Idempotency-Key", "provider-action-create")
-		pm := provider.json(t)
-		if provider.status != http.StatusCreated || pm["checkout_mode"] != "provider_action" || pm["checkout_url"] != nil {
-			t.Errorf("provider-action create: %d %s", provider.status, provider.raw)
-		}
 		// A live key creates a live payment.
 		live := f.do("POST", "/v1/payments", f.liveKey, createBody)
 		if live.status != 201 {

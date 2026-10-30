@@ -18,7 +18,8 @@ export declare class APIError extends Error {
     readonly requestId?: string | undefined;
     readonly idempotentReplay: boolean;
     readonly retryAfterMs: number;
-    constructor(statusCode: number, type: string, message: string, requestId?: string | undefined, idempotentReplay?: boolean, retryAfterMs?: number);
+    readonly paymentId?: string | undefined;
+    constructor(statusCode: number, type: string, message: string, requestId?: string | undefined, idempotentReplay?: boolean, retryAfterMs?: number, paymentId?: string | undefined);
     get temporary(): boolean;
     get isNotFound(): boolean;
     get isConflict(): boolean;
