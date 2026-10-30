@@ -330,6 +330,26 @@ func TestPaymentDetailShowsTimeline(t *testing.T) {
 	})
 }
 
+func TestPaymentDisplayStatusShowsRefundOutcome(t *testing.T) {
+	tests := []struct {
+		name, status string
+		flags        []string
+		want, class  string
+	}{
+		{name: "ordinary success", status: "succeeded", want: "succeeded", class: "succeeded"},
+		{name: "partial refund", status: "succeeded", flags: []string{core.FlagRefundedPartial}, want: "partially refunded", class: "partially-refunded"},
+		{name: "full refund", status: "succeeded", flags: []string{core.FlagRefundedFull}, want: "refunded", class: "refunded"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, class := paymentDisplayStatus(store.Payment{Status: tt.status, Flags: tt.flags})
+			if got != tt.want || class != tt.class {
+				t.Fatalf("paymentDisplayStatus() = %q, %q; want %q, %q", got, class, tt.want, tt.class)
+			}
+		})
+	}
+}
+
 func TestRefundFromDashboard(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)

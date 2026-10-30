@@ -4,7 +4,7 @@
 {{define "content"}}{{template "dash_open" .}}
 {{with .Pay}}
 <p><a href="/dashboard/payments">&larr; Payments</a></p>
-<h1>{{.ID}} <span class="status status-{{.Status}}">{{.Status}}</span> <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h1>
+<h1>{{.ID}} <span class="status status-{{.StatusClass}}">{{.Status}}</span> <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h1>
 {{if $.CanLogs}}<p><a href="/dashboard/logs?payment_id={{.ID}}">Logs for this payment</a></p>{{end}}
 {{with $.Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 {{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}

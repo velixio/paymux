@@ -362,6 +362,14 @@ main.dash:has(#paymux-react-root) {
   background: var(--status-ok-bg);
   color: var(--status-ok-fg);
 }
+.react-content .status-refunded {
+  background: var(--status-info-bg);
+  color: var(--status-info-fg);
+}
+.react-content .status-partially-refunded {
+  background: var(--status-warn-bg);
+  color: var(--status-warn-fg);
+}
 .react-content .status-failed,
 .react-content .status-expired,
 .react-content .status-canceled {

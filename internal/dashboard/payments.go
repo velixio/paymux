@@ -22,7 +22,7 @@ import (
 )
 
 type payRow struct {
-	ID, App, Status, Amount, Customer, OrderRef, Created string
+	ID, App, Status, StatusClass, Amount, Customer, OrderRef, Created string
 }
 
 type payFilter struct{ App, Status, Q, From, To string }
@@ -57,17 +57,17 @@ type eventRow struct {
 type attemptOpt struct{ ID, Label string }
 
 type payDetail struct {
-	ID, App, AppID, Mode, Status, Amount, Received, Refunded, OrderRef, Description, Created string
-	Currency                                                                                 string
-	Customer                                                                                 *customerDetail
-	Flags                                                                                    []string
-	Attempts                                                                                 []attemptRow
-	Ledger                                                                                   []ledgerRow
-	Refunds                                                                                  []refundRow
-	Deliveries                                                                               []deliveryRow
-	Events                                                                                   []eventRow
-	Pickable                                                                                 []attemptOpt
-	CanRefund, CanReplay                                                                     bool
+	ID, App, AppID, Mode, Status, StatusClass, Amount, Received, Refunded, OrderRef, Description, Created string
+	Currency                                                                                              string
+	Customer                                                                                              *customerDetail
+	Flags                                                                                                 []string
+	Attempts                                                                                              []attemptRow
+	Ledger                                                                                                []ledgerRow
+	Refunds                                                                                               []refundRow
+	Deliveries                                                                                            []deliveryRow
+	Events                                                                                                []eventRow
+	Pickable                                                                                              []attemptOpt
+	CanRefund, CanReplay                                                                                  bool
 	// RefundNonce is the single-use key of the refund form on this page.
 	RefundNonce string
 	// SimAttempts are the captured attempts on a test-mode simulator account,
@@ -142,7 +142,8 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 		rows = rows[:d.o.PageSize]
 	}
 	for _, p := range rows {
-		row := payRow{ID: p.ID, App: names[p.AppID], Status: p.Status, Amount: fmtMoney(p.Amount, p.Currency), OrderRef: p.OrderRef,
+		status, statusClass := paymentDisplayStatus(p)
+		row := payRow{ID: p.ID, App: names[p.AppID], Status: status, StatusClass: statusClass, Amount: fmtMoney(p.Amount, p.Currency), OrderRef: p.OrderRef,
 			Created: d.fmtTime(p.CreatedAt)}
 		if p.CustomerID != "" {
 			_ = d.o.DB.Read(r.Context(), func(q store.Querier) error {
@@ -237,7 +238,8 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 		provider[a.ID] = a.Name + " (" + a.Connector + ")"
 		connectorOf[a.ID] = a.Connector
 	}
-	det := &payDetail{ID: p.ID, App: app.Name, AppID: app.ID, Mode: p.Mode, Status: p.Status, Currency: p.Currency,
+	displayStatus, statusClass := paymentDisplayStatus(p)
+	det := &payDetail{ID: p.ID, App: app.Name, AppID: app.ID, Mode: p.Mode, Status: displayStatus, StatusClass: statusClass, Currency: p.Currency,
 		Amount: fmtMoney(p.Amount, p.Currency), Received: fmtMoney(p.AmountReceived, p.Currency), Refunded: fmtMoney(p.AmountRefunded, p.Currency),
 		OrderRef: p.OrderRef, Description: p.Description, Created: d.fmtTime(p.CreatedAt), Flags: p.Flags,
 		CanReplay: s.can(authz.WebhookReplay)}
@@ -287,6 +289,20 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	v := d.shell(r, s, "payments", "Payment "+p.ID)
 	v.Pay, v.Error, v.Notice = det, errMsg, notice
 	d.render(w, status, "dash_payment", v)
+}
+
+// paymentDisplayStatus keeps the payment lifecycle state unchanged while
+// making its financial outcome obvious in the dashboard. A succeeded charge
+// remains succeeded in the API; successful refunds are separate resources.
+func paymentDisplayStatus(p store.Payment) (label, class string) {
+	switch {
+	case p.HasFlag(core.FlagRefundedFull):
+		return "refunded", "refunded"
+	case p.HasFlag(core.FlagRefundedPartial):
+		return "partially refunded", "partially-refunded"
+	default:
+		return p.Status, p.Status
+	}
 }
 
 func paymentMethodSummary(a store.Attempt) (string, string) {
