@@ -97,7 +97,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5, 6]
     services:
       postgres:
         image: postgres:17@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe
@@ -138,6 +138,7 @@ jobs:
           restore-keys: |
             go-${{ runner.os }}-test${{ matrix.shard }}-${{ hashFiles('go.sum') }}-
             go-${{ runner.os }}-test${{ matrix.shard }}-
+            go-${{ runner.os }}-test
       - id: buncache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -149,8 +150,8 @@ jobs:
         run: |
           bun install --cwd frontend --frozen-lockfile
           bun run --cwd frontend build:dashboard
-      - name: scripts/ci.sh test ${{ matrix.shard }}/3
-        run: ./scripts/ci.sh test ${{ matrix.shard }}/3
+      - name: scripts/ci.sh test ${{ matrix.shard }}/6
+        run: ./scripts/ci.sh test ${{ matrix.shard }}/6
       - name: Save the Go cache (main only)
         if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
