@@ -537,10 +537,15 @@ func TestRefundFromDashboard(t *testing.T) {
 			}
 		}
 
+		overRefundNonce := nonce()
 		// blank amount refunds everything still refundable: 100.00 - 15.00 - 25.50 = 59.50
 		r, _ = e.post(op, path, url.Values{"amount": {""}, "csrf": {tok}, "nonce": {nonce()}})
 		if r.StatusCode != 303 {
 			t.Fatalf("full refund: %d", r.StatusCode)
+		}
+		r, body = e.post(op, path, url.Values{"amount": {"1.00"}, "csrf": {tok}, "nonce": {overRefundNonce}})
+		if r.StatusCode != 400 || !strings.Contains(body, "exceeds the refundable balance") {
+			t.Fatalf("over-refund: %d\n%s", r.StatusCode, body)
 		}
 		_ = db.Read(ctx, func(q store.Querier) (err error) { refunds, err = store.ListRefunds(ctx, q, f.pay.ID); return })
 		var sum int64

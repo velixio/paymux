@@ -1022,6 +1022,11 @@ func TestPollDueFindsSuccessfulRetryOnSameProviderOrder(t *testing.T) {
 		if got.Status != "succeeded" || attempt.ProviderPaymentID != "pay_retry" {
 			t.Fatalf("poll did not find retry: payment=%+v attempt=%+v", got, attempt)
 		}
+		var last connector.PaymentRef
+		e.fake.Locked(func() { last = e.fake.Fetches[len(e.fake.Fetches)-1] })
+		if last.ProviderOrderID != orderID || last.ProviderPaymentID != "" {
+			t.Fatalf("poll fetched with a stale payment id: %+v", last)
+		}
 	})
 }
 
