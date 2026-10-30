@@ -357,6 +357,26 @@ func ToSnapshot(s connector.PaymentSnapshot) core.Snapshot {
 	return out
 }
 
+// MerchantBrowserAction removes a hosted Paymux callback from provider SDK
+// options returned to merchant JavaScript. Hosted Paymux pages keep the
+// original action and callback flow.
+func MerchantBrowserAction(action connector.NextAction) connector.NextAction {
+	if action.Kind != connector.ActionSDK || action.Options == nil {
+		return action
+	}
+	if _, hasCallback := action.Options["callback_url"]; !hasCallback {
+		return action
+	}
+	options := make(map[string]any, len(action.Options)-1)
+	for key, value := range action.Options {
+		if key != "callback_url" && key != "redirect" {
+			options[key] = value
+		}
+	}
+	action.Options = options
+	return action
+}
+
 // SyncAttempt fetches the provider's truth for an attempt and applies it.
 // hint carries identifiers learned from a verified return or webhook; empty
 // fields fall back to what the attempt already stores. A provider that does
@@ -380,13 +400,17 @@ func (s *Service) SyncAttemptLatest(ctx context.Context, attemptID string) (core
 	// Preserve the payment currently attached to the Paymux attempt before an
 	// order-level lookup can replace it with a later provider retry.
 	s.recordStoredProviderPaymentAttempt(ctx, a)
-	live, err := s.o.Conns.Get(ctx, a.ProviderAccountID)
-	if err != nil {
-		return core.ApplyResult{}, err
-	}
 	ref := connector.PaymentRef{ProviderRef: a.ProviderRef, ProviderOrderID: a.ProviderOrderID}
 	if ref.ProviderRef == "" && ref.ProviderOrderID == "" {
 		ref.ProviderPaymentID = a.ProviderPaymentID
+	}
+	if ref == (connector.PaymentRef{}) {
+		p, perr := s.o.Core.GetPaymentByID(ctx, a.PaymentID)
+		return core.ApplyResult{Payment: p, Attempt: a}, perr
+	}
+	live, err := s.o.Conns.Get(ctx, a.ProviderAccountID)
+	if err != nil {
+		return core.ApplyResult{}, err
 	}
 	s.recordProviderPaymentAttempts(ctx, a, live.Connector, ref)
 	fctx, cancel := context.WithTimeout(ctx, fetchTimeout)

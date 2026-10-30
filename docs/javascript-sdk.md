@@ -78,8 +78,9 @@ await executeCheckout(checkoutAction);
 ```
 
 The merchant UI receives no Paymux checkout URL or token. Razorpay stays in its
-modal on the merchant page: the provider action omits Paymux's hosted callback
-and completes through Razorpay's handler. Webhooks and authenticated backend
+modal on the merchant page: the checkout-action API omits Paymux's hosted
+callback, and the JavaScript SDK also removes those fields defensively before
+launching Razorpay. Completion runs through Razorpay's handler. Webhooks and authenticated backend
 lookups remain authoritative. Providers that require a redirect may still
 return the customer through Paymux's verified return endpoint before Paymux
 redirects to the merchant `return_url`; configure an App custom domain if that

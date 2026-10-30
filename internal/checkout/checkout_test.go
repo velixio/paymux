@@ -618,6 +618,10 @@ func TestProcessProviderEventAppliesSuccessfulRetryOnSameOrder(t *testing.T) {
 		if _, err := e.flow.SyncAttempt(ctx, st.Attempt.ID); err != nil {
 			t.Fatal(err)
 		}
+		failedPayment, failedAttempt := e.get(p.ID), e.attempts(p.ID)[0]
+		if failedPayment.Status != "failed" || failedAttempt.Status != "failed" || failedAttempt.ProviderPaymentID != "pay_failed" {
+			t.Fatalf("first provider payment was not applied: payment=%+v attempt=%+v", failedPayment, failedAttempt)
+		}
 		if got := e.get(p.ID); got.Status != "failed" {
 			t.Fatalf("first provider payment: status %s, want failed", got.Status)
 		}
@@ -648,6 +652,27 @@ func TestProcessProviderEventAppliesSuccessfulRetryOnSameOrder(t *testing.T) {
 	})
 }
 
+func TestSyncAttemptLatestSkipsAttemptWithoutProviderIdentifier(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p, st := startedAttempt(t, e)
+		if err := e.db.Write(ctx, func(tx store.Tx) error {
+			_, err := tx.ExecContext(ctx, `UPDATE payment_attempts SET provider_ref = '', provider_order_id = NULL,
+				provider_payment_id = NULL WHERE id = ?`, st.Attempt.ID)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		before := e.fetches()
+		res, err := e.flow.SyncAttemptLatest(ctx, st.Attempt.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Payment.ID != p.ID || e.fetches() != before {
+			t.Fatalf("empty provider reference fetched: result=%+v fetches=%d want %d", res, e.fetches(), before)
+		}
+	})
+}
+
 func TestSyncAttemptLatestFindsSuccessfulRetryOnSameOrder(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
 		p, st := startedAttempt(t, e)
@@ -657,6 +682,10 @@ func TestSyncAttemptLatestFindsSuccessfulRetryOnSameOrder(t *testing.T) {
 		e.setPayment(st.Attempt.ProviderRef, failed)
 		if _, err := e.flow.SyncAttempt(ctx, st.Attempt.ID); err != nil {
 			t.Fatal(err)
+		}
+		failedPayment, failedAttempt := e.get(p.ID), e.attempts(p.ID)[0]
+		if failedPayment.Status != "failed" || failedAttempt.Status != "failed" || failedAttempt.ProviderPaymentID != "pay_failed" {
+			t.Fatalf("first provider payment was not applied: payment=%+v attempt=%+v", failedPayment, failedAttempt)
 		}
 
 		succeededRetry := succeeded(50000, "INR", "pay_retry")

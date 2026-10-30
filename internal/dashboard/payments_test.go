@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/authz"
 	"github.com/velixio/paymux/internal/core"
 	"github.com/velixio/paymux/internal/events"
 	"github.com/velixio/paymux/internal/outbound"
@@ -387,11 +389,21 @@ func TestPaymentDetailCanSyncLatestStatusFromProvider(t *testing.T) {
 		e.seedAttempt(store.Attempt{ID: "att_sync", Mode: "live", PaymentID: p.ID, ProviderAccountID: "pa_rzp",
 			ProviderRef: "ref_sync", ProviderOrderID: "order_sync", ProviderPaymentID: "pay_failed", Status: "failed"})
 		path := "/dashboard/payments/" + p.ID
+		if err := db.CreateRole(ctx, "sync-only", []string{string(authz.PaymentCancel), string(authz.SettingsRead)}, e.clk.Now()); err != nil {
+			t.Fatal(err)
+		}
+		_, secret := e.seedUser("sync-only@example.com", "sync-only", true)
+		syncOnly := e.client()
+		e.login(syncOnly, "sync-only@example.com", secret)
+		tok := e.authedCSRF(syncOnly)
+		if r, _ := e.post(syncOnly, path+"/sync", url.Values{"csrf": {tok}}); r.StatusCode != http.StatusForbidden {
+			t.Fatalf("sync-only role read payment: %d", r.StatusCode)
+		}
 
 		viewer := e.roleClient("viewer")
 		body := e.pageOK(viewer, path)
 		lacks(t, body, path+"/sync", "Sync from provider")
-		tok := csrfOf(t, body)
+		tok = csrfOf(t, body)
 		if r, _ := e.post(viewer, path+"/sync", url.Values{"csrf": {tok}}); r.StatusCode != http.StatusForbidden {
 			t.Fatalf("viewer sync: %d", r.StatusCode)
 		}
@@ -406,6 +418,28 @@ func TestPaymentDetailCanSyncLatestStatusFromProvider(t *testing.T) {
 		}
 		if got := syncer.called(); len(got) != 1 || got[0] != "att_sync" {
 			t.Fatalf("synced attempts = %v", got)
+		}
+		if n := auditCount(t, db, "payment.sync"); n != 1 {
+			t.Fatalf("payment.sync audit count = %d, want 1", n)
+		}
+
+		syncer.mu.Lock()
+		syncer.err = errors.New("provider unavailable")
+		syncer.mu.Unlock()
+		tok = csrfOf(t, e.pageOK(op, path))
+		r, responseBody = e.post(op, path+"/sync", url.Values{"csrf": {tok}})
+		if r.StatusCode != http.StatusBadGateway || !strings.Contains(responseBody, "could not be fetched") {
+			t.Fatalf("failed sync: %d\n%s", r.StatusCode, responseBody)
+		}
+		if n := auditCount(t, db, "payment.sync"); n != 1 {
+			t.Fatalf("failed sync wrote audit event: %d", n)
+		}
+
+		p2 := e.seedPayment("pay_sync_empty", app.ID, "live", "created", "ORD-EMPTY", 100, e.clk.Now())
+		tok = csrfOf(t, e.pageOK(op, "/dashboard/payments/"+p2.ID))
+		r, responseBody = e.post(op, "/dashboard/payments/"+p2.ID+"/sync", url.Values{"csrf": {tok}})
+		if r.StatusCode != http.StatusBadRequest || !strings.Contains(responseBody, "no provider attempt") {
+			t.Fatalf("sync without attempt: %d\n%s", r.StatusCode, responseBody)
 		}
 	})
 }

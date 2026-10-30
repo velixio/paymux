@@ -334,6 +334,12 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 // same order to become authoritative.
 func (d *Dashboard) paymentSyncSubmit(w http.ResponseWriter, r *http.Request, s *session) {
 	ctx := r.Context()
+	// Custom roles can be granted payment.cancel without payment.read. Never
+	// render payment or customer details to a role that cannot read them.
+	if !s.can(authz.PaymentRead) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	id := r.PathValue("id")
 	var (
 		p        store.Payment
