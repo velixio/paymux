@@ -376,8 +376,13 @@ func (s *Service) syncAttempt(ctx context.Context, attemptID string, hint connec
 		return core.ApplyResult{}, err
 	}
 	ref := connector.PaymentRef{ProviderRef: a.ProviderRef,
-		ProviderOrderID:   firstNonEmpty(a.ProviderOrderID, hint.ProviderOrderID),
-		ProviderPaymentID: firstNonEmpty(a.ProviderPaymentID, hint.ProviderPaymentID)}
+		ProviderOrderID: firstNonEmpty(a.ProviderOrderID, hint.ProviderOrderID),
+		// One provider order can have a failed payment followed by a successful
+		// retry. A verified return or webhook names the payment that changed, so
+		// fetch that payment instead of pinning reconciliation to the first ID.
+		// The fetched snapshot still has to match this attempt's stored order or
+		// reference below before anything is applied.
+		ProviderPaymentID: firstNonEmpty(hint.ProviderPaymentID, a.ProviderPaymentID)}
 	fctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 	snap, err := live.Connector.FetchPayment(fctx, ref)
@@ -389,7 +394,8 @@ func (s *Service) syncAttempt(ctx context.Context, attemptID string, hint connec
 		return core.ApplyResult{}, err
 	}
 	ours := snapshotIsOurs(a, snap)
-	hinted := (a.ProviderPaymentID == "" && hint.ProviderPaymentID != "") || (a.ProviderOrderID == "" && hint.ProviderOrderID != "")
+	hinted := (hint.ProviderPaymentID != "" && hint.ProviderPaymentID != a.ProviderPaymentID) ||
+		(a.ProviderOrderID == "" && hint.ProviderOrderID != "")
 	if ours && hinted {
 		// An id came from outside (a return URL, a notification) and nothing
 		// signs it: not contradicting the attempt is not enough, the payment
