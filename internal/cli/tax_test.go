@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 // checksum completes a 14-character GSTIN prefix with its check character.

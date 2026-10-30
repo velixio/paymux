@@ -14,8 +14,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // Result counts what a run did.

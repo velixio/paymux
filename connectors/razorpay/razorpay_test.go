@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
 )
 
 func newConn(t *testing.T, f *fake) connector.Connector {
@@ -33,10 +33,17 @@ func TestRegistered(t *testing.T) {
 
 func TestConfigValidation(t *testing.T) {
 	d := connectortest.NewDeps(nil, time.Now())
-	for _, cfg := range []string{`{}`, `{"key_id":"a"}`, `{"key_id":"a","key_secret":"b"}`, `not json`} {
+	for _, cfg := range []string{`{}`, `{"key_id":"a"}`, `not json`} {
 		if _, err := New(json.RawMessage(cfg), d); err == nil {
 			t.Errorf("config %s accepted", cfg)
 		}
+	}
+	c, err := New(json.RawMessage(`{"key_id":"a","key_secret":"b"}`), d)
+	if err != nil {
+		t.Fatalf("config without webhook setup: %v", err)
+	}
+	if err := c.VerifyWebhook(context.Background(), connector.WebhookRequest{}); !errors.Is(err, connector.ErrInvalidSignature) {
+		t.Fatalf("webhook without configured secret: %v", err)
 	}
 }
 

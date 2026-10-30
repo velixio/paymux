@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/web"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/web"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // directive returns the sources of one directive of a policy.

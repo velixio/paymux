@@ -7,9 +7,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/paymux/paymux/internal/checkout"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/checkout"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 type sink struct {

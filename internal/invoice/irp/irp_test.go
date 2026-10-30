@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/invoice/irp"
+	"github.com/velixio/paymux/internal/invoice/irp"
 )
 
 // The IRP signs the SignedQRCode (and SignedInvoice) as a JWT, RS256, with its

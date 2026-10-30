@@ -28,8 +28,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 const (
@@ -41,12 +41,12 @@ const (
 const configSchema = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": ["api_key", "company_id", "webhook_secret"],
+  "required": ["api_key", "company_id"],
   "additionalProperties": false,
   "properties": {
     "api_key": {"type": "string", "title": "API key", "minLength": 1, "x-secret": true},
     "company_id": {"type": "string", "title": "Company id (biz_...)", "minLength": 1},
-    "webhook_secret": {"type": "string", "title": "Webhook secret (ws_...)", "minLength": 1, "x-secret": true},
+    "webhook_secret": {"type": "string", "title": "Webhook secret (whsec_... or ws_...)", "minLength": 1, "x-secret": true, "x-webhook-secret": true},
     "sandbox": {"type": "boolean", "title": "Use the Whop sandbox (sandbox.whop.com)", "default": false}
   }
 }`
@@ -56,7 +56,8 @@ var info = connector.Info{
 	DisplayName: "Whop",
 	// Checkout is the purchase page on whop.com.
 	CheckoutHosts: &connector.CheckoutHosts{Redirect: []string{"https://whop.com"}},
-	Capabilities:  []connector.Capability{connector.CapRefund, connector.CapSubscriptionManager, connector.CapDisputeRead, connector.CapDisputeRespond},
+	Capabilities:  []connector.Capability{connector.CapRefund, connector.CapSubscriptionManager, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapWebhookConfig},
+	WebhookEvents: whopWebhookEvents,
 	ConfigSchema:  json.RawMessage(configSchema),
 	// Two-decimal currencies only; Whop settles in the organisation currency,
 	// so the core records the FX separately.
@@ -91,11 +92,11 @@ func New(raw json.RawMessage, deps connector.Deps) (connector.Connector, error) 
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("whop: invalid config: %w", err)
 	}
-	if cfg.APIKey == "" || cfg.CompanyID == "" || cfg.WebhookSecret == "" {
-		return nil, errors.New("whop: api_key, company_id and webhook_secret are required")
+	if cfg.APIKey == "" || cfg.CompanyID == "" {
+		return nil, errors.New("whop: api_key and company_id are required")
 	}
 	key := signingKey(cfg.WebhookSecret)
-	if len(key) == 0 {
+	if cfg.WebhookSecret != "" && len(key) == 0 {
 		// "whsec_" alone decodes to no key at all: anyone could sign webhooks.
 		return nil, errors.New("whop: webhook_secret has no key material")
 	}
@@ -446,6 +447,9 @@ func (w *whop) HandleReturn(_ context.Context, req connector.ReturnRequest) (con
 // webhook-signature ("v1,<base64 HMAC-SHA256 of id.timestamp.body>", possibly
 // several, space separated), with a 5 minute timestamp tolerance.
 func (w *whop) VerifyWebhook(_ context.Context, req connector.WebhookRequest) error {
+	if len(w.key) == 0 {
+		return connector.ErrInvalidSignature
+	}
 	id, ts, sigHdr := req.Header("webhook-id"), req.Header("webhook-timestamp"), req.Header("webhook-signature")
 	if id == "" || ts == "" || sigHdr == "" {
 		return connector.ErrInvalidSignature

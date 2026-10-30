@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
 )
 
 // A 200 answer that is not what the API documents (a maintenance page, a

@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/internal/subscriptions"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/subscriptions"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func (e *env) enableSubscriptions() *subscriptions.Service {

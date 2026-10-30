@@ -16,12 +16,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/domains"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/notify"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/domains"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/notify"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Alerter raises ops alerts (*notify.Alerts).

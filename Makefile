@@ -17,7 +17,7 @@ clean:
 
 # The payment hub (with the dashboard frontend embedded).
 build-paymux: frontend
-	$(GOBUILD) -ldflags "-s -w -X github.com/paymux/paymux/pkg/hub.Version=$(VERSION)" -o bin/paymux ./cmd/paymux
+	$(GOBUILD) -ldflags "-s -w -X github.com/velixio/paymux/pkg/hub.Version=$(VERSION)" -o bin/paymux ./cmd/paymux
 
 # Public website: independent binary, no payment-hub configuration or database.
 build-home: frontend-home

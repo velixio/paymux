@@ -16,15 +16,15 @@ import (
 	"sort"
 	"strings"
 
-	_ "github.com/paymux/paymux/connectors/cashfree"
-	_ "github.com/paymux/paymux/connectors/payu"
-	_ "github.com/paymux/paymux/connectors/razorpay"
-	_ "github.com/paymux/paymux/connectors/remote"
-	_ "github.com/paymux/paymux/connectors/stripe"
-	_ "github.com/paymux/paymux/connectors/whop"
-	_ "github.com/paymux/paymux/connectors/zoho"
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/money"
+	_ "github.com/velixio/paymux/connectors/cashfree"
+	_ "github.com/velixio/paymux/connectors/payu"
+	_ "github.com/velixio/paymux/connectors/razorpay"
+	_ "github.com/velixio/paymux/connectors/remote"
+	_ "github.com/velixio/paymux/connectors/stripe"
+	_ "github.com/velixio/paymux/connectors/whop"
+	_ "github.com/velixio/paymux/connectors/zoho"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 func main() {
@@ -70,6 +70,7 @@ var columns = []column{
 	{connector.CapSubscriptionManager, "Provider-managed subscriptions", "`SubscriptionManager`: the provider bills and retries recurring payments."},
 	{connector.CapMandateManager, "Mandates (merchant-triggered)", "`MandateManager`: Paymux debits a mandate (UPI AutoPay, card, e-mandate) on each renewal."},
 	{connector.CapOAuth, "Connect (OAuth)", "`OAuthConnector`: the dashboard's Connect button authorises the account with the provider, so no grant code is pasted by hand."},
+	{connector.CapWebhookConfig, "Configure webhook", "`WebhookConfigurator`: Paymux can register its inbound URL and required events with the provider."},
 }
 
 const remoteName = "remote"

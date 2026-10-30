@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/paymux/paymux/internal/connectors"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/subscriptions"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/connectors"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/subscriptions"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // knownSubscription tells reconciliation whether Paymux has a provider's

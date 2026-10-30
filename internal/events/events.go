@@ -6,7 +6,7 @@ package events
 import (
 	"context"
 
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // Event is one domain event about an object at a specific version.

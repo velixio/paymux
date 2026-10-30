@@ -1,6 +1,6 @@
 package connectortest
 
-import "github.com/paymux/paymux/pkg/connector"
+import "github.com/velixio/paymux/pkg/connector"
 
 // SampleValues returns one fully populated value of every SDK type that
 // crosses the connector boundary. Numbers inside NextAction.Options are

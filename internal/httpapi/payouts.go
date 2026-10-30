@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/payouts"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/payouts"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func (a *API) payoutsEnabled(w http.ResponseWriter, r *http.Request) bool {

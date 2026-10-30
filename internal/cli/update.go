@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/selfupdate"
-	"github.com/paymux/paymux/pkg/hub"
+	"github.com/velixio/paymux/internal/selfupdate"
+	"github.com/velixio/paymux/pkg/hub"
 )
 
 const updateUsage = "usage: paymux update [--check] [--version vX.Y.Z] [--repo owner/name] [--dest path] [--force]\n" +

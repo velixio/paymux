@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/config"
+	"github.com/velixio/paymux/internal/config"
 )
 
 const (

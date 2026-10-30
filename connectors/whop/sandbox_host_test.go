@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
 )
 
 // The Whop sandbox uses its own API host (whop.com/blog/whop-sandbox).

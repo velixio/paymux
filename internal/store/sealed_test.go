@@ -7,8 +7,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/paymux/paymux/internal/migrations"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/migrations"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // A master key rotation reseals the columns listed in store/sealed.go. A new

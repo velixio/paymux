@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 const apiBase = "https://api.razorpay.com"

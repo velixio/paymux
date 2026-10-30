@@ -10,11 +10,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/checkout"
-	"github.com/paymux/paymux/internal/routing"
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/checkout"
+	"github.com/velixio/paymux/internal/routing"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // ruleEdit is one routing rule laid out as form fields.

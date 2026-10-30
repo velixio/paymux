@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 const realPaymentID = "28000000000181002"

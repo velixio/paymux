@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/config"
-	"github.com/paymux/paymux/internal/logging"
+	"github.com/velixio/paymux/internal/config"
+	"github.com/velixio/paymux/internal/logging"
 )
 
 // Config.Load already refuses PAYMUX_DEV_SKIP_2FA outside development, but a

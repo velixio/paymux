@@ -1,8 +1,8 @@
 package connectors
 
 import (
-	"github.com/paymux/paymux/internal/metrics"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/metrics"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // ProviderMetrics registers the provider request metrics and returns the

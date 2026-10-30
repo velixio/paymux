@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/invoice/einvoice"
+	"github.com/velixio/paymux/internal/invoice/einvoice"
 )
 
 func TestBatchIsAJSONArrayOfValidDocuments(t *testing.T) {

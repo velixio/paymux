@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 const listPageSize = 100

@@ -27,7 +27,7 @@
   - `github.com/google/uuid`, only if stdlib `uuid` lacks v7 (Task 4).
 
   Each one gets a line in `docs/dependencies.md`.
-- **Module path:** `github.com/paymux/paymux` (placeholder).
+- **Module path:** `github.com/velixio/paymux` (placeholder).
 - **Storage types:**
   - timestamps `BIGINT` unix **milliseconds** UTC;
   - money `int64` minor units;
@@ -91,7 +91,7 @@
   - `paymux.Version string` (default `"dev"`, set via `-ldflags -X`)
   - `cli.Run(ctx context.Context, args []string, lookupEnv func(string) (string, bool), stdout, stderr io.Writer) int`
 
-- [ ] **Step 1:** Run `git init`, then `go mod init github.com/paymux/paymux` and `go mod edit -go=1.27 -toolchain=go1.27.2`. Then run `go version` in the repo. Expected: `go1.27.2` (auto-downloaded; the machine has 1.26.0).
+- [ ] **Step 1:** Run `git init`, then `go mod init github.com/velixio/paymux` and `go mod edit -go=1.27 -toolchain=go1.27.2`. Then run `go version` in the repo. Expected: `go1.27.2` (auto-downloaded; the machine has 1.26.0).
 - [ ] **Step 2: Write failing tests:**
   - `TestRunVersion`: `["version"]` returns 0, and stdout is `"paymux dev\n"`.
   - `TestRunUnknownCommand`: returns 2, and stderr contains `unknown command "bogus"` and `usage: paymux <serve|migrate|version>`.
@@ -99,7 +99,7 @@
 - [ ] **Step 3:** Run `go test ./internal/cli/`. Expected: FAIL.
 - [ ] **Step 4: Implement `cli.Run`** as a stdlib switch. `serve` and `migrate` return 1 with "not implemented" until Tasks 7 and 10. `main.go` uses `signal.NotifyContext(SIGINT, SIGTERM)`, blank-imports `time/tzdata`, and calls `os.Exit(cli.Run(...))`.
 - [ ] **Step 5: Write the `Makefile`.** Targets:
-  - `build`: `CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/paymux/paymux.Version=$(VERSION)" -o dist/paymux ./cmd/paymux`, where `VERSION ?= $(shell git describe --always --dirty 2>/dev/null || echo dev)`.
+  - `build`: `CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/velixio/paymux.Version=$(VERSION)" -o dist/paymux ./cmd/paymux`, where `VERSION ?= $(shell git describe --always --dirty 2>/dev/null || echo dev)`.
   - `test`: `go test -race ./...`.
   - `test-pg`: runs `go test -race ./...` with `PAYMUX_REQUIRE_PG=1`. If `PAYMUX_TEST_POSTGRES_URL` is unset and `docker` exists, it starts `postgres:17` on a random port, exports the URL, and removes the container afterwards. Otherwise it fails with `set PAYMUX_TEST_POSTGRES_URL or install docker`.
   - `test-all`: runs `test` and `test-pg`.
@@ -609,7 +609,7 @@ func (a *App) InternalAddr() string
   - `TestSQLLeak` and `TestPgxLeak`: one `sql-outside-store` each.
   - `TestConnectorLeak`: one `connector-imports`, naming the import.
   - `TestFatMain`: one `thin-main`.
-  - `TestRepoHasNoViolations`: `Check("../..", "github.com/paymux/paymux")` gives 0.
+  - `TestRepoHasNoViolations`: `Check("../..", "github.com/velixio/paymux")` gives 0.
 - [ ] **Step 2:** Run the tests. Expected: FAIL.
 - [ ] **Step 3: Implement `Check`.** Then write `scripts/ci.sh` (`set -euo pipefail`), which runs:
   1. `test -z "$(gofmt -l .)"`

@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func sdkAction(order string) connector.CheckoutResult {

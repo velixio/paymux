@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func TestRealFetchPaymentByIDKeepsTheRealFields(t *testing.T) {

@@ -7,10 +7,10 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/outbound/stdwebhooks"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/outbound/stdwebhooks"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // Endpoint is a webhook endpoint as shown to operators (no secret).

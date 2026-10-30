@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/paymux/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/jobs"
 )
 
 // Job kinds of the dispute schedules.

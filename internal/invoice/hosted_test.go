@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/domains"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/domains"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // urlsOf extracts the hosted and pdf paths (with token) from an event.

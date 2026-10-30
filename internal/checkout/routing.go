@@ -10,11 +10,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/routing"
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/routing"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Routing evaluates the routing setting (app rules, org rules, catch-all)

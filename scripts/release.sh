@@ -26,7 +26,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 SUPPORTED="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64"
-MODULE=github.com/paymux/paymux
+MODULE=github.com/velixio/paymux
 
 VERSION="${1:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
 if ! [[ "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then

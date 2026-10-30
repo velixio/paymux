@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Zoho keeps each customer's data in one data centre, and every Zoho host name

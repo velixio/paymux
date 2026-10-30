@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/logctx"
+	"github.com/velixio/paymux/internal/logctx"
 )
 
 type seen struct {

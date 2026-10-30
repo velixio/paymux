@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/invoice"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/invoice"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // invoicing answers 404 when the API was built without an invoice service.

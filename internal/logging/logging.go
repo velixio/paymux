@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/paymux/paymux/internal/redact"
+	"github.com/velixio/paymux/internal/redact"
 )
 
 const redacted = "[REDACTED]"

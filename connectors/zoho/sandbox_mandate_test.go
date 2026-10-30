@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Mandates against Zoho's sandbox (ZOHO_TEST_SANDBOX=1 or "sandbox": true in

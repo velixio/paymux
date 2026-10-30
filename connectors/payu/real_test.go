@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // The testdata files verify_*, refund_*, action_* and command_* are responses

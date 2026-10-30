@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // RenewalInput describes the payment of one subscription renewal.

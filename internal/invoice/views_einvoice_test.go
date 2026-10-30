@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/invoice"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/invoice"
+	"github.com/velixio/paymux/internal/store"
 )
 
 func TestInvoiceViewCarriesTheRecordedEInvoice(t *testing.T) {

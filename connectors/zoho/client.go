@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 const tokenKey = "zoho:access_token"

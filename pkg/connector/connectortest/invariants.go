@@ -3,7 +3,7 @@ package connectortest
 import (
 	"fmt"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // CheckNotifications reports the first way a ParseWebhook result breaks the

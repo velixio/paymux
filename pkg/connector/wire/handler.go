@@ -10,7 +10,7 @@ import (
 	"path"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 const maxBody = 8 << 20
@@ -158,6 +158,14 @@ func (h *handler) dispatch(ctx context.Context, method string, body []byte) (any
 		})
 	case MethodFetchPayment:
 		return call(body, func(in connector.PaymentRef) (connector.PaymentSnapshot, error) { return c.FetchPayment(ctx, in) })
+	case MethodConfigureWebhook:
+		x, err := optional[connector.WebhookConfigurator](c, method)
+		if err != nil {
+			return nil, err
+		}
+		return call(body, func(in connector.ProviderWebhookConfig) (connector.ProviderWebhookResult, error) {
+			return x.ConfigureWebhook(ctx, in)
+		})
 	}
 	switch method {
 	case MethodRefund, MethodFetchRefund:

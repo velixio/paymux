@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/paymux/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/authz"
 
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store"
 )
 
 var notices = map[string]string{

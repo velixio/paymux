@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/connectortest"
-	"github.com/paymux/paymux/pkg/connector/wire"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/pkg/connector/wire"
 )
 
 var (
@@ -125,6 +125,9 @@ func (f *fullFake) CreatePayout(_ context.Context, r connector.PayoutRequest) (c
 func (f *fullFake) FetchPayout(_ context.Context, r connector.PayoutRef) (connector.PayoutSnapshot, error) {
 	return connector.PayoutSnapshot{ProviderPayoutID: r.ProviderPayoutID, Status: connector.PayoutSucceeded}, f.rec("fetch_payout", r)
 }
+func (f *fullFake) ConfigureWebhook(_ context.Context, cfg connector.ProviderWebhookConfig) (connector.ProviderWebhookResult, error) {
+	return connector.ProviderWebhookResult{Secret: "generated", Created: true}, f.rec("configure_webhook", cfg)
+}
 
 // bare implements only the required interface.
 type bare struct{ *fullFake }
@@ -132,7 +135,8 @@ type bare struct{ *fullFake }
 func (b bare) Info() connector.Info { return connector.Info{Name: "bare"} }
 
 var allCaps = []connector.Capability{connector.CapRefund, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapList,
-	connector.CapSettle, connector.CapCancel, connector.CapSubscriptionManager, connector.CapMandateManager, connector.CapPayout}
+	connector.CapSettle, connector.CapCancel, connector.CapSubscriptionManager, connector.CapMandateManager, connector.CapPayout,
+	connector.CapWebhookConfig}
 
 // serve exposes c at a test server and returns a remote connector for it.
 func serve(t *testing.T, c connector.Connector, wrap func(http.Handler) http.Handler) connector.Connector {
@@ -162,7 +166,7 @@ func dial(t *testing.T, srv *httptest.Server, secret string) connector.Connector
 }
 
 func TestDiscoveryDecidesTheOptionalInterfaces(t *testing.T) {
-	has := func(c connector.Connector) (m [9]bool) {
+	has := func(c connector.Connector) (m [10]bool) {
 		_, m[0] = c.(connector.Refunder)
 		_, m[1] = c.(connector.DisputeReader)
 		_, m[2] = c.(connector.DisputeResponder)
@@ -172,12 +176,13 @@ func TestDiscoveryDecidesTheOptionalInterfaces(t *testing.T) {
 		_, m[6] = c.(connector.SubscriptionManager)
 		_, m[7] = c.(connector.MandateManager)
 		_, m[8] = c.(connector.Payouter)
+		_, m[9] = c.(connector.WebhookConfigurator)
 		return
 	}
-	// Every one of the 512 capability sets yields exactly those interfaces.
-	for mask := 0; mask < 512; mask++ {
+	// Every capability set yields exactly those interfaces.
+	for mask := 0; mask < 1024; mask++ {
 		var caps []connector.Capability
-		var want [9]bool
+		var want [10]bool
 		for i, c := range allCaps {
 			if mask&(1<<i) != 0 {
 				caps = append(caps, c)
@@ -186,14 +191,14 @@ func TestDiscoveryDecidesTheOptionalInterfaces(t *testing.T) {
 		}
 		rc := serve(t, &fullFake{caps: caps}, nil)
 		if got := has(rc); got != want {
-			t.Fatalf("mask %09b: interfaces %v want %v", mask, got, want)
+			t.Fatalf("mask %010b: interfaces %v want %v", mask, got, want)
 		}
 		if info := rc.Info(); info.Name != "remote" || info.DisplayName != "Upstream" || !info.MerchantOfRecord || !reflect.DeepEqual(info.Capabilities, caps) {
-			t.Fatalf("mask %09b: info %+v", mask, info)
+			t.Fatalf("mask %010b: info %+v", mask, info)
 		}
 	}
 	// A connector that declares nothing, and a remote that declares something unknown.
-	if got := has(serve(t, bare{&fullFake{}}, nil)); got != [9]bool{} {
+	if got := has(serve(t, bare{&fullFake{}}, nil)); got != [10]bool{} {
 		t.Errorf("bare: %v", got)
 	}
 	if got := has(serve(t, &fullFake{caps: []connector.Capability{"time_travel", connector.CapRefund}}, nil)); !got[0] {
@@ -237,6 +242,12 @@ func TestEveryMethodForwardsItsArguments(t *testing.T) {
 	if po.ProviderRef != "PO" || pf.ProviderPayoutID != "po_9" || pf.Status != connector.PayoutSucceeded ||
 		f.args["create_payout"].(connector.PayoutRequest).Beneficiary.AccountNumber != "1234567890" {
 		t.Errorf("payouts %+v %+v %+v", po, pf, f.args["create_payout"])
+	}
+	wc := c.(connector.WebhookConfigurator)
+	wr, err := wc.ConfigureWebhook(ctx, connector.ProviderWebhookConfig{URL: "https://pay.example/hooks/pa_1"})
+	must(err)
+	if !wr.Created || wr.Secret != "generated" || f.args["configure_webhook"] != (connector.ProviderWebhookConfig{URL: "https://pay.example/hooks/pa_1"}) {
+		t.Errorf("webhook config %+v / %+v", wr, f.args["configure_webhook"])
 	}
 	if !reflect.DeepEqual(f.args["verify_webhook"], hook) {
 		t.Errorf("binary webhook body altered: %+v", f.args["verify_webhook"])
@@ -311,7 +322,7 @@ func TestEveryMethodForwardsItsArguments(t *testing.T) {
 	}
 
 	// Every wire method name was exercised exactly once on the server side.
-	if len(f.calls) != 26 {
+	if len(f.calls) != 27 {
 		t.Errorf("server saw %d calls: %v", len(f.calls), f.calls)
 	}
 }

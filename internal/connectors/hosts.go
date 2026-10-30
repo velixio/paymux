@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/paymux/paymux/internal/notify"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/notify"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // ErrNextActionRefused is wrapped by CheckNextAction when a connector sent the

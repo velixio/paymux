@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 func signedQR() string {

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/invoice/einvoice"
+	"github.com/velixio/paymux/internal/invoice/einvoice"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files")

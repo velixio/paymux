@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // DeliveryTimeout bounds one delivery attempt.

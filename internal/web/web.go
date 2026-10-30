@@ -16,8 +16,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/paymux/paymux/pkg/connector"
-	webassets "github.com/paymux/paymux/web"
+	"github.com/velixio/paymux/pkg/connector"
+	webassets "github.com/velixio/paymux/web"
 )
 
 // Embedded returns the built-in assets.

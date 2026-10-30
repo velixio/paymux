@@ -8,17 +8,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/httpapi"
-	"github.com/paymux/paymux/internal/invoice"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/server"
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/httpapi"
+	"github.com/velixio/paymux/internal/invoice"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/server"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // invoiceFixture is a live-mode world with the invoice hooks wired.

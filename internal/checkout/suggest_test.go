@@ -5,10 +5,10 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/paymux/paymux/internal/checkout"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/routing"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/checkout"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/routing"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // pickIDs runs Routing.Pick with the given suggester and returns the account ids in order.

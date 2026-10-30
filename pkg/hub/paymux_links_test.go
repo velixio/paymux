@@ -18,12 +18,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/logging"
-	"github.com/paymux/paymux/internal/outbound/stdwebhooks"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/internal/logging"
+	"github.com/velixio/paymux/internal/outbound/stdwebhooks"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
 )
 
 // TestPaymentLinkFlow runs a payment link through the whole hub against a fake

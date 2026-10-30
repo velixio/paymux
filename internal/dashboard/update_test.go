@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/selfupdate"
-	"github.com/paymux/paymux/internal/selfupdate/selfupdatetest"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/selfupdate"
+	"github.com/velixio/paymux/internal/selfupdate/selfupdatetest"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // The Update page installs a newer release from GitHub: admin only, behind a

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func refundJSON(id, status, ref string) map[string]any {

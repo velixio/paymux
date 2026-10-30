@@ -5,11 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/paymux/paymux/connectors/simulator"
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/connectors"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/connectors/simulator"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/connectors"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // A test-mode simulator account takes the payments no rule routes anywhere, so

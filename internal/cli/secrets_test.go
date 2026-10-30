@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/config"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/config"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
 )
 
 func lookupWith(base func(string) (string, bool), kv ...string) func(string) (string, bool) {

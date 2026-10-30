@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/qrcode"
+	"github.com/velixio/paymux/internal/qrcode"
 )
 
 // a token about the size of the portal's signed QR code

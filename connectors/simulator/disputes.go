@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // evidenceReviewDelay is how long a dispute stays under review after evidence

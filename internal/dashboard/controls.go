@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/paymux/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/settings"
 )
 
 // describe turns a resolved setting into a row with the control that suits

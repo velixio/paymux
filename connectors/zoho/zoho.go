@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 const (
@@ -41,7 +41,7 @@ const configSchema = `{
     "client_secret": {"type": "string", "title": "OAuth client secret", "minLength": 1, "x-secret": true, "x-oauth": "client_secret"},
     "refresh_token": {"type": "string", "title": "OAuth refresh token (filled in by Connect; leave empty until then)", "x-secret": true, "x-oauth": "refresh_token"},
     "oauth_scopes": {"type": "string", "title": "Scopes granted when the account was connected", "x-hidden": true, "x-oauth": "scopes"},
-    "webhook_secret": {"type": "string", "title": "Webhook signing key", "minLength": 1, "x-secret": true},
+    "webhook_secret": {"type": "string", "title": "Webhook signing key", "minLength": 1, "x-secret": true, "x-webhook-secret": true, "x-generate": true},
     "data_center": {"type": "string", "title": "Zoho data centre TLD", "default": "in"},
     "widget_api_key": {"type": "string", "title": "Widget API key (enables the embedded widget)"},
     "hosted_checkout_url": {"type": "string", "format": "uri", "title": "Hosted checkout base URL (used when no widget key is set)"},

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/domains"
+	"github.com/velixio/paymux/internal/domains"
 )
 
 func TestAPIReferenceIsServedOnTheBaseHost(t *testing.T) {

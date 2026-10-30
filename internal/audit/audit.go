@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // ActorType says who performed an action.

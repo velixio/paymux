@@ -7,11 +7,11 @@ import (
 	"slices"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // parseRate parses a positive decimal rate such as "83.2500".

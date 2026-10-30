@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/paymux/paymux/internal/look"
-	"github.com/paymux/paymux/internal/web"
+	"github.com/velixio/paymux/internal/look"
+	"github.com/velixio/paymux/internal/web"
 )
 
 // Options configures the Handler.

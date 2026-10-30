@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/httpapi"
+	"github.com/velixio/paymux/internal/httpapi"
 )
 
 type captureMux struct{ patterns []string }

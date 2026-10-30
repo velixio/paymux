@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Wire entities (only the fields Paymux reads). Timestamps are unix seconds.
@@ -132,6 +132,9 @@ func (d disputeEntity) snapshot() connector.DisputeSnapshot {
 // such check. The X-Razorpay-Event-Id header is not covered by the signature and
 // is not used (see ParseWebhook).
 func (r *razorpay) VerifyWebhook(_ context.Context, req connector.WebhookRequest) error {
+	if r.cfg.WebhookSecret == "" {
+		return connector.ErrInvalidSignature
+	}
 	sig := req.Header("X-Razorpay-Signature")
 	if sig == "" || !validHMAC(r.cfg.WebhookSecret, req.Body, sig) {
 		return connector.ErrInvalidSignature

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/invoice/einvoice"
+	"github.com/velixio/paymux/internal/invoice/einvoice"
 )
 
 // RefClm says whether the exporter claims a refund of the IGST paid. Only an

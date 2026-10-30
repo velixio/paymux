@@ -11,12 +11,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/connectors"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/connectors"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 type connOpt struct{ Name, Display string }
@@ -35,6 +35,8 @@ type enumOpt struct {
 type cfgField struct {
 	Name, Title, Type string
 	Secret, Required  bool
+	WebhookSecret     bool
+	Generate          bool
 	Enum              []enumOpt
 	Value             string
 	Checked           bool // booleans
@@ -58,12 +60,18 @@ type provForm struct {
 	ID, Connector, Display, Name, Mode, Status         string
 	StatementDescriptor, ProviderGSTIN, Webhook, AppID string
 	Fields                                             []cfgField
+	WebhookField                                       *cfgField
 	Currencies, Purposes                               []checkOpt
+	WebhookEvents                                      []string
 	Linked                                             []linkedApp
 	Linkable                                           []appOpt
 	CanManage                                          bool
 	Test                                               string
 	TestOK                                             bool
+	CanAutoWebhook                                     bool
+	WebhookPerCheckout                                 bool
+	HasWebhookField                                    bool
+	HasWebhookSecret                                   bool
 	Unavailable                                        bool
 	OAuth                                              *oauthPanel
 }
@@ -77,6 +85,8 @@ func (d *Dashboard) routesProviders() {
 	m.HandleFunc("POST "+prefix+"/providers/{id}", d.authed(authz.ProviderAccountManage, d.recent(d.providerUpdate)))
 	m.HandleFunc("POST "+prefix+"/providers/{id}/apps", d.authed(authz.ProviderAccountManage, d.recent(d.providerLink)))
 	m.HandleFunc("POST "+prefix+"/providers/{id}/test", d.authed(authz.ProviderAccountManage, d.providerTest))
+	m.HandleFunc("POST "+prefix+"/providers/{id}/webhook/configure", d.authed(authz.ProviderAccountManage, d.recent(d.providerWebhookConfigure)))
+	m.HandleFunc("POST "+prefix+"/providers/{id}/webhook/secret", d.authed(authz.ProviderAccountManage, d.recent(d.providerWebhookSecret)))
 	d.routesOAuth()
 }
 
@@ -104,20 +114,22 @@ func schemaFields(schema json.RawMessage) []cfgField {
 			break
 		}
 		var p struct {
-			Type    string `json:"type"`
-			Title   string `json:"title"`
-			Enum    []any  `json:"enum"`
-			Secret  bool   `json:"x-secret"`
-			Hidden  bool   `json:"x-hidden"`
-			OAuth   string `json:"x-oauth"`
-			Default any    `json:"default"`
+			Type     string `json:"type"`
+			Title    string `json:"title"`
+			Enum     []any  `json:"enum"`
+			Secret   bool   `json:"x-secret"`
+			Hidden   bool   `json:"x-hidden"`
+			OAuth    string `json:"x-oauth"`
+			Webhook  bool   `json:"x-webhook-secret"`
+			Generate bool   `json:"x-generate"`
+			Default  any    `json:"default"`
 		}
 		if err := dec.Decode(&p); err != nil {
 			break
 		}
 		name := kt.(string)
 		f := cfgField{Name: name, Title: firstNonBlank(p.Title, name), Type: p.Type, Secret: p.Secret, Required: slices.Contains(doc.Required, name),
-			Hidden: p.Hidden, OAuthRole: p.OAuth}
+			Hidden: p.Hidden, OAuthRole: p.OAuth, WebhookSecret: p.Webhook, Generate: p.Generate}
 		for _, ev := range p.Enum {
 			f.Enum = append(f.Enum, enumOpt{Value: fmt.Sprint(ev)})
 		}
@@ -392,9 +404,25 @@ func (d *Dashboard) renderProvider(w http.ResponseWriter, r *http.Request, s *se
 	if known {
 		display = firstNonBlank(info.DisplayName, info.Name)
 		f.Currencies = checks(info.Currencies, pa.AcceptedCurrencies)
+		stored := d.storedConfig(pa)
+		fields := fillFields(schemaFields(info.ConfigSchema), stored, post)
+		f.CanAutoWebhook = info.Has(connector.CapWebhookConfig)
+		f.WebhookEvents = append([]string(nil), info.WebhookEvents...)
+		// Cashfree has no endpoint-registration step: its Orders API accepts a
+		// notify_url and the connector sends this account URL on every checkout.
+		f.WebhookPerCheckout = pa.Connector == "cashfree"
+		for _, field := range fields {
+			if field.WebhookSecret {
+				f.HasWebhookField = true
+				fieldCopy := field
+				f.WebhookField = &fieldCopy
+				if field.HasValue {
+					f.HasWebhookSecret = true
+				}
+			}
+		}
 		if f.CanManage {
-			stored := d.storedConfig(pa)
-			f.Fields = fillFields(schemaFields(info.ConfigSchema), stored, post)
+			f.Fields = fields
 			if info.Has(connector.CapOAuth) {
 				f.OAuth = d.buildOAuthPanel(r.Context(), pa, info, stored, post)
 			}
@@ -496,4 +524,56 @@ func (d *Dashboard) providerTest(w http.ResponseWriter, r *http.Request, s *sess
 		return
 	}
 	d.renderProvider(w, r, s, http.StatusOK, "", res.Message, res.OK, nil)
+}
+
+func (d *Dashboard) providerWebhookConfigure(w http.ResponseWriter, r *http.Request, s *session) {
+	pa, scope, ok := d.loadProvider(w, r)
+	if !ok {
+		return
+	}
+	res, err := d.o.Connectors.ConfigureWebhook(r.Context(), s.auditActor(), scope, pa.ID)
+	if err != nil {
+		d.renderProvider(w, r, s, http.StatusBadGateway, "", "Webhook configuration failed: "+err.Error(), false, nil)
+		return
+	}
+	d.renderProvider(w, r, s, http.StatusOK, "", res.Message, true, nil)
+}
+
+func (d *Dashboard) providerWebhookSecret(w http.ResponseWriter, r *http.Request, s *session) {
+	pa, scope, ok := d.loadProvider(w, r)
+	if !ok {
+		return
+	}
+	_, info, known := connector.Lookup(pa.Connector)
+	if !known {
+		d.renderProvider(w, r, s, http.StatusBadRequest, "", "This connector is not available in this build.", false, nil)
+		return
+	}
+	name := ""
+	for _, field := range schemaFields(info.ConfigSchema) {
+		if field.WebhookSecret {
+			name = field.Name
+			break
+		}
+	}
+	secret := strings.TrimSpace(r.PostForm.Get("webhook_secret"))
+	if name == "" || secret == "" {
+		d.renderProvider(w, r, s, http.StatusBadRequest, "", "Enter or generate a webhook signing secret before saving.", false, nil)
+		return
+	}
+	cfg := d.storedConfig(pa)
+	if cfg == nil {
+		d.fail(w, errors.New("provider config could not be decrypted"))
+		return
+	}
+	cfg[name] = secret
+	raw, err := json.Marshal(cfg)
+	if err == nil {
+		err = d.o.Connectors.UpdateAccount(r.Context(), s.auditActor(), scope, pa.ID, connectors.UpdateAccountInput{Config: raw})
+	}
+	if err != nil {
+		d.renderProvider(w, r, s, http.StatusBadRequest, "", "Webhook secret was not saved: "+err.Error(), false, nil)
+		return
+	}
+	d.renderProvider(w, r, s, http.StatusOK, "", "Webhook signing secret saved securely.", true, nil)
 }

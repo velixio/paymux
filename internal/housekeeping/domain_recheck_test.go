@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/domains"
+	"github.com/velixio/paymux/internal/domains"
 )
 
 // A domain whose TXT proof was stored is looked up again: when the record is

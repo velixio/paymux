@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/logctx"
-	"github.com/paymux/paymux/internal/redact"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/logctx"
+	"github.com/velixio/paymux/internal/redact"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // idAliases maps a log attribute name to the identifier it carries. Anything
@@ -181,7 +181,7 @@ func component(pc uintptr) string {
 	}
 	fr, _ := runtime.CallersFrames([]uintptr{pc}).Next()
 	fn := fr.Function
-	fn = strings.TrimPrefix(fn, "github.com/paymux/paymux/")
+	fn = strings.TrimPrefix(fn, "github.com/velixio/paymux/")
 	if i := strings.LastIndexByte(fn, '/'); i >= 0 {
 		if j := strings.IndexByte(fn[i:], '.'); j >= 0 {
 			return fn[:i+j]

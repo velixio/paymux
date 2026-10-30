@@ -7,18 +7,19 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/connectors"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/fakeconn"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/connectors"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/fakeconn"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 const providerSchema = `{"type":"object","required":["key_id","key_secret"],"additionalProperties":false,"properties":{
 "key_id":{"type":"string","title":"Key id","minLength":1},
 "key_secret":{"type":"string","title":"Key secret","minLength":1,"x-secret":true},
+"webhook_secret":{"type":"string","title":"Webhook secret","x-secret":true,"x-webhook-secret":true,"x-generate":true},
 "region":{"type":"string","title":"Region","enum":["in","sg"]},
 "test_mode":{"type":"boolean","title":"Use the sandbox"},
 "retries":{"type":"integer","title":"Retries"}}}`
@@ -68,7 +69,7 @@ func TestProviderCreateRendersTheSchemaForm(t *testing.T) {
 		body := e.pageOK(admin, "/dashboard/providers/new?connector="+st.Name)
 		has(t, body, `name="cfg_key_id"`, `Key id`, `name="cfg_key_secret"`, `type="password"`, `name="cfg_region"`, `<option value="in"`, `<option value="sg"`,
 			`name="cfg_test_mode"`, `type="checkbox"`, `name="cfg_retries"`, `name="currency" value="INR"`, `name="currency" value="USD"`,
-			`name="purpose" value="one_time"`, `name="purpose" value="subscription"`, `name="app_id"`, app.ID)
+			`name="cfg_webhook_secret"`, `data-generate-secret="cfg_webhook_secret"`, `name="purpose" value="one_time"`, `name="purpose" value="subscription"`, `name="app_id"`, app.ID)
 		if r, _ := e.get(admin, "/dashboard/providers/new?connector=nope"); r.StatusCode != 404 {
 			t.Errorf("unknown connector: %d", r.StatusCode)
 		}
@@ -295,8 +296,15 @@ func TestProviderDetailWebhookURLAndAppLinking(t *testing.T) {
 
 		page := "/dashboard/providers/" + pa.ID
 		body := e.pageOK(admin, page)
-		has(t, body, hook, `data-copy="`+hook+`"`, `name="app_id"`)
+		has(t, body, "Provider webhook", hook, `data-copy="`+hook+`"`, "Configure webhook", "Required events (2)", "payment.captured", "refund.processed", `name="webhook_secret"`, `data-generate-secret="webhook_secret"`, `name="app_id"`)
+		lacks(t, body, `name="cfg_webhook_secret"`) // the provider webhook card owns this field on existing accounts
 		tok := csrfOf(t, body)
+		if r, b := e.post(admin, page+"/webhook/secret", url.Values{"webhook_secret": {"generated-hook-secret"}, "csrf": {tok}}); r.StatusCode != 200 {
+			t.Fatalf("save webhook secret: %d\n%s", r.StatusCode, b)
+		}
+		if cfg := e.openConfig(pa.ID); cfg["webhook_secret"] != "generated-hook-secret" {
+			t.Fatalf("webhook secret was not stored: %v", cfg)
+		}
 		if r, _ := e.post(admin, page+"/apps", url.Values{"app_id": {alpha.ID}, "csrf": {tok}}); r.StatusCode != 303 {
 			t.Fatalf("link: %d", r.StatusCode)
 		}
@@ -321,6 +329,9 @@ func TestProviderDetailWebhookURLAndAppLinking(t *testing.T) {
 			t.Errorf("unknown account: %d", r.StatusCode)
 		}
 		op := e.roleClient("operator")
+		if r, _ := e.post(op, page+"/webhook/secret", url.Values{"webhook_secret": {"forbidden"}, "csrf": {csrfOf(t, e.pageOK(op, page))}}); r.StatusCode != 403 {
+			t.Errorf("operator webhook secret: %d", r.StatusCode)
+		}
 		if r, _ := e.post(op, page+"/apps", url.Values{"app_id": {beta.ID}, "csrf": {csrfOf(t, e.pageOK(op, page))}}); r.StatusCode != 403 {
 			t.Errorf("operator link: %d", r.StatusCode)
 		}

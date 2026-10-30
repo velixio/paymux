@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // MinAuditRetentionDays is the shortest audit retention ever applied (PCI DSS

@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // VerifyWebhook checks x-webhook-signature: the base64 HMAC-SHA256 of the

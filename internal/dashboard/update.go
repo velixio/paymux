@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/selfupdate"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/selfupdate"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // Updater installs a newer release of the hub (*selfupdate.Manager).

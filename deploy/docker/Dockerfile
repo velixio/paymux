@@ -34,7 +34,7 @@ COPY --from=frontend /src/cmd/paymux-home/dist ./cmd/paymux-home/dist
 ARG VERSION=dev
 # Static, CGO-free, no debug info or build paths in the binary.
 RUN CGO_ENABLED=0 go build -trimpath \
-      -ldflags "-s -w -X github.com/paymux/paymux/pkg/hub.Version=${VERSION}" \
+      -ldflags "-s -w -X github.com/velixio/paymux/pkg/hub.Version=${VERSION}" \
       -o /out/paymux ./cmd/paymux \
  && mkdir -p /out/data \
  && chmod 0700 /out/data

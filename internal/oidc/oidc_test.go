@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/oidc"
-	"github.com/paymux/paymux/internal/oidc/oidctest"
+	"github.com/velixio/paymux/internal/oidc"
+	"github.com/velixio/paymux/internal/oidc/oidctest"
 )
 
 const redirect = "https://pay.example.com/dashboard/login/oidc/callback"

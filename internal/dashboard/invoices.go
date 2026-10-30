@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/invoice"
-	"github.com/paymux/paymux/internal/invoice/einvoice"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/invoice"
+	"github.com/velixio/paymux/internal/invoice/einvoice"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 // docFlags are the flags the invoice list can filter on.

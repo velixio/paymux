@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func TestIsBlockedIP(t *testing.T) {

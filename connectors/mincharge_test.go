@@ -4,12 +4,12 @@ import (
 	"slices"
 	"testing"
 
-	_ "github.com/paymux/paymux/connectors/cashfree"
-	_ "github.com/paymux/paymux/connectors/payu"
-	_ "github.com/paymux/paymux/connectors/razorpay"
-	_ "github.com/paymux/paymux/connectors/stripe"
-	_ "github.com/paymux/paymux/connectors/zoho"
-	"github.com/paymux/paymux/pkg/connector"
+	_ "github.com/velixio/paymux/connectors/cashfree"
+	_ "github.com/velixio/paymux/connectors/payu"
+	_ "github.com/velixio/paymux/connectors/razorpay"
+	_ "github.com/velixio/paymux/connectors/stripe"
+	_ "github.com/velixio/paymux/connectors/zoho"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Info.MinChargeMinor states each provider's smallest charge, from its own

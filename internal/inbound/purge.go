@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // ForgedRetention is how long events that failed verification are kept (a hash,

@@ -3,7 +3,7 @@ package subscriptions
 import (
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Audit 2026-10 (A-2): a success that states no amount or currency was given

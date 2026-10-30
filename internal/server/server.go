@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 
-	"github.com/paymux/paymux/internal/metrics"
+	"github.com/velixio/paymux/internal/metrics"
 )
 
 // Options configures a Server.

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/config"
-	"github.com/paymux/paymux/internal/outbound/stdwebhooks"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/config"
+	"github.com/velixio/paymux/internal/outbound/stdwebhooks"
+	"github.com/velixio/paymux/internal/store"
 )
 
 func TestEndpointAddPrintsSecretOnce(t *testing.T) {

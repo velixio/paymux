@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 // Version1 is the first layout. Documents store the version that rendered

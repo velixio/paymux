@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/jsvm"
+	"github.com/velixio/paymux/pkg/jsvm"
 )
 
 func heapMB() uint64 {

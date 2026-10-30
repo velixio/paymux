@@ -1,6 +1,6 @@
 package dblog
 
-import "github.com/paymux/paymux/internal/metrics"
+import "github.com/velixio/paymux/internal/metrics"
 
 // RegisterMetrics exposes the writer's counters: rows stored, rows dropped
 // because the queue was full, rows lost to a failed write, and the queue depth.

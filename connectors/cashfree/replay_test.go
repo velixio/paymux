@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // signedAt is a webhook signed over the timestamp ts (milliseconds) and received

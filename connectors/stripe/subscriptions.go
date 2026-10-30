@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Recurring billing through Stripe Billing (provider-managed). The price is

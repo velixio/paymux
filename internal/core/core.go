@@ -10,11 +10,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/paymux/paymux/internal/events"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/notify"
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/events"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/notify"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // Error kinds. Errors returned by Service wrap exactly one of these.

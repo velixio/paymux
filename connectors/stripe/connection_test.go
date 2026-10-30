@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Stripe never searches for a payment by reference (a checkout session id is

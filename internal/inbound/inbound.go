@@ -19,10 +19,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/logctx"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/logctx"
+	"github.com/velixio/paymux/internal/store"
 )
 
 const (

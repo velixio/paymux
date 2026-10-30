@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/auth"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/auth"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // Fifty logins at once do not start fifty 64 MiB hashes: the surplus is told to

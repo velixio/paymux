@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/paymux/paymux/internal/events"
-	"github.com/paymux/paymux/internal/outbound"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/events"
+	"github.com/velixio/paymux/internal/outbound"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 func (e *env) emitMode(app, typ, mode string) {

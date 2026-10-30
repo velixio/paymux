@@ -4,8 +4,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/paymux/paymux/internal/billingform"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/billingform"
+	"github.com/velixio/paymux/internal/store"
 )
 
 const gstin29 = "29AAAAA0000A1ZY"

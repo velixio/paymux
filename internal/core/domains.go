@@ -10,10 +10,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/domains"
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/domains"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/store"
 )
 
 var hostLabelRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/store"
 )
 
 type auditFilter struct{ Actor, Action, From, To string }

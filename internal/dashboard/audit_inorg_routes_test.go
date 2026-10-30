@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // Audit H-12. The dashboard serves one org today, but a handler that loads an

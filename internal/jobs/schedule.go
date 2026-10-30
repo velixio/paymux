@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // Schedule enqueues a job of Kind repeatedly. Set exactly one of Every

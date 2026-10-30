@@ -3,8 +3,8 @@ package invoice
 import (
 	"fmt"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 // settlementsSheet lists the provider settlements that paid out payments of

@@ -19,14 +19,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/inbound"
-	"github.com/paymux/paymux/internal/notify"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/inbound"
+	"github.com/velixio/paymux/internal/notify"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Options configures a Service.
@@ -318,6 +318,58 @@ func (s *Service) UpdateAccount(ctx context.Context, actor audit.Actor, sc core.
 type TestResult struct {
 	OK      bool
 	Message string
+}
+
+// WebhookConfigResult is the operator-facing outcome of configuring an
+// inbound webhook at the provider.
+type WebhookConfigResult struct {
+	Created bool
+	Message string
+}
+
+// ConfigureWebhook asks a capable connector to create or update this
+// account's provider-side endpoint. Provider-generated signing secrets are
+// merged into the encrypted account config and never returned to the caller.
+func (s *Service) ConfigureWebhook(ctx context.Context, actor audit.Actor, sc core.OrgScope, accountID string) (WebhookConfigResult, error) {
+	pa, err := s.Account(ctx, sc, accountID)
+	if err != nil {
+		return WebhookConfigResult{}, err
+	}
+	live, err := s.Get(ctx, accountID)
+	if err != nil {
+		return WebhookConfigResult{}, err
+	}
+	wc, ok := live.Connector.(connector.WebhookConfigurator)
+	if !ok {
+		return WebhookConfigResult{}, invalid("%s does not support automatic webhook configuration", pa.Connector)
+	}
+	result, err := wc.ConfigureWebhook(ctx, connector.ProviderWebhookConfig{URL: s.WebhookURL(accountID)})
+	if err != nil {
+		return WebhookConfigResult{}, err
+	}
+	if result.Secret != "" {
+		raw, err := s.o.Box.Open(pa.ConfigEnc, configAAD(pa.ID))
+		if err != nil {
+			return WebhookConfigResult{}, err
+		}
+		var cfg map[string]any
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			return WebhookConfigResult{}, err
+		}
+		cfg["webhook_secret"] = result.Secret
+		next, err := json.Marshal(cfg)
+		if err != nil {
+			return WebhookConfigResult{}, err
+		}
+		if err := s.UpdateAccount(ctx, actor, sc, accountID, UpdateAccountInput{Config: next}); err != nil {
+			return WebhookConfigResult{}, err
+		}
+	}
+	message := "Webhook configuration updated at the provider."
+	if result.Created {
+		message = "Webhook configured at the provider and its signing secret saved securely."
+	}
+	return WebhookConfigResult{Created: result.Created, Message: message}, nil
 }
 
 // testRef is the payment reference TestConnection asks the provider about.

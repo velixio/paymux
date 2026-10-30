@@ -21,8 +21,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/paymux/paymux/internal/tax"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/internal/tax"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // Version is the schema version produced.

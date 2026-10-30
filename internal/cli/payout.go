@@ -8,13 +8,13 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/paymux/paymux/internal/config"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/migrations"
-	"github.com/paymux/paymux/internal/outbound"
-	"github.com/paymux/paymux/internal/payouts"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/config"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/migrations"
+	"github.com/velixio/paymux/internal/outbound"
+	"github.com/velixio/paymux/internal/payouts"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
 )
 
 const payoutUsage = "usage: paymux payout resolve --id po_... --status succeeded|failed --reason TEXT"

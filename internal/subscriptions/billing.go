@@ -10,11 +10,11 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/paymux/paymux/internal/billingform"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/look"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/web"
+	"github.com/velixio/paymux/internal/billingform"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/look"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/web"
 )
 
 const maxBillingForm = 1 << 20

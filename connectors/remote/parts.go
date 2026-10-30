@@ -3,8 +3,8 @@ package remote
 import (
 	"context"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/wire"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/wire"
 )
 
 // One part per optional interface. compose (combos_gen.go) embeds exactly the
@@ -106,4 +106,10 @@ func (p payoutPart) CreatePayout(ctx context.Context, req connector.PayoutReques
 }
 func (p payoutPart) FetchPayout(ctx context.Context, ref connector.PayoutRef) (connector.PayoutSnapshot, error) {
 	return rpc[connector.PayoutSnapshot](ctx, p.r, wire.MethodFetchPayout, ref)
+}
+
+type webhookConfigPart struct{ r *remote }
+
+func (p webhookConfigPart) ConfigureWebhook(ctx context.Context, cfg connector.ProviderWebhookConfig) (connector.ProviderWebhookResult, error) {
+	return rpc[connector.ProviderWebhookResult](ctx, p.r, wire.MethodConfigureWebhook, cfg)
 }

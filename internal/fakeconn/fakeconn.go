@@ -10,7 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 const schema = `{"type":"object","required":["api_key"],"additionalProperties":false,
@@ -109,7 +109,8 @@ func RegisterSchema(prefix, configSchema string) *State {
 		CheckoutHosts: &connector.CheckoutHosts{Frame: []string{"https://frames.fake.example.com"}},
 		Capabilities: []connector.Capability{connector.CapRefund, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapList, connector.CapSettle,
 			connector.CapMandateManager, connector.CapSubscriptionManager, connector.CapPayout},
-		RateLimit: connector.RateLimit{RequestsPerSecond: 100, Burst: 100},
+		WebhookEvents: []string{"payment.captured", "refund.processed"},
+		RateLimit:     connector.RateLimit{RequestsPerSecond: 100, Burst: 100},
 	}
 	connector.Register(st.Name, func(cfg json.RawMessage, deps connector.Deps) (connector.Connector, error) {
 		var c struct {

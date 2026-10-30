@@ -3,8 +3,8 @@ package invoice_test
 import (
 	"testing"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // Whether the provider sells as merchant of record is a fact of the account

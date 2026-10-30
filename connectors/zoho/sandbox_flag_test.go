@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
 )
 
 // Zoho's sandbox is a separate host (paymentssandbox.zoho.<dc>, scopes

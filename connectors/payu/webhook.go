@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // ist is Asia/Kolkata without needing tzdata; PayU timestamps are IST.

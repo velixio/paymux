@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 var bg = context.Background()
@@ -17,7 +17,6 @@ func TestNewValidatesConfig(t *testing.T) {
 	for name, cfg := range map[string]string{
 		"not json":         `{`,
 		"no key":           `{"webhook_secret":"w"}`,
-		"no webhook":       `{"secret_key":"sk_test_x"}`,
 		"publishable key":  `{"secret_key":"pk_test_xxxxxxxx","webhook_secret":"w"}`,
 		"unknown property": `{"secret_key":"sk_test_x","webhook_secret":"w","x":1}`,
 	} {
@@ -31,6 +30,9 @@ func TestNewValidatesConfig(t *testing.T) {
 	}
 	if _, err := New([]byte(`{"secret_key":"rk_live_restricted","webhook_secret":"w"}`), deps); err != nil {
 		t.Errorf("restricted key: %v", err)
+	}
+	if _, err := New([]byte(`{"secret_key":"sk_test_x"}`), deps); err != nil {
+		t.Errorf("account awaiting one-click webhook setup: %v", err)
 	}
 }
 

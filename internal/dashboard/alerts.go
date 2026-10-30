@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/paymux/paymux/internal/alertcenter"
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/alertcenter"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // The alerts center: every alert Paymux raises (the ones also sent by email

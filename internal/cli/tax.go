@@ -9,12 +9,12 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/paymux/paymux/internal/config"
-	"github.com/paymux/paymux/internal/invoice"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/migrations"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/config"
+	"github.com/velixio/paymux/internal/invoice"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/migrations"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 const (

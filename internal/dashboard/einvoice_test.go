@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/invoice"
-	"github.com/paymux/paymux/internal/invoice/einvoice"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/invoice"
+	"github.com/velixio/paymux/internal/invoice/einvoice"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 var irnHex = strings.Repeat("0123456789abcdef", 4)

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	_ "github.com/paymux/paymux/examples/framework/demopay"
-	"github.com/paymux/paymux/pkg/connector"
+	_ "github.com/velixio/paymux/examples/framework/demopay"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func TestDemoConnectorRegistersAndRedirects(t *testing.T) {

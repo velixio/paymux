@@ -7,7 +7,7 @@ import (
 	"syscall"
 	_ "time/tzdata"
 
-	"github.com/paymux/paymux/internal/cli"
+	"github.com/velixio/paymux/internal/cli"
 )
 
 func main() {

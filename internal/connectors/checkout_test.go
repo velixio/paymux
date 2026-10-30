@@ -4,9 +4,9 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/paymux/paymux/internal/connectors"
-	"github.com/paymux/paymux/internal/fakeconn"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/connectors"
+	"github.com/velixio/paymux/internal/fakeconn"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // B-7c: with a checkout URL the provider is sent back to the checkout host,

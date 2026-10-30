@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/domains"
+	"github.com/velixio/paymux/internal/domains"
 )
 
 // Browsers post violation reports of the hosted pages' enforced policy to

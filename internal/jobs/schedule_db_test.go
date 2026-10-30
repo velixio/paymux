@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 func nextRunAt(t *testing.T, db *store.DB, name string) time.Time {

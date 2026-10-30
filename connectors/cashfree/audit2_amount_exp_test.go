@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // ParseWebhook runs only on signature-verified bodies, and amounts also come from

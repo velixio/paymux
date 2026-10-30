@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // probeConn is a connector whose FetchPayment fails if it is asked: a connector

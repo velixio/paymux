@@ -320,9 +320,9 @@ that imports Paymux as a library:
 
   | Before | After |
   |---|---|
-  | `github.com/paymux/paymux` (package `paymux`) | `github.com/paymux/paymux/pkg/hub` (package `hub`) |
-  | `github.com/paymux/paymux/framework` | `github.com/paymux/paymux/pkg/framework` |
-  | `github.com/paymux/paymux/plugins/jsvm` | `github.com/paymux/paymux/pkg/jsvm` |
+  | `github.com/velixio/paymux` (package `paymux`) | `github.com/velixio/paymux/pkg/hub` (package `hub`) |
+  | `github.com/velixio/paymux/framework` | `github.com/velixio/paymux/pkg/framework` |
+  | `github.com/velixio/paymux/plugins/jsvm` | `github.com/velixio/paymux/pkg/jsvm` |
 
   Change the imports and the qualifier; nothing else in the packages changed, so
   a find-and-replace is the whole migration:
@@ -330,22 +330,22 @@ that imports Paymux as a library:
   ```go
   // before
   import (
-  	"github.com/paymux/paymux"
-  	"github.com/paymux/paymux/framework"
+    "github.com/velixio/paymux"
+    "github.com/velixio/paymux/framework"
   )
   func(app *paymux.App) { ... paymux.PaymentEvent ... }
 
   // after
   import (
-  	"github.com/paymux/paymux/pkg/framework"
-  	"github.com/paymux/paymux/pkg/hub"
+    "github.com/velixio/paymux/pkg/framework"
+    "github.com/velixio/paymux/pkg/hub"
   )
   func(app *hub.App) { ... hub.PaymentEvent ... }
   ```
 
-  The module path (`github.com/paymux/paymux`, used in `go.mod` and in
+  The module path (`github.com/velixio/paymux`, used in `go.mod` and in
   `paymux build --with`) did not change. The build-version flag is now
-  `-X github.com/paymux/paymux/pkg/hub.Version=...`. `pkg/hub`, `pkg/framework`
+  `-X github.com/velixio/paymux/pkg/hub.Version=...`. `pkg/hub`, `pkg/framework`
   and `pkg/jsvm` are part of the API snapshot (`scripts/apisnap/pkg.txt`). These
   moves were made before there were framework-mode users.
 

@@ -10,14 +10,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/paymux/paymux/internal/connectors"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/disputes"
-	"github.com/paymux/paymux/internal/logctx"
-	"github.com/paymux/paymux/internal/routing"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/connectors"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/disputes"
+	"github.com/velixio/paymux/internal/logctx"
+	"github.com/velixio/paymux/internal/routing"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // ErrCheckoutFailed means every routed account failed to create a checkout.

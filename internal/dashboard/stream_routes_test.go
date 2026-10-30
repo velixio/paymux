@@ -3,9 +3,9 @@ package dashboard
 import (
 	"testing"
 
-	"github.com/paymux/paymux/internal/server"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/server"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // Audit H-15: the export routes are served outside the timeout buffer, by the

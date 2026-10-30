@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // The buyer's country decides how GST is charged (a buyer abroad is an

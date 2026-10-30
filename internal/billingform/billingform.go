@@ -20,11 +20,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
-	"github.com/paymux/paymux/internal/web"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/web"
 )
 
 // AddressThreshold is Rs 50,000 in paise: from this amount an Indian buyer's

@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/core"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/core"
 )
 
 // R-A5 / H-1. Concurrent requests with one Idempotency-Key make one refund and

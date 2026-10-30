@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Razorpay reports settlement days in IST.

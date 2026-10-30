@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/invoice/einvoice"
+	"github.com/velixio/paymux/internal/invoice/einvoice"
 )
 
 // creditOf is a credit note for half of src's first line.

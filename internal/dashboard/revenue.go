@@ -11,9 +11,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/paymux/paymux/internal/invoice"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/internal/invoice"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // revenueQuery is the parsed, resolved query of the overview revenue chart.

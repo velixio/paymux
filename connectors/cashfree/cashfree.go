@@ -32,8 +32,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 const (
@@ -51,7 +51,7 @@ const configSchema = `{
   "properties": {
     "client_id": {"type": "string", "title": "App ID (client id)", "minLength": 1},
     "client_secret": {"type": "string", "title": "Secret key (client secret)", "minLength": 1, "x-secret": true},
-    "webhook_secret": {"type": "string", "title": "Webhook signing secret (default: the client secret)", "x-secret": true},
+    "webhook_secret": {"type": "string", "title": "Webhook signing secret (default: the client secret)", "x-secret": true, "x-webhook-secret": true},
     "sandbox": {"type": "boolean", "title": "Use the sandbox (sandbox.cashfree.com)"}
   }
 }`

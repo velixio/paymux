@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Razorpay answers unknown ids with 400 BAD_REQUEST_ERROR "The id provided

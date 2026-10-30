@@ -7,10 +7,10 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/paymux/paymux/internal/config"
-	"github.com/paymux/paymux/internal/reseal"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/config"
+	"github.com/velixio/paymux/internal/reseal"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
 )
 
 const secretsUsage = "usage: paymux secrets reseal [--dry-run]\n\n" +

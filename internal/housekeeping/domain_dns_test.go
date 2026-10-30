@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/domains"
-	"github.com/paymux/paymux/internal/housekeeping"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/domains"
+	"github.com/velixio/paymux/internal/housekeeping"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // txtZone is a fake DNS: TXT records by name. It never touches the network.

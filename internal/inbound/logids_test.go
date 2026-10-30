@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/logctx"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/logctx"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // A webhook tells the request scope which account and event it is, and the id

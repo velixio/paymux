@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core"
 )
 
 // A checkout whose customer paid at the provider but never came back, with no

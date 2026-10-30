@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/paymux/paymux/internal/look"
-	"github.com/paymux/paymux/internal/web"
+	"github.com/velixio/paymux/internal/look"
+	"github.com/velixio/paymux/internal/web"
 )
 
 // A request's theme and language depend on its app, which a handler only

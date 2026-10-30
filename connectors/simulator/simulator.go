@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Name is the connector's registry name.

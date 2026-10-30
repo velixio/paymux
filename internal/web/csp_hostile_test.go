@@ -3,7 +3,7 @@ package web_test
 import (
 	"encoding/json"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func registerHostile() {

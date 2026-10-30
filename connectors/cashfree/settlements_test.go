@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Settlements are read from POST /settlement/recon, whose items nest the event,

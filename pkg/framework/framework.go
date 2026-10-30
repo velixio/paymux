@@ -26,16 +26,16 @@ import (
 	_ "time/tzdata"
 
 	// The built-in connectors, the same set as the paymux binary.
-	_ "github.com/paymux/paymux/connectors/payu"
-	_ "github.com/paymux/paymux/connectors/razorpay"
-	_ "github.com/paymux/paymux/connectors/simulator"
-	_ "github.com/paymux/paymux/connectors/whop"
-	_ "github.com/paymux/paymux/connectors/zoho"
+	_ "github.com/velixio/paymux/connectors/payu"
+	_ "github.com/velixio/paymux/connectors/razorpay"
+	_ "github.com/velixio/paymux/connectors/simulator"
+	_ "github.com/velixio/paymux/connectors/whop"
+	_ "github.com/velixio/paymux/connectors/zoho"
 
 	"io"
 
-	"github.com/paymux/paymux/internal/cli"
-	"github.com/paymux/paymux/pkg/hub"
+	"github.com/velixio/paymux/internal/cli"
+	"github.com/velixio/paymux/pkg/hub"
 )
 
 var (

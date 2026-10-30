@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/auth"
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/auth"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // The account pages belong to whoever is signed in: their sessions, their

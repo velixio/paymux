@@ -8,11 +8,11 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/paymux/paymux/internal/config"
-	"github.com/paymux/paymux/internal/migrations"
-	"github.com/paymux/paymux/internal/outbound"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/config"
+	"github.com/velixio/paymux/internal/migrations"
+	"github.com/velixio/paymux/internal/outbound"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
 )
 
 const endpointUsage = "usage: paymux endpoint add --app <app_id> --url <url> [--events a,b] [--mode test|live]"

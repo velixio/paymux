@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // F-C: a provider's "your request is invalid or not allowed" answer (400, 409,

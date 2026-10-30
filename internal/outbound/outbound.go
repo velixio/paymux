@@ -14,12 +14,12 @@ import (
 	"slices"
 	"time"
 
-	"github.com/paymux/paymux/internal/events"
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/outbound/stdwebhooks"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/events"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/outbound/stdwebhooks"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // JobDeliver is the job kind that performs one delivery attempt.

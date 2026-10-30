@@ -4,10 +4,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/paymux/paymux/internal/payouts"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/payouts"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func payoutNote(snap connector.PayoutSnapshot) connector.Notification {

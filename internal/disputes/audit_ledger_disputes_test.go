@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/disputes"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/disputes"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Audit 2026-10 (ledger lane). Two disputes are open on one payment; one is

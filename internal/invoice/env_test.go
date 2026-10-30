@@ -7,17 +7,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/events"
-	"github.com/paymux/paymux/internal/invoice"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/notify"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/events"
+	"github.com/velixio/paymux/internal/invoice"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/notify"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 var ctx = context.Background()

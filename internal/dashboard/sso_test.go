@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/oidc"
-	"github.com/paymux/paymux/internal/oidc/oidctest"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/oidc"
+	"github.com/velixio/paymux/internal/oidc/oidctest"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 type sso struct {

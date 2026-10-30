@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func bt(id, typ string, amount, fee int64, source map[string]any, tax int64) map[string]any {

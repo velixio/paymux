@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/logctx"
-	"github.com/paymux/paymux/internal/metrics"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/logctx"
+	"github.com/velixio/paymux/internal/metrics"
 )
 
 // requestTimeout bounds every route but the exports (a variable for the tests).

@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 func day(d int) time.Time { return time.Date(2026, 10, d, 12, 0, 0, 0, time.UTC) }

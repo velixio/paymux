@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // ErrUnknownPayout means no payout of this provider account matches the

@@ -3,7 +3,7 @@ package paylinks
 import (
 	"context"
 
-	"github.com/paymux/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core"
 )
 
 // FailReissue makes every client-secret reissue fail with err, and returns the

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/auth"
-	"github.com/paymux/paymux/internal/config"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/auth"
+	"github.com/velixio/paymux/internal/config"
+	"github.com/velixio/paymux/internal/store"
 )
 
 const cliPW = "a long enough password"

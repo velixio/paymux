@@ -131,6 +131,81 @@ code.wrap {
   word-break: break-all;
   font-size: 12px;
 }
+.webhook-config {
+  max-width: 700px;
+  margin: 28px 0;
+  padding: 20px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.webhook-config h3 {
+  margin-top: 0;
+}
+.webhook-url {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.webhook-url code {
+  flex: 1 1 360px;
+}
+.webhook-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.webhook-action small {
+  flex: 1 1 280px;
+}
+.webhook-events-panel {
+  margin-top: 16px;
+}
+.webhook-events-panel summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+}
+.webhook-events {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
+  gap: 6px 18px;
+  margin: 10px 0 0;
+  padding-left: 22px;
+}
+.webhook-events li {
+  min-width: 0;
+}
+.webhook-events code {
+  overflow-wrap: anywhere;
+}
+.webhook-manual {
+  margin-top: 16px;
+}
+.webhook-manual summary {
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.webhook-manual form.stack {
+  margin-bottom: 0;
+}
+.secret-generator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -6px 0 14px;
+}
+.secret-generator small {
+  flex: 1;
+}
 #totp-secret {
   font-size: 18px;
   letter-spacing: 1px;

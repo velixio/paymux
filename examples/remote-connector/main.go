@@ -37,9 +37,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/connectors/razorpay"
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/wire"
+	"github.com/velixio/paymux/connectors/razorpay"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/wire"
 )
 
 func main() {

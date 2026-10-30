@@ -116,6 +116,29 @@ type ConnectionTester interface {
 	TestConnection(ctx context.Context) error
 }
 
+// ProviderWebhookConfig describes the inbound endpoint Paymux wants a
+// provider to call. Event selection and provider API details belong to the
+// connector.
+type ProviderWebhookConfig struct {
+	URL string
+}
+
+// ProviderWebhookResult is returned after a provider webhook was created or
+// updated. Secret is set only when the provider generated a new signing
+// secret; the hub stores it immediately and never renders it.
+type ProviderWebhookResult struct {
+	Secret  string
+	Created bool
+}
+
+// WebhookConfigurator is optional (CapWebhookConfig). It lets the dashboard's
+// Configure webhook button create or update the provider-side endpoint. A
+// connector must make repeated calls safe and subscribe to every event its
+// ParseWebhook implementation understands.
+type WebhookConfigurator interface {
+	ConfigureWebhook(ctx context.Context, cfg ProviderWebhookConfig) (ProviderWebhookResult, error)
+}
+
 // OAuthConnector is optional, for providers whose credentials come from an
 // OAuth authorization (CapOAuth; Zoho Payments). It lets the dashboard offer a
 // "Connect" button: the operator registers the redirect URI with the provider,

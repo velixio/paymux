@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // webhookTolerance is how far a signed timestamp may be from now, either way.
@@ -23,6 +23,9 @@ const webhookTolerance = 5 * time.Minute
 // malformed, wrong or stale (outside five minutes) signature is
 // ErrInvalidSignature.
 func (s *stripe) VerifyWebhook(_ context.Context, req connector.WebhookRequest) error {
+	if s.cfg.WebhookSecret == "" {
+		return connector.ErrInvalidSignature
+	}
 	var ts int64
 	var sigs []string
 	for _, part := range strings.Split(req.Header("Stripe-Signature"), ",") {
