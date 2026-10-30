@@ -291,7 +291,7 @@ func (a *API) resolveCheckoutAction(ctx context.Context, p store.Payment, req ch
 	if err != nil {
 		return nil, &checkoutActionFailure{http.StatusInternalServerError, "internal", "payment status could not be loaded", err}
 	}
-	action := started.Action
+	action := checkout.MerchantBrowserAction(started.Action)
 	return &resolvedCheckoutAction{payment: latest, response: checkoutActionResp{Kind: "checkout", PaymentID: p.ID,
 		Status: latest.Status, Launcher: started.Connector, Action: &action}}, nil
 }

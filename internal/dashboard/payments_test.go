@@ -1,6 +1,8 @@
 package dashboard
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +13,9 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/velixio/paymux/connectors/razorpay"
 	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/authz"
 	"github.com/velixio/paymux/internal/core"
 	"github.com/velixio/paymux/internal/events"
 	"github.com/velixio/paymux/internal/outbound"
@@ -220,6 +224,25 @@ type sink struct {
 	hits int
 }
 
+type paymentSyncStub struct {
+	mu    sync.Mutex
+	calls []string
+	err   error
+}
+
+func (s *paymentSyncStub) SyncAttemptLatest(_ context.Context, attemptID string) (core.ApplyResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.calls = append(s.calls, attemptID)
+	return core.ApplyResult{}, s.err
+}
+
+func (s *paymentSyncStub) called() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.calls...)
+}
+
 func (e *env) detailFixture() detailFixture {
 	e.t.Helper()
 	app := e.seedApp("alpha")
@@ -232,10 +255,31 @@ func (e *env) detailFixture() detailFixture {
 		e.t.Fatal(err)
 	}
 	e.seedAttempt(store.Attempt{ID: "att_fail", Mode: "live", PaymentID: p.ID, ProviderAccountID: "pa_rzp", ProviderRef: "pr_fail", ProviderOrderID: "order_F1",
-		Status: "failed", Method: "card", FailureCode: "card_declined", FailureMessage: "Your card was declined"})
+		Status: "failed", Method: "card", MethodDetails: `{"card":{"last4":"5000","network":"American Express","funding":"credit","issuer":"AMEX","international":false,"emi":false,"sub_type":"consumer"}}`,
+		FailureCode: "card_declined", FailureMessage: "Your card was declined"})
 	e.seedAttempt(store.Attempt{ID: "att_ok", Mode: "live", PaymentID: p.ID, ProviderAccountID: "pa_rzp", ProviderRef: "pr_ok", ProviderOrderID: "order_OK",
 		ProviderPaymentID: "pay_RZP_OK", Status: "captured", Method: "upi", AmountReceived: 10000, CurrencyReceived: "INR"})
 	err = e.db.Write(ctx, func(tx store.Tx) error {
+		if err := store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: "pa_rzp", ProviderPaymentID: "pay_RZP_FAILED",
+			AttemptID: "att_ok", ProviderOrderID: "order_OK", Status: "failed", Method: "card", FailureCode: "BAD_REQUEST_ERROR",
+			FailureMessage: "Payment failed", Amount: 10000, Currency: "INR", CreatedAt: e.clk.Now(), UpdatedAt: e.clk.Now()}); err != nil {
+			return err
+		}
+		if err := store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: "pa_rzp", ProviderPaymentID: "pay_RZP_OK",
+			AttemptID: "att_ok", ProviderOrderID: "order_OK", Status: "captured", Method: "upi", Amount: 10000, Currency: "INR",
+			CreatedAt: e.clk.Now().Add(time.Second), UpdatedAt: e.clk.Now().Add(time.Second)}); err != nil {
+			return err
+		}
+		customerID, err := store.UpsertCustomer(ctx, tx, store.Customer{ID: "cus_detail", OrgID: store.DefaultOrgID, AppID: app.ID, Mode: "live",
+			ExternalRef: "merchant-customer-1", Name: "Asha Rao", Email: "asha@example.com", Phone: "+919876543210",
+			Billing: store.Billing{LegalName: "Asha Rao", GSTIN: "27ABCDE1234F1Z5", Line1: "10 Market Road", Line2: "Suite 2",
+				City: "Mumbai", StateCode: "27", PostalCode: "400001", Country: "IN"}}, e.clk.Now())
+		if err != nil {
+			return err
+		}
+		if err := store.SetPaymentCustomer(ctx, tx, p.ID, customerID, e.clk.Now()); err != nil {
+			return err
+		}
 		if err := store.InsertLedgerEntry(ctx, tx, store.LedgerEntry{ID: "led_1", OrgID: store.DefaultOrgID, Mode: "live", Kind: "charge",
 			Amount: 10000, Currency: "INR", PaymentID: p.ID, OccurredAt: e.clk.Now()}); err != nil {
 			return err
@@ -292,9 +336,13 @@ func TestPaymentDetailShowsTimeline(t *testing.T) {
 		c := e.roleClient("viewer")
 		body := e.pageOK(c, "/dashboard/payments/"+f.pay.ID)
 		has(t, body, "pay_d1", "ORD-D1", "100.00 INR", "succeeded",
+			// customer and billing details
+			"merchant-customer-1", "Asha Rao", "asha@example.com", "919876543210", "10 Market Road", "Mumbai", "400001", "27ABCDE1234F1Z5",
 			// attempts
-			"att_fail", "failed", "card_declined", "Your card was declined", "order_F1",
+			"att_fail", "failed", "card_declined", "Your card was declined", "order_F1", "American Express", "•••• 5000", "credit · AMEX · consumer · domestic",
 			"att_ok", "captured", "pay_RZP_OK", "order_OK", "upi", "Razorpay main", "razorpay",
+			// every provider-side payment on the shared order
+			"Provider payment attempts", "pay_RZP_FAILED", "BAD_REQUEST_ERROR", "Payment failed",
 			// ledger
 			"charge", "100.00 INR",
 			// refunds
@@ -312,9 +360,125 @@ func TestPaymentDetailShowsTimeline(t *testing.T) {
 		has(t, body, `action="/dashboard/payments/pay_d1/refund"`, "/replay", "att_ok")
 		// only captured, non-duplicate attempts can be picked for a refund
 		opt := regexpFind(t, `(?s)(<select name="attempt_id".*?</select>)`, body)
-		has(t, opt, "att_ok")
+		has(t, opt, "att_ok", "85.00 INR refundable")
 		lacks(t, opt, "att_fail")
 	})
+}
+
+func TestPaymentDetailHidesRefundFormWhenFullyRefunded(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		f := e.detailFixture()
+		if err := e.db.Write(ctx, func(tx store.Tx) error {
+			return store.InsertRefund(ctx, tx, store.Refund{ID: "ref_rest", OrgID: store.DefaultOrgID, AppID: f.app.ID,
+				Mode: "live", PaymentID: f.pay.ID, AttemptID: "att_ok", Amount: 8500, Currency: "INR", Status: "succeeded",
+				ProviderRef: "pr_ref_rest", InitiatedBy: "api", CreatedAt: e.clk.Now(), UpdatedAt: e.clk.Now()})
+		}); err != nil {
+			t.Fatal(err)
+		}
+		body := e.pageOK(e.roleClient("operator"), "/dashboard/payments/"+f.pay.ID)
+		lacks(t, body, `action="/dashboard/payments/pay_d1/refund"`, "All remaining refundable funds", "refundable via")
+	})
+}
+
+func TestPaymentDetailHidesRefundRemainderBelowProviderMinimum(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		f := e.detailFixture()
+		if err := e.db.Write(ctx, func(tx store.Tx) error {
+			return store.InsertRefund(ctx, tx, store.Refund{ID: "ref_minimum", OrgID: store.DefaultOrgID, AppID: f.app.ID,
+				Mode: "live", PaymentID: f.pay.ID, AttemptID: "att_ok", Amount: 8482, Currency: "INR", Status: "succeeded",
+				ProviderRef: "pr_ref_minimum", InitiatedBy: "api", CreatedAt: e.clk.Now(), UpdatedAt: e.clk.Now()})
+		}); err != nil {
+			t.Fatal(err)
+		}
+		body := e.pageOK(e.roleClient("operator"), "/dashboard/payments/"+f.pay.ID)
+		lacks(t, body, `action="/dashboard/payments/pay_d1/refund"`, "0.18 INR refundable", "refundable via")
+	})
+}
+
+func TestPaymentDetailCanSyncLatestStatusFromProvider(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		syncer := &paymentSyncStub{}
+		e := newEnv(t, db, func(o *Options) { o.PaymentSync = syncer })
+		app := e.seedApp("alpha")
+		p := e.seedPayment("pay_sync", app.ID, "live", "failed", "ORD-SYNC", 11800, e.clk.Now())
+		e.seedAttempt(store.Attempt{ID: "att_sync", Mode: "live", PaymentID: p.ID, ProviderAccountID: "pa_rzp",
+			ProviderRef: "ref_sync", ProviderOrderID: "order_sync", ProviderPaymentID: "pay_failed", Status: "failed"})
+		path := "/dashboard/payments/" + p.ID
+		if err := db.CreateRole(ctx, "sync-only", []string{string(authz.PaymentCancel), string(authz.SettingsRead)}, e.clk.Now()); err != nil {
+			t.Fatal(err)
+		}
+		_, secret := e.seedUser("sync-only@example.com", "sync-only", true)
+		syncOnly := e.client()
+		e.login(syncOnly, "sync-only@example.com", secret)
+		tok := e.authedCSRF(syncOnly)
+		if r, _ := e.post(syncOnly, path+"/sync", url.Values{"csrf": {tok}}); r.StatusCode != http.StatusForbidden {
+			t.Fatalf("sync-only role read payment: %d", r.StatusCode)
+		}
+
+		viewer := e.roleClient("viewer")
+		body := e.pageOK(viewer, path)
+		lacks(t, body, path+"/sync", "Sync from provider")
+		tok = csrfOf(t, body)
+		if r, _ := e.post(viewer, path+"/sync", url.Values{"csrf": {tok}}); r.StatusCode != http.StatusForbidden {
+			t.Fatalf("viewer sync: %d", r.StatusCode)
+		}
+
+		op := e.roleClient("operator")
+		body = e.pageOK(op, path)
+		has(t, body, `action="`+path+`/sync"`, "Sync from provider")
+		tok = csrfOf(t, body)
+		r, responseBody := e.post(op, path+"/sync", url.Values{"csrf": {tok}})
+		if r.StatusCode != http.StatusSeeOther || r.Header.Get("Location") != path {
+			t.Fatalf("sync: %d %s\n%s", r.StatusCode, r.Header.Get("Location"), responseBody)
+		}
+		if got := syncer.called(); len(got) != 1 || got[0] != "att_sync" {
+			t.Fatalf("synced attempts = %v", got)
+		}
+		if n := auditCount(t, db, "payment.sync"); n != 1 {
+			t.Fatalf("payment.sync audit count = %d, want 1", n)
+		}
+
+		syncer.mu.Lock()
+		syncer.err = errors.New("provider unavailable")
+		syncer.mu.Unlock()
+		tok = csrfOf(t, e.pageOK(op, path))
+		r, responseBody = e.post(op, path+"/sync", url.Values{"csrf": {tok}})
+		if r.StatusCode != http.StatusBadGateway || !strings.Contains(responseBody, "could not be fetched") {
+			t.Fatalf("failed sync: %d\n%s", r.StatusCode, responseBody)
+		}
+		if n := auditCount(t, db, "payment.sync"); n != 1 {
+			t.Fatalf("failed sync wrote audit event: %d", n)
+		}
+
+		p2 := e.seedPayment("pay_sync_empty", app.ID, "live", "created", "ORD-EMPTY", 100, e.clk.Now())
+		tok = csrfOf(t, e.pageOK(op, "/dashboard/payments/"+p2.ID))
+		r, responseBody = e.post(op, "/dashboard/payments/"+p2.ID+"/sync", url.Values{"csrf": {tok}})
+		if r.StatusCode != http.StatusBadRequest || !strings.Contains(responseBody, "no provider attempt") {
+			t.Fatalf("sync without attempt: %d\n%s", r.StatusCode, responseBody)
+		}
+	})
+}
+
+func TestPaymentDisplayStatusShowsRefundOutcome(t *testing.T) {
+	tests := []struct {
+		name, status string
+		flags        []string
+		want, class  string
+	}{
+		{name: "ordinary success", status: "succeeded", want: "succeeded", class: "succeeded"},
+		{name: "partial refund", status: "succeeded", flags: []string{core.FlagRefundedPartial}, want: "partially refunded", class: "partially-refunded"},
+		{name: "full refund", status: "succeeded", flags: []string{core.FlagRefundedFull}, want: "refunded", class: "refunded"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, class := paymentDisplayStatus(store.Payment{Status: tt.status, Flags: tt.flags})
+			if got != tt.want || class != tt.class {
+				t.Fatalf("paymentDisplayStatus() = %q, %q; want %q, %q", got, class, tt.want, tt.class)
+			}
+		})
+	}
 }
 
 func TestRefundFromDashboard(t *testing.T) {
@@ -360,25 +524,6 @@ func TestRefundFromDashboard(t *testing.T) {
 		if len(aud) != 1 || aud[0].ActorType != "user" || aud[0].ActorID != opID || aud[0].Target != mine.ID {
 			t.Fatalf("audit %+v", aud)
 		}
-
-		// blank amount refunds everything still refundable: 100.00 - 15.00 - 25.50 = 59.50
-		r, _ = e.post(op, path, url.Values{"amount": {""}, "csrf": {tok}, "nonce": {nonce()}})
-		if r.StatusCode != 303 {
-			t.Fatalf("full refund: %d", r.StatusCode)
-		}
-		_ = db.Read(ctx, func(q store.Querier) (err error) { refunds, err = store.ListRefunds(ctx, q, f.pay.ID); return })
-		var sum int64
-		for _, rf := range refunds {
-			sum += rf.Amount
-		}
-		if sum != 10000 {
-			t.Fatalf("refunded total %d, want 10000", sum)
-		}
-		// nothing left
-		r, body = e.post(op, path, url.Values{"amount": {"1.00"}, "csrf": {tok}, "nonce": {nonce()}})
-		if r.StatusCode != 400 || !strings.Contains(body, "exceeds the refundable balance") {
-			t.Fatalf("over-refund: %d", r.StatusCode)
-		}
 		for name, form := range map[string]url.Values{
 			"not a number": {"amount": {"abc"}},
 			"negative":     {"amount": {"-5"}},
@@ -391,6 +536,28 @@ func TestRefundFromDashboard(t *testing.T) {
 				t.Errorf("%s: %d", name, r.StatusCode)
 			}
 		}
+
+		overRefundNonce := nonce()
+		// blank amount refunds everything still refundable: 100.00 - 15.00 - 25.50 = 59.50
+		r, _ = e.post(op, path, url.Values{"amount": {""}, "csrf": {tok}, "nonce": {nonce()}})
+		if r.StatusCode != 303 {
+			t.Fatalf("full refund: %d", r.StatusCode)
+		}
+		r, body = e.post(op, path, url.Values{"amount": {"1.00"}, "csrf": {tok}, "nonce": {overRefundNonce}})
+		if r.StatusCode != 400 || !strings.Contains(body, "exceeds the refundable balance") {
+			t.Fatalf("over-refund: %d\n%s", r.StatusCode, body)
+		}
+		_ = db.Read(ctx, func(q store.Querier) (err error) { refunds, err = store.ListRefunds(ctx, q, f.pay.ID); return })
+		var sum int64
+		for _, rf := range refunds {
+			sum += rf.Amount
+		}
+		if sum != 10000 {
+			t.Fatalf("refunded total %d, want 10000", sum)
+		}
+		// Nothing remains refundable, so the dashboard must not offer another refund.
+		body = e.pageOK(op, "/dashboard/payments/"+f.pay.ID)
+		lacks(t, body, `action="/dashboard/payments/pay_d1/refund"`, "All remaining refundable funds", "refundable via")
 		if r, _ := e.post(op, "/dashboard/payments/pay_nope/refund", url.Values{"csrf": {tok}}); r.StatusCode != 404 {
 			t.Errorf("unknown payment: %d", r.StatusCode)
 		}

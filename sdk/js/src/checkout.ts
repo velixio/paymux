@@ -318,6 +318,13 @@ async function openProvider(win: Window, doc: Document, launcher: string, action
     return new Promise((resolve) => {
       const priorModal = typeof providerOptions.modal === "object" && providerOptions.modal ? providerOptions.modal : {};
       providerOptions.modal = { ...priorModal, ondismiss: () => { priorModal.ondismiss?.(); resolve("dismissed"); } };
+      // Merchant-embedded checkout stays on the merchant origin. A Paymux
+      // callback is for the hosted checkout page; passing it here makes Razorpay
+      // submit a cross-origin form and exposes the Paymux URL in browser tools.
+      delete providerOptions.callback_url;
+      delete providerOptions.redirect;
+      const priorHandler = typeof providerOptions.handler === "function" ? providerOptions.handler : undefined;
+      providerOptions.handler = (data: unknown) => { try { priorHandler?.(data); } finally { resolve("opened"); } };
       new globals.Razorpay(providerOptions).open();
     });
   }

@@ -157,14 +157,37 @@ type CheckoutAction struct {
 }
 
 type PaymentAttempt struct {
-	ID                string    `json:"id"`
-	Status            string    `json:"status"`
-	Provider          string    `json:"provider"`
-	ProviderPaymentID string    `json:"provider_payment_id,omitempty"`
-	Method            string    `json:"method,omitempty"`
-	FailureCode       string    `json:"failure_code,omitempty"`
-	FailureMessage    string    `json:"failure_message,omitempty"`
-	CreatedAt         time.Time `json:"created_at"`
+	ID                string                `json:"id"`
+	Status            string                `json:"status"`
+	Provider          string                `json:"provider"`
+	ProviderPaymentID string                `json:"provider_payment_id,omitempty"`
+	Method            string                `json:"method,omitempty"`
+	MethodDetails     *PaymentMethodDetails `json:"method_details,omitempty"`
+	FailureCode       string                `json:"failure_code,omitempty"`
+	FailureMessage    string                `json:"failure_message,omitempty"`
+	CreatedAt         time.Time             `json:"created_at"`
+}
+
+type PaymentMethodDetails struct {
+	Card   *CardDetails `json:"card,omitempty"`
+	Bank   string       `json:"bank,omitempty"`
+	Wallet string       `json:"wallet,omitempty"`
+	UPI    *UPIDetails  `json:"upi,omitempty"`
+}
+
+type CardDetails struct {
+	Last4         string `json:"last4,omitempty"`
+	Network       string `json:"network,omitempty"`
+	Funding       string `json:"funding,omitempty"`
+	Issuer        string `json:"issuer,omitempty"`
+	Country       string `json:"country,omitempty"`
+	International *bool  `json:"international,omitempty"`
+	EMI           *bool  `json:"emi,omitempty"`
+	SubType       string `json:"sub_type,omitempty"`
+}
+
+type UPIDetails struct {
+	PayerAccountType string `json:"payer_account_type,omitempty"`
 }
 
 type ListPaymentsParams struct {

@@ -608,6 +608,121 @@ func TestProcessProviderEventUnsignedHintOnlyTriggersFetch(t *testing.T) {
 	})
 }
 
+func TestProcessProviderEventAppliesSuccessfulRetryOnSameOrder(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p, st := startedAttempt(t, e)
+		orderID := st.Attempt.ProviderOrderID
+		failed := connector.PaymentSnapshot{ProviderRef: st.Attempt.ProviderRef, ProviderOrderID: orderID,
+			ProviderPaymentID: "pay_failed", Status: connector.PaymentFailed, RawStatus: "failed", Amount: 50000, Currency: "INR"}
+		e.setPayment(st.Attempt.ProviderRef, failed)
+		if _, err := e.flow.SyncAttempt(ctx, st.Attempt.ID); err != nil {
+			t.Fatal(err)
+		}
+		failedPayment, failedAttempt := e.get(p.ID), e.attempts(p.ID)[0]
+		if failedPayment.Status != "failed" || failedAttempt.Status != "failed" || failedAttempt.ProviderPaymentID != "pay_failed" {
+			t.Fatalf("first provider payment was not applied: payment=%+v attempt=%+v", failedPayment, failedAttempt)
+		}
+		if got := e.get(p.ID); got.Status != "failed" {
+			t.Fatalf("first provider payment: status %s, want failed", got.Status)
+		}
+
+		succeededRetry := succeeded(50000, "INR", "pay_retry")
+		succeededRetry.ProviderRef = st.Attempt.ProviderRef
+		succeededRetry.ProviderOrderID = orderID
+		e.fake.Locked(func() {
+			e.fake.Payments = map[string]connector.PaymentSnapshot{"retry": succeededRetry}
+		})
+		ev := storeEvent(t, e, st.AccountID, true, []connector.Notification{{Kind: connector.NotifyPayment, EventID: "retry",
+			Payment: &connector.PaymentSnapshot{ProviderOrderID: orderID, ProviderPaymentID: "pay_retry", Status: connector.PaymentSucceeded}}})
+		if err := e.flow.ProcessProviderEvent(ctx, jobPayload(st.AccountID, ev)); err != nil {
+			t.Fatal(err)
+		}
+
+		got := e.get(p.ID)
+		attempt := e.attempts(p.ID)[0]
+		if got.Status != "succeeded" || got.AmountReceived != 50000 || attempt.Status != "captured" || attempt.ProviderPaymentID != "pay_retry" {
+			t.Fatalf("successful retry was not applied: payment=%+v attempt=%+v", got, attempt)
+		}
+		e.fake.Locked(func() {
+			last := e.fake.Fetches[len(e.fake.Fetches)-1]
+			if last.ProviderPaymentID != "pay_retry" {
+				t.Errorf("fetched provider payment %q, want retry", last.ProviderPaymentID)
+			}
+		})
+	})
+}
+
+func TestSyncAttemptLatestSkipsAttemptWithoutProviderIdentifier(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p, st := startedAttempt(t, e)
+		if err := e.db.Write(ctx, func(tx store.Tx) error {
+			_, err := tx.ExecContext(ctx, `UPDATE payment_attempts SET provider_ref = '', provider_order_id = NULL,
+				provider_payment_id = NULL WHERE id = ?`, st.Attempt.ID)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		before := e.fetches()
+		res, err := e.flow.SyncAttemptLatest(ctx, st.Attempt.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Payment.ID != p.ID || e.fetches() != before {
+			t.Fatalf("empty provider reference fetched: result=%+v fetches=%d want %d", res, e.fetches(), before)
+		}
+	})
+}
+
+func TestSyncAttemptLatestFindsSuccessfulRetryOnSameOrder(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p, st := startedAttempt(t, e)
+		orderID := st.Attempt.ProviderOrderID
+		failed := connector.PaymentSnapshot{ProviderRef: st.Attempt.ProviderRef, ProviderOrderID: orderID,
+			ProviderPaymentID: "pay_failed", Status: connector.PaymentFailed, RawStatus: "failed", Amount: 50000, Currency: "INR"}
+		e.setPayment(st.Attempt.ProviderRef, failed)
+		if _, err := e.flow.SyncAttempt(ctx, st.Attempt.ID); err != nil {
+			t.Fatal(err)
+		}
+		failedPayment, failedAttempt := e.get(p.ID), e.attempts(p.ID)[0]
+		if failedPayment.Status != "failed" || failedAttempt.Status != "failed" || failedAttempt.ProviderPaymentID != "pay_failed" {
+			t.Fatalf("first provider payment was not applied: payment=%+v attempt=%+v", failedPayment, failedAttempt)
+		}
+
+		succeededRetry := succeeded(50000, "INR", "pay_retry")
+		succeededRetry.ProviderRef = st.Attempt.ProviderRef
+		succeededRetry.ProviderOrderID = orderID
+		e.fake.Locked(func() {
+			e.fake.Payments = map[string]connector.PaymentSnapshot{"retry": succeededRetry}
+		})
+		if _, err := e.flow.SyncAttemptLatest(ctx, st.Attempt.ID); err != nil {
+			t.Fatal(err)
+		}
+
+		got := e.get(p.ID)
+		attempt := e.attempts(p.ID)[0]
+		if got.Status != "succeeded" || attempt.Status != "captured" || attempt.ProviderPaymentID != "pay_retry" {
+			t.Fatalf("successful retry was not found: payment=%+v attempt=%+v", got, attempt)
+		}
+		var providerAttempts []store.ProviderPaymentAttempt
+		if err := e.db.Read(ctx, func(q store.Querier) (err error) {
+			providerAttempts, err = store.ListProviderPaymentAttempts(ctx, q, p.ID)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if len(providerAttempts) != 2 || providerAttempts[0].ProviderPaymentID != "pay_failed" ||
+			providerAttempts[1].ProviderPaymentID != "pay_retry" {
+			t.Fatalf("provider payment attempts = %+v, want failed then retry", providerAttempts)
+		}
+		e.fake.Locked(func() {
+			last := e.fake.Fetches[len(e.fake.Fetches)-1]
+			if last.ProviderPaymentID != "" || last.ProviderOrderID != orderID {
+				t.Errorf("latest sync fetched %+v, want order without stale payment id", last)
+			}
+		})
+	})
+}
+
 func TestProcessProviderEventUnknownObjectsAreRecorded(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
 		_, st := startedAttempt(t, e)
@@ -875,6 +990,42 @@ func TestPollDuePollsOnTheLadder(t *testing.T) {
 		_ = e.flow.PollDue(ctx)
 		if polls() != before {
 			t.Error("captured attempt polled")
+		}
+	})
+}
+
+func TestPollDueFindsSuccessfulRetryOnSameProviderOrder(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p, st := startedAttempt(t, e)
+		orderID := st.Attempt.ProviderOrderID
+		failed := connector.PaymentSnapshot{ProviderRef: st.Attempt.ProviderRef, ProviderOrderID: orderID,
+			ProviderPaymentID: "pay_failed", Status: connector.PaymentFailed, RawStatus: "failed", Amount: 50000, Currency: "INR"}
+		e.setPayment(st.Attempt.ProviderRef, failed)
+		if _, err := e.flow.SyncAttempt(ctx, st.Attempt.ID); err != nil {
+			t.Fatal(err)
+		}
+
+		retry := succeeded(50000, "INR", "pay_retry")
+		retry.ProviderRef, retry.ProviderOrderID = st.Attempt.ProviderRef, orderID
+		e.fake.Locked(func() { e.fake.Payments = map[string]connector.PaymentSnapshot{"retry": retry} })
+		if err := e.db.Write(ctx, func(tx store.Tx) error {
+			_, err := tx.ExecContext(ctx, "UPDATE payment_attempts SET status = 'pending', next_poll_at = ? WHERE id = ?", e.clk.Now().Add(-time.Second).UnixMilli(), st.Attempt.ID)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := e.flow.PollDue(ctx); err != nil {
+			t.Fatal(err)
+		}
+		got, attempt := e.get(p.ID), e.attempts(p.ID)[0]
+		if got.Status != "succeeded" || attempt.ProviderPaymentID != "pay_retry" {
+			t.Fatalf("poll did not find retry: payment=%+v attempt=%+v", got, attempt)
+		}
+		var last connector.PaymentRef
+		e.fake.Locked(func() { last = e.fake.Fetches[len(e.fake.Fetches)-1] })
+		if last.ProviderOrderID != orderID || last.ProviderPaymentID != "" {
+			t.Fatalf("poll fetched with a stale payment id: %+v", last)
 		}
 	})
 }

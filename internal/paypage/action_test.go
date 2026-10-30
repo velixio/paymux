@@ -22,6 +22,7 @@ type browserAction struct {
 	Launcher  string `json:"launcher"`
 	Action    struct {
 		Kind, URL string
+		Options   map[string]any `json:"options"`
 	} `json:"action"`
 	Billing *struct {
 		StateRequired   bool             `json:"state_required"`
@@ -69,6 +70,33 @@ func TestBrowserActionReturnsValidatedProviderAction(t *testing.T) {
 		}
 		if e.count("SELECT COUNT(*) FROM payment_attempts WHERE payment_id = ?", c.id) != 1 {
 			t.Error("checkout did not create an attempt")
+		}
+	})
+}
+
+func TestBrowserRazorpayActionDoesNotExposePaymuxCallback(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		e.fake.Locked(func() {
+			e.fake.CheckoutFn = func(connector.CheckoutRequest) (connector.CheckoutResult, error) {
+				return connector.CheckoutResult{ProviderOrderID: "order_1", NextAction: connector.NextAction{
+					Kind: connector.ActionSDK, ScriptURL: "https://fake.example.com/sdk.js",
+					Options: map[string]any{"key": "public-key", "order_id": "order_1", "callback_url": "https://pay.example.com/return/pa/ref", "redirect": true},
+				}}, nil
+			}
+		})
+		c := e.create(core.CreatePaymentInput{ReturnURL: "https://shop.example.com/orders/1"})
+		status, _, out := e.browserAction(c, "https://shop.example.com", c.secret, `{}`)
+		if status != http.StatusOK || out.Action.Kind != "sdk" {
+			t.Fatalf("%d %+v", status, out)
+		}
+		if out.Action.Options["key"] != "public-key" || out.Action.Options["order_id"] != "order_1" {
+			t.Fatalf("public provider options lost: %+v", out.Action.Options)
+		}
+		if _, ok := out.Action.Options["callback_url"]; ok {
+			t.Fatalf("Paymux callback exposed: %+v", out.Action.Options)
+		}
+		if _, ok := out.Action.Options["redirect"]; ok {
+			t.Fatalf("provider redirect enabled in merchant UI: %+v", out.Action.Options)
 		}
 	})
 }

@@ -5,29 +5,42 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
-	"github.com/velixio/paymux/connectors/simulator"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/velixio/paymux/connectors/simulator"
 	"github.com/velixio/paymux/internal/authz"
 	"github.com/velixio/paymux/internal/core"
 	"github.com/velixio/paymux/internal/core/state"
 	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 type payRow struct {
-	ID, App, Status, Amount, Customer, OrderRef, Created string
+	ID, App, Status, StatusClass, Amount, Customer, OrderRef, Created string
 }
 
 type payFilter struct{ App, Status, Q, From, To string }
 
 type attemptRow struct {
 	ID, Status, Provider, ProviderRef, OrderID, PaymentID, Method, FailureCode, FailureMessage, Created string
+	MethodSummary, MethodMeta                                                                           string
 	Duplicate                                                                                           bool
+}
+
+type providerAttemptRow struct {
+	PaymentID, AttemptID, Status, Provider, OrderID, Method, Failure, Amount, Created string
+}
+
+type customerDetail struct {
+	ExternalRef, Name, Email, Phone                                      string
+	LegalName, GSTIN, Line1, Line2, City, StateCode, PostalCode, Country string
+	HasBilling                                                           bool
 }
 
 type ledgerRow struct{ Kind, Amount, At string }
@@ -48,16 +61,18 @@ type eventRow struct {
 type attemptOpt struct{ ID, Label string }
 
 type payDetail struct {
-	ID, App, AppID, Mode, Status, Amount, Received, Refunded, OrderRef, Description, Customer, Created string
-	Currency                                                                                           string
-	Flags                                                                                              []string
-	Attempts                                                                                           []attemptRow
-	Ledger                                                                                             []ledgerRow
-	Refunds                                                                                            []refundRow
-	Deliveries                                                                                         []deliveryRow
-	Events                                                                                             []eventRow
-	Pickable                                                                                           []attemptOpt
-	CanRefund, CanReplay                                                                               bool
+	ID, App, AppID, Mode, Status, StatusClass, Amount, Received, Refunded, OrderRef, Description, Created string
+	Currency                                                                                              string
+	Customer                                                                                              *customerDetail
+	Flags                                                                                                 []string
+	Attempts                                                                                              []attemptRow
+	ProviderAttempts                                                                                      []providerAttemptRow
+	Ledger                                                                                                []ledgerRow
+	Refunds                                                                                               []refundRow
+	Deliveries                                                                                            []deliveryRow
+	Events                                                                                                []eventRow
+	Pickable                                                                                              []attemptOpt
+	CanRefund, CanReplay, CanSync                                                                         bool
 	// RefundNonce is the single-use key of the refund form on this page.
 	RefundNonce string
 	// SimAttempts are the captured attempts on a test-mode simulator account,
@@ -132,7 +147,8 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 		rows = rows[:d.o.PageSize]
 	}
 	for _, p := range rows {
-		row := payRow{ID: p.ID, App: names[p.AppID], Status: p.Status, Amount: fmtMoney(p.Amount, p.Currency), OrderRef: p.OrderRef,
+		status, statusClass := paymentDisplayStatus(p)
+		row := payRow{ID: p.ID, App: names[p.AppID], Status: status, StatusClass: statusClass, Amount: fmtMoney(p.Amount, p.Currency), OrderRef: p.OrderRef,
 			Created: d.fmtTime(p.CreatedAt)}
 		if p.CustomerID != "" {
 			_ = d.o.DB.Read(r.Context(), func(q store.Querier) error {
@@ -170,15 +186,16 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	ctx := r.Context()
 	id := r.PathValue("id")
 	var (
-		p        store.Payment
-		app      store.App
-		attempts []store.Attempt
-		ledger   []store.LedgerEntry
-		refunds  []store.Refund
-		events   []store.EventRow
-		dels     []store.DeliveryListRow
-		accounts []store.ProviderAccountInfo
-		cust     store.Customer
+		p                store.Payment
+		app              store.App
+		attempts         []store.Attempt
+		providerAttempts []store.ProviderPaymentAttempt
+		ledger           []store.LedgerEntry
+		refunds          []store.Refund
+		events           []store.EventRow
+		dels             []store.DeliveryListRow
+		accounts         []store.ProviderAccountInfo
+		cust             store.Customer
 	)
 	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) {
 		if p, err = store.GetPayment(ctx, q, id); err != nil {
@@ -188,6 +205,9 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 			return err
 		}
 		if attempts, err = store.ListAttempts(ctx, q, id); err != nil {
+			return err
+		}
+		if providerAttempts, err = store.ListProviderPaymentAttempts(ctx, q, id); err != nil {
 			return err
 		}
 		if ledger, err = store.ListLedgerEntries(ctx, q, id); err != nil {
@@ -227,26 +247,68 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 		provider[a.ID] = a.Name + " (" + a.Connector + ")"
 		connectorOf[a.ID] = a.Connector
 	}
-	det := &payDetail{ID: p.ID, App: app.Name, AppID: app.ID, Mode: p.Mode, Status: p.Status, Currency: p.Currency,
+	displayStatus, statusClass := paymentDisplayStatus(p)
+	det := &payDetail{ID: p.ID, App: app.Name, AppID: app.ID, Mode: p.Mode, Status: displayStatus, StatusClass: statusClass, Currency: p.Currency,
 		Amount: fmtMoney(p.Amount, p.Currency), Received: fmtMoney(p.AmountReceived, p.Currency), Refunded: fmtMoney(p.AmountRefunded, p.Currency),
-		OrderRef: p.OrderRef, Description: p.Description, Customer: cust.Email, Created: d.fmtTime(p.CreatedAt), Flags: p.Flags,
+		OrderRef: p.OrderRef, Description: p.Description, Created: d.fmtTime(p.CreatedAt), Flags: p.Flags,
 		CanReplay: s.can(authz.WebhookReplay)}
+	if cust.ID != "" {
+		det.Customer = &customerDetail{ExternalRef: cust.ExternalRef, Name: cust.Name, Email: cust.Email, Phone: cust.Phone,
+			LegalName: cust.Billing.LegalName, GSTIN: cust.Billing.GSTIN, Line1: cust.Billing.Line1, Line2: cust.Billing.Line2,
+			City: cust.Billing.City, StateCode: cust.Billing.StateCode, PostalCode: cust.Billing.PostalCode, Country: cust.Billing.Country,
+			HasBilling: cust.Billing.Line1 != "" || cust.Billing.Line2 != "" || cust.Billing.City != "" || cust.Billing.StateCode != "" ||
+				cust.Billing.PostalCode != "" || cust.Billing.Country != ""}
+	}
+	activeRefunds := map[string]int64{}
+	for _, rf := range refunds {
+		if rf.Status == string(state.RefundPending) || rf.Status == string(state.RefundSucceeded) {
+			activeRefunds[rf.AttemptID] += rf.Amount
+		}
+	}
 	for _, a := range attempts {
 		name := provider[a.ProviderAccountID]
 		if name == "" {
 			name = a.ProviderAccountID
 		}
+		methodSummary, methodMeta := paymentMethodSummary(a)
 		det.Attempts = append(det.Attempts, attemptRow{ID: a.ID, Status: a.Status, Provider: name, ProviderRef: a.ProviderRef,
 			OrderID: a.ProviderOrderID, PaymentID: a.ProviderPaymentID, Method: a.Method, FailureCode: a.FailureCode,
-			FailureMessage: a.FailureMessage, Created: d.fmtTime(a.CreatedAt), Duplicate: a.Duplicate})
-		if a.Status == string(state.AttemptCaptured) && !a.Duplicate {
-			det.Pickable = append(det.Pickable, attemptOpt{ID: a.ID, Label: a.ID + " - " + fmtMoney(a.AmountReceived, a.CurrencyReceived) + " via " + name})
+			FailureMessage: a.FailureMessage, Created: d.fmtTime(a.CreatedAt), Duplicate: a.Duplicate,
+			MethodSummary: methodSummary, MethodMeta: methodMeta})
+		remaining := max(a.AmountReceived-activeRefunds[a.ID], 0)
+		minimum := int64(1)
+		if _, info, ok := connector.Lookup(connectorOf[a.ProviderAccountID]); ok {
+			minimum = max(info.MinRefundMinor[strings.ToUpper(a.CurrencyReceived)], minimum)
+		}
+		if a.Status == string(state.AttemptCaptured) && !a.Duplicate && remaining >= minimum {
+			det.Pickable = append(det.Pickable, attemptOpt{ID: a.ID, Label: a.ID + " - " + fmtMoney(remaining, a.CurrencyReceived) + " refundable via " + name})
 		}
 		if a.Status == string(state.AttemptCaptured) && !a.Duplicate && p.Mode == "test" && connectorOf[a.ProviderAccountID] == simulator.Name {
 			det.SimAttempts = append(det.SimAttempts, attemptOpt{ID: a.ID, Label: a.ID + " - " + fmtMoney(a.AmountReceived, a.CurrencyReceived)})
 		}
 	}
+	for _, a := range providerAttempts {
+		name := provider[a.ProviderAccountID]
+		if name == "" {
+			name = a.ProviderAccountID
+		}
+		failure := a.FailureCode
+		if a.FailureMessage != "" {
+			if failure != "" {
+				failure += ": "
+			}
+			failure += a.FailureMessage
+		}
+		amount := ""
+		if a.Currency != "" {
+			amount = fmtMoney(a.Amount, a.Currency)
+		}
+		det.ProviderAttempts = append(det.ProviderAttempts, providerAttemptRow{PaymentID: a.ProviderPaymentID,
+			AttemptID: a.AttemptID, Status: a.Status, Provider: name, OrderID: a.ProviderOrderID, Method: a.Method,
+			Failure: failure, Amount: amount, Created: d.fmtTime(a.CreatedAt)})
+	}
 	det.CanRefund = s.can(authz.RefundCreate) && len(det.Pickable) > 0
+	det.CanSync = s.can(authz.PaymentCancel) && d.o.PaymentSync != nil && len(attempts) > 0
 	if det.CanRefund {
 		det.RefundNonce = refundNonce(s, p.ID)
 	}
@@ -268,6 +330,115 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	v := d.shell(r, s, "payments", "Payment "+p.ID)
 	v.Pay, v.Error, v.Notice = det, errMsg, notice
 	d.render(w, status, "dash_payment", v)
+}
+
+// paymentSyncSubmit fetches every attempt of the payment from its provider.
+// The checkout service deliberately uses each stored order/reference rather
+// than a stale failed provider-payment id, allowing a successful retry on the
+// same order to become authoritative.
+func (d *Dashboard) paymentSyncSubmit(w http.ResponseWriter, r *http.Request, s *session) {
+	ctx := r.Context()
+	// Custom roles can be granted payment.cancel without payment.read. Never
+	// render payment or customer details to a role that cannot read them.
+	if !s.can(authz.PaymentRead) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	id := r.PathValue("id")
+	var (
+		p        store.Payment
+		attempts []store.Attempt
+	)
+	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) {
+		if p, err = store.GetPayment(ctx, q, id); err != nil {
+			return err
+		}
+		attempts, err = store.ListAttempts(ctx, q, id)
+		return err
+	})
+	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, p.OrgID) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	if d.o.PaymentSync == nil || len(attempts) == 0 {
+		d.renderPayment(w, r, s, http.StatusBadRequest, "This payment has no provider attempt to sync.", "")
+		return
+	}
+	for _, attempt := range attempts {
+		if _, err := d.o.PaymentSync.SyncAttemptLatest(ctx, attempt.ID); err != nil {
+			d.o.Logger.Warn("dashboard: payment provider sync failed", "payment", p.ID, "attempt", attempt.ID, "err", err)
+			d.renderPayment(w, r, s, http.StatusBadGateway, "The latest status could not be fetched from the provider. Try again shortly.", "")
+			return
+		}
+	}
+	if err := d.record(ctx, r, s, "payment.sync", p.ID, nil, map[string]any{"attempts": len(attempts)}); err != nil {
+		d.fail(w, err)
+		return
+	}
+	// Redirect to the exact pane URL so the dashboard runtime replaces its
+	// cached payment detail immediately instead of waiting for a page reload.
+	http.Redirect(w, r, prefix+"/payments/"+p.ID, http.StatusSeeOther)
+}
+
+// paymentDisplayStatus keeps the payment lifecycle state unchanged while
+// making its financial outcome obvious in the dashboard. A succeeded charge
+// remains succeeded in the API; successful refunds are separate resources.
+func paymentDisplayStatus(p store.Payment) (label, class string) {
+	switch {
+	case p.HasFlag(core.FlagRefundedFull):
+		return "refunded", "refunded"
+	case p.HasFlag(core.FlagRefundedPartial):
+		return "partially refunded", "partially-refunded"
+	default:
+		return p.Status, p.Status
+	}
+}
+
+func paymentMethodSummary(a store.Attempt) (string, string) {
+	var details connector.PaymentMethodDetails
+	if json.Unmarshal([]byte(a.MethodDetails), &details) != nil {
+		return "", ""
+	}
+	if c := details.Card; c != nil {
+		summary := c.Network
+		if c.Last4 != "" {
+			if summary != "" {
+				summary += " "
+			}
+			summary += "•••• " + c.Last4
+		}
+		parts := []string{}
+		for _, value := range []string{c.Funding, c.Issuer, c.Country, c.SubType} {
+			if value != "" {
+				parts = append(parts, value)
+			}
+		}
+		if c.International != nil {
+			if *c.International {
+				parts = append(parts, "international")
+			} else {
+				parts = append(parts, "domestic")
+			}
+		}
+		if c.EMI != nil && *c.EMI {
+			parts = append(parts, "EMI")
+		}
+		return summary, strings.Join(parts, " · ")
+	}
+	if details.Bank != "" {
+		return details.Bank, ""
+	}
+	if details.Wallet != "" {
+		return details.Wallet, ""
+	}
+	if details.UPI != nil {
+		return details.UPI.PayerAccountType, ""
+	}
+	return "", ""
 }
 
 func (d *Dashboard) refundSubmit(w http.ResponseWriter, r *http.Request, s *session) {

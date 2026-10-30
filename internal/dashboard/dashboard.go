@@ -89,7 +89,13 @@ type Options struct {
 	// believed when working out the client address.
 	TrustedProxies []netip.Prefix
 
-	Core       *core.Service
+	Core *core.Service
+	// PaymentSync fetches the authoritative latest state for a payment attempt.
+	// It is optional so reduced dashboard/test configurations can omit provider
+	// access entirely.
+	PaymentSync interface {
+		SyncAttemptLatest(context.Context, string) (core.ApplyResult, error)
+	}
 	Settings   *settings.Service
 	Outbound   *outbound.Service
 	Invoice    *invoice.Service

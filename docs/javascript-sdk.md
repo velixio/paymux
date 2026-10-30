@@ -77,16 +77,19 @@ const checkoutAction = await fetch(`/api/orders/${orderId}/checkout`, {
 await executeCheckout(checkoutAction);
 ```
 
-The merchant UI receives no Paymux checkout URL or token. Use
-`payments.checkoutAction` only for recovery or an intentionally fresh provider
-attempt. A provider may still
+The merchant UI receives no Paymux checkout URL or token. Razorpay stays in its
+modal on the merchant page: the checkout-action API omits Paymux's hosted
+callback, and the JavaScript SDK also removes those fields defensively before
+launching Razorpay. Completion runs through Razorpay's handler. Webhooks and authenticated backend
+lookups remain authoritative. Providers that require a redirect may still
 return the customer through Paymux's verified return endpoint before Paymux
 redirects to the merchant `return_url`; configure an App custom domain if that
 return hop must use the merchant's domain. Include all customer and billing
 information required by the App's tax policy when creating the payment; this
-mode does not ask Paymux to collect missing billing data in the browser. Use a
-new idempotency key only when the merchant intentionally requests a fresh
-provider attempt.
+mode does not ask Paymux to collect missing billing data in the browser. Use
+`payments.checkoutAction` only for recovery or an intentionally fresh provider
+attempt, and use a new idempotency key only when the merchant intentionally
+requests one.
 
 ## Checkout URL modes
 

@@ -339,6 +339,7 @@ func (s *Service) failAttempt(ctx context.Context, a store.Attempt, cause error)
 // authorized, and canceled and expired become failed.
 func ToSnapshot(s connector.PaymentSnapshot) core.Snapshot {
 	out := core.Snapshot{Amount: s.Amount, Currency: strings.ToUpper(s.Currency), Method: s.Method,
+		MethodDetails:     s.MethodDetails,
 		ProviderPaymentID: s.ProviderPaymentID, ProviderOrderID: s.ProviderOrderID, FailureCode: s.ErrorCode, FailureMessage: s.ErrorMessage}
 	switch s.Status {
 	case connector.PaymentSucceeded:
@@ -356,12 +357,87 @@ func ToSnapshot(s connector.PaymentSnapshot) core.Snapshot {
 	return out
 }
 
+// MerchantBrowserAction removes a hosted Paymux callback from provider SDK
+// options returned to merchant JavaScript. Hosted Paymux pages keep the
+// original action and callback flow.
+func MerchantBrowserAction(action connector.NextAction) connector.NextAction {
+	if action.Kind != connector.ActionSDK || action.Options == nil {
+		return action
+	}
+	if _, hasCallback := action.Options["callback_url"]; !hasCallback {
+		return action
+	}
+	options := make(map[string]any, len(action.Options)-1)
+	for key, value := range action.Options {
+		if key != "callback_url" && key != "redirect" {
+			options[key] = value
+		}
+	}
+	action.Options = options
+	return action
+}
+
 // SyncAttempt fetches the provider's truth for an attempt and applies it.
 // hint carries identifiers learned from a verified return or webhook; empty
 // fields fall back to what the attempt already stores. A provider that does
 // not know the attempt yet (ErrNotFound) leaves everything unchanged.
 func (s *Service) SyncAttempt(ctx context.Context, attemptID string) (core.ApplyResult, error) {
 	return s.syncAttempt(ctx, attemptID, connector.PaymentRef{})
+}
+
+// SyncAttemptLatest fetches an attempt by its provider order or merchant
+// reference instead of pinning the lookup to a provider payment id already
+// stored on the attempt. Some providers allow a failed payment to be retried
+// on the same order; an order-level lookup lets the connector select the
+// successful retry. The fetched payment is still ownership-checked before it
+// can replace the stored provider payment id.
+func (s *Service) SyncAttemptLatest(ctx context.Context, attemptID string) (core.ApplyResult, error) {
+	a, err := s.o.Core.GetAttempt(ctx, attemptID)
+	if err != nil {
+		return core.ApplyResult{}, err
+	}
+	noteAttempt(ctx, a)
+	// Preserve the payment currently attached to the Paymux attempt before an
+	// order-level lookup can replace it with a later provider retry.
+	s.recordStoredProviderPaymentAttempt(ctx, a)
+	ref := connector.PaymentRef{ProviderRef: a.ProviderRef, ProviderOrderID: a.ProviderOrderID}
+	if ref.ProviderRef == "" && ref.ProviderOrderID == "" {
+		ref.ProviderPaymentID = a.ProviderPaymentID
+	}
+	if ref == (connector.PaymentRef{}) {
+		p, perr := s.o.Core.GetPaymentByID(ctx, a.PaymentID)
+		return core.ApplyResult{Payment: p, Attempt: a}, perr
+	}
+	live, err := s.o.Conns.Get(ctx, a.ProviderAccountID)
+	if err != nil {
+		return core.ApplyResult{}, err
+	}
+	s.recordProviderPaymentAttempts(ctx, a, live.Connector, ref)
+	fctx, cancel := context.WithTimeout(ctx, fetchTimeout)
+	defer cancel()
+	snap, err := live.Connector.FetchPayment(fctx, ref)
+	if errors.Is(err, connector.ErrNotFound) {
+		p, perr := s.o.Core.GetPaymentByID(ctx, a.PaymentID)
+		return core.ApplyResult{Payment: p, Attempt: a}, perr
+	}
+	if err != nil {
+		return core.ApplyResult{}, err
+	}
+	ours := snapshotIsOurs(a, snap)
+	if ours && snap.ProviderPaymentID != "" && snap.ProviderPaymentID != a.ProviderPaymentID {
+		ours, err = s.hintedSnapshotIsOurs(ctx, a, snap)
+		if err != nil {
+			return core.ApplyResult{}, err
+		}
+	}
+	if !ours {
+		s.o.Logger.Warn("checkout: the provider returned a payment that is not this attempt's; ignored", "attempt", a.ID,
+			"account", a.ProviderAccountID, "provider_payment", snap.ProviderPaymentID)
+		p, perr := s.o.Core.GetPaymentByID(ctx, a.PaymentID)
+		return core.ApplyResult{Payment: p, Attempt: a}, perr
+	}
+	s.recordProviderPaymentAttempt(ctx, a, snap)
+	return s.o.Core.ApplyAttemptSnapshot(ctx, a.ID, ToSnapshot(snap))
 }
 
 func (s *Service) syncAttempt(ctx context.Context, attemptID string, hint connector.PaymentRef) (core.ApplyResult, error) {
@@ -375,8 +451,13 @@ func (s *Service) syncAttempt(ctx context.Context, attemptID string, hint connec
 		return core.ApplyResult{}, err
 	}
 	ref := connector.PaymentRef{ProviderRef: a.ProviderRef,
-		ProviderOrderID:   firstNonEmpty(a.ProviderOrderID, hint.ProviderOrderID),
-		ProviderPaymentID: firstNonEmpty(a.ProviderPaymentID, hint.ProviderPaymentID)}
+		ProviderOrderID: firstNonEmpty(a.ProviderOrderID, hint.ProviderOrderID),
+		// One provider order can have a failed payment followed by a successful
+		// retry. A verified return or webhook names the payment that changed, so
+		// fetch that payment instead of pinning reconciliation to the first ID.
+		// The fetched snapshot still has to match this attempt's stored order or
+		// reference below before anything is applied.
+		ProviderPaymentID: firstNonEmpty(hint.ProviderPaymentID, a.ProviderPaymentID)}
 	fctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 	snap, err := live.Connector.FetchPayment(fctx, ref)
@@ -388,7 +469,8 @@ func (s *Service) syncAttempt(ctx context.Context, attemptID string, hint connec
 		return core.ApplyResult{}, err
 	}
 	ours := snapshotIsOurs(a, snap)
-	hinted := (a.ProviderPaymentID == "" && hint.ProviderPaymentID != "") || (a.ProviderOrderID == "" && hint.ProviderOrderID != "")
+	hinted := (hint.ProviderPaymentID != "" && hint.ProviderPaymentID != a.ProviderPaymentID) ||
+		(a.ProviderOrderID == "" && hint.ProviderOrderID != "")
 	if ours && hinted {
 		// An id came from outside (a return URL, a notification) and nothing
 		// signs it: not contradicting the attempt is not enough, the payment
@@ -407,7 +489,74 @@ func (s *Service) syncAttempt(ctx context.Context, attemptID string, hint connec
 		p, perr := s.o.Core.GetPaymentByID(ctx, a.PaymentID)
 		return core.ApplyResult{Payment: p, Attempt: a}, perr
 	}
+	s.recordProviderPaymentAttempt(ctx, a, snap)
 	return s.o.Core.ApplyAttemptSnapshot(ctx, a.ID, ToSnapshot(snap))
+}
+
+// recordStoredProviderPaymentAttempt preserves the provider payment already
+// known by Paymux. History is observational: failure to write it must never
+// prevent a payment from being reconciled or booked.
+func (s *Service) recordStoredProviderPaymentAttempt(ctx context.Context, a store.Attempt) {
+	if a.ProviderPaymentID == "" {
+		return
+	}
+	p := store.ProviderPaymentAttempt{ProviderAccountID: a.ProviderAccountID, ProviderPaymentID: a.ProviderPaymentID,
+		AttemptID: a.ID, ProviderOrderID: a.ProviderOrderID, Status: a.Status, Method: a.Method,
+		FailureCode: a.FailureCode, FailureMessage: a.FailureMessage, Amount: a.AmountReceived,
+		Currency: strings.ToUpper(a.CurrencyReceived), CreatedAt: a.CreatedAt, UpdatedAt: s.o.Now()}
+	s.storeProviderPaymentAttempt(ctx, p)
+}
+
+func (s *Service) recordProviderPaymentAttempt(ctx context.Context, a store.Attempt, snap connector.PaymentSnapshot) {
+	if snap.ProviderPaymentID == "" {
+		return
+	}
+	created := s.o.Now()
+	if snap.CreatedAt > 0 {
+		created = time.UnixMilli(snap.CreatedAt)
+	}
+	status := snap.RawStatus
+	if status == "" {
+		status = string(snap.Status)
+	}
+	p := store.ProviderPaymentAttempt{ProviderAccountID: a.ProviderAccountID, ProviderPaymentID: snap.ProviderPaymentID,
+		AttemptID: a.ID, ProviderOrderID: firstNonEmpty(snap.ProviderOrderID, a.ProviderOrderID), Status: status,
+		Method: snap.Method, FailureCode: snap.ErrorCode, FailureMessage: snap.ErrorMessage, Amount: snap.Amount,
+		Currency: strings.ToUpper(snap.Currency), CreatedAt: created, UpdatedAt: s.o.Now()}
+	s.storeProviderPaymentAttempt(ctx, p)
+}
+
+// providerPaymentAttemptFetcher is implemented by connectors that can list
+// every payment made against one provider order. It is deliberately optional:
+// fetching authoritative state continues to work for all other connectors.
+type providerPaymentAttemptFetcher interface {
+	FetchPaymentAttempts(context.Context, connector.PaymentRef) ([]connector.PaymentSnapshot, error)
+}
+
+func (s *Service) recordProviderPaymentAttempts(ctx context.Context, a store.Attempt, c connector.Connector, ref connector.PaymentRef) {
+	f, ok := c.(providerPaymentAttemptFetcher)
+	if !ok || ref.ProviderOrderID == "" {
+		return
+	}
+	fctx, cancel := context.WithTimeout(ctx, fetchTimeout)
+	defer cancel()
+	snaps, err := f.FetchPaymentAttempts(fctx, ref)
+	if err != nil {
+		s.o.Logger.Warn("checkout: provider payment attempt history could not be fetched", "attempt", a.ID, "err", err)
+		return
+	}
+	for _, snap := range snaps {
+		if snapshotIsOurs(a, snap) {
+			s.recordProviderPaymentAttempt(ctx, a, snap)
+		}
+	}
+}
+
+func (s *Service) storeProviderPaymentAttempt(ctx context.Context, p store.ProviderPaymentAttempt) {
+	if err := s.o.DB.Write(ctx, func(tx store.Tx) error { return store.UpsertProviderPaymentAttempt(ctx, tx, p) }); err != nil {
+		s.o.Logger.Warn("checkout: provider payment attempt history could not be recorded", "attempt", p.AttemptID,
+			"provider_payment", p.ProviderPaymentID, "err", err)
+	}
 }
 
 // snapshotIsOurs reports whether a payment fetched from the provider can be

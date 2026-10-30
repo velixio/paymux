@@ -102,6 +102,8 @@ Every mutation requires a 1-255 character `idempotencyKey`. Reuse a key only whe
 
 Store at least the Paymux payment ID, merchant order ID, expected amount, expected currency, current local payment state, expiry, and checkout mode. In `hosted` mode also store `checkout_url`. The checkout URL contains a customer credential and is returned only by payment creation; `payments.get()` cannot reconstruct it. Protect it like a short-lived secret in encrypted or equivalently access-controlled server storage, return it only to the authenticated order owner, and remove it after expiry or a terminal outcome. This lets the same logical checkout reopen after a browser or network retry without creating another payment.
 
+Payment attempts may include `method_details` with display-safe provider data such as card network, last four digits, funding type, issuer, country and domestic/international status; bank and wallet codes or names; and a UPI payer account type. Paymux never returns full card numbers, expiry, CVV, a UPI VPA, authentication data, fingerprints or reusable provider tokens. Treat these fields as support/display metadata, not proof of payment.
+
 In `provider_action` mode, do not expect or expose `checkout_url`. Payment creation already returns the action:
 
 ```ts

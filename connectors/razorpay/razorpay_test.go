@@ -146,6 +146,57 @@ func TestFetchPaymentCapturesAuthorized(t *testing.T) {
 	}
 }
 
+func TestFetchPaymentAttemptsReturnsEveryRetryOnOrder(t *testing.T) {
+	f := newFake("captured")
+	failed := payJSON("failed")
+	failed["id"], failed["created_at"] = "pay_failed", int64(1760000000)
+	succeeded := payJSON("captured")
+	succeeded["id"], succeeded["created_at"] = "pay_succeeded", int64(1760000100)
+	f.orderPayments = []map[string]any{failed, succeeded}
+	c := newConn(t, f)
+	lister, ok := c.(interface {
+		FetchPaymentAttempts(context.Context, connector.PaymentRef) ([]connector.PaymentSnapshot, error)
+	})
+	if !ok {
+		t.Fatal("Razorpay connector does not expose payment attempt history")
+	}
+	got, err := lister.FetchPaymentAttempts(context.Background(), connector.PaymentRef{ProviderRef: "pay_ref_01", ProviderOrderID: "order_Nx0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ProviderPaymentID != "pay_failed" || got[0].RawStatus != "failed" ||
+		got[1].ProviderPaymentID != "pay_succeeded" || got[1].RawStatus != "captured" {
+		t.Fatalf("attempts = %+v", got)
+	}
+}
+
+func TestFetchPaymentPreservesUPIDetailsWhenCaptureOmitsThem(t *testing.T) {
+	f := newFake("authorized")
+	f.captureOmitsUPI = true
+	c := newConn(t, f)
+	snap, err := c.FetchPayment(context.Background(), connector.PaymentRef{ProviderOrderID: "order_Nx0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.Status != connector.PaymentSucceeded || snap.MethodDetails.UPI == nil || snap.MethodDetails.UPI.PayerAccountType != "bank_account" {
+		t.Fatalf("capture lost UPI details: %+v", snap)
+	}
+}
+
+func TestFetchPaymentKeepsCapturedStateWhenCardEnrichmentFails(t *testing.T) {
+	f := newFake("authorized")
+	f.captureCard = true
+	f.cardExpandFails = true
+	c := newConn(t, f)
+	snap, err := c.FetchPayment(context.Background(), connector.PaymentRef{ProviderOrderID: "order_Nx0"})
+	if err != nil {
+		t.Fatalf("optional card enrichment failed the captured payment: %v", err)
+	}
+	if snap.Status != connector.PaymentSucceeded || snap.ProviderPaymentID != "pay_Nx1" || snap.Method != "card" {
+		t.Fatalf("captured state was lost: %+v", snap)
+	}
+}
+
 func TestFetchPaymentCaptureAlreadyDone(t *testing.T) {
 	f := newFake("authorized")
 	f.captureFails = true
@@ -168,6 +219,26 @@ func TestFetchPaymentFeeTaxAndRefs(t *testing.T) {
 	if snap.Fee != 1178 || snap.Tax != 180 || snap.Method != "upi" || snap.ProviderPaymentID != "pay_Nx1" ||
 		snap.ProviderOrderID != "order_Nx0" || snap.Currency != "INR" || snap.CreatedAt != 1760000000000 {
 		t.Errorf("snap = %+v", snap)
+	}
+}
+
+func TestPaymentSnapshotKeepsSafeMethodDetails(t *testing.T) {
+	international, emi := false, false
+	p := paymentEntity{ID: "pay_card", Status: "captured", Method: "card", Amount: 100, Currency: "INR", Bank: "",
+		Card: &struct {
+			Last4         string `json:"last4"`
+			Network       string `json:"network"`
+			Type          string `json:"type"`
+			Issuer        string `json:"issuer"`
+			International bool   `json:"international"`
+			EMI           bool   `json:"emi"`
+			SubType       string `json:"sub_type"`
+		}{Last4: "5000", Network: "American Express", Type: "credit", Issuer: "AMEX", International: international, EMI: emi, SubType: "consumer"}}
+	snap := p.snapshot()
+	card := snap.MethodDetails.Card
+	if card == nil || card.Last4 != "5000" || card.Network != "American Express" || card.Funding != "credit" ||
+		card.Issuer != "AMEX" || card.International == nil || *card.International || card.EMI == nil || *card.EMI || card.SubType != "consumer" {
+		t.Fatalf("method details = %+v", snap.MethodDetails)
 	}
 }
 
@@ -335,10 +406,20 @@ func TestRefundErrors(t *testing.T) {
 		f := newFake("captured")
 		f.refundErrCode = tc.code
 		c := newConn(t, f).(connector.Refunder)
-		_, err := c.Refund(context.Background(), connector.RefundRequest{ProviderRef: "rf", ProviderPaymentID: "pay_Nx1", Amount: 1, Currency: "INR"})
+		_, err := c.Refund(context.Background(), connector.RefundRequest{ProviderRef: "rf", ProviderPaymentID: "pay_Nx1", Amount: 100, Currency: "INR"})
 		if err == nil || !tc.want(err) {
 			t.Errorf("code %d: err = %v", tc.code, err)
 		}
+	}
+}
+
+func TestRefundRejectsBelowProviderMinimumWithoutCallingProvider(t *testing.T) {
+	f := newFake("captured")
+	c := newConn(t, f).(connector.Refunder)
+	_, err := c.Refund(context.Background(), connector.RefundRequest{ProviderRef: "rf", ProviderPaymentID: "pay_Nx1", Amount: 99, Currency: "INR"})
+	var nr connector.ErrNotRefundable
+	if !errors.As(err, &nr) || len(f.callsTo("POST", "/v1/payments/pay_Nx1/refund")) != 0 {
+		t.Fatalf("refund below minimum: err=%v calls=%d", err, len(f.callsTo("POST", "/v1/payments/pay_Nx1/refund")))
 	}
 }
 

@@ -178,7 +178,7 @@ func (h *Handler) action(w http.ResponseWriter, r *http.Request) {
 	started, err := start(r.Context(), p.ID)
 	switch {
 	case err == nil:
-		a := started.Action
+		a := checkout.MerchantBrowserAction(started.Action)
 		actionJSON(w, http.StatusOK, actionResponse{Kind: "checkout", PaymentID: p.ID, Status: p.Status, Launcher: started.Connector, Action: &a})
 	case errors.Is(err, checkout.ErrCheckoutFailed):
 		actionFail(w, http.StatusBadGateway, "provider_unavailable", "no payment provider is available; try again")

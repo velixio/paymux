@@ -17,6 +17,7 @@ import (
 	"github.com/velixio/paymux/internal/settings"
 	"github.com/velixio/paymux/internal/store"
 	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 var ctx = context.Background()
@@ -119,6 +120,29 @@ func (e *env) apply(attemptID string, snap core.Snapshot) core.ApplyResult {
 
 func captured(amount int64) core.Snapshot {
 	return core.Snapshot{Status: state.AttemptCaptured, Amount: amount, Currency: "INR", Method: "upi", ProviderPaymentID: "pp_1"}
+}
+
+func TestAttemptStoresSafeMethodDetails(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p := e.payment(100)
+		a := e.attempt(p.ID)
+		international := false
+		e.apply(a.ID, core.Snapshot{Status: state.AttemptCaptured, Amount: 100, Currency: "INR", Method: "card", ProviderPaymentID: "pay_card"})
+		result := e.apply(a.ID, core.Snapshot{Status: state.AttemptCaptured, Amount: 100, Currency: "INR", Method: "card",
+			ProviderPaymentID: "pay_card", MethodDetails: connector.PaymentMethodDetails{Card: &connector.CardDetails{
+				Last4: "5000", Network: "American Express", Funding: "credit", International: &international}}})
+		if !result.Changed {
+			t.Fatal("a repeated snapshot with new method details was not saved")
+		}
+		views, err := e.svc.PaymentAttempts(ctx, e.scope, p.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(views) != 1 || views[0].MethodDetails == nil || views[0].MethodDetails.Card == nil ||
+			views[0].MethodDetails.Card.Last4 != "5000" || views[0].MethodDetails.Card.Network != "American Express" {
+			t.Fatalf("attempt views = %+v", views)
+		}
+	})
 }
 
 func (e *env) get(id string) store.Payment {

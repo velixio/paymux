@@ -53,6 +53,12 @@ previous release reads.
 
 ## Release notes that need action
 
+- **0037, provider payment attempt history.** Paymux now keeps each provider-side
+  payment made against one checkout attempt, so a failed payment followed by a
+  successful retry on the same provider order is visible in the dashboard.
+  Existing payment state and ledger entries are unchanged; history starts as
+  provider payments are next fetched or synchronized.
+
 - **Remote connector accounts must declare `checkout_hosts`.** The hub now
   refuses a checkout whose script, form or redirect URL is not on a host the
   connector declared (audit B-7a). The built-in connectors declare theirs; an
@@ -154,6 +160,13 @@ No migration. `PAYMUX_CHECKOUT_URL` is optional and unset by default, so an upgr
 4. New `checkout_url`, payment-link, invoice and subscription URLs, emails and provider return URLs use the new host. Return URLs are built per payment, so providers that take the return URL from each request need nothing. If you registered a fixed return, redirect or allowed domain at a provider (Razorpay, PayU, Zoho Payments, Whop dashboards), add the new host there; the old one keeps working through the redirect meanwhile.
 5. Webhook URLs (`/hooks/...`) do not change: they stay on `PAYMUX_BASE_URL`. Do not move them.
 6. If your reverse proxy restricts paths per host, allow the customer paths on the new host only and keep dashboard, API and `/hooks` on the base host.
+
+## Release note: payment method details
+
+Migration 0036 adds a `method_details` text column that stores JSON on payment
+attempts. Existing rows get an empty object. Verified provider webhooks and reconciliation populate safe
+display metadata when a provider supplies it. Full card numbers, expiry, CVV,
+authentication data, fingerprints and reusable tokens are not stored there.
 
 ## Release note: custom domains need a DNS TXT record
 

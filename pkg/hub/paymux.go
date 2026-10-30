@@ -482,7 +482,7 @@ func (a *App) Start(ctx context.Context) error {
 		updater = selfupdate.New(selfupdate.Config{Repo: su.repo, Exe: su.exe, Current: func() string { return Version },
 			Restart: a.requestRestart, Logger: a.log})
 	}
-	dash, err := dashboard.New(dashboard.Options{Updater: updater, LogDB: dashLogs, LogRedact: dashRedact, DB: db, Box: box, Renderer: renderer, Themes: themes, MasterKey: a.cfg.MasterKey,
+	dash, err := dashboard.New(dashboard.Options{Updater: updater, LogDB: dashLogs, LogRedact: dashRedact, DB: db, Box: box, Renderer: renderer, Themes: themes, MasterKey: a.cfg.MasterKey, PaymentSync: flow,
 		BaseURL: a.cfg.BaseURL, DevSkip2FA: a.cfg.DevSkip2FA, Logger: a.log,
 		TrustedProxies: a.cfg.TrustedProxies, Core: svc, Settings: set, Outbound: out, Invoice: inv, Connectors: conns, Disputes: disp, Recon: rec, Jobs: q,
 		Subscriptions: subs, PaymentLinks: links, Alerts: alertCenter, Location: a.cfg.Location,

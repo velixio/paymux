@@ -246,6 +246,11 @@ func Run(t *testing.T, factory connector.Factory, fx Fixtures) {
 				t.Errorf("Info.MinChargeMinor[%q] = %d must be a positive minimum of one of Info.Currencies", cur, min)
 			}
 		}
+		for cur, min := range info.MinRefundMinor {
+			if min <= 0 || !slices.Contains(info.Currencies, cur) {
+				t.Errorf("Info.MinRefundMinor[%q] = %d must be a positive minimum of one of Info.Currencies", cur, min)
+			}
+		}
 		for _, cur := range info.Currencies {
 			if _, err := money.Exponent(cur); err != nil {
 				t.Errorf("currency %q: %v", cur, err)

@@ -262,7 +262,8 @@ func (s *Service) PaymentAttempts(ctx context.Context, sc Scope, paymentID strin
 				connectors[a.ProviderAccountID] = name
 			}
 			out = append(out, AttemptView{ID: a.ID, Status: a.Status, Provider: name, ProviderPaymentID: a.ProviderPaymentID, Method: a.Method,
-				FailureCode: a.FailureCode, FailureMessage: a.FailureMessage, CreatedAt: a.CreatedAt})
+				MethodDetails: methodDetails(a.MethodDetails),
+				FailureCode:   a.FailureCode, FailureMessage: a.FailureMessage, CreatedAt: a.CreatedAt})
 		}
 		return nil
 	})

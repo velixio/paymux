@@ -133,6 +133,10 @@ type Info struct {
 	// less: a prorated renewal that would fall under it carries the credit
 	// forward, and a prorated extra charge under it waits for the next renewal.
 	MinChargeMinor map[string]int64 `json:"min_charge_minor,omitempty"`
+	// MinRefundMinor is the smallest partial refund the provider accepts, by
+	// upper-case currency, in minor units. A missing currency has a minimum of
+	// one minor unit. This can differ from MinChargeMinor.
+	MinRefundMinor map[string]int64 `json:"min_refund_minor,omitempty"`
 	// RefundsVerificationDebit says the provider reverses that verification
 	// debit by itself. When false, Paymux refunds it (initiated_by=system,
 	// reason=mandate_verification).
@@ -351,18 +355,52 @@ type PaymentSnapshot struct {
 	ProviderPaymentID string `json:"provider_payment_id,omitempty"`
 	// SubscriptionID is the provider subscription a payment belongs to (a
 	// provider-managed renewal), empty for one-time payments.
-	SubscriptionID string        `json:"subscription_id,omitempty"`
-	Status         PaymentStatus `json:"status"`
-	RawStatus      string        `json:"raw_status"`
-	Amount         int64         `json:"amount"`
-	Currency       string        `json:"currency"`
-	Method         string        `json:"method,omitempty"`
-	Fee            int64         `json:"fee,omitempty"`
-	Tax            int64         `json:"tax,omitempty"`
-	AmountRefunded int64         `json:"amount_refunded,omitempty"`
-	ErrorCode      string        `json:"error_code,omitempty"`
-	ErrorMessage   string        `json:"error_message,omitempty"`
-	CreatedAt      int64         `json:"created_at,omitempty"` // unix ms
+	SubscriptionID string               `json:"subscription_id,omitempty"`
+	Status         PaymentStatus        `json:"status"`
+	RawStatus      string               `json:"raw_status"`
+	Amount         int64                `json:"amount"`
+	Currency       string               `json:"currency"`
+	Method         string               `json:"method,omitempty"`
+	MethodDetails  PaymentMethodDetails `json:"method_details,omitempty"`
+	Fee            int64                `json:"fee,omitempty"`
+	Tax            int64                `json:"tax,omitempty"`
+	AmountRefunded int64                `json:"amount_refunded,omitempty"`
+	ErrorCode      string               `json:"error_code,omitempty"`
+	ErrorMessage   string               `json:"error_message,omitempty"`
+	CreatedAt      int64                `json:"created_at,omitempty"` // unix ms
+}
+
+// PaymentMethodDetails is the non-sensitive payment instrument information a
+// provider exposes. It deliberately excludes full account numbers, card
+// expiry, CVV, authentication data, fingerprints and reusable tokens.
+type PaymentMethodDetails struct {
+	Card   *CardDetails `json:"card,omitempty"`
+	Bank   string       `json:"bank,omitempty"`
+	Wallet string       `json:"wallet,omitempty"`
+	UPI    *UPIDetails  `json:"upi,omitempty"`
+}
+
+// Empty reports whether the provider supplied any safe instrument details.
+func (d PaymentMethodDetails) Empty() bool {
+	return d.Card == nil && d.Bank == "" && d.Wallet == "" && d.UPI == nil
+}
+
+// CardDetails contains only display-safe card attributes.
+type CardDetails struct {
+	Last4         string `json:"last4,omitempty"`
+	Network       string `json:"network,omitempty"`
+	Funding       string `json:"funding,omitempty"`
+	Issuer        string `json:"issuer,omitempty"`
+	Country       string `json:"country,omitempty"`
+	International *bool  `json:"international,omitempty"`
+	EMI           *bool  `json:"emi,omitempty"`
+	SubType       string `json:"sub_type,omitempty"`
+}
+
+// UPIDetails avoids retaining a payer's VPA while preserving useful routing
+// information.
+type UPIDetails struct {
+	PayerAccountType string `json:"payer_account_type,omitempty"`
 }
 
 // RefundStatus is the SDK-level refund status.

@@ -40,7 +40,7 @@ func (r *razorpay) FetchPayment(ctx context.Context, ref connector.PaymentRef) (
 	switch {
 	case ref.ProviderPaymentID != "":
 		var p paymentEntity
-		if err := r.api.do(ctx, "GET", "/v1/payments/"+url.PathEscape(ref.ProviderPaymentID), nil, nil, &p, nil); err != nil {
+		if err := r.api.do(ctx, "GET", "/v1/payments/"+url.PathEscape(ref.ProviderPaymentID), url.Values{"expand[]": {"card"}}, nil, &p, nil); err != nil {
 			return connector.PaymentSnapshot{}, err
 		}
 		// The payment id may have come from outside (a return URL, a
@@ -101,27 +101,18 @@ func (r *razorpay) paymentIsOurs(ctx context.Context, p paymentEntity, ref conne
 }
 
 func (r *razorpay) fetchOrder(ctx context.Context, orderID, providerRef string) (connector.PaymentSnapshot, error) {
-	var o orderEntity
-	if err := r.api.do(ctx, "GET", "/v1/orders/"+url.PathEscape(orderID), nil, nil, &o, nil); err != nil {
+	o, payments, err := r.fetchOrderPayments(ctx, orderID, providerRef)
+	if err != nil {
 		return connector.PaymentSnapshot{}, err
 	}
-	// The order must be the one made for this reference (its receipt), or the
-	// caller's reference would be stamped onto someone else's payment.
-	if providerRef != "" && o.Receipt != "" && o.Receipt != providerRef {
-		return connector.PaymentSnapshot{}, connector.ErrNotFound
-	}
-	var c collection[paymentEntity]
-	if err := r.api.do(ctx, "GET", "/v1/orders/"+url.PathEscape(orderID)+"/payments", nil, nil, &c, nil); err != nil {
-		return connector.PaymentSnapshot{}, err
-	}
-	if len(c.Items) == 0 {
+	if len(payments) == 0 {
 		return connector.PaymentSnapshot{
 			ProviderRef: providerRef, ProviderOrderID: o.ID, Status: connector.PaymentRequiresAction,
 			RawStatus: o.Status, Amount: o.Amount, Currency: o.Currency,
 		}, nil
 	}
-	best := c.Items[0]
-	for _, p := range c.Items[1:] {
+	best := payments[0]
+	for _, p := range payments[1:] {
 		if rank(p) > rank(best) || (rank(p) == rank(best) && p.CreatedAt > best.CreatedAt) {
 			best = p
 		}
@@ -130,6 +121,46 @@ func (r *razorpay) fetchOrder(ctx context.Context, orderID, providerRef string) 
 		best.OrderID = orderID
 	}
 	return r.captureIfAuthorized(ctx, best, providerRef)
+}
+
+// FetchPaymentAttempts returns every Razorpay payment made against an order.
+// Paymux uses it for operator-visible history; FetchPayment still chooses and
+// applies the single authoritative payment.
+func (r *razorpay) FetchPaymentAttempts(ctx context.Context, ref connector.PaymentRef) ([]connector.PaymentSnapshot, error) {
+	if ref.ProviderOrderID == "" {
+		return nil, errors.New("razorpay: payment attempt history requires an order id")
+	}
+	_, payments, err := r.fetchOrderPayments(ctx, ref.ProviderOrderID, ref.ProviderRef)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]connector.PaymentSnapshot, 0, len(payments))
+	for _, p := range payments {
+		if p.OrderID == "" {
+			p.OrderID = ref.ProviderOrderID
+		}
+		snap := p.snapshot()
+		snap.ProviderRef = ref.ProviderRef
+		out = append(out, snap)
+	}
+	return out, nil
+}
+
+func (r *razorpay) fetchOrderPayments(ctx context.Context, orderID, providerRef string) (orderEntity, []paymentEntity, error) {
+	var o orderEntity
+	if err := r.api.do(ctx, "GET", "/v1/orders/"+url.PathEscape(orderID), nil, nil, &o, nil); err != nil {
+		return orderEntity{}, nil, err
+	}
+	// The order must be the one made for this reference (its receipt), or the
+	// caller's reference would be stamped onto someone else's payment.
+	if providerRef != "" && o.Receipt != "" && o.Receipt != providerRef {
+		return orderEntity{}, nil, connector.ErrNotFound
+	}
+	var c collection[paymentEntity]
+	if err := r.api.do(ctx, "GET", "/v1/orders/"+url.PathEscape(orderID)+"/payments", url.Values{"expand[]": {"card"}}, nil, &c, nil); err != nil {
+		return orderEntity{}, nil, err
+	}
+	return o, c.Items, nil
 }
 
 func rank(p paymentEntity) int {
@@ -146,6 +177,8 @@ func rank(p paymentEntity) int {
 
 func (r *razorpay) captureIfAuthorized(ctx context.Context, p paymentEntity, providerRef string) (connector.PaymentSnapshot, error) {
 	if p.Status == "authorized" {
+		priorCard, priorUPI := p.Card, p.UPI
+		priorBank, priorWallet, priorMethod := p.Bank, p.Wallet, p.Method
 		var captured paymentEntity
 		body := map[string]any{"amount": p.Amount, "currency": p.Currency}
 		err := r.api.do(ctx, "POST", "/v1/payments/"+url.PathEscape(p.ID)+"/capture", nil, body, &captured, nil)
@@ -156,6 +189,21 @@ func (r *razorpay) captureIfAuthorized(ctx context.Context, p paymentEntity, pro
 				captured.OrderID = p.OrderID
 			}
 			p = captured
+			if p.Card == nil {
+				p.Card = priorCard
+			}
+			if p.UPI == nil {
+				p.UPI = priorUPI
+			}
+			if p.Bank == "" {
+				p.Bank = priorBank
+			}
+			if p.Wallet == "" {
+				p.Wallet = priorWallet
+			}
+			if p.Method == "" {
+				p.Method = priorMethod
+			}
 		case errors.As(err, &ae) && ae.Status == 400 && strings.Contains(strings.ToLower(ae.Description), "already"):
 			// Captured concurrently (or by auto-capture): read the current state.
 			if err := r.api.do(ctx, "GET", "/v1/payments/"+url.PathEscape(p.ID), nil, nil, &p, nil); err != nil {
@@ -163,6 +211,15 @@ func (r *razorpay) captureIfAuthorized(ctx context.Context, p paymentEntity, pro
 			}
 		default:
 			return connector.PaymentSnapshot{}, fmt.Errorf("razorpay: capturing %s: %w", p.ID, err)
+		}
+	}
+	if p.Method == "card" && p.Card == nil {
+		if err := r.api.do(ctx, "GET", "/v1/payments/"+url.PathEscape(p.ID), url.Values{"expand[]": {"card"}}, nil, &p, nil); err != nil {
+			// Card expansion is optional enrichment. Never lose an already fetched
+			// captured state merely because that follow-up request failed.
+			s := p.snapshot()
+			s.ProviderRef = providerRef
+			return s, nil
 		}
 	}
 	s := p.snapshot()
@@ -176,6 +233,9 @@ func (r *razorpay) captureIfAuthorized(ctx context.Context, p paymentEntity, pro
 func (r *razorpay) Refund(ctx context.Context, req connector.RefundRequest) (connector.RefundSnapshot, error) {
 	if req.ProviderPaymentID == "" || req.Amount <= 0 {
 		return connector.RefundSnapshot{}, errors.New("razorpay: refund needs a payment id and a positive amount")
+	}
+	if minimum := info.MinRefundMinor[strings.ToUpper(req.Currency)]; minimum > 0 && req.Amount < minimum {
+		return connector.RefundSnapshot{}, connector.ErrNotRefundable{Reason: fmt.Sprintf("Razorpay requires a minimum refund of %d minor units for %s", minimum, strings.ToUpper(req.Currency))}
 	}
 	body := map[string]any{"amount": req.Amount, "receipt": req.ProviderRef}
 	if req.Reason != "" {
@@ -260,6 +320,7 @@ func (r *razorpay) ListPayments(ctx context.Context, tr connector.TimeRange, cur
 	if err != nil {
 		return connector.Page[connector.PaymentSnapshot]{}, err
 	}
+	q.Add("expand[]", "card")
 	var c collection[paymentEntity]
 	if err := r.api.do(ctx, "GET", "/v1/payments", q, nil, &c, nil); err != nil {
 		return connector.Page[connector.PaymentSnapshot]{}, err

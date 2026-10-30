@@ -47,6 +47,14 @@ func TestProviderActionCheckoutStaysOnTheMerchantBackend(t *testing.T) {
 			t.Fatal(err)
 		}
 		fake := fakeconn.Register("api-action")
+		fake.Locked(func() {
+			fake.CheckoutFn = func(req connector.CheckoutRequest) (connector.CheckoutResult, error) {
+				return connector.CheckoutResult{ProviderOrderID: "order_" + req.ProviderRef, NextAction: connector.NextAction{
+					Kind: connector.ActionSDK, ScriptURL: "https://sdk.example.com/pay.js",
+					Options: map[string]any{"key": "public", "callback_url": "https://pay.example.com/return/secret", "redirect": true},
+				}}, nil
+			}
+		})
 		if _, err := conns.CreateAccount(ctx, audit.System, core.OrgScope{OrgID: store.DefaultOrgID}, connectors.CreateAccountInput{
 			Connector: fake.Name, Name: "Fake", Mode: "test", Config: json.RawMessage(fakeconn.ValidConfig), AppID: app.ID,
 		}); err != nil {
@@ -147,8 +155,12 @@ func TestProviderActionCheckoutStaysOnTheMerchantBackend(t *testing.T) {
 		paymentID := payment["id"].(string)
 		initial, _ := payment["checkout"].(map[string]any)
 		provider, _ := initial["action"].(map[string]any)
-		if payment["status"] != "created" || initial["kind"] != "checkout" || initial["launcher"] != fake.Name || provider["kind"] != "redirect" || attemptCount(paymentID) != 1 {
+		if payment["status"] != "created" || initial["kind"] != "checkout" || initial["launcher"] != fake.Name || provider["kind"] != "sdk" || attemptCount(paymentID) != 1 {
 			t.Fatalf("initial checkout: payment=%+v attempts=%d", payment, attemptCount(paymentID))
+		}
+		initialOptions, _ := provider["options"].(map[string]any)
+		if initialOptions["key"] != "public" || initialOptions["callback_url"] != nil || initialOptions["redirect"] != nil {
+			t.Fatalf("initial checkout leaked hosted callback: %+v", payment)
 		}
 		status, _ = callWithKey(otherKey, "/v1/payments/"+paymentID+"/checkout-action", "other-app", `{}`)
 		if status != http.StatusNotFound {
@@ -182,11 +194,15 @@ func TestProviderActionCheckoutStaysOnTheMerchantBackend(t *testing.T) {
 
 		status, action := call("/v1/payments/"+paymentID+"/checkout-action", "checkout-order-1", `{}`)
 		provider, _ = action["action"].(map[string]any)
-		if status != http.StatusOK || action["kind"] != "checkout" || action["launcher"] != fake.Name || provider["kind"] != "redirect" {
+		if status != http.StatusOK || action["kind"] != "checkout" || action["launcher"] != fake.Name || provider["kind"] != "sdk" {
 			t.Fatalf("checkout action: %d %+v", status, action)
 		}
 		if _, exists := action["checkout_url"]; exists {
 			t.Fatalf("checkout action leaked checkout_url: %+v", action)
+		}
+		options, _ := provider["options"].(map[string]any)
+		if options["key"] != "public" || options["callback_url"] != nil || options["redirect"] != nil {
+			t.Fatalf("checkout action leaked hosted callback: %+v", action)
 		}
 		status, replay := call("/v1/payments/"+paymentID+"/checkout-action", "checkout-order-1", `{}`)
 		if status != http.StatusOK || replay["payment_id"] != paymentID || attemptCount(paymentID) != 1 {

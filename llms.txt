@@ -26,6 +26,7 @@ Paymux offers hosted, browser-resolved, and backend-resolved checkout. For no Pa
 - Permit the Paymux checkout origin in the storefront's CSP `connect-src`, plus the selected provider's required hosts.
 - Treat browser redirects and checkout events as interface signals, never proof of payment.
 - Fulfil an order only after a verified `payment.succeeded` app webhook or an authenticated backend payment lookup.
+- Use attempt `method_details` only for customer support and display; Paymux exposes safe card, bank, wallet and UPI account-type metadata, never full card credentials or a UPI VPA.
 - Verify app webhooks against the exact raw request bytes, then durably deduplicate the `webhook-id` header.
 - Keep provider webhooks and Paymux app webhooks separate; they use different URLs and secrets.
 

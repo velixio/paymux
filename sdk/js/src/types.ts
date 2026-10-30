@@ -8,7 +8,10 @@ export type ProrationMode = "none" | "next_invoice" | "immediate";
 export interface BillingAddress { legal_name?: string; gstin?: string; line1?: string; line2?: string; city?: string; state_code?: string; postal_code?: string; country?: string }
 export interface Customer { external_ref?: string; name?: string; email?: string; phone?: string; billing?: BillingAddress }
 export interface CreatePaymentParams { amount: number; currency: string; order_ref?: string; description?: string; customer?: Customer; metadata?: Record<string, string>; return_url?: string; allowed_connectors?: string[]; country?: string }
-export interface PaymentAttempt { id: string; status: string; provider: string; provider_payment_id?: string; method?: string; failure_code?: string; failure_message?: string; created_at: string }
+export interface CardDetails { last4?: string; network?: string; funding?: string; issuer?: string; country?: string; international?: boolean; emi?: boolean; sub_type?: string }
+export interface UPIDetails { payer_account_type?: string }
+export interface PaymentMethodDetails { card?: CardDetails; bank?: string; wallet?: string; upi?: UPIDetails }
+export interface PaymentAttempt { id: string; status: string; provider: string; provider_payment_id?: string; method?: string; method_details?: PaymentMethodDetails; failure_code?: string; failure_message?: string; created_at: string }
 export type CheckoutMode = "hosted" | "provider_action";
 export interface ProviderAction { kind: "redirect" | "form_post" | "sdk"; url?: string; fields?: Record<string, string>; script_url?: string; options?: Record<string, unknown> }
 export type CheckoutAction =

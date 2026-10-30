@@ -115,6 +115,7 @@ func (d *Dashboard) routesPages() {
 	m := d.mux
 	m.HandleFunc("GET "+prefix+"/payments", d.authed(authz.PaymentRead, d.paymentsPage))
 	m.HandleFunc("GET "+prefix+"/payments/{id}", d.authed(authz.PaymentRead, d.paymentPage))
+	m.HandleFunc("POST "+prefix+"/payments/{id}/sync", d.authed(authz.PaymentCancel, d.paymentSyncSubmit))
 	m.HandleFunc("POST "+prefix+"/payments/{id}/refund", d.authed(authz.RefundCreate, d.refundSubmit))
 	m.HandleFunc("POST "+prefix+"/payments/{id}/simulate-dispute", d.authed(authz.DisputeManage, d.simulateDispute))
 	m.HandleFunc("POST "+prefix+"/payments/{id}/simulate-refund", d.authed(authz.DisputeManage, d.simulateProviderRefund))

@@ -40,7 +40,7 @@ var info = connector.Info{
 	// checkout.js opens the payment frames from api.razorpay.com and reports to
 	// lumberjack.razorpay.com; the same hosts serve test and live keys.
 	CheckoutHosts: &connector.CheckoutHosts{
-		Script:  []string{"https://checkout.razorpay.com"},
+		Script:  []string{"https://checkout.razorpay.com", "https://cdn.razorpay.com"},
 		Frame:   []string{"https://api.razorpay.com", "https://checkout.razorpay.com"},
 		Connect: []string{"https://api.razorpay.com", "https://checkout.razorpay.com", "https://lumberjack.razorpay.com"},
 		Img:     []string{"https://cdn.razorpay.com"},
@@ -61,6 +61,9 @@ var info = connector.Info{
 	// The smallest INR order is Rs 1. (The minimums of Razorpay's other
 	// currencies are not stated here: they default to one minor unit.)
 	MinChargeMinor: map[string]int64{"INR": 100},
+	// Seen live: Razorpay refuses smaller INR refunds with "The amount must be
+	// atleast INR 1.00".
+	MinRefundMinor: map[string]int64{"INR": 100},
 	// Razorpay does not publish a hard rate limit; stay well under typical
 	// per-key throttling.
 	RateLimit: connector.RateLimit{RequestsPerSecond: 20, Burst: 20},

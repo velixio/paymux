@@ -52,7 +52,23 @@ type charge struct {
 	AmountRefunded       int64  `json:"amount_refunded"`
 	PaymentMethodDetails struct {
 		Type string `json:"type"`
+		Card *struct {
+			Brand   string `json:"brand"`
+			Country string `json:"country"`
+			Funding string `json:"funding"`
+			Last4   string `json:"last4"`
+			Network string `json:"network"`
+		} `json:"card"`
 	} `json:"payment_method_details"`
+}
+
+func methodDetailsOf(c *charge) connector.PaymentMethodDetails {
+	if c == nil || c.PaymentMethodDetails.Card == nil {
+		return connector.PaymentMethodDetails{}
+	}
+	card := c.PaymentMethodDetails.Card
+	return connector.PaymentMethodDetails{Card: &connector.CardDetails{Last4: card.Last4, Network: firstNonEmpty(card.Network, card.Brand),
+		Funding: card.Funding, Country: strings.ToUpper(card.Country)}}
 }
 
 type refundWire struct {
@@ -122,6 +138,7 @@ func (s session) snapshot() connector.PaymentSnapshot {
 		}
 		if c := chargeOf(pi); c != nil {
 			snap.Method = c.PaymentMethodDetails.Type
+			snap.MethodDetails = methodDetailsOf(c)
 			snap.AmountRefunded = fromStripe(c.AmountRefunded, s.Currency)
 		}
 	}
@@ -136,6 +153,7 @@ func (pi paymentIntent) snapshot() connector.PaymentSnapshot {
 	}
 	if c := pi.LatestCharge.Obj; c != nil {
 		snap.Method = c.PaymentMethodDetails.Type
+		snap.MethodDetails = methodDetailsOf(c)
 		snap.AmountRefunded = fromStripe(c.AmountRefunded, pi.Currency)
 	}
 	return snap
