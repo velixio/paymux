@@ -8,6 +8,12 @@
 {{if $.CanLogs}}<p><a href="/dashboard/logs?payment_id={{.ID}}">Logs for this payment</a></p>{{end}}
 {{with $.Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 {{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+{{if .CanSync}}
+<form method="post" action="/dashboard/payments/{{.ID}}/sync" class="inline">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<button class="btn secondary" type="submit">Sync from provider</button>
+</form>
+{{end}}
 <dl class="facts">
 <dt>App</dt><dd>{{.App}}</dd>
 <dt>Amount</dt><dd>{{.Amount}}</dd>

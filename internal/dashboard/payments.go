@@ -67,7 +67,7 @@ type payDetail struct {
 	Deliveries                                                                                            []deliveryRow
 	Events                                                                                                []eventRow
 	Pickable                                                                                              []attemptOpt
-	CanRefund, CanReplay                                                                                  bool
+	CanRefund, CanReplay, CanSync                                                                         bool
 	// RefundNonce is the single-use key of the refund form on this page.
 	RefundNonce string
 	// SimAttempts are the captured attempts on a test-mode simulator account,
@@ -173,7 +173,11 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 }
 
 func (d *Dashboard) paymentPage(w http.ResponseWriter, r *http.Request, s *session) {
-	d.renderPayment(w, r, s, http.StatusOK, "", "")
+	notice := ""
+	if r.URL.Query().Get("synced") == "1" {
+		notice = "Latest status fetched from the provider."
+	}
+	d.renderPayment(w, r, s, http.StatusOK, "", notice)
 }
 
 // renderPayment loads and renders one payment's page; a missing payment is a 404.
@@ -268,6 +272,7 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 		}
 	}
 	det.CanRefund = s.can(authz.RefundCreate) && len(det.Pickable) > 0
+	det.CanSync = s.can(authz.PaymentCancel) && d.o.PaymentSync != nil && len(attempts) > 0
 	if det.CanRefund {
 		det.RefundNonce = refundNonce(s, p.ID)
 	}
@@ -289,6 +294,50 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	v := d.shell(r, s, "payments", "Payment "+p.ID)
 	v.Pay, v.Error, v.Notice = det, errMsg, notice
 	d.render(w, status, "dash_payment", v)
+}
+
+// paymentSyncSubmit fetches every attempt of the payment from its provider.
+// The checkout service deliberately uses each stored order/reference rather
+// than a stale failed provider-payment id, allowing a successful retry on the
+// same order to become authoritative.
+func (d *Dashboard) paymentSyncSubmit(w http.ResponseWriter, r *http.Request, s *session) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	var (
+		p        store.Payment
+		attempts []store.Attempt
+	)
+	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) {
+		if p, err = store.GetPayment(ctx, q, id); err != nil {
+			return err
+		}
+		attempts, err = store.ListAttempts(ctx, q, id)
+		return err
+	})
+	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, p.OrgID) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	if d.o.PaymentSync == nil || len(attempts) == 0 {
+		d.renderPayment(w, r, s, http.StatusBadRequest, "This payment has no provider attempt to sync.", "")
+		return
+	}
+	for _, attempt := range attempts {
+		if _, err := d.o.PaymentSync.SyncAttemptLatest(ctx, attempt.ID); err != nil {
+			d.o.Logger.Warn("dashboard: payment provider sync failed", "payment", p.ID, "attempt", attempt.ID, "err", err)
+			d.renderPayment(w, r, s, http.StatusBadGateway, "The latest status could not be fetched from the provider. Try again shortly.", "")
+			return
+		}
+	}
+	if err := d.record(ctx, r, s, "payment.sync", p.ID, nil, map[string]any{"attempts": len(attempts)}); err != nil {
+		d.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, prefix+"/payments/"+p.ID+"?synced=1", http.StatusSeeOther)
 }
 
 // paymentDisplayStatus keeps the payment lifecycle state unchanged while

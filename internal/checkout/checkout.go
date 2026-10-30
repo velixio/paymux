@@ -365,6 +365,52 @@ func (s *Service) SyncAttempt(ctx context.Context, attemptID string) (core.Apply
 	return s.syncAttempt(ctx, attemptID, connector.PaymentRef{})
 }
 
+// SyncAttemptLatest fetches an attempt by its provider order or merchant
+// reference instead of pinning the lookup to a provider payment id already
+// stored on the attempt. Some providers allow a failed payment to be retried
+// on the same order; an order-level lookup lets the connector select the
+// successful retry. The fetched payment is still ownership-checked before it
+// can replace the stored provider payment id.
+func (s *Service) SyncAttemptLatest(ctx context.Context, attemptID string) (core.ApplyResult, error) {
+	a, err := s.o.Core.GetAttempt(ctx, attemptID)
+	if err != nil {
+		return core.ApplyResult{}, err
+	}
+	noteAttempt(ctx, a)
+	live, err := s.o.Conns.Get(ctx, a.ProviderAccountID)
+	if err != nil {
+		return core.ApplyResult{}, err
+	}
+	ref := connector.PaymentRef{ProviderRef: a.ProviderRef, ProviderOrderID: a.ProviderOrderID}
+	if ref.ProviderRef == "" && ref.ProviderOrderID == "" {
+		ref.ProviderPaymentID = a.ProviderPaymentID
+	}
+	fctx, cancel := context.WithTimeout(ctx, fetchTimeout)
+	defer cancel()
+	snap, err := live.Connector.FetchPayment(fctx, ref)
+	if errors.Is(err, connector.ErrNotFound) {
+		p, perr := s.o.Core.GetPaymentByID(ctx, a.PaymentID)
+		return core.ApplyResult{Payment: p, Attempt: a}, perr
+	}
+	if err != nil {
+		return core.ApplyResult{}, err
+	}
+	ours := snapshotIsOurs(a, snap)
+	if ours && snap.ProviderPaymentID != "" && snap.ProviderPaymentID != a.ProviderPaymentID {
+		ours, err = s.hintedSnapshotIsOurs(ctx, a, snap)
+		if err != nil {
+			return core.ApplyResult{}, err
+		}
+	}
+	if !ours {
+		s.o.Logger.Warn("checkout: the provider returned a payment that is not this attempt's; ignored", "attempt", a.ID,
+			"account", a.ProviderAccountID, "provider_payment", snap.ProviderPaymentID)
+		p, perr := s.o.Core.GetPaymentByID(ctx, a.PaymentID)
+		return core.ApplyResult{Payment: p, Attempt: a}, perr
+	}
+	return s.o.Core.ApplyAttemptSnapshot(ctx, a.ID, ToSnapshot(snap))
+}
+
 func (s *Service) syncAttempt(ctx context.Context, attemptID string, hint connector.PaymentRef) (core.ApplyResult, error) {
 	a, err := s.o.Core.GetAttempt(ctx, attemptID)
 	if err != nil {

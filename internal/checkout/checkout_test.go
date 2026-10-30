@@ -648,6 +648,41 @@ func TestProcessProviderEventAppliesSuccessfulRetryOnSameOrder(t *testing.T) {
 	})
 }
 
+func TestSyncAttemptLatestFindsSuccessfulRetryOnSameOrder(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p, st := startedAttempt(t, e)
+		orderID := st.Attempt.ProviderOrderID
+		failed := connector.PaymentSnapshot{ProviderRef: st.Attempt.ProviderRef, ProviderOrderID: orderID,
+			ProviderPaymentID: "pay_failed", Status: connector.PaymentFailed, RawStatus: "failed", Amount: 50000, Currency: "INR"}
+		e.setPayment(st.Attempt.ProviderRef, failed)
+		if _, err := e.flow.SyncAttempt(ctx, st.Attempt.ID); err != nil {
+			t.Fatal(err)
+		}
+
+		succeededRetry := succeeded(50000, "INR", "pay_retry")
+		succeededRetry.ProviderRef = st.Attempt.ProviderRef
+		succeededRetry.ProviderOrderID = orderID
+		e.fake.Locked(func() {
+			e.fake.Payments = map[string]connector.PaymentSnapshot{"retry": succeededRetry}
+		})
+		if _, err := e.flow.SyncAttemptLatest(ctx, st.Attempt.ID); err != nil {
+			t.Fatal(err)
+		}
+
+		got := e.get(p.ID)
+		attempt := e.attempts(p.ID)[0]
+		if got.Status != "succeeded" || attempt.Status != "captured" || attempt.ProviderPaymentID != "pay_retry" {
+			t.Fatalf("successful retry was not found: payment=%+v attempt=%+v", got, attempt)
+		}
+		e.fake.Locked(func() {
+			last := e.fake.Fetches[len(e.fake.Fetches)-1]
+			if last.ProviderPaymentID != "" || last.ProviderOrderID != orderID {
+				t.Errorf("latest sync fetched %+v, want order without stale payment id", last)
+			}
+		})
+	})
+}
+
 func TestProcessProviderEventUnknownObjectsAreRecorded(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
 		_, st := startedAttempt(t, e)

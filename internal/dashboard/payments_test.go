@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -220,6 +221,25 @@ type sink struct {
 	hits int
 }
 
+type paymentSyncStub struct {
+	mu    sync.Mutex
+	calls []string
+	err   error
+}
+
+func (s *paymentSyncStub) SyncAttemptLatest(_ context.Context, attemptID string) (core.ApplyResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.calls = append(s.calls, attemptID)
+	return core.ApplyResult{}, s.err
+}
+
+func (s *paymentSyncStub) called() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.calls...)
+}
+
 func (e *env) detailFixture() detailFixture {
 	e.t.Helper()
 	app := e.seedApp("alpha")
@@ -327,6 +347,38 @@ func TestPaymentDetailShowsTimeline(t *testing.T) {
 		opt := regexpFind(t, `(?s)(<select name="attempt_id".*?</select>)`, body)
 		has(t, opt, "att_ok")
 		lacks(t, opt, "att_fail")
+	})
+}
+
+func TestPaymentDetailCanSyncLatestStatusFromProvider(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		syncer := &paymentSyncStub{}
+		e := newEnv(t, db, func(o *Options) { o.PaymentSync = syncer })
+		app := e.seedApp("alpha")
+		p := e.seedPayment("pay_sync", app.ID, "live", "failed", "ORD-SYNC", 11800, e.clk.Now())
+		e.seedAttempt(store.Attempt{ID: "att_sync", Mode: "live", PaymentID: p.ID, ProviderAccountID: "pa_rzp",
+			ProviderRef: "ref_sync", ProviderOrderID: "order_sync", ProviderPaymentID: "pay_failed", Status: "failed"})
+		path := "/dashboard/payments/" + p.ID
+
+		viewer := e.roleClient("viewer")
+		body := e.pageOK(viewer, path)
+		lacks(t, body, path+"/sync", "Sync from provider")
+		tok := csrfOf(t, body)
+		if r, _ := e.post(viewer, path+"/sync", url.Values{"csrf": {tok}}); r.StatusCode != http.StatusForbidden {
+			t.Fatalf("viewer sync: %d", r.StatusCode)
+		}
+
+		op := e.roleClient("operator")
+		body = e.pageOK(op, path)
+		has(t, body, `action="`+path+`/sync"`, "Sync from provider")
+		tok = csrfOf(t, body)
+		r, responseBody := e.post(op, path+"/sync", url.Values{"csrf": {tok}})
+		if r.StatusCode != http.StatusSeeOther || r.Header.Get("Location") != path+"?synced=1" {
+			t.Fatalf("sync: %d %s\n%s", r.StatusCode, r.Header.Get("Location"), responseBody)
+		}
+		if got := syncer.called(); len(got) != 1 || got[0] != "att_sync" {
+			t.Fatalf("synced attempts = %v", got)
+		}
 	})
 }
 
