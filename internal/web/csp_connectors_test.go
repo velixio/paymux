@@ -23,7 +23,7 @@ func TestEveryConnectorDeclaresItsCheckoutHosts(t *testing.T) {
 		connector, directive string
 		want                 []string
 	}{
-		{"razorpay", "script-src", []string{"https://checkout.razorpay.com"}},
+		{"razorpay", "script-src", []string{"https://checkout.razorpay.com", "https://cdn.razorpay.com"}},
 		{"razorpay", "frame-src", []string{"https://api.razorpay.com", "https://checkout.razorpay.com"}},
 		{"razorpay", "connect-src", []string{"https://api.razorpay.com", "https://lumberjack.razorpay.com"}},
 		{"cashfree", "script-src", []string{"https://sdk.cashfree.com"}},

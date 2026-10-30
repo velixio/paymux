@@ -406,10 +406,20 @@ func TestRefundErrors(t *testing.T) {
 		f := newFake("captured")
 		f.refundErrCode = tc.code
 		c := newConn(t, f).(connector.Refunder)
-		_, err := c.Refund(context.Background(), connector.RefundRequest{ProviderRef: "rf", ProviderPaymentID: "pay_Nx1", Amount: 1, Currency: "INR"})
+		_, err := c.Refund(context.Background(), connector.RefundRequest{ProviderRef: "rf", ProviderPaymentID: "pay_Nx1", Amount: 100, Currency: "INR"})
 		if err == nil || !tc.want(err) {
 			t.Errorf("code %d: err = %v", tc.code, err)
 		}
+	}
+}
+
+func TestRefundRejectsBelowProviderMinimumWithoutCallingProvider(t *testing.T) {
+	f := newFake("captured")
+	c := newConn(t, f).(connector.Refunder)
+	_, err := c.Refund(context.Background(), connector.RefundRequest{ProviderRef: "rf", ProviderPaymentID: "pay_Nx1", Amount: 99, Currency: "INR"})
+	var nr connector.ErrNotRefundable
+	if !errors.As(err, &nr) || len(f.callsTo("POST", "/v1/payments/pay_Nx1/refund")) != 0 {
+		t.Fatalf("refund below minimum: err=%v calls=%d", err, len(f.callsTo("POST", "/v1/payments/pay_Nx1/refund")))
 	}
 }
 

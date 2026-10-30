@@ -279,6 +279,7 @@ type Info struct {
 	MandateLimits            []MandateLimit   `json:"mandate_limits"`
 	MandateSetupAmount       int64            `json:"mandate_setup_amount,omitempty"`
 	MinChargeMinor           map[string]int64 `json:"min_charge_minor,omitempty"`
+	MinRefundMinor           map[string]int64 `json:"min_refund_minor,omitempty"`
 	RefundsVerificationDebit bool             `json:"refunds_verification_debit,omitempty"`
 	RateLimit                RateLimit        `json:"rate_limit"`
 	TestOnly                 bool             `json:"test_only,omitempty"`

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/velixio/paymux/connectors/razorpay"
 	"github.com/velixio/paymux/internal/audit"
 	"github.com/velixio/paymux/internal/authz"
 	"github.com/velixio/paymux/internal/core"
@@ -377,6 +378,22 @@ func TestPaymentDetailHidesRefundFormWhenFullyRefunded(t *testing.T) {
 		}
 		body := e.pageOK(e.roleClient("operator"), "/dashboard/payments/"+f.pay.ID)
 		lacks(t, body, `action="/dashboard/payments/pay_d1/refund"`, "All remaining refundable funds", "refundable via")
+	})
+}
+
+func TestPaymentDetailHidesRefundRemainderBelowProviderMinimum(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		f := e.detailFixture()
+		if err := e.db.Write(ctx, func(tx store.Tx) error {
+			return store.InsertRefund(ctx, tx, store.Refund{ID: "ref_minimum", OrgID: store.DefaultOrgID, AppID: f.app.ID,
+				Mode: "live", PaymentID: f.pay.ID, AttemptID: "att_ok", Amount: 8482, Currency: "INR", Status: "succeeded",
+				ProviderRef: "pr_ref_minimum", InitiatedBy: "api", CreatedAt: e.clk.Now(), UpdatedAt: e.clk.Now()})
+		}); err != nil {
+			t.Fatal(err)
+		}
+		body := e.pageOK(e.roleClient("operator"), "/dashboard/payments/"+f.pay.ID)
+		lacks(t, body, `action="/dashboard/payments/pay_d1/refund"`, "0.18 INR refundable", "refundable via")
 	})
 }
 

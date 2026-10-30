@@ -133,6 +133,10 @@ type Info struct {
 	// less: a prorated renewal that would fall under it carries the credit
 	// forward, and a prorated extra charge under it waits for the next renewal.
 	MinChargeMinor map[string]int64 `json:"min_charge_minor,omitempty"`
+	// MinRefundMinor is the smallest partial refund the provider accepts, by
+	// upper-case currency, in minor units. A missing currency has a minimum of
+	// one minor unit. This can differ from MinChargeMinor.
+	MinRefundMinor map[string]int64 `json:"min_refund_minor,omitempty"`
 	// RefundsVerificationDebit says the provider reverses that verification
 	// debit by itself. When false, Paymux refunds it (initiated_by=system,
 	// reason=mandate_verification).

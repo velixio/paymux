@@ -276,7 +276,11 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 			FailureMessage: a.FailureMessage, Created: d.fmtTime(a.CreatedAt), Duplicate: a.Duplicate,
 			MethodSummary: methodSummary, MethodMeta: methodMeta})
 		remaining := max(a.AmountReceived-activeRefunds[a.ID], 0)
-		if a.Status == string(state.AttemptCaptured) && !a.Duplicate && remaining > 0 {
+		minimum := int64(1)
+		if _, info, ok := connector.Lookup(connectorOf[a.ProviderAccountID]); ok {
+			minimum = max(info.MinRefundMinor[strings.ToUpper(a.CurrencyReceived)], minimum)
+		}
+		if a.Status == string(state.AttemptCaptured) && !a.Duplicate && remaining >= minimum {
 			det.Pickable = append(det.Pickable, attemptOpt{ID: a.ID, Label: a.ID + " - " + fmtMoney(remaining, a.CurrencyReceived) + " refundable via " + name})
 		}
 		if a.Status == string(state.AttemptCaptured) && !a.Duplicate && p.Mode == "test" && connectorOf[a.ProviderAccountID] == simulator.Name {

@@ -234,6 +234,9 @@ func (r *razorpay) Refund(ctx context.Context, req connector.RefundRequest) (con
 	if req.ProviderPaymentID == "" || req.Amount <= 0 {
 		return connector.RefundSnapshot{}, errors.New("razorpay: refund needs a payment id and a positive amount")
 	}
+	if minimum := info.MinRefundMinor[strings.ToUpper(req.Currency)]; minimum > 0 && req.Amount < minimum {
+		return connector.RefundSnapshot{}, connector.ErrNotRefundable{Reason: fmt.Sprintf("Razorpay requires a minimum refund of %d minor units for %s", minimum, strings.ToUpper(req.Currency))}
+	}
 	body := map[string]any{"amount": req.Amount, "receipt": req.ProviderRef}
 	if req.Reason != "" {
 		body["notes"] = map[string]string{"reason": req.Reason}

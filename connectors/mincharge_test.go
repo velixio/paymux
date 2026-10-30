@@ -43,3 +43,17 @@ func TestBuiltInConnectorsStateTheirMinimumCharge(t *testing.T) {
 		}
 	}
 }
+
+func TestBuiltInConnectorsStateTheirMinimumRefund(t *testing.T) {
+	_, info, ok := connector.Lookup("razorpay")
+	if !ok || info.MinRefundMinor["INR"] != 100 {
+		t.Fatalf("razorpay INR minimum refund = %d, want 100", info.MinRefundMinor["INR"])
+	}
+	for _, info := range connector.List() {
+		for currency, minimum := range info.MinRefundMinor {
+			if minimum <= 0 || !slices.Contains(info.Currencies, currency) {
+				t.Errorf("%s: MinRefundMinor[%q] = %d is not a positive minimum of one of its currencies", info.Name, currency, minimum)
+			}
+		}
+	}
+}
