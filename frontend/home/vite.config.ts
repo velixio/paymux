@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { copyFileSync, writeFileSync } from "node:fs";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -14,6 +14,12 @@ export default defineConfig({
       apply: "build",
       writeBundle() {
         writeFileSync(new URL("../../cmd/paymux-home/dist/.keep", import.meta.url), "");
+        for (const name of ["llms.txt", "llms-full.txt"]) {
+          copyFileSync(
+            new URL(`../../${name}`, import.meta.url),
+            new URL(`../../cmd/paymux-home/dist/${name}`, import.meta.url),
+          );
+        }
       },
     },
   ],

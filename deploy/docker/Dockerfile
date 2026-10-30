@@ -18,6 +18,7 @@ COPY frontend ./
 # The website's guide catalog is shared with its Go server; its output goes to
 # /src/cmd/paymux-home/dist and the dashboard's to /src/web/static/dashboard.
 COPY cmd/paymux-home/docs-catalog.json /src/cmd/paymux-home/docs-catalog.json
+COPY llms.txt llms-full.txt /src/
 RUN bun run typecheck && bun run build
 
 # ---- build -------------------------------------------------------------------

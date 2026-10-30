@@ -194,6 +194,8 @@ The browser entry point never receives the Paymux API key. Fulfill the order
 only after a verified webhook or authenticated backend lookup. See the complete
 [JavaScript SDK guide](docs/javascript-sdk.md) for refunds, subscriptions,
 invoices, payouts, webhook verification, CSP, and provider checkout behavior.
+Coding agents can use [llms.txt](llms.txt) for discovery and
+[llms-full.txt](llms-full.txt) as the complete merchant integration contract.
 
 No code on your side? Create a shareable payment link instead:
 

@@ -45,6 +45,8 @@ The running **payment hub** serves its API reference at `/docs` and the machine-
 
 Use [OpenAPI](openapi.yaml) for exact request and response fields. Backends can use the independent [Go merchant SDK](../sdk/go/README.md) or [JavaScript SDK](javascript-sdk.md); the JavaScript package also opens the selected provider without a Paymux-hosted page. The [raw HTTP example](../examples/api-client/main.go) has no SDK dependency. The signed webhook receiver, in [Python](../examples/webhook-receiver/receiver.py), [Go](../examples/webhook-receiver-go/main.go) and [JavaScript](../examples/webhook-receiver-js/receiver.mjs), demonstrates signature checks and a durable inbox. The [framework example](../examples/framework/main.go) extends the hub itself; it is not an application HTTP client.
 
+Coding agents and other automated tools can discover the concise [LLM index](../llms.txt) and the complete [merchant integration contract](../llms-full.txt). The public website serves the same files at `/llms.txt` and `/llms-full.txt`.
+
 ## Documentation maintenance
 
 Guide Markdown in `docs/` is also rendered by `cmd/paymux-home/`; edit the source once. The website catalog explicitly selects public guides. Keep code links and examples tied to the checked-in API contract, and run `bun run check:docs`, `bun run typecheck`, and `bun run test:home` after changing content or navigation. Internal planning documents are not part of the public catalog.

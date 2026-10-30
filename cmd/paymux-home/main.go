@@ -56,6 +56,13 @@ func websiteHandler(site fs.FS) http.Handler {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		files.ServeHTTP(w, r)
 	})
+	for _, path := range []string{"/llms.txt", "/llms-full.txt"} {
+		mux.HandleFunc("GET "+path, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-cache")
+			files.ServeHTTP(w, r)
+		})
+	}
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		if indexErr != nil {
 			http.Error(w, "Build the website with make frontend-home, then rebuild paymux-home.", http.StatusServiceUnavailable)
