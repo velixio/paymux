@@ -53,6 +53,12 @@ previous release reads.
 
 ## Release notes that need action
 
+- **0037, provider payment attempt history.** Paymux now keeps each provider-side
+  payment made against one checkout attempt, so a failed payment followed by a
+  successful retry on the same provider order is visible in the dashboard.
+  Existing payment state and ledger entries are unchanged; history starts as
+  provider payments are next fetched or synchronized.
+
 - **Remote connector accounts must declare `checkout_hosts`.** The hub now
   refuses a checkout whose script, form or redirect URL is not on a host the
   connector declared (audit B-7a). The built-in connectors declare theirs; an

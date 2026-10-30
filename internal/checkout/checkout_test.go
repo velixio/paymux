@@ -674,6 +674,17 @@ func TestSyncAttemptLatestFindsSuccessfulRetryOnSameOrder(t *testing.T) {
 		if got.Status != "succeeded" || attempt.Status != "captured" || attempt.ProviderPaymentID != "pay_retry" {
 			t.Fatalf("successful retry was not found: payment=%+v attempt=%+v", got, attempt)
 		}
+		var providerAttempts []store.ProviderPaymentAttempt
+		if err := e.db.Read(ctx, func(q store.Querier) (err error) {
+			providerAttempts, err = store.ListProviderPaymentAttempts(ctx, q, p.ID)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if len(providerAttempts) != 2 || providerAttempts[0].ProviderPaymentID != "pay_failed" ||
+			providerAttempts[1].ProviderPaymentID != "pay_retry" {
+			t.Fatalf("provider payment attempts = %+v, want failed then retry", providerAttempts)
+		}
 		e.fake.Locked(func() {
 			last := e.fake.Fetches[len(e.fake.Fetches)-1]
 			if last.ProviderPaymentID != "" || last.ProviderOrderID != orderID {

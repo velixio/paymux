@@ -257,6 +257,16 @@ func (e *env) detailFixture() detailFixture {
 	e.seedAttempt(store.Attempt{ID: "att_ok", Mode: "live", PaymentID: p.ID, ProviderAccountID: "pa_rzp", ProviderRef: "pr_ok", ProviderOrderID: "order_OK",
 		ProviderPaymentID: "pay_RZP_OK", Status: "captured", Method: "upi", AmountReceived: 10000, CurrencyReceived: "INR"})
 	err = e.db.Write(ctx, func(tx store.Tx) error {
+		if err := store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: "pa_rzp", ProviderPaymentID: "pay_RZP_FAILED",
+			AttemptID: "att_ok", ProviderOrderID: "order_OK", Status: "failed", Method: "card", FailureCode: "BAD_REQUEST_ERROR",
+			FailureMessage: "Payment failed", Amount: 10000, Currency: "INR", CreatedAt: e.clk.Now(), UpdatedAt: e.clk.Now()}); err != nil {
+			return err
+		}
+		if err := store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: "pa_rzp", ProviderPaymentID: "pay_RZP_OK",
+			AttemptID: "att_ok", ProviderOrderID: "order_OK", Status: "captured", Method: "upi", Amount: 10000, Currency: "INR",
+			CreatedAt: e.clk.Now().Add(time.Second), UpdatedAt: e.clk.Now().Add(time.Second)}); err != nil {
+			return err
+		}
 		customerID, err := store.UpsertCustomer(ctx, tx, store.Customer{ID: "cus_detail", OrgID: store.DefaultOrgID, AppID: app.ID, Mode: "live",
 			ExternalRef: "merchant-customer-1", Name: "Asha Rao", Email: "asha@example.com", Phone: "+919876543210",
 			Billing: store.Billing{LegalName: "Asha Rao", GSTIN: "27ABCDE1234F1Z5", Line1: "10 Market Road", Line2: "Suite 2",
@@ -328,6 +338,8 @@ func TestPaymentDetailShowsTimeline(t *testing.T) {
 			// attempts
 			"att_fail", "failed", "card_declined", "Your card was declined", "order_F1", "American Express", "•••• 5000", "credit · AMEX · consumer · domestic",
 			"att_ok", "captured", "pay_RZP_OK", "order_OK", "upi", "Razorpay main", "razorpay",
+			// every provider-side payment on the shared order
+			"Provider payment attempts", "pay_RZP_FAILED", "BAD_REQUEST_ERROR", "Payment failed",
 			// ledger
 			"charge", "100.00 INR",
 			// refunds
@@ -373,7 +385,7 @@ func TestPaymentDetailCanSyncLatestStatusFromProvider(t *testing.T) {
 		has(t, body, `action="`+path+`/sync"`, "Sync from provider")
 		tok = csrfOf(t, body)
 		r, responseBody := e.post(op, path+"/sync", url.Values{"csrf": {tok}})
-		if r.StatusCode != http.StatusSeeOther || r.Header.Get("Location") != path+"?synced=1" {
+		if r.StatusCode != http.StatusSeeOther || r.Header.Get("Location") != path {
 			t.Fatalf("sync: %d %s\n%s", r.StatusCode, r.Header.Get("Location"), responseBody)
 		}
 		if got := syncer.called(); len(got) != 1 || got[0] != "att_sync" {

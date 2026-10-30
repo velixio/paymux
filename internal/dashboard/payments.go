@@ -33,6 +33,10 @@ type attemptRow struct {
 	Duplicate                                                                                           bool
 }
 
+type providerAttemptRow struct {
+	PaymentID, AttemptID, Status, Provider, OrderID, Method, Failure, Amount, Created string
+}
+
 type customerDetail struct {
 	ExternalRef, Name, Email, Phone                                      string
 	LegalName, GSTIN, Line1, Line2, City, StateCode, PostalCode, Country string
@@ -62,6 +66,7 @@ type payDetail struct {
 	Customer                                                                                              *customerDetail
 	Flags                                                                                                 []string
 	Attempts                                                                                              []attemptRow
+	ProviderAttempts                                                                                      []providerAttemptRow
 	Ledger                                                                                                []ledgerRow
 	Refunds                                                                                               []refundRow
 	Deliveries                                                                                            []deliveryRow
@@ -173,11 +178,7 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 }
 
 func (d *Dashboard) paymentPage(w http.ResponseWriter, r *http.Request, s *session) {
-	notice := ""
-	if r.URL.Query().Get("synced") == "1" {
-		notice = "Latest status fetched from the provider."
-	}
-	d.renderPayment(w, r, s, http.StatusOK, "", notice)
+	d.renderPayment(w, r, s, http.StatusOK, "", "")
 }
 
 // renderPayment loads and renders one payment's page; a missing payment is a 404.
@@ -185,15 +186,16 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	ctx := r.Context()
 	id := r.PathValue("id")
 	var (
-		p        store.Payment
-		app      store.App
-		attempts []store.Attempt
-		ledger   []store.LedgerEntry
-		refunds  []store.Refund
-		events   []store.EventRow
-		dels     []store.DeliveryListRow
-		accounts []store.ProviderAccountInfo
-		cust     store.Customer
+		p                store.Payment
+		app              store.App
+		attempts         []store.Attempt
+		providerAttempts []store.ProviderPaymentAttempt
+		ledger           []store.LedgerEntry
+		refunds          []store.Refund
+		events           []store.EventRow
+		dels             []store.DeliveryListRow
+		accounts         []store.ProviderAccountInfo
+		cust             store.Customer
 	)
 	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) {
 		if p, err = store.GetPayment(ctx, q, id); err != nil {
@@ -203,6 +205,9 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 			return err
 		}
 		if attempts, err = store.ListAttempts(ctx, q, id); err != nil {
+			return err
+		}
+		if providerAttempts, err = store.ListProviderPaymentAttempts(ctx, q, id); err != nil {
 			return err
 		}
 		if ledger, err = store.ListLedgerEntries(ctx, q, id); err != nil {
@@ -271,6 +276,26 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 			det.SimAttempts = append(det.SimAttempts, attemptOpt{ID: a.ID, Label: a.ID + " - " + fmtMoney(a.AmountReceived, a.CurrencyReceived)})
 		}
 	}
+	for _, a := range providerAttempts {
+		name := provider[a.ProviderAccountID]
+		if name == "" {
+			name = a.ProviderAccountID
+		}
+		failure := a.FailureCode
+		if a.FailureMessage != "" {
+			if failure != "" {
+				failure += ": "
+			}
+			failure += a.FailureMessage
+		}
+		amount := ""
+		if a.Currency != "" {
+			amount = fmtMoney(a.Amount, a.Currency)
+		}
+		det.ProviderAttempts = append(det.ProviderAttempts, providerAttemptRow{PaymentID: a.ProviderPaymentID,
+			AttemptID: a.AttemptID, Status: a.Status, Provider: name, OrderID: a.ProviderOrderID, Method: a.Method,
+			Failure: failure, Amount: amount, Created: d.fmtTime(a.CreatedAt)})
+	}
 	det.CanRefund = s.can(authz.RefundCreate) && len(det.Pickable) > 0
 	det.CanSync = s.can(authz.PaymentCancel) && d.o.PaymentSync != nil && len(attempts) > 0
 	if det.CanRefund {
@@ -337,7 +362,9 @@ func (d *Dashboard) paymentSyncSubmit(w http.ResponseWriter, r *http.Request, s 
 		d.fail(w, err)
 		return
 	}
-	http.Redirect(w, r, prefix+"/payments/"+p.ID+"?synced=1", http.StatusSeeOther)
+	// Redirect to the exact pane URL so the dashboard runtime replaces its
+	// cached payment detail immediately instead of waiting for a page reload.
+	http.Redirect(w, r, prefix+"/payments/"+p.ID, http.StatusSeeOther)
 }
 
 // paymentDisplayStatus keeps the payment lifecycle state unchanged while

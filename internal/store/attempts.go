@@ -23,6 +23,16 @@ type Attempt struct {
 	CheckoutExpiresAt time.Time
 }
 
+// ProviderPaymentAttempt is one provider-side payment made against a Paymux
+// checkout attempt. Providers such as Razorpay can accept a successful retry
+// on the same order after an earlier payment failed.
+type ProviderPaymentAttempt struct {
+	ProviderAccountID, ProviderPaymentID, AttemptID, ProviderOrderID string
+	Status, Method, FailureCode, FailureMessage, Currency            string
+	Amount                                                           int64
+	CreatedAt, UpdatedAt                                             time.Time
+}
+
 const attemptCols = `id, org_id, mode, payment_id, provider_account_id, provider_ref, COALESCE(provider_order_id,''),
 	COALESCE(provider_payment_id,''), status, COALESCE(method,''), COALESCE(failure_code,''),
 	COALESCE(failure_message,''), amount_received, COALESCE(currency_received,''), COALESCE(method_details,'{}'), duplicate, created_at, updated_at,
@@ -78,6 +88,49 @@ func ListAttempts(ctx context.Context, q Queryer, paymentID string) ([]Attempt, 
 			return nil, err
 		}
 		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// UpsertProviderPaymentAttempt records the latest known state of one provider
+// payment without changing the Paymux attempt or its ledger effects.
+func UpsertProviderPaymentAttempt(ctx context.Context, tx Tx, p ProviderPaymentAttempt) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO provider_payment_attempts
+		(provider_account_id, provider_payment_id, attempt_id, provider_order_id, status, method, failure_code,
+		 failure_message, amount, currency, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (provider_account_id, provider_payment_id) DO UPDATE SET
+		attempt_id = excluded.attempt_id, provider_order_id = excluded.provider_order_id, status = excluded.status,
+		method = excluded.method, failure_code = excluded.failure_code, failure_message = excluded.failure_message,
+		amount = excluded.amount, currency = excluded.currency, updated_at = excluded.updated_at`,
+		p.ProviderAccountID, p.ProviderPaymentID, p.AttemptID, nullIfEmpty(p.ProviderOrderID), p.Status,
+		nullIfEmpty(p.Method), nullIfEmpty(p.FailureCode), nullIfEmpty(p.FailureMessage), p.Amount,
+		nullIfEmpty(p.Currency), ms(p.CreatedAt), ms(p.UpdatedAt))
+	return err
+}
+
+// ListProviderPaymentAttempts returns every provider-side payment of a Paymux
+// payment, oldest first.
+func ListProviderPaymentAttempts(ctx context.Context, q Queryer, paymentID string) ([]ProviderPaymentAttempt, error) {
+	rows, err := q.QueryContext(ctx, `SELECT p.provider_account_id, p.provider_payment_id, p.attempt_id,
+		COALESCE(p.provider_order_id,''), p.status, COALESCE(p.method,''), COALESCE(p.failure_code,''),
+		COALESCE(p.failure_message,''), p.amount, COALESCE(p.currency,''), p.created_at, p.updated_at
+		FROM provider_payment_attempts p JOIN payment_attempts a ON a.id = p.attempt_id
+		WHERE a.payment_id = ? ORDER BY p.created_at, p.provider_payment_id`, paymentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ProviderPaymentAttempt
+	for rows.Next() {
+		var p ProviderPaymentAttempt
+		var created, updated int64
+		if err := rows.Scan(&p.ProviderAccountID, &p.ProviderPaymentID, &p.AttemptID, &p.ProviderOrderID,
+			&p.Status, &p.Method, &p.FailureCode, &p.FailureMessage, &p.Amount, &p.Currency, &created, &updated); err != nil {
+			return nil, err
+		}
+		p.CreatedAt, p.UpdatedAt = fromMS(created), fromMS(updated)
+		out = append(out, p)
 	}
 	return out, rows.Err()
 }

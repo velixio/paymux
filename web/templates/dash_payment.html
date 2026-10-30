@@ -50,6 +50,16 @@
 </tbody>
 </table></div>
 
+{{if .ProviderAttempts}}
+<h3>Provider payment attempts</h3>
+<div class="table-scroll"><table class="grid">
+<thead><tr><th>Provider payment</th><th>Status</th><th>Provider</th><th>Provider order</th><th>Method</th><th>Amount</th><th>Failure</th><th>Created</th></tr></thead>
+<tbody>{{range .ProviderAttempts}}<tr>
+<td>{{.PaymentID}}<br><small>Paymux attempt {{.AttemptID}}</small></td><td>{{.Status}}</td><td>{{.Provider}}</td><td>{{.OrderID}}</td><td>{{.Method}}</td><td>{{.Amount}}</td><td>{{.Failure}}</td><td>{{.Created}}</td>
+</tr>{{end}}</tbody>
+</table></div>
+{{end}}
+
 <h3>Ledger</h3>
 <div class="table-scroll"><table class="grid">
 <thead><tr><th>Entry</th><th>Amount</th><th>At</th></tr></thead>

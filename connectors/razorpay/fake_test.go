@@ -47,6 +47,7 @@ type fake struct {
 	patchSubErr     string           // when set, PATCH of the subscription answers 400 with this description
 	recon           map[string][]any // GET /v1/settlements/recon/combined, keyed "Y-M-D"
 	listReceipt     string           // when set, GET /v1/orders ignores the receipt filter and returns this receipt
+	orderPayments   []map[string]any // when set, payments returned for order_Nx0
 }
 
 func newFake(status string) *fake { return &fake{payStatus: status, refundStatus: "processed"} }
@@ -127,6 +128,14 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, 200, map[string]any{"id": "order_Nx0", "amount": 49900, "currency": "INR", "status": st, "receipt": "pay_ref_01"})
 	case r.Method == "GET" && p == "/v1/orders/order_Nx0/payments":
+		if f.orderPayments != nil {
+			items := make([]any, len(f.orderPayments))
+			for i := range f.orderPayments {
+				items[i] = f.orderPayments[i]
+			}
+			writeJSON(w, 200, fakeCollection(items...))
+			return
+		}
 		if f.payStatus == "" {
 			writeJSON(w, 200, fakeCollection())
 			return

@@ -135,6 +135,23 @@ func (s *State) Locked(fn func()) { s.mu.Lock(); defer s.mu.Unlock(); fn() }
 // Conn is the connector instance.
 type Conn struct{ st *State }
 
+// FetchPaymentAttempts returns every scripted payment matching an order. It
+// models providers such as Razorpay that expose all retries under one order.
+func (c *Conn) FetchPaymentAttempts(_ context.Context, ref connector.PaymentRef) ([]connector.PaymentSnapshot, error) {
+	c.st.mu.Lock()
+	defer c.st.mu.Unlock()
+	if c.st.FetchErr != nil {
+		return nil, c.st.FetchErr
+	}
+	var out []connector.PaymentSnapshot
+	for _, p := range c.st.Payments {
+		if ref.ProviderOrderID != "" && p.ProviderOrderID == ref.ProviderOrderID {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
 // CheckoutHosts implements connector.CheckoutHoster: the fake may send the
 // customer to any example.com host, so a test that wants a refusal uses another
 // domain. The hosted page's policy (Info) is not widened by this.
