@@ -55,12 +55,56 @@ export declare class CheckoutError extends Error {
     readonly requestId?: string;
     constructor(type: string, message: string, status?: number, requestId?: string);
 }
+export interface ProviderAction {
+    kind: "redirect" | "form_post" | "sdk";
+    url?: string;
+    fields?: Record<string, string>;
+    script_url?: string;
+    options?: Record<string, unknown>;
+}
+interface BillingValues {
+    name: string;
+    email: string;
+    country: string;
+    state_code: string;
+    line1: string;
+    postal_code: string;
+    gstin: string;
+    legal_name: string;
+}
+interface BillingAction {
+    values: BillingValues;
+    states?: Array<{
+        code: string;
+        name: string;
+    }>;
+    state_required: boolean;
+    address_required: boolean;
+    country_required: boolean;
+}
+export interface ActionResponse {
+    kind: "billing" | "checkout" | "complete";
+    payment_id: string;
+    status: string;
+    launcher?: string;
+    action?: ProviderAction;
+    billing?: BillingAction;
+}
+export interface ExecuteCheckoutOptions {
+    /** CSP nonce applied to dynamically loaded provider scripts. */
+    nonce?: string;
+    onEvent?: (event: CheckoutEvent) => void;
+    window?: Window;
+    document?: Document;
+}
 interface ParsedCheckout {
     endpoint: string;
     token: string;
 }
 export declare function parseCheckoutURL(raw: string, pageURL?: string): ParsedCheckout;
 export declare function checkout(options: CheckoutOptions): Promise<CheckoutResult>;
+/** Execute provider-launch JSON resolved by the merchant backend. */
+export declare function executeCheckout(response: ActionResponse, options?: ExecuteCheckoutOptions): Promise<CheckoutResult>;
 export declare class PaymuxCheckout {
     private readonly options;
     constructor(options: CheckoutOptions);

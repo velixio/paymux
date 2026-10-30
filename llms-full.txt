@@ -4,9 +4,17 @@ This document is the implementation contract for adding Paymux to a merchant app
 
 ## 1. Choose the checkout experience
 
-Both checkout experiences start by creating a payment on the merchant backend.
+All checkout experiences start by creating a payment on the merchant backend.
 
-### Merchant-site provider checkout
+### Backend-resolved provider checkout (no Paymux URL in the browser)
+
+Use this when the merchant does not want to pass a Paymux checkout URL or token through its UI. In Paymux, open Apps, choose the App, open Settings, and set `checkout_mode` to `provider_action`.
+
+Payment creation then returns `checkout_mode: "provider_action"` without `checkout_url`. The merchant backend calls `paymux.payments.checkoutAction(payment.id, {}, { idempotencyKey })`, returns that provider action JSON to the authenticated order owner, and the browser passes it to `executeCheckout` from `@paymux-js/sdk/checkout`.
+
+Provide the customer and all billing information required by the App's tax policy when creating the payment. This mode does not use Paymux browser UI to collect missing billing information.
+
+### Browser-resolved merchant-site provider checkout
 
 Use this when the merchant does not want to display the Paymux-hosted checkout page. The browser calls `checkout` from `@paymux-js/sdk/checkout` with the `checkout_url` returned by the backend.
 
@@ -23,7 +31,7 @@ The SDK does not put the Paymux API key in the browser. The `return_url` origin 
 
 Use this when the merchant prefers the simplest integration or cannot permit provider scripts and frames in its Content Security Policy. Redirect the customer to `payment.checkout_url`. No browser SDK import is required.
 
-Do not build a third checkout implementation. Choose one of these two supported experiences.
+Do not build a separate provider integration. Choose one of these supported experiences.
 
 ## 2. Install and configure
 
@@ -91,9 +99,31 @@ Amounts are integer minor units. For example, INR 499.00 is `49900`.
 
 Every mutation requires a 1-255 character `idempotencyKey`. Reuse a key only when retrying the same logical operation. Use a new versioned key when the operation or amount changes. Before creating a replacement, keep the previous payment linked to the order, stop giving out its checkout URL, and cancel it when cancellation is still supported. Cancellation may race with provider completion: continue reconciling every linked payment, and do not fulfil the order automatically if an earlier payment later succeeds or enters `needs_review`. Route multiple successes or an ambiguous outcome to an explicit refund/review workflow.
 
-Store at least the Paymux payment ID, merchant order ID, expected amount, expected currency, current local payment state, expiry, and `checkout_url`. The checkout URL contains a customer credential and is returned only by payment creation; `payments.get()` cannot reconstruct it. Protect it like a short-lived secret in encrypted or equivalently access-controlled server storage, return it only to the authenticated order owner, and remove it after expiry or a terminal outcome. This lets the same logical checkout reopen after a browser or network retry without creating another payment.
+Store at least the Paymux payment ID, merchant order ID, expected amount, expected currency, current local payment state, expiry, and checkout mode. In `hosted` mode also store `checkout_url`. The checkout URL contains a customer credential and is returned only by payment creation; `payments.get()` cannot reconstruct it. Protect it like a short-lived secret in encrypted or equivalently access-controlled server storage, return it only to the authenticated order owner, and remove it after expiry or a terminal outcome. This lets the same logical checkout reopen after a browser or network retry without creating another payment.
 
-If the checkout URL was not retained or is unavailable, do not silently create a second payable payment. Inspect the recorded payment, cancel it when possible, preserve its link to the order for later webhook reconciliation, and create a replacement with a new idempotency key only after the merchant's duplicate-charge policy permits it. Return only the active `checkout_url` needed by the authenticated browser:
+In `provider_action` mode, do not expect or expose `checkout_url`. Resolve the action on the merchant backend:
+
+```ts
+const checkoutAction = await paymux.payments.checkoutAction(
+  payment.id,
+  {},
+  { idempotencyKey: `order-${order.id}-checkout-v1` },
+);
+
+return checkoutAction;
+```
+
+Then execute it in the merchant UI:
+
+```ts
+import { executeCheckout } from "@paymux-js/sdk/checkout";
+
+await executeCheckout(await merchantApi.startCheckout(order.id));
+```
+
+The merchant UI receives no Paymux URL, token, API key, or provider secret. It receives a provider launch action or terminal `complete` response validated by Paymux.
+
+In `hosted` mode, if the checkout URL was not retained or is unavailable, do not silently create a second payable payment. Inspect the recorded payment, cancel it when possible, preserve its link to the order for later webhook reconciliation, and create a replacement with a new idempotency key only after the merchant's duplicate-charge policy permits it. Return only the active `checkout_url` needed by the authenticated browser:
 
 ```json
 {
@@ -103,7 +133,7 @@ If the checkout URL was not retained or is unavailable, do not silently create a
 
 The checkout URL is a customer credential. Do not send it to a different customer, place it in analytics, or log its query string.
 
-## 4. Open merchant-site checkout
+## 4. Open browser-resolved merchant-site checkout
 
 Use the browser-only package entry point. It contains no backend API client and needs no API key:
 

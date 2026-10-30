@@ -188,7 +188,7 @@ func settingJSON(key string, posted []string) json.RawMessage {
 
 // Labels and groups are presentation metadata; validation remains in settings.
 func settingLabel(key string) string {
-	labels := map[string]string{"payment_ttl": "Payment expiry", "duplicate_payment_action": "Duplicate payments", "billing_details": "Customer billing details", "pay_page_retry_buttons": "Checkout retry options", "gst_rate_bp": "GST rate", "sac_code": "SAC code", "issue_invoices": "GST invoicing", "b2cl_threshold": "B2CL reporting threshold", "mandate_afa_limit": "Mandate authentication limit", "upi_execution_windows": "UPI execution exclusions"}
+	labels := map[string]string{"checkout_mode": "Checkout mode", "payment_ttl": "Payment expiry", "duplicate_payment_action": "Duplicate payments", "billing_details": "Customer billing details", "pay_page_retry_buttons": "Checkout retry options", "gst_rate_bp": "GST rate", "sac_code": "SAC code", "issue_invoices": "GST invoicing", "b2cl_threshold": "B2CL reporting threshold", "mandate_afa_limit": "Mandate authentication limit", "upi_execution_windows": "UPI execution exclusions"}
 	if label, ok := labels[key]; ok {
 		return label
 	}
@@ -196,7 +196,7 @@ func settingLabel(key string) string {
 }
 func settingGroup(key string) string {
 	switch key {
-	case "payment_ttl", "duplicate_payment_action", "billing_details", "pay_page_retry_buttons":
+	case "checkout_mode", "payment_ttl", "duplicate_payment_action", "billing_details", "pay_page_retry_buttons":
 		return "Payment behavior"
 	case "routing":
 		return "Routing"

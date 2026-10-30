@@ -37,10 +37,17 @@ curl --fail-with-body "$PAYMUX_URL/v1/payments" \
   -d '{"amount":49900,"currency":"INR","order_ref":"order-1048","description":"Pro plan"}'
 ```
 
-The response is a payment object with a `checkout_url`. Store its `id` against your order and redirect the buyer to that URL. Do not log the checkout token. A `201` means the payment was created, not that money has been collected.
+The response is a payment object with `checkout_mode`. In the default `hosted`
+mode it also has a `checkout_url`; store its `id` against your order and redirect
+the buyer to that URL. Do not log the checkout token. With the App set to
+`provider_action`, no checkout URL is returned: the merchant backend calls
+`POST /v1/payments/{id}/checkout-action` and gives only that action JSON to
+`executeCheckout` from the browser SDK. A `201` means the payment was created,
+not that money has been collected.
 
-To keep the buyer on the storefront until the selected provider opens, pass the
-same `checkout_url` to the [JavaScript checkout SDK](javascript-sdk.md). The SDK
+In `hosted` mode, to keep the buyer on the storefront until the selected
+provider opens, pass the same `checkout_url` to the
+[JavaScript checkout SDK](javascript-sdk.md). The SDK
 handles redirects, signed forms, provider scripts, and required billing details.
 The payment `return_url` must share the storefront's origin. The API key always
 stays on the backend.

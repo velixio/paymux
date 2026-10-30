@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Window as DOMWindow } from "happy-dom";
-import { CheckoutError, checkout, parseCheckoutURL } from "../src/checkout";
+import { CheckoutError, checkout, executeCheckout, parseCheckoutURL } from "../src/checkout";
 
 describe("parseCheckoutURL", () => {
   test("extracts an opaque token without retaining it in the endpoint", () => {
@@ -36,6 +36,22 @@ test("redirect action sends the token only in its header", async () => {
   expect(requestedInit?.credentials).toBe("omit");
   expect(assigned).toBe("https://checkout.stripe.com/c/pay/test");
   expect(result).toEqual({ status: "redirecting", paymentId: "pay_123" });
+});
+
+test("backend-resolved action opens without a Paymux URL or request", async () => {
+  let assigned = "";
+  const result = await executeCheckout({
+    kind: "checkout",
+    payment_id: "pay_direct",
+    status: "created",
+    launcher: "stripe",
+    action: { kind: "redirect", url: "https://checkout.stripe.com/c/pay/direct" },
+  }, {
+    document: {} as Document,
+    window: { location: { assign: (url: string) => { assigned = url; } } } as unknown as Window,
+  });
+  expect(assigned).toBe("https://checkout.stripe.com/c/pay/direct");
+  expect(result).toEqual({ status: "redirecting", paymentId: "pay_direct" });
 });
 
 test("complete payment does not open a provider", async () => {

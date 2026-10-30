@@ -12,7 +12,8 @@ app webhooks.
 
 | Experience | Merchant implementation | Best when |
 |---|---|---|
-| Merchant-site provider checkout | Pass the server-created `checkout_url` to `@paymux-js/sdk/checkout`. The SDK opens the routed provider without displaying the Paymux-hosted page. | The merchant wants checkout to begin on its own storefront and can allow the provider's required CSP resources. |
+| Backend-resolved provider checkout | Set the App's `checkout_mode` to `provider_action`. The merchant backend resolves an action and the browser calls `executeCheckout`. No Paymux URL or token enters the browser. | The merchant wants checkout to begin on its own storefront and keep Paymux out of browser requests. |
+| Browser-resolved provider checkout | Keep `hosted` mode but pass the server-created `checkout_url` to `checkout`. The SDK opens the routed provider without displaying the Paymux-hosted page. | An existing integration wants SDK-managed billing and retries with the least backend code. |
 | Paymux-hosted checkout | Redirect the browser to the server-created `checkout_url`. | The merchant wants the smallest integration or cannot allow provider scripts and frames on its storefront. |
 
 Do not create a separate provider integration in the merchant browser. The
@@ -26,7 +27,8 @@ or provider secrets.
 npm install @paymux-js/sdk
 ```
 
-The application backend creates a payment with the JavaScript SDK, [Go SDK](../sdk/go/README.md),
+Choose the default on **Apps → your app → Settings → checkout_mode**. The
+application backend creates a payment with the JavaScript SDK, [Go SDK](../sdk/go/README.md),
 or HTTP API. Never create payments from browser code because that would expose the API key.
 
 ```ts
@@ -45,6 +47,50 @@ invoices, credit notes, payouts, PDF downloads, and webhook verification.
 Every mutation requires an `idempotencyKey`; use the same key only to retry the
 same logical operation. API errors are typed as `APIError` and include HTTP
 status, error type, request ID, replay status, and retry delay.
+
+## Provider action without a Paymux URL in the browser
+
+With `checkout_mode=provider_action`, payment creation returns
+`checkout_mode: "provider_action"` and no `checkout_url`. Resolve the provider
+action on the authenticated merchant backend:
+
+```ts
+const payment = await paymux.payments.create(params, {
+  idempotencyKey: `order-${order.id}-payment-v1`,
+});
+
+const checkoutAction = await paymux.payments.checkoutAction(
+  payment.id,
+  {},
+  { idempotencyKey: `order-${order.id}-checkout-v1` },
+);
+
+// Return only checkoutAction to the authenticated owner of this order.
+```
+
+The merchant UI executes that JSON directly:
+
+```ts
+import { executeCheckout } from "@paymux-js/sdk/checkout";
+
+const checkoutAction = await fetch(`/api/orders/${orderId}/checkout`, {
+  method: "POST",
+  credentials: "same-origin",
+}).then((response) => response.json());
+
+await executeCheckout(checkoutAction);
+```
+
+The merchant UI receives no Paymux checkout URL or token. A provider may still
+return the customer through Paymux's verified return endpoint before Paymux
+redirects to the merchant `return_url`; configure an App custom domain if that
+return hop must use the merchant's domain. Include all customer and billing
+information required by the App's tax policy when creating the payment; this
+mode does not ask Paymux to collect missing billing data in the browser. Use a
+new idempotency key only when the merchant intentionally requests a fresh
+provider attempt.
+
+## Checkout URL modes
 
 Verify webhooks against the exact raw request bytes:
 
@@ -82,7 +128,7 @@ The `return_url` origin must exactly match the storefront origin running the
 SDK. Paymux enforces that boundary before returning a provider action. Use HTTPS
 except on loopback during local development.
 
-## What happens
+## What happens in browser-resolved mode
 
 The SDK exchanges the customer checkout token for a server-validated action:
 

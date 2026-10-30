@@ -118,8 +118,41 @@ type Payment struct {
 	CreatedAt         time.Time         `json:"created_at"`
 	Version           int64             `json:"version"`
 	Flags             []string          `json:"flags"`
+	CheckoutMode      string            `json:"checkout_mode,omitempty"`
 	CheckoutURL       string            `json:"checkout_url,omitempty"`
 	Attempts          []PaymentAttempt  `json:"attempts,omitempty"`
+}
+
+type CheckoutActionParams struct {
+	Fresh   bool             `json:"fresh,omitempty"`
+	Billing *CheckoutBilling `json:"billing,omitempty"`
+}
+
+type CheckoutBilling struct {
+	Name       string `json:"name"`
+	Email      string `json:"email,omitempty"`
+	Country    string `json:"country,omitempty"`
+	StateCode  string `json:"state_code,omitempty"`
+	Line1      string `json:"line1,omitempty"`
+	PostalCode string `json:"postal_code,omitempty"`
+	GSTIN      string `json:"gstin,omitempty"`
+	LegalName  string `json:"legal_name,omitempty"`
+}
+
+type ProviderAction struct {
+	Kind      string            `json:"kind"`
+	URL       string            `json:"url,omitempty"`
+	Fields    map[string]string `json:"fields,omitempty"`
+	ScriptURL string            `json:"script_url,omitempty"`
+	Options   map[string]any    `json:"options,omitempty"`
+}
+
+type CheckoutAction struct {
+	Kind      string          `json:"kind"`
+	PaymentID string          `json:"payment_id"`
+	Status    PaymentStatus   `json:"status"`
+	Launcher  string          `json:"launcher,omitempty"`
+	Action    *ProviderAction `json:"action,omitempty"`
 }
 
 type PaymentAttempt struct {

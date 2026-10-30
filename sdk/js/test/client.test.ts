@@ -13,6 +13,10 @@ test("payment mutations require idempotency and send credentials only to the con
   expect(request?.url).toBe("https://pay.example.com/base/v1/payments");
   expect(request?.headers.get("Authorization")).toBe("Bearer pk_test_secret");
   expect(request?.headers.get("Idempotency-Key")).toBe("order-1");
+
+  await client.payments.checkoutAction("pay_1", { fresh: false }, { idempotencyKey: "order-1-checkout" });
+  expect(request?.url).toBe("https://pay.example.com/base/v1/payments/pay_1/checkout-action");
+  expect(request?.headers.get("Idempotency-Key")).toBe("order-1-checkout");
 });
 
 test("resource paths, query parameters, and PDF downloads are normalized", async () => {

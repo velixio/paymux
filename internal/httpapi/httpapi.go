@@ -19,6 +19,7 @@ import (
 
 	"github.com/velixio/paymux/internal/audit"
 	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/checkout"
 	"github.com/velixio/paymux/internal/core"
 	"github.com/velixio/paymux/internal/invoice"
 	"github.com/velixio/paymux/internal/logctx"
@@ -27,6 +28,7 @@ import (
 	"github.com/velixio/paymux/internal/redact"
 	"github.com/velixio/paymux/internal/secrets"
 	"github.com/velixio/paymux/internal/server"
+	"github.com/velixio/paymux/internal/settings"
 	"github.com/velixio/paymux/internal/store"
 	"github.com/velixio/paymux/internal/subscriptions"
 	"github.com/velixio/paymux/pkg/connector"
@@ -38,6 +40,12 @@ const maxBody = 1 << 20 // 1 MiB
 type Options struct {
 	Core *core.Service
 	DB   *store.DB
+	// Checkout resolves provider actions for merchant backends. When nil, the
+	// provider-action endpoint is unavailable.
+	Checkout *checkout.Service
+	// Settings selects each app's checkout mode. Nil keeps the legacy hosted
+	// behavior for embedders that only use a subset of the API.
+	Settings *settings.Service
 	// Box seals stored idempotent responses (they contain checkout secrets).
 	Box *secrets.Box
 	// Invoices serves /v1/invoices and /v1/credit_notes; nil answers 404.
@@ -69,6 +77,7 @@ type Options struct {
 // x-required-scope, and a test keeps the two in step.
 var RouteScopes = map[string]string{
 	"POST /v1/payments":                          authz.ScopePaymentsWrite,
+	"POST /v1/payments/{id}/checkout-action":     authz.ScopePaymentsWrite,
 	"GET /v1/payments/{id}":                      authz.ScopePaymentsRead,
 	"GET /v1/payments":                           authz.ScopePaymentsRead,
 	"POST /v1/payments/{id}/cancel":              authz.ScopePaymentsWrite,
@@ -102,12 +111,15 @@ type Mux interface {
 
 // API holds the handlers.
 type API struct {
-	core    *core.Service
-	db      *store.DB
-	box     *secrets.Box
-	baseURL string
-	log     *slog.Logger
-	limit   *limiter // nil: unlimited
+	core     *core.Service
+	db       *store.DB
+	checkout *checkout.Service
+	settings *settings.Service
+	now      func() time.Time
+	box      *secrets.Box
+	baseURL  string
+	log      *slog.Logger
+	limit    *limiter // nil: unlimited
 	// redact scrubs a provider's message before it is shown to the caller (the
 	// hub's log redactor, which knows every account's secrets); nil: patterns only.
 	redact func(string) string
@@ -126,7 +138,11 @@ func New(o Options) (*API, error) {
 	if o.Log == nil {
 		o.Log = slog.Default()
 	}
-	a := &API{redact: o.Redact, core: o.Core, db: o.DB, box: o.Box, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log, invoices: o.Invoices, subs: o.Subscriptions, links: o.PaymentLinks, payouts: o.Payouts}
+	if o.Now == nil {
+		o.Now = time.Now
+	}
+	a := &API{redact: o.Redact, core: o.Core, db: o.DB, box: o.Box, checkout: o.Checkout, settings: o.Settings,
+		now: o.Now, baseURL: strings.TrimRight(o.BaseURL.String(), "/"), log: o.Log, invoices: o.Invoices, subs: o.Subscriptions, links: o.PaymentLinks, payouts: o.Payouts}
 	if o.RatePerSecond >= 0 {
 		a.limit = newLimiter(o.RatePerSecond, o.RateBurst, o.Now)
 	}
@@ -147,6 +163,7 @@ func (a *API) Register(m Mux) {
 		m.HandleFunc(pattern, a.wrap(h, idempotent, scope))
 	}
 	route("POST /v1/payments", a.createPayment, true)
+	route("POST /v1/payments/{id}/checkout-action", a.createCheckoutAction, true)
 	route("GET /v1/payments/{id}", a.getPayment, false)
 	route("GET /v1/payments", a.listPayments, false)
 	route("POST /v1/payments/{id}/cancel", a.cancelPayment, true)

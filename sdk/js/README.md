@@ -41,7 +41,36 @@ Persist and deduplicate `event.id`. Unknown event types should be ignored safely
 
 ## Browser checkout
 
-The backend returns `payment.checkout_url` to that order's authenticated browser. The browser entry point contains no backend client and never receives the API key:
+For no Paymux URL in the browser, set the App's `checkout_mode` to
+`provider_action`. Resolve the action on the backend:
+
+```ts
+const action = await paymux.payments.checkoutAction(
+  payment.id,
+  {},
+  { idempotencyKey: "order-1048-checkout-v1" },
+);
+```
+
+Return only `action` to the authenticated order owner and execute it in the UI:
+
+```ts
+import { executeCheckout } from "@paymux-js/sdk/checkout";
+
+await executeCheckout(actionFromMerchantBackend);
+```
+
+The merchant UI receives no Paymux checkout URL or token. A provider may still
+return the customer through Paymux's verified return endpoint before the
+merchant `return_url`; use an App custom domain when that hop should carry the
+merchant's domain. Provider-action mode requires the backend to supply billing
+details required by the App's tax policy during payment creation or
+`checkoutAction`.
+
+For browser-resolved checkout, keep the App in `hosted` mode. The backend
+returns `payment.checkout_url` to that order's authenticated browser:
+
+The browser entry point contains no backend client and never receives the API key:
 
 ```ts
 import { checkout } from "@paymux-js/sdk/checkout";
@@ -51,7 +80,8 @@ await checkout({ checkoutUrl: paymentCheckoutURL });
 
 It collects required billing details, follows hosted redirects, submits signed PayU forms, and launches Razorpay, Cashfree, or Zoho's official SDK. The payment `return_url` origin must exactly match the storefront origin. Use HTTPS outside loopback development.
 
-For a script tag, self-host `dist/paymux-checkout.global.js` and call `Paymux.checkout({ checkoutUrl })`.
+For a script tag, self-host `dist/paymux-checkout.global.js` and call
+`Paymux.checkout({ checkoutUrl })` or `Paymux.executeCheckout(action)`.
 
 Browser events are interface signals, not proof of payment. Fulfill an order only after a verified webhook or authenticated backend lookup.
 

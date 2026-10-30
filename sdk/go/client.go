@@ -96,7 +96,7 @@ func New(apiKey string, options ...Option) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	ua := "paymux-go/0.1"
+	ua := "paymux-go/0.2"
 	if cfg.userAgent != "" {
 		ua += " " + cfg.userAgent
 	}

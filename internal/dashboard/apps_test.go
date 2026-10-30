@@ -428,7 +428,9 @@ func TestAppSettingsTab(t *testing.T) {
 		body := e.pageOK(admin, page+"?tab=settings")
 		tok := csrfOf(t, body)
 		// every app-level key is listed; org-only keys are not
-		has(t, body, "payment_ttl", "routing", "issue_invoices", "sac_code", "gst_rate_bp", "duplicate_payment_action")
+		has(t, body, "payment_ttl", "routing", "checkout_mode", "issue_invoices", "sac_code", "gst_rate_bp", "duplicate_payment_action")
+		checkoutRow := regexpFind(t, `(?s)(<tr[^>]*id="setting-checkout_mode".*?</tr>)`, body)
+		has(t, checkoutRow, `value="hosted"`, `value="provider_action"`)
 		lacks(t, body, "mandate_afa_limit", "recon_time", "webhook_retry_schedule")
 		row := regexpFind(t, `(?s)(<tr[^>]*id="setting-payment_ttl".*?</tr>)`, body)
 		has(t, row, `value="60"`, "org") // inherited from the org

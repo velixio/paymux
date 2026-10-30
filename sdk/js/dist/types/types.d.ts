@@ -42,6 +42,39 @@ export interface PaymentAttempt {
     failure_message?: string;
     created_at: string;
 }
+export type CheckoutMode = "hosted" | "provider_action";
+export interface ProviderAction {
+    kind: "redirect" | "form_post" | "sdk";
+    url?: string;
+    fields?: Record<string, string>;
+    script_url?: string;
+    options?: Record<string, unknown>;
+}
+export type CheckoutAction = {
+    kind: "checkout";
+    payment_id: string;
+    status: PaymentStatus;
+    launcher: string;
+    action: ProviderAction;
+} | {
+    kind: "complete";
+    payment_id: string;
+    status: PaymentStatus;
+};
+export interface CheckoutBilling {
+    name: string;
+    email?: string;
+    country?: string;
+    state_code?: string;
+    line1?: string;
+    postal_code?: string;
+    gstin?: string;
+    legal_name?: string;
+}
+export interface CheckoutActionParams {
+    fresh?: boolean;
+    billing?: CheckoutBilling;
+}
 export interface Payment {
     id: string;
     object: string;
@@ -63,6 +96,7 @@ export interface Payment {
     created_at: string;
     version: number;
     flags: string[];
+    checkout_mode?: CheckoutMode;
     checkout_url?: string;
     attempts?: PaymentAttempt[];
 }

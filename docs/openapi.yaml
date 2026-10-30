@@ -64,9 +64,10 @@ paths:
       x-required-scope: payments:write
       summary: Create a payment
       description: |
-        Creates a payment in status `created` and returns a `checkout_url` of
-        the form `<PAYMUX_BASE_URL>/pay/<id>?t=<secret>`. The secret is shown
-        once and valid until `expires_at`.
+        Creates a payment in status `created`. Apps in `hosted` checkout mode
+        receive a `checkout_url` of the form `<PAYMUX_BASE_URL>/pay/<id>?t=<secret>`.
+        Apps in `provider_action` mode omit that browser credential; the merchant
+        backend calls the checkout-action endpoint instead.
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -176,6 +177,63 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/StateConflict"
+  /v1/payments/{id}/checkout-action:
+    post:
+      operationId: createCheckoutAction
+      x-required-scope: payments:write
+      summary: Resolve a provider checkout action
+      description: |
+        For an app configured with `provider_action` checkout mode, the merchant
+        backend calls this endpoint and sends the returned action to its browser.
+        The Paymux checkout URL and customer token never enter the browser.
+        The browser executes the response with `executeCheckout` from
+        `@paymux-js/sdk/checkout`. Provider launch data contains no provider secret key.
+      parameters:
+        - $ref: "#/components/parameters/PaymentId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutActionRequest"
+      responses:
+        "200":
+          description: Provider action ready for the browser SDK, or a terminal payment result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutAction"
+        "400":
+          description: The request body is invalid (`invalid_request`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The payment state does not allow checkout (`state_conflict`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: No payment method is available (`no_route`), or required billing details are missing or invalid (`billing_required`, `invalid_billing`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Checkout could not be started (`internal`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: Every routed provider was temporarily unavailable (`provider_unavailable`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
   /v1/payments/{id}/refunds:
     post:
       operationId: createRefund
@@ -889,10 +947,14 @@ components:
                 - insufficient_scope
                 - not_found
                 - invalid_state
+                - state_conflict
                 - not_refundable
                 - refund_amount_exceeds_balance
                 - conflict
                 - no_route
+                - billing_required
+                - invalid_billing
+                - provider_unavailable
                 - payout_needs_review
                 - currency_not_accepted
                 - idempotency_key_reuse
@@ -1018,12 +1080,60 @@ components:
       allOf:
         - $ref: "#/components/schemas/Payment"
         - type: object
-          required: [checkout_url]
+          required: [checkout_mode]
           properties:
+            checkout_mode:
+              type: string
+              enum: [hosted, provider_action]
+              description: The checkout integration selected on the App.
             checkout_url:
               type: string
               format: uri
-              description: "`<PAYMUX_BASE_URL>/pay/<id>?t=<secret>`. Shown only in this response."
+              description: "`<PAYMUX_BASE_URL>/pay/<id>?t=<secret>`. Present only for hosted mode and shown only in this response."
+    CheckoutActionRequest:
+      type: object
+      properties:
+        fresh: { type: boolean, default: false, description: Start a new provider attempt instead of reusing the current open checkout. }
+        billing:
+          type: object
+          required: [name]
+          description: Required customer billing fields when they were not supplied during payment creation and the App's billing policy needs them.
+          properties:
+            name: { type: string }
+            email: { type: string, format: email }
+            country: { type: string }
+            state_code: { type: string }
+            line1: { type: string }
+            postal_code: { type: string }
+            gstin: { type: string }
+            legal_name: { type: string }
+          additionalProperties: false
+      additionalProperties: false
+    ProviderAction:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [redirect, form_post, sdk] }
+        url: { type: string, format: uri, description: Redirect destination or form action. }
+        fields: { type: object, additionalProperties: { type: string }, description: Signed provider form fields. }
+        script_url: { type: string, format: uri, description: Provider SDK URL validated against the connector's declared hosts. }
+        options: { type: object, additionalProperties: true, description: Public provider checkout options. }
+    CheckoutAction:
+      oneOf:
+        - type: object
+          required: [kind, payment_id, status, launcher, action]
+          properties:
+            kind: { type: string, const: checkout }
+            payment_id: { type: string, pattern: "^pay_[0-9a-z]{26}$" }
+            status: { $ref: "#/components/schemas/PaymentStatus" }
+            launcher: { type: string, description: Connector name understood by the browser SDK. }
+            action: { $ref: "#/components/schemas/ProviderAction" }
+        - type: object
+          required: [kind, payment_id, status]
+          properties:
+            kind: { type: string, const: complete }
+            payment_id: { type: string, pattern: "^pay_[0-9a-z]{26}$" }
+            status: { $ref: "#/components/schemas/PaymentStatus" }
     PaymentList:
       type: object
       required: [object, data, has_more]

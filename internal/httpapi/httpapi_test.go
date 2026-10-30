@@ -38,6 +38,7 @@ type fixture struct {
 	svc      *core.Service
 	srv      *httptest.Server
 	app      store.App
+	set      *settings.Service
 	testKey  string
 	liveKey  string
 	otherKey string // test key of another app
@@ -59,7 +60,7 @@ func newFixtureOpts(t *testing.T, db *store.DB, router core.Router, mod func(*ht
 		t.Fatal(err)
 	}
 	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: jobs.New(db, jobs.Options{}), Router: router})
-	f := &fixture{t: t, db: db, svc: svc, pa: "pa_1"}
+	f := &fixture{t: t, db: db, svc: svc, set: set, pa: "pa_1"}
 	err := db.Write(ctx, func(tx store.Tx) error {
 		return store.InsertProviderAccount(ctx, tx, store.ProviderAccount{ID: "pa_1", OrgID: store.DefaultOrgID, Mode: "test",
 			Connector: "fake", Name: "Fake", Status: "active", CreatedAt: time.Now()})
@@ -84,7 +85,7 @@ func newFixtureOpts(t *testing.T, db *store.DB, router core.Router, mod func(*ht
 		t.Fatal(err)
 	}
 	base, _ := url.Parse("https://pay.example.com")
-	opts := httpapi.Options{Core: svc, DB: db, Box: box, BaseURL: base, RatePerSecond: 100000}
+	opts := httpapi.Options{Core: svc, DB: db, Box: box, Settings: set, BaseURL: base, RatePerSecond: 100000}
 	if mod != nil {
 		mod(&opts)
 	}
@@ -225,12 +226,23 @@ func TestCreatePaymentResponse(t *testing.T) {
 		if strings.Contains(string(r.raw), "client_secret_hash") {
 			t.Error("hash leaked")
 		}
+		if m["checkout_mode"] != "hosted" {
+			t.Errorf("default checkout mode = %v", m["checkout_mode"])
+		}
 		p, err := f.svc.GetPayment(ctx, core.Scope{AppID: f.app.ID, Mode: "test"}, id)
 		if err != nil || !core.VerifyClientSecret(p, sub[2], time.Now()) {
 			t.Errorf("checkout secret does not verify: %v", err)
 		}
 		if p.Mode != "test" {
 			t.Errorf("mode %s: payments take the mode of the key", p.Mode)
+		}
+		if err := f.set.SetApp(ctx, audit.System, f.app.OrgID, f.app.ID, "checkout_mode", json.RawMessage(`"provider_action"`)); err != nil {
+			t.Fatal(err)
+		}
+		provider := f.do("POST", "/v1/payments", f.testKey, createBody, "Idempotency-Key", "provider-action-create")
+		pm := provider.json(t)
+		if provider.status != http.StatusCreated || pm["checkout_mode"] != "provider_action" || pm["checkout_url"] != nil {
+			t.Errorf("provider-action create: %d %s", provider.status, provider.raw)
 		}
 		// A live key creates a live payment.
 		live := f.do("POST", "/v1/payments", f.liveKey, createBody)

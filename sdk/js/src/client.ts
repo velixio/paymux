@@ -56,6 +56,7 @@ export class Paymux {
 
   readonly payments = {
     create: (params: T.CreatePaymentParams, options: MutationOptions) => this.request<T.Payment>("POST", "v1/payments", params, options),
+		checkoutAction: (paymentId: string, params: T.CheckoutActionParams, options: MutationOptions) => this.request<T.CheckoutAction>("POST", `v1/payments/${id(paymentId)}/checkout-action`, params, options),
     get: (paymentId: string, options?: RequestOptions) => this.request<T.Payment>("GET", `v1/payments/${id(paymentId)}`, undefined, options),
     list: (params: T.ListPaymentsParams = {}, options?: RequestOptions) => this.request<T.PaymentPage>("GET", "v1/payments", undefined, options, query(params)),
     cancel: (paymentId: string, options: MutationOptions) => this.request<T.Payment>("POST", `v1/payments/${id(paymentId)}/cancel`, undefined, options),
@@ -98,7 +99,7 @@ export class Paymux {
     if (!options?.apiKey?.trim() || /[\r\n]/.test(options.apiKey)) throw new Error("paymux: valid apiKey is required");
     if (options.userAgent && /[\r\n]/.test(options.userAgent)) throw new Error("paymux: invalid userAgent");
     this.apiKey = options.apiKey; this.base = baseURL(options.baseURL ?? "http://localhost:8080");
-    this.fetcher = options.fetch ?? globalThis.fetch; this.userAgent = `paymux-js/0.1${options.userAgent ? ` ${options.userAgent.trim()}` : ""}`;
+    this.fetcher = options.fetch ?? globalThis.fetch; this.userAgent = `paymux-js/0.2${options.userAgent ? ` ${options.userAgent.trim()}` : ""}`;
   }
 
   private async request<T>(method: string, path: string, body?: unknown, options?: RequestOptions | MutationOptions, params?: URLSearchParams): Promise<T> {
