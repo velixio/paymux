@@ -51,7 +51,7 @@ func TestSettingsLeak(t *testing.T) {
 func TestFatMain(t *testing.T) { wantOne(t, check(t, "fatmain"), "thin-main") }
 
 func TestRepoHasNoViolations(t *testing.T) {
-	v, err := Check("../..", "github.com/paymux/paymux")
+	v, err := Check("../..", "github.com/velixio/paymux")
 	if err != nil {
 		t.Fatal(err)
 	}

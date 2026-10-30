@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // The mandate flow is tested in mandate_flow_test.go (Zoho's real endpoints);

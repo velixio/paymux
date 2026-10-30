@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Disputes, from Whop's API reference: GET /disputes (needs account_id, the

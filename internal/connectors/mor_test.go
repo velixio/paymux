@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/connectors"
-	"github.com/paymux/paymux/internal/fakeconn"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/connectors"
+	"github.com/velixio/paymux/internal/fakeconn"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // A connector that is merchant of record for some accounts only (a remote one,

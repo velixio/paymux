@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 func TestOnPaymentSucceededHook(t *testing.T) {

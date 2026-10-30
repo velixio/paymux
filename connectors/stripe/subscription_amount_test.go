@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // subWithItem is a subscription whose single item carries the inline price.

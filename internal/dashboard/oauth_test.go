@@ -15,14 +15,14 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/paymux/paymux/connectors/zoho"
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/connectors"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/fakeconn"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/pkg/connector"
+	_ "github.com/velixio/paymux/connectors/zoho"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/connectors"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/fakeconn"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // oauthRecorder and oauthKnown, when a test sets them, are the call recorder

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 var ctx = context.Background()

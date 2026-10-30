@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/logctx"
-	"github.com/paymux/paymux/internal/migrations"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/logctx"
+	"github.com/velixio/paymux/internal/migrations"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 func logQueue(db *store.DB, c *clock, buf *bytes.Buffer) *jobs.Queue {

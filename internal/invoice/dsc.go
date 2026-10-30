@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/invoice/pades"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/invoice/pades"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // A tax entity may hold a digital signature certificate (DSC): the PKCS#12

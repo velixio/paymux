@@ -8,13 +8,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/connectors"
-	"github.com/paymux/paymux/internal/fakeconn"
-	"github.com/paymux/paymux/internal/metrics"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/connectors"
+	"github.com/velixio/paymux/internal/fakeconn"
+	"github.com/velixio/paymux/internal/metrics"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func TestProviderRequestsAreObservedPerConnector(t *testing.T) {

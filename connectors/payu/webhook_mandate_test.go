@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // PayU's mandate webhooks (docs "Set up WebHook to Receive Cancellation or

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/outbound"
-	"github.com/paymux/paymux/pkg/jsvm"
+	"github.com/velixio/paymux/internal/outbound"
+	"github.com/velixio/paymux/pkg/jsvm"
 )
 
 // A catastrophic-backtracking regex on event data: does CallTimeout still bound the call?

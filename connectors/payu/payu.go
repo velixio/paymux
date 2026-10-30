@@ -19,8 +19,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 const maxRefundTokenLen = 23 // PayU limit for cancel_refund_transaction var2

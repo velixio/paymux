@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/paymux/paymux/internal/metrics"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/metrics"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // businessRefresh bounds how often a scrape runs the aggregate queries.

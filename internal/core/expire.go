@@ -3,8 +3,8 @@ package core
 import (
 	"context"
 
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // openAttemptWindow is how long an attempt that reached a provider counts as

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/fakeconn"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/fakeconn"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // Audit (2026-10, authz lane). F52 says role changes and provider accounts need

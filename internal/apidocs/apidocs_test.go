@@ -12,8 +12,8 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/paymux/paymux/internal/apidocs"
-	"github.com/paymux/paymux/internal/web"
+	"github.com/velixio/paymux/internal/apidocs"
+	"github.com/velixio/paymux/internal/web"
 )
 
 func realSpec(t *testing.T) []byte {

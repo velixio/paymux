@@ -20,9 +20,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/redact"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/redact"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // BodyCap is the most of a request or response body that is stored, after

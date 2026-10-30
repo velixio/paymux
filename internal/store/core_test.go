@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 var t0 = time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)

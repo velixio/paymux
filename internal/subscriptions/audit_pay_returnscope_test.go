@@ -3,9 +3,9 @@ package subscriptions_test
 import (
 	"testing"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // AUDIT: /return/{pa}/{ref} for a mandate or subscription looks the object up

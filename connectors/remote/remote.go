@@ -35,8 +35,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/wire"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/wire"
 )
 
 const maxResponse = 8 << 20

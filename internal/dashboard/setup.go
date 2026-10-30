@@ -12,10 +12,10 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/auth"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/auth"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // First-run setup. While the hub has no users, /setup shows a one-time form

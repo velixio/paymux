@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/web"
+	"github.com/velixio/paymux/internal/web"
 )
 
 type reportEnv struct {

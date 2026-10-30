@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/connectortest"
-	"github.com/paymux/paymux/pkg/connector/wire"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/pkg/connector/wire"
 )
 
 // The host's HTTP client retries a GET after a 5xx. Every attempt must be

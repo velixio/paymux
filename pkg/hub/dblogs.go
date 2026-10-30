@@ -10,14 +10,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/paymux/paymux/internal/config"
-	"github.com/paymux/paymux/internal/dblog"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/migrations"
-	"github.com/paymux/paymux/internal/redact"
-	"github.com/paymux/paymux/internal/server"
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/config"
+	"github.com/velixio/paymux/internal/dblog"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/migrations"
+	"github.com/velixio/paymux/internal/redact"
+	"github.com/velixio/paymux/internal/server"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // dbLogs is the error log kept in the database: a redactor that knows the

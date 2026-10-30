@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/dblog"
-	"github.com/paymux/paymux/internal/redact"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/dblog"
+	"github.com/velixio/paymux/internal/redact"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // A Connect that Zoho refuses leaves its trace in the error log (the token

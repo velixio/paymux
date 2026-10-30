@@ -7,14 +7,14 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/paymux/paymux/connectors/simulator"
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/redact"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/subscriptions"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/connectors/simulator"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/redact"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/subscriptions"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Subscription pages: list, detail (periods, renewals with links to their

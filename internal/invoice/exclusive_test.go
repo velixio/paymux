@@ -3,10 +3,10 @@ package invoice_test
 import (
 	"testing"
 
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // exclusivePay creates a payment for `amount` in an app whose prices exclude

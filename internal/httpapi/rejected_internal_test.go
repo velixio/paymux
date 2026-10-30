@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/redact"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/redact"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func answer(t *testing.T, a *API, err error) (int, map[string]any, string) {

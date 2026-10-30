@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/invoice"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/invoice"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 const supplierGSTIN = "27AAPFU0939F1ZV" // Maharashtra

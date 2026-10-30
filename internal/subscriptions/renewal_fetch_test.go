@@ -4,9 +4,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // activated returns a provider-managed subscription that is active, and the

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/framework"
-	"github.com/paymux/paymux/pkg/hub"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/framework"
+	"github.com/velixio/paymux/pkg/hub"
 )
 
 func TestBuiltInConnectorsAreLinked(t *testing.T) {

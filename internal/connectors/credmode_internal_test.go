@@ -5,13 +5,13 @@ import (
 	"strings"
 	"testing"
 
-	_ "github.com/paymux/paymux/connectors/cashfree"
-	_ "github.com/paymux/paymux/connectors/payu"
-	_ "github.com/paymux/paymux/connectors/razorpay"
-	_ "github.com/paymux/paymux/connectors/stripe"
-	_ "github.com/paymux/paymux/connectors/whop"
-	_ "github.com/paymux/paymux/connectors/zoho"
-	"github.com/paymux/paymux/pkg/connector"
+	_ "github.com/velixio/paymux/connectors/cashfree"
+	_ "github.com/velixio/paymux/connectors/payu"
+	_ "github.com/velixio/paymux/connectors/razorpay"
+	_ "github.com/velixio/paymux/connectors/stripe"
+	_ "github.com/velixio/paymux/connectors/whop"
+	_ "github.com/velixio/paymux/connectors/zoho"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Every sandbox signal each connector's config has, one row each: a live

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
 )
 
 // The testdata files real_*, err_* and event_* follow responses recorded from the

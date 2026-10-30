@@ -10,10 +10,10 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // Audit 2026-10 (ledger lane). The handler has committed its side effect (a

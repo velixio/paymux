@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 // ReissueResult is what ReissueInvoice created.

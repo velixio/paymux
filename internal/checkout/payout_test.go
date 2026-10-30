@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/paymux/paymux/internal/checkout"
-	"github.com/paymux/paymux/internal/payouts"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/checkout"
+	"github.com/velixio/paymux/internal/payouts"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 type stubPayouts struct {

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 var pngBytes = append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{0}, 32)...)

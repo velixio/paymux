@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // countingReader counts the queries made through it.

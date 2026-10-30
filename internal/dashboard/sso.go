@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/oidc"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/oidc"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // Single sign-on (OpenID Connect). A sign-in through the identity provider

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/config"
+	"github.com/velixio/paymux/internal/config"
 )
 
 func smtpFor(s *fakeSMTP, user, pass string) *SMTPMailer {

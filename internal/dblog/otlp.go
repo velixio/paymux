@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // OTLPOptions configures the optional export of the stored rows to an

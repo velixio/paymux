@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // B2CLThresholdPaise is the built-in value of the b2cl_threshold setting: the

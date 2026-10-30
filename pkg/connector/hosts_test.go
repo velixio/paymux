@@ -3,7 +3,7 @@ package connector_test
 import (
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func TestValidOrigin(t *testing.T) {

@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"testing"
 
-	_ "github.com/paymux/paymux/connectors/payu"
-	_ "github.com/paymux/paymux/connectors/stripe"
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/connectors"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	_ "github.com/velixio/paymux/connectors/payu"
+	_ "github.com/velixio/paymux/connectors/stripe"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/connectors"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // AUDIT: the Paymux account mode is not bound to the provider credentials'

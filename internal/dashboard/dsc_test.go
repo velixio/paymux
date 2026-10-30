@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 func dscFile(t *testing.T, name string) []byte {

@@ -9,10 +9,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/notify"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/notify"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // Errors, matched with errors.Is.

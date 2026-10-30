@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Wire entities (only the fields Paymux reads). Timestamps are unix seconds.

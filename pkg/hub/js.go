@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/paymux/paymux/internal/outbound"
-	"github.com/paymux/paymux/pkg/jsvm"
+	"github.com/velixio/paymux/internal/outbound"
+	"github.com/velixio/paymux/pkg/jsvm"
 )
 
 // jsFetchTimeout is the longest a single fetch() from a script may take.

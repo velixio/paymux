@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/paylinks"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/paylinks"
 )
 
 func (a *API) linksEnabled(w http.ResponseWriter, r *http.Request) bool {

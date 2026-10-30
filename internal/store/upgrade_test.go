@@ -13,14 +13,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/migrations"
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/migrations"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // The upgrade guarantee (docs/upgrades.md): a database left by release N-1

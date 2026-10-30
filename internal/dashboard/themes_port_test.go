@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 const richTheme = `{"name":"rich","version":"2.0.0","description":"Has everything","font_stack":"Georgia, serif","tokens":{"--radius":"2px","--color-accent":"#ff0066"},"dashboard":{"seeds":{"accent":"#0d7d68","sidebar":"#121417"},"dark_seeds":{"accent":"#34c9a9"},"scheme":"dark","overrides":{"light":{"--border":"#112233"}}}}`

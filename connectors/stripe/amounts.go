@@ -5,7 +5,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // Stripe's amounts are integers in the currency's smallest unit, but its idea of

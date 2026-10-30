@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/auth"
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/auth"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // The built-in roles. Custom roles live in the roles table.

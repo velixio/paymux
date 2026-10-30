@@ -98,6 +98,11 @@ s_vet() {
 	go vet -tags loadtest ./...
 }
 
+s_sdk() {
+	step "merchant Go SDK (independent module)"
+	(cd sdk/go && go vet ./... && go test -race ./...)
+}
+
 s_apisnap() {
 	step "API snapshot (pkg/... exported API == scripts/apisnap/pkg.txt)"
 	go run ./scripts/apisnap -check
@@ -244,6 +249,7 @@ g_checks() {
 	s_react
 	s_examples
 	s_vet
+	s_sdk
 	s_apisnap
 	s_capmatrix
 	s_shards 3
@@ -271,6 +277,7 @@ g_full() {
 	s_dashboard
 	s_examples
 	s_vet
+	s_sdk
 	s_apisnap
 	s_capmatrix
 	s_shards 3

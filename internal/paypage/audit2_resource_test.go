@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core"
 )
 
 // Anyone who holds one return URL (every customer does) can make the hub call

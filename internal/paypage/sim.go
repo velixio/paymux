@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/paymux/paymux/connectors/simulator"
-	"github.com/paymux/paymux/internal/web"
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/connectors/simulator"
+	"github.com/velixio/paymux/internal/web"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // RegisterSim mounts the simulator's hosted checkout page, /sim/{ref}. It is

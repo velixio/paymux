@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/paymux/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/secrets"
 )
 
 // The sealed values (encrypted with the master key) live in several tables.

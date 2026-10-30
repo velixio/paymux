@@ -10,13 +10,13 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/invoice/render"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/notify"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/invoice/render"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/notify"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 // exportEndorsement is the statutory text printed on exports under LUT

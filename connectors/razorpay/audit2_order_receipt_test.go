@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // FetchPayment by order id (the hinted-order path) must not stamp the caller's

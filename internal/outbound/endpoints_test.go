@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/outbound"
-	"github.com/paymux/paymux/internal/outbound/stdwebhooks"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/outbound"
+	"github.com/velixio/paymux/internal/outbound/stdwebhooks"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 func TestEndpointLifecycle(t *testing.T) {

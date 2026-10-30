@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
 )
 
 // Whop rejects a non-https redirect_url (sandbox, 2026-10-17): "The redirect

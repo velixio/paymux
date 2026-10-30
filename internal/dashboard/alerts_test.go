@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/alertcenter"
-	"github.com/paymux/paymux/internal/notify"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/alertcenter"
+	"github.com/velixio/paymux/internal/notify"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 func (e *env) raise(sev notify.Severity, kind, msg string, refs map[string]string) {

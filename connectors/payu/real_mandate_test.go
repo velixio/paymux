@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Answers recorded from the PayU test environment (2026-10-18), with a card

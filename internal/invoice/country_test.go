@@ -3,9 +3,9 @@ package invoice_test
 import (
 	"testing"
 
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // A buyer abroad paying in rupees is not a domestic B2C sale: the buyer's

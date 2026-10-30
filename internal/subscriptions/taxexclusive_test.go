@@ -3,9 +3,9 @@ package subscriptions_test
 import (
 	"testing"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/internal/subscriptions"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/subscriptions"
 )
 
 // With prices that exclude GST the plan price is the taxable value and the

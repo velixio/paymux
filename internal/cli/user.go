@@ -13,10 +13,10 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/paymux/paymux/internal/config"
-	"github.com/paymux/paymux/internal/dashboard"
-	"github.com/paymux/paymux/internal/migrations"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/config"
+	"github.com/velixio/paymux/internal/dashboard"
+	"github.com/velixio/paymux/internal/migrations"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // Stdin is where passwords are read from; tests replace it.

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // Audit 2026-10: the handler passed records to stderr unchanged, so a known

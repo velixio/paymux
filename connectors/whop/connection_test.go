@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
 )
 
 // Whop looks a payment up by its own id or by a checkout configuration id, never

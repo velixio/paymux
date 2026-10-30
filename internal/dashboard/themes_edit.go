@@ -8,10 +8,10 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/web"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/web"
 )
 
 // seedForm is one set of seed colours as the form shows it. An optional seed

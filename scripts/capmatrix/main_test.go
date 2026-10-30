@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func infos() []connector.Info {

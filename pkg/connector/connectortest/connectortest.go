@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // StatusCase is one provider status the connector must map.
@@ -284,6 +284,7 @@ func Run(t *testing.T, factory connector.Factory, fx Fixtures) {
 			connector.CapMandateManager:      isA[connector.MandateManager](c),
 			connector.CapPayout:              isA[connector.Payouter](c),
 			connector.CapOAuth:               isA[connector.OAuthConnector](c),
+			connector.CapWebhookConfig:       isA[connector.WebhookConfigurator](c),
 		}
 		for cap, has := range impl {
 			if has != info.Has(cap) {

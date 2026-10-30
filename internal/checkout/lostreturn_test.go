@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/checkout"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/checkout"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // The customer pays at the provider, but the provider's own response handler

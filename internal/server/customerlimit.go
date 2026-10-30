@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/paymux/paymux/internal/clientip"
+	"github.com/velixio/paymux/internal/clientip"
 )
 
 // customerBurst is how many requests one address may make at once on one

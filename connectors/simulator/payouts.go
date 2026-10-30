@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // poRec is one simulated payout. The beneficiary is deliberately not kept: the

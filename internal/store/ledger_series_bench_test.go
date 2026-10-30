@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/migrations"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/migrations"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // BenchmarkLedgerSeriesAllTime times the all-time daily series over one

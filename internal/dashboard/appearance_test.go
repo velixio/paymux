@@ -9,10 +9,10 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/internal/web"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/web"
 )
 
 // themedEnv is an env whose renderer knows the bundled themes plus the ones

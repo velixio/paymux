@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/migrations"
+	"github.com/velixio/paymux/internal/migrations"
 )
 
 func run(args ...string) (int, string, string) {

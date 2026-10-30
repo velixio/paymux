@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	webassets "github.com/paymux/paymux/web"
+	webassets "github.com/velixio/paymux/web"
 )
 
 // A theme is a directory <data>/themes/<name>/ (or a bundled one) holding:

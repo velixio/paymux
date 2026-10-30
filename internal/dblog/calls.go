@@ -9,11 +9,11 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/logctx"
-	"github.com/paymux/paymux/internal/redact"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/logctx"
+	"github.com/velixio/paymux/internal/redact"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // ProviderMeta says whose calls a provider call recorder reports.

@@ -6,8 +6,8 @@ package look
 import (
 	"context"
 
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/web"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/web"
 )
 
 // Look is the theme and language of one page.

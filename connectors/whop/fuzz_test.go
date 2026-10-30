@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
 )
 
 // Fuzz targets run as plain tests over their seed corpus in CI; run one for

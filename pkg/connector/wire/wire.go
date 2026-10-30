@@ -19,7 +19,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Method names, the last path segment of each call.
@@ -30,6 +30,7 @@ const (
 	MethodVerifyWebhook              = "verify_webhook"
 	MethodParseWebhook               = "parse_webhook"
 	MethodFetchPayment               = "fetch_payment"
+	MethodConfigureWebhook           = "configure_webhook"
 	MethodRefund                     = "refund"
 	MethodFetchRefund                = "fetch_refund"
 	MethodListDisputes               = "list_disputes"

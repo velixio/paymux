@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // refRec is one simulated refund.

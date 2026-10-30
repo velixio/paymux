@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/paymux/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/settings"
 )
 
 func TestSessionLifetimeSettings(t *testing.T) {

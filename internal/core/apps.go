@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // ErrConflict means the request collides with existing data (a duplicate slug).

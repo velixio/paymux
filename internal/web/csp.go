@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // HostedCSPHeader is the header the hosted payment pages send their policy in.

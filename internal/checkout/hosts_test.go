@@ -7,9 +7,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/paymux/paymux/internal/checkout"
-	"github.com/paymux/paymux/internal/notify"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/checkout"
+	"github.com/velixio/paymux/internal/notify"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // alertLog is the ops alert sender of a test.

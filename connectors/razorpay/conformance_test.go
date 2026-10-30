@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
 )
 
 var testConfig = json.RawMessage(`{"key_id":"` + testKeyID + `","key_secret":"` + testKeySecret + `","webhook_secret":"` + testWebhookSecret + `","name":"Voice Studio","logo":"https://example.com/logo.png"}`)

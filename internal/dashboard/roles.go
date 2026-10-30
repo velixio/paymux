@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/store"
 )
 
 var roleNameRE = regexp.MustCompile(`^[a-z][a-z0-9_-]{1,31}$`)

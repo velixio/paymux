@@ -9,9 +9,9 @@ import (
 	"log/slog"
 	"text/tabwriter"
 
-	"github.com/paymux/paymux/internal/config"
-	"github.com/paymux/paymux/internal/migrations"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/config"
+	"github.com/velixio/paymux/internal/migrations"
+	"github.com/velixio/paymux/internal/store"
 )
 
 const backupUsage = "usage: paymux backup --to <file>"

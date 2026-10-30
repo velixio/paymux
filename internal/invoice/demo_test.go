@@ -4,11 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 // The DEMO setup of the live server: a tax entity in Karnataka (GSTIN

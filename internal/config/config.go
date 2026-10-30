@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/domains"
+	"github.com/velixio/paymux/internal/domains"
 )
 
 // Env is the deployment environment.

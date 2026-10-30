@@ -8,8 +8,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/paymux/paymux/internal/invoice/irp"
-	"github.com/paymux/paymux/internal/routing"
+	"github.com/velixio/paymux/internal/invoice/irp"
+	"github.com/velixio/paymux/internal/routing"
 )
 
 // Level says where a setting may be set (spec section 8a, "Level" column).

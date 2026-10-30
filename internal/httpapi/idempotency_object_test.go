@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // Security remediation R-A5 / H-1. The middleware reservation is only a fast

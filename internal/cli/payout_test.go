@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store"
 )
 
 func seedPayout(t *testing.T, dir, id, status string) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
 )
 
 func TestRemoteRequiresHTTPS(t *testing.T) {

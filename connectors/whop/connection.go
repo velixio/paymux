@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // TestConnection implements connector.ConnectionTester: Whop can only look a

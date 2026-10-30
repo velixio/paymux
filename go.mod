@@ -1,4 +1,4 @@
-module github.com/paymux/paymux
+module github.com/velixio/paymux
 
 go 1.27.3
 

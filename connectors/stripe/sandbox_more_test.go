@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // A payout is made from balance that a bypass-pending test card makes available

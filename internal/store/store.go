@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/paymux/paymux/internal/store/dialect"
+	"github.com/velixio/paymux/internal/store/dialect"
 )
 
 // ErrLocked means another process holds the SQLite data-dir lock.

@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
 )
 
 // mock is a minimal conformant connector used to test the kit itself.

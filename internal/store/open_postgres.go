@@ -6,7 +6,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/paymux/paymux/internal/store/dialect"
+	"github.com/velixio/paymux/internal/store/dialect"
 )
 
 func openPostgres(ctx context.Context, databaseURL string) (*DB, error) {

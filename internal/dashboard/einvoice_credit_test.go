@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/invoice/einvoice"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/invoice/einvoice"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 func TestCreditNotePageOffersItsEInvoiceForB2BOnly(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 type paymentWire struct {

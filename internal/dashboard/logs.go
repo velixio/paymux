@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // The Logs page: the errors and warnings kept in the database (application

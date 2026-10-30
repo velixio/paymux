@@ -6,10 +6,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/paymux/paymux/connectors/remote"
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/connectortest"
-	"github.com/paymux/paymux/pkg/connector/wire"
+	"github.com/velixio/paymux/connectors/remote"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/pkg/connector/wire"
 )
 
 // The Razorpay connector, served by a remote-connector service (the wire

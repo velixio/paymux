@@ -8,13 +8,13 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
-	"github.com/paymux/paymux/internal/web"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/web"
+	"github.com/velixio/paymux/pkg/connector/money"
 
-	"github.com/paymux/paymux/internal/notify"
+	"github.com/velixio/paymux/internal/notify"
 )
 
 // predebitTemplate is the template file of the customer pre-debit notice. It

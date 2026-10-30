@@ -4,9 +4,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // R-A3. Two concurrent returns can each pass the read check that a provider

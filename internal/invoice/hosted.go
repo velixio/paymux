@@ -7,16 +7,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/paymux/paymux/internal/domains"
+	"github.com/velixio/paymux/internal/domains"
 	"net/http"
 	"net/url"
 	"strings"
 
-	"github.com/paymux/paymux/internal/look"
-	"github.com/paymux/paymux/internal/qrcode"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/internal/look"
+	"github.com/velixio/paymux/internal/qrcode"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 type pageLine struct{ Description, SAC, Taxable string }

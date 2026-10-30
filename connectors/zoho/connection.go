@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // TestConnection implements connector.ConnectionTester. Zoho can only look a

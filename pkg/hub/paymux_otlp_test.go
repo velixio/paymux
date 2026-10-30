@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/config"
+	"github.com/velixio/paymux/internal/config"
 )
 
 // With PAYMUX_OTLP_LOGS_ENDPOINT set, the warnings and errors that are stored

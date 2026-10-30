@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/logging"
+	"github.com/velixio/paymux/internal/logging"
 )
 
 // B-7c: with PAYMUX_CHECKOUT_URL the customer pages live on a host of their own.

@@ -4,8 +4,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // api_key.create is not a back door to payout and refund power: a key may only

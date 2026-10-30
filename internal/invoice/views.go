@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // InvoiceView is the public JSON shape of an invoice (API and events). The

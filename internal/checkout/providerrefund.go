@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // ImportRefund books a refund the provider made on its own (from its

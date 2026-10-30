@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 func TestScopedAndRotatedKeysFromTheDashboard(t *testing.T) {

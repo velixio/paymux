@@ -7,14 +7,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/paymux/paymux/internal/checkout"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/logctx"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/checkout"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/logctx"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // ---- expiry and provider jobs -------------------------------------------

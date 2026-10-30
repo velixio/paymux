@@ -2,7 +2,7 @@
 
 package remote
 
-import "github.com/paymux/paymux/pkg/connector"
+import "github.com/velixio/paymux/pkg/connector"
 
 // capabilityBits maps each optional capability to its bit in a compose mask.
 var capabilityBits = map[connector.Capability]int{
@@ -15,6 +15,7 @@ var capabilityBits = map[connector.Capability]int{
 	connector.CapSubscriptionManager: 64,
 	connector.CapMandateManager:      128,
 	connector.CapPayout:              256,
+	connector.CapWebhookConfig:       512,
 }
 
 type combo1 struct {
@@ -4365,6 +4366,4870 @@ type combo511 struct {
 	payoutPart
 }
 
+type combo512 struct {
+	*remote
+	webhookConfigPart
+}
+
+type combo513 struct {
+	*remote
+	refundPart
+	webhookConfigPart
+}
+
+type combo514 struct {
+	*remote
+	disputeReadPart
+	webhookConfigPart
+}
+
+type combo515 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	webhookConfigPart
+}
+
+type combo516 struct {
+	*remote
+	disputeRespondPart
+	webhookConfigPart
+}
+
+type combo517 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	webhookConfigPart
+}
+
+type combo518 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	webhookConfigPart
+}
+
+type combo519 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	webhookConfigPart
+}
+
+type combo520 struct {
+	*remote
+	listPart
+	webhookConfigPart
+}
+
+type combo521 struct {
+	*remote
+	refundPart
+	listPart
+	webhookConfigPart
+}
+
+type combo522 struct {
+	*remote
+	disputeReadPart
+	listPart
+	webhookConfigPart
+}
+
+type combo523 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	webhookConfigPart
+}
+
+type combo524 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	webhookConfigPart
+}
+
+type combo525 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	webhookConfigPart
+}
+
+type combo526 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	webhookConfigPart
+}
+
+type combo527 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	webhookConfigPart
+}
+
+type combo528 struct {
+	*remote
+	settlePart
+	webhookConfigPart
+}
+
+type combo529 struct {
+	*remote
+	refundPart
+	settlePart
+	webhookConfigPart
+}
+
+type combo530 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	webhookConfigPart
+}
+
+type combo531 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	webhookConfigPart
+}
+
+type combo532 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	webhookConfigPart
+}
+
+type combo533 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	webhookConfigPart
+}
+
+type combo534 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	webhookConfigPart
+}
+
+type combo535 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	webhookConfigPart
+}
+
+type combo536 struct {
+	*remote
+	listPart
+	settlePart
+	webhookConfigPart
+}
+
+type combo537 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	webhookConfigPart
+}
+
+type combo538 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	webhookConfigPart
+}
+
+type combo539 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	webhookConfigPart
+}
+
+type combo540 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	webhookConfigPart
+}
+
+type combo541 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	webhookConfigPart
+}
+
+type combo542 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	webhookConfigPart
+}
+
+type combo543 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	webhookConfigPart
+}
+
+type combo544 struct {
+	*remote
+	cancelPart
+	webhookConfigPart
+}
+
+type combo545 struct {
+	*remote
+	refundPart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo546 struct {
+	*remote
+	disputeReadPart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo547 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo548 struct {
+	*remote
+	disputeRespondPart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo549 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo550 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo551 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo552 struct {
+	*remote
+	listPart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo553 struct {
+	*remote
+	refundPart
+	listPart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo554 struct {
+	*remote
+	disputeReadPart
+	listPart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo555 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo556 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo557 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo558 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo559 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo560 struct {
+	*remote
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo561 struct {
+	*remote
+	refundPart
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo562 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo563 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo564 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo565 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo566 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo567 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo568 struct {
+	*remote
+	listPart
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo569 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo570 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo571 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo572 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo573 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo574 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo575 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	webhookConfigPart
+}
+
+type combo576 struct {
+	*remote
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo577 struct {
+	*remote
+	refundPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo578 struct {
+	*remote
+	disputeReadPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo579 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo580 struct {
+	*remote
+	disputeRespondPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo581 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo582 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo583 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo584 struct {
+	*remote
+	listPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo585 struct {
+	*remote
+	refundPart
+	listPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo586 struct {
+	*remote
+	disputeReadPart
+	listPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo587 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo588 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo589 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo590 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo591 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo592 struct {
+	*remote
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo593 struct {
+	*remote
+	refundPart
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo594 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo595 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo596 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo597 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo598 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo599 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo600 struct {
+	*remote
+	listPart
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo601 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo602 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo603 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo604 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo605 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo606 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo607 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo608 struct {
+	*remote
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo609 struct {
+	*remote
+	refundPart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo610 struct {
+	*remote
+	disputeReadPart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo611 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo612 struct {
+	*remote
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo613 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo614 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo615 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo616 struct {
+	*remote
+	listPart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo617 struct {
+	*remote
+	refundPart
+	listPart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo618 struct {
+	*remote
+	disputeReadPart
+	listPart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo619 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo620 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo621 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo622 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo623 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo624 struct {
+	*remote
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo625 struct {
+	*remote
+	refundPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo626 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo627 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo628 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo629 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo630 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo631 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo632 struct {
+	*remote
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo633 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo634 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo635 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo636 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo637 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo638 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo639 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	webhookConfigPart
+}
+
+type combo640 struct {
+	*remote
+	mandatePart
+	webhookConfigPart
+}
+
+type combo641 struct {
+	*remote
+	refundPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo642 struct {
+	*remote
+	disputeReadPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo643 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo644 struct {
+	*remote
+	disputeRespondPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo645 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo646 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo647 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo648 struct {
+	*remote
+	listPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo649 struct {
+	*remote
+	refundPart
+	listPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo650 struct {
+	*remote
+	disputeReadPart
+	listPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo651 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo652 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo653 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo654 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo655 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo656 struct {
+	*remote
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo657 struct {
+	*remote
+	refundPart
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo658 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo659 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo660 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo661 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo662 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo663 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo664 struct {
+	*remote
+	listPart
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo665 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo666 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo667 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo668 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo669 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo670 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo671 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo672 struct {
+	*remote
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo673 struct {
+	*remote
+	refundPart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo674 struct {
+	*remote
+	disputeReadPart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo675 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo676 struct {
+	*remote
+	disputeRespondPart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo677 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo678 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo679 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo680 struct {
+	*remote
+	listPart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo681 struct {
+	*remote
+	refundPart
+	listPart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo682 struct {
+	*remote
+	disputeReadPart
+	listPart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo683 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo684 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo685 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo686 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo687 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo688 struct {
+	*remote
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo689 struct {
+	*remote
+	refundPart
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo690 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo691 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo692 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo693 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo694 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo695 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo696 struct {
+	*remote
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo697 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo698 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo699 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo700 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo701 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo702 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo703 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo704 struct {
+	*remote
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo705 struct {
+	*remote
+	refundPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo706 struct {
+	*remote
+	disputeReadPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo707 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo708 struct {
+	*remote
+	disputeRespondPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo709 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo710 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo711 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo712 struct {
+	*remote
+	listPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo713 struct {
+	*remote
+	refundPart
+	listPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo714 struct {
+	*remote
+	disputeReadPart
+	listPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo715 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo716 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo717 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo718 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo719 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo720 struct {
+	*remote
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo721 struct {
+	*remote
+	refundPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo722 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo723 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo724 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo725 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo726 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo727 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo728 struct {
+	*remote
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo729 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo730 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo731 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo732 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo733 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo734 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo735 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo736 struct {
+	*remote
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo737 struct {
+	*remote
+	refundPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo738 struct {
+	*remote
+	disputeReadPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo739 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo740 struct {
+	*remote
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo741 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo742 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo743 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo744 struct {
+	*remote
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo745 struct {
+	*remote
+	refundPart
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo746 struct {
+	*remote
+	disputeReadPart
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo747 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo748 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo749 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo750 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo751 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo752 struct {
+	*remote
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo753 struct {
+	*remote
+	refundPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo754 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo755 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo756 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo757 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo758 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo759 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo760 struct {
+	*remote
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo761 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo762 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo763 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo764 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo765 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo766 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo767 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	webhookConfigPart
+}
+
+type combo768 struct {
+	*remote
+	payoutPart
+	webhookConfigPart
+}
+
+type combo769 struct {
+	*remote
+	refundPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo770 struct {
+	*remote
+	disputeReadPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo771 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo772 struct {
+	*remote
+	disputeRespondPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo773 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo774 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo775 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo776 struct {
+	*remote
+	listPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo777 struct {
+	*remote
+	refundPart
+	listPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo778 struct {
+	*remote
+	disputeReadPart
+	listPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo779 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo780 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo781 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo782 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo783 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo784 struct {
+	*remote
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo785 struct {
+	*remote
+	refundPart
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo786 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo787 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo788 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo789 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo790 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo791 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo792 struct {
+	*remote
+	listPart
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo793 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo794 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo795 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo796 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo797 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo798 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo799 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo800 struct {
+	*remote
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo801 struct {
+	*remote
+	refundPart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo802 struct {
+	*remote
+	disputeReadPart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo803 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo804 struct {
+	*remote
+	disputeRespondPart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo805 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo806 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo807 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo808 struct {
+	*remote
+	listPart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo809 struct {
+	*remote
+	refundPart
+	listPart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo810 struct {
+	*remote
+	disputeReadPart
+	listPart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo811 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo812 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo813 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo814 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo815 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo816 struct {
+	*remote
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo817 struct {
+	*remote
+	refundPart
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo818 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo819 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo820 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo821 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo822 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo823 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo824 struct {
+	*remote
+	listPart
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo825 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo826 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo827 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo828 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo829 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo830 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo831 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo832 struct {
+	*remote
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo833 struct {
+	*remote
+	refundPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo834 struct {
+	*remote
+	disputeReadPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo835 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo836 struct {
+	*remote
+	disputeRespondPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo837 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo838 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo839 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo840 struct {
+	*remote
+	listPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo841 struct {
+	*remote
+	refundPart
+	listPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo842 struct {
+	*remote
+	disputeReadPart
+	listPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo843 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo844 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo845 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo846 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo847 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo848 struct {
+	*remote
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo849 struct {
+	*remote
+	refundPart
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo850 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo851 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo852 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo853 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo854 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo855 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo856 struct {
+	*remote
+	listPart
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo857 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo858 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo859 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo860 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo861 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo862 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo863 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo864 struct {
+	*remote
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo865 struct {
+	*remote
+	refundPart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo866 struct {
+	*remote
+	disputeReadPart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo867 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo868 struct {
+	*remote
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo869 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo870 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo871 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo872 struct {
+	*remote
+	listPart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo873 struct {
+	*remote
+	refundPart
+	listPart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo874 struct {
+	*remote
+	disputeReadPart
+	listPart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo875 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo876 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo877 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo878 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo879 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo880 struct {
+	*remote
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo881 struct {
+	*remote
+	refundPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo882 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo883 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo884 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo885 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo886 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo887 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo888 struct {
+	*remote
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo889 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo890 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo891 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo892 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo893 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo894 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo895 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo896 struct {
+	*remote
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo897 struct {
+	*remote
+	refundPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo898 struct {
+	*remote
+	disputeReadPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo899 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo900 struct {
+	*remote
+	disputeRespondPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo901 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo902 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo903 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo904 struct {
+	*remote
+	listPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo905 struct {
+	*remote
+	refundPart
+	listPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo906 struct {
+	*remote
+	disputeReadPart
+	listPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo907 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo908 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo909 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo910 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo911 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo912 struct {
+	*remote
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo913 struct {
+	*remote
+	refundPart
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo914 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo915 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo916 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo917 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo918 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo919 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo920 struct {
+	*remote
+	listPart
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo921 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo922 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo923 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo924 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo925 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo926 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo927 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo928 struct {
+	*remote
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo929 struct {
+	*remote
+	refundPart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo930 struct {
+	*remote
+	disputeReadPart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo931 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo932 struct {
+	*remote
+	disputeRespondPart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo933 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo934 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo935 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo936 struct {
+	*remote
+	listPart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo937 struct {
+	*remote
+	refundPart
+	listPart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo938 struct {
+	*remote
+	disputeReadPart
+	listPart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo939 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo940 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo941 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo942 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo943 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo944 struct {
+	*remote
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo945 struct {
+	*remote
+	refundPart
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo946 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo947 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo948 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo949 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo950 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo951 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo952 struct {
+	*remote
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo953 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo954 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo955 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo956 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo957 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo958 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo959 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo960 struct {
+	*remote
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo961 struct {
+	*remote
+	refundPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo962 struct {
+	*remote
+	disputeReadPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo963 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo964 struct {
+	*remote
+	disputeRespondPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo965 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo966 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo967 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo968 struct {
+	*remote
+	listPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo969 struct {
+	*remote
+	refundPart
+	listPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo970 struct {
+	*remote
+	disputeReadPart
+	listPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo971 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo972 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo973 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo974 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo975 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo976 struct {
+	*remote
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo977 struct {
+	*remote
+	refundPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo978 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo979 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo980 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo981 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo982 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo983 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo984 struct {
+	*remote
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo985 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo986 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo987 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo988 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo989 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo990 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo991 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo992 struct {
+	*remote
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo993 struct {
+	*remote
+	refundPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo994 struct {
+	*remote
+	disputeReadPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo995 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo996 struct {
+	*remote
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo997 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo998 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo999 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1000 struct {
+	*remote
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1001 struct {
+	*remote
+	refundPart
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1002 struct {
+	*remote
+	disputeReadPart
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1003 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1004 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1005 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1006 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1007 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1008 struct {
+	*remote
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1009 struct {
+	*remote
+	refundPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1010 struct {
+	*remote
+	disputeReadPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1011 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1012 struct {
+	*remote
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1013 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1014 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1015 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1016 struct {
+	*remote
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1017 struct {
+	*remote
+	refundPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1018 struct {
+	*remote
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1019 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1020 struct {
+	*remote
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1021 struct {
+	*remote
+	refundPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1022 struct {
+	*remote
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
+type combo1023 struct {
+	*remote
+	refundPart
+	disputeReadPart
+	disputeRespondPart
+	listPart
+	settlePart
+	cancelPart
+	subscriptionPart
+	mandatePart
+	payoutPart
+	webhookConfigPart
+}
+
 // compose returns r with exactly the optional interfaces in mask.
 func compose(r *remote, mask int) connector.Connector {
 	switch mask {
@@ -5390,6 +10255,1030 @@ func compose(r *remote, mask int) connector.Connector {
 		return combo510{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}}
 	case 511:
 		return combo511{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}}
+	case 512:
+		return combo512{r, webhookConfigPart{r}}
+	case 513:
+		return combo513{r, refundPart{r}, webhookConfigPart{r}}
+	case 514:
+		return combo514{r, disputeReadPart{r}, webhookConfigPart{r}}
+	case 515:
+		return combo515{r, refundPart{r}, disputeReadPart{r}, webhookConfigPart{r}}
+	case 516:
+		return combo516{r, disputeRespondPart{r}, webhookConfigPart{r}}
+	case 517:
+		return combo517{r, refundPart{r}, disputeRespondPart{r}, webhookConfigPart{r}}
+	case 518:
+		return combo518{r, disputeReadPart{r}, disputeRespondPart{r}, webhookConfigPart{r}}
+	case 519:
+		return combo519{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, webhookConfigPart{r}}
+	case 520:
+		return combo520{r, listPart{r}, webhookConfigPart{r}}
+	case 521:
+		return combo521{r, refundPart{r}, listPart{r}, webhookConfigPart{r}}
+	case 522:
+		return combo522{r, disputeReadPart{r}, listPart{r}, webhookConfigPart{r}}
+	case 523:
+		return combo523{r, refundPart{r}, disputeReadPart{r}, listPart{r}, webhookConfigPart{r}}
+	case 524:
+		return combo524{r, disputeRespondPart{r}, listPart{r}, webhookConfigPart{r}}
+	case 525:
+		return combo525{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, webhookConfigPart{r}}
+	case 526:
+		return combo526{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, webhookConfigPart{r}}
+	case 527:
+		return combo527{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, webhookConfigPart{r}}
+	case 528:
+		return combo528{r, settlePart{r}, webhookConfigPart{r}}
+	case 529:
+		return combo529{r, refundPart{r}, settlePart{r}, webhookConfigPart{r}}
+	case 530:
+		return combo530{r, disputeReadPart{r}, settlePart{r}, webhookConfigPart{r}}
+	case 531:
+		return combo531{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, webhookConfigPart{r}}
+	case 532:
+		return combo532{r, disputeRespondPart{r}, settlePart{r}, webhookConfigPart{r}}
+	case 533:
+		return combo533{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, webhookConfigPart{r}}
+	case 534:
+		return combo534{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, webhookConfigPart{r}}
+	case 535:
+		return combo535{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, webhookConfigPart{r}}
+	case 536:
+		return combo536{r, listPart{r}, settlePart{r}, webhookConfigPart{r}}
+	case 537:
+		return combo537{r, refundPart{r}, listPart{r}, settlePart{r}, webhookConfigPart{r}}
+	case 538:
+		return combo538{r, disputeReadPart{r}, listPart{r}, settlePart{r}, webhookConfigPart{r}}
+	case 539:
+		return combo539{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, webhookConfigPart{r}}
+	case 540:
+		return combo540{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, webhookConfigPart{r}}
+	case 541:
+		return combo541{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, webhookConfigPart{r}}
+	case 542:
+		return combo542{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, webhookConfigPart{r}}
+	case 543:
+		return combo543{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, webhookConfigPart{r}}
+	case 544:
+		return combo544{r, cancelPart{r}, webhookConfigPart{r}}
+	case 545:
+		return combo545{r, refundPart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 546:
+		return combo546{r, disputeReadPart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 547:
+		return combo547{r, refundPart{r}, disputeReadPart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 548:
+		return combo548{r, disputeRespondPart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 549:
+		return combo549{r, refundPart{r}, disputeRespondPart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 550:
+		return combo550{r, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 551:
+		return combo551{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 552:
+		return combo552{r, listPart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 553:
+		return combo553{r, refundPart{r}, listPart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 554:
+		return combo554{r, disputeReadPart{r}, listPart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 555:
+		return combo555{r, refundPart{r}, disputeReadPart{r}, listPart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 556:
+		return combo556{r, disputeRespondPart{r}, listPart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 557:
+		return combo557{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 558:
+		return combo558{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 559:
+		return combo559{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 560:
+		return combo560{r, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 561:
+		return combo561{r, refundPart{r}, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 562:
+		return combo562{r, disputeReadPart{r}, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 563:
+		return combo563{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 564:
+		return combo564{r, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 565:
+		return combo565{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 566:
+		return combo566{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 567:
+		return combo567{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 568:
+		return combo568{r, listPart{r}, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 569:
+		return combo569{r, refundPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 570:
+		return combo570{r, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 571:
+		return combo571{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 572:
+		return combo572{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 573:
+		return combo573{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 574:
+		return combo574{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 575:
+		return combo575{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, webhookConfigPart{r}}
+	case 576:
+		return combo576{r, subscriptionPart{r}, webhookConfigPart{r}}
+	case 577:
+		return combo577{r, refundPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 578:
+		return combo578{r, disputeReadPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 579:
+		return combo579{r, refundPart{r}, disputeReadPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 580:
+		return combo580{r, disputeRespondPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 581:
+		return combo581{r, refundPart{r}, disputeRespondPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 582:
+		return combo582{r, disputeReadPart{r}, disputeRespondPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 583:
+		return combo583{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 584:
+		return combo584{r, listPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 585:
+		return combo585{r, refundPart{r}, listPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 586:
+		return combo586{r, disputeReadPart{r}, listPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 587:
+		return combo587{r, refundPart{r}, disputeReadPart{r}, listPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 588:
+		return combo588{r, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 589:
+		return combo589{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 590:
+		return combo590{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 591:
+		return combo591{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 592:
+		return combo592{r, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 593:
+		return combo593{r, refundPart{r}, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 594:
+		return combo594{r, disputeReadPart{r}, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 595:
+		return combo595{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 596:
+		return combo596{r, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 597:
+		return combo597{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 598:
+		return combo598{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 599:
+		return combo599{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 600:
+		return combo600{r, listPart{r}, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 601:
+		return combo601{r, refundPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 602:
+		return combo602{r, disputeReadPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 603:
+		return combo603{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 604:
+		return combo604{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 605:
+		return combo605{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 606:
+		return combo606{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 607:
+		return combo607{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 608:
+		return combo608{r, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 609:
+		return combo609{r, refundPart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 610:
+		return combo610{r, disputeReadPart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 611:
+		return combo611{r, refundPart{r}, disputeReadPart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 612:
+		return combo612{r, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 613:
+		return combo613{r, refundPart{r}, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 614:
+		return combo614{r, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 615:
+		return combo615{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 616:
+		return combo616{r, listPart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 617:
+		return combo617{r, refundPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 618:
+		return combo618{r, disputeReadPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 619:
+		return combo619{r, refundPart{r}, disputeReadPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 620:
+		return combo620{r, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 621:
+		return combo621{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 622:
+		return combo622{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 623:
+		return combo623{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 624:
+		return combo624{r, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 625:
+		return combo625{r, refundPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 626:
+		return combo626{r, disputeReadPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 627:
+		return combo627{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 628:
+		return combo628{r, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 629:
+		return combo629{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 630:
+		return combo630{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 631:
+		return combo631{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 632:
+		return combo632{r, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 633:
+		return combo633{r, refundPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 634:
+		return combo634{r, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 635:
+		return combo635{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 636:
+		return combo636{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 637:
+		return combo637{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 638:
+		return combo638{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 639:
+		return combo639{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, webhookConfigPart{r}}
+	case 640:
+		return combo640{r, mandatePart{r}, webhookConfigPart{r}}
+	case 641:
+		return combo641{r, refundPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 642:
+		return combo642{r, disputeReadPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 643:
+		return combo643{r, refundPart{r}, disputeReadPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 644:
+		return combo644{r, disputeRespondPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 645:
+		return combo645{r, refundPart{r}, disputeRespondPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 646:
+		return combo646{r, disputeReadPart{r}, disputeRespondPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 647:
+		return combo647{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 648:
+		return combo648{r, listPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 649:
+		return combo649{r, refundPart{r}, listPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 650:
+		return combo650{r, disputeReadPart{r}, listPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 651:
+		return combo651{r, refundPart{r}, disputeReadPart{r}, listPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 652:
+		return combo652{r, disputeRespondPart{r}, listPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 653:
+		return combo653{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 654:
+		return combo654{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 655:
+		return combo655{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 656:
+		return combo656{r, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 657:
+		return combo657{r, refundPart{r}, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 658:
+		return combo658{r, disputeReadPart{r}, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 659:
+		return combo659{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 660:
+		return combo660{r, disputeRespondPart{r}, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 661:
+		return combo661{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 662:
+		return combo662{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 663:
+		return combo663{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 664:
+		return combo664{r, listPart{r}, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 665:
+		return combo665{r, refundPart{r}, listPart{r}, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 666:
+		return combo666{r, disputeReadPart{r}, listPart{r}, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 667:
+		return combo667{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 668:
+		return combo668{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 669:
+		return combo669{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 670:
+		return combo670{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 671:
+		return combo671{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 672:
+		return combo672{r, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 673:
+		return combo673{r, refundPart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 674:
+		return combo674{r, disputeReadPart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 675:
+		return combo675{r, refundPart{r}, disputeReadPart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 676:
+		return combo676{r, disputeRespondPart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 677:
+		return combo677{r, refundPart{r}, disputeRespondPart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 678:
+		return combo678{r, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 679:
+		return combo679{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 680:
+		return combo680{r, listPart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 681:
+		return combo681{r, refundPart{r}, listPart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 682:
+		return combo682{r, disputeReadPart{r}, listPart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 683:
+		return combo683{r, refundPart{r}, disputeReadPart{r}, listPart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 684:
+		return combo684{r, disputeRespondPart{r}, listPart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 685:
+		return combo685{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 686:
+		return combo686{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 687:
+		return combo687{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 688:
+		return combo688{r, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 689:
+		return combo689{r, refundPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 690:
+		return combo690{r, disputeReadPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 691:
+		return combo691{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 692:
+		return combo692{r, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 693:
+		return combo693{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 694:
+		return combo694{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 695:
+		return combo695{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 696:
+		return combo696{r, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 697:
+		return combo697{r, refundPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 698:
+		return combo698{r, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 699:
+		return combo699{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 700:
+		return combo700{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 701:
+		return combo701{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 702:
+		return combo702{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 703:
+		return combo703{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 704:
+		return combo704{r, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 705:
+		return combo705{r, refundPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 706:
+		return combo706{r, disputeReadPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 707:
+		return combo707{r, refundPart{r}, disputeReadPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 708:
+		return combo708{r, disputeRespondPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 709:
+		return combo709{r, refundPart{r}, disputeRespondPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 710:
+		return combo710{r, disputeReadPart{r}, disputeRespondPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 711:
+		return combo711{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 712:
+		return combo712{r, listPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 713:
+		return combo713{r, refundPart{r}, listPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 714:
+		return combo714{r, disputeReadPart{r}, listPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 715:
+		return combo715{r, refundPart{r}, disputeReadPart{r}, listPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 716:
+		return combo716{r, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 717:
+		return combo717{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 718:
+		return combo718{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 719:
+		return combo719{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 720:
+		return combo720{r, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 721:
+		return combo721{r, refundPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 722:
+		return combo722{r, disputeReadPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 723:
+		return combo723{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 724:
+		return combo724{r, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 725:
+		return combo725{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 726:
+		return combo726{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 727:
+		return combo727{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 728:
+		return combo728{r, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 729:
+		return combo729{r, refundPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 730:
+		return combo730{r, disputeReadPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 731:
+		return combo731{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 732:
+		return combo732{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 733:
+		return combo733{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 734:
+		return combo734{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 735:
+		return combo735{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 736:
+		return combo736{r, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 737:
+		return combo737{r, refundPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 738:
+		return combo738{r, disputeReadPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 739:
+		return combo739{r, refundPart{r}, disputeReadPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 740:
+		return combo740{r, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 741:
+		return combo741{r, refundPart{r}, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 742:
+		return combo742{r, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 743:
+		return combo743{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 744:
+		return combo744{r, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 745:
+		return combo745{r, refundPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 746:
+		return combo746{r, disputeReadPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 747:
+		return combo747{r, refundPart{r}, disputeReadPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 748:
+		return combo748{r, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 749:
+		return combo749{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 750:
+		return combo750{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 751:
+		return combo751{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 752:
+		return combo752{r, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 753:
+		return combo753{r, refundPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 754:
+		return combo754{r, disputeReadPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 755:
+		return combo755{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 756:
+		return combo756{r, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 757:
+		return combo757{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 758:
+		return combo758{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 759:
+		return combo759{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 760:
+		return combo760{r, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 761:
+		return combo761{r, refundPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 762:
+		return combo762{r, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 763:
+		return combo763{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 764:
+		return combo764{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 765:
+		return combo765{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 766:
+		return combo766{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 767:
+		return combo767{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, webhookConfigPart{r}}
+	case 768:
+		return combo768{r, payoutPart{r}, webhookConfigPart{r}}
+	case 769:
+		return combo769{r, refundPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 770:
+		return combo770{r, disputeReadPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 771:
+		return combo771{r, refundPart{r}, disputeReadPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 772:
+		return combo772{r, disputeRespondPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 773:
+		return combo773{r, refundPart{r}, disputeRespondPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 774:
+		return combo774{r, disputeReadPart{r}, disputeRespondPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 775:
+		return combo775{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 776:
+		return combo776{r, listPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 777:
+		return combo777{r, refundPart{r}, listPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 778:
+		return combo778{r, disputeReadPart{r}, listPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 779:
+		return combo779{r, refundPart{r}, disputeReadPart{r}, listPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 780:
+		return combo780{r, disputeRespondPart{r}, listPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 781:
+		return combo781{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 782:
+		return combo782{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 783:
+		return combo783{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 784:
+		return combo784{r, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 785:
+		return combo785{r, refundPart{r}, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 786:
+		return combo786{r, disputeReadPart{r}, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 787:
+		return combo787{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 788:
+		return combo788{r, disputeRespondPart{r}, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 789:
+		return combo789{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 790:
+		return combo790{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 791:
+		return combo791{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 792:
+		return combo792{r, listPart{r}, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 793:
+		return combo793{r, refundPart{r}, listPart{r}, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 794:
+		return combo794{r, disputeReadPart{r}, listPart{r}, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 795:
+		return combo795{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 796:
+		return combo796{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 797:
+		return combo797{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 798:
+		return combo798{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 799:
+		return combo799{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 800:
+		return combo800{r, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 801:
+		return combo801{r, refundPart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 802:
+		return combo802{r, disputeReadPart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 803:
+		return combo803{r, refundPart{r}, disputeReadPart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 804:
+		return combo804{r, disputeRespondPart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 805:
+		return combo805{r, refundPart{r}, disputeRespondPart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 806:
+		return combo806{r, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 807:
+		return combo807{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 808:
+		return combo808{r, listPart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 809:
+		return combo809{r, refundPart{r}, listPart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 810:
+		return combo810{r, disputeReadPart{r}, listPart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 811:
+		return combo811{r, refundPart{r}, disputeReadPart{r}, listPart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 812:
+		return combo812{r, disputeRespondPart{r}, listPart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 813:
+		return combo813{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 814:
+		return combo814{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 815:
+		return combo815{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 816:
+		return combo816{r, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 817:
+		return combo817{r, refundPart{r}, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 818:
+		return combo818{r, disputeReadPart{r}, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 819:
+		return combo819{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 820:
+		return combo820{r, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 821:
+		return combo821{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 822:
+		return combo822{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 823:
+		return combo823{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 824:
+		return combo824{r, listPart{r}, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 825:
+		return combo825{r, refundPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 826:
+		return combo826{r, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 827:
+		return combo827{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 828:
+		return combo828{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 829:
+		return combo829{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 830:
+		return combo830{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 831:
+		return combo831{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 832:
+		return combo832{r, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 833:
+		return combo833{r, refundPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 834:
+		return combo834{r, disputeReadPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 835:
+		return combo835{r, refundPart{r}, disputeReadPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 836:
+		return combo836{r, disputeRespondPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 837:
+		return combo837{r, refundPart{r}, disputeRespondPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 838:
+		return combo838{r, disputeReadPart{r}, disputeRespondPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 839:
+		return combo839{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 840:
+		return combo840{r, listPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 841:
+		return combo841{r, refundPart{r}, listPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 842:
+		return combo842{r, disputeReadPart{r}, listPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 843:
+		return combo843{r, refundPart{r}, disputeReadPart{r}, listPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 844:
+		return combo844{r, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 845:
+		return combo845{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 846:
+		return combo846{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 847:
+		return combo847{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 848:
+		return combo848{r, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 849:
+		return combo849{r, refundPart{r}, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 850:
+		return combo850{r, disputeReadPart{r}, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 851:
+		return combo851{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 852:
+		return combo852{r, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 853:
+		return combo853{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 854:
+		return combo854{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 855:
+		return combo855{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 856:
+		return combo856{r, listPart{r}, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 857:
+		return combo857{r, refundPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 858:
+		return combo858{r, disputeReadPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 859:
+		return combo859{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 860:
+		return combo860{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 861:
+		return combo861{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 862:
+		return combo862{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 863:
+		return combo863{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 864:
+		return combo864{r, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 865:
+		return combo865{r, refundPart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 866:
+		return combo866{r, disputeReadPart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 867:
+		return combo867{r, refundPart{r}, disputeReadPart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 868:
+		return combo868{r, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 869:
+		return combo869{r, refundPart{r}, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 870:
+		return combo870{r, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 871:
+		return combo871{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 872:
+		return combo872{r, listPart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 873:
+		return combo873{r, refundPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 874:
+		return combo874{r, disputeReadPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 875:
+		return combo875{r, refundPart{r}, disputeReadPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 876:
+		return combo876{r, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 877:
+		return combo877{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 878:
+		return combo878{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 879:
+		return combo879{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 880:
+		return combo880{r, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 881:
+		return combo881{r, refundPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 882:
+		return combo882{r, disputeReadPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 883:
+		return combo883{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 884:
+		return combo884{r, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 885:
+		return combo885{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 886:
+		return combo886{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 887:
+		return combo887{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 888:
+		return combo888{r, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 889:
+		return combo889{r, refundPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 890:
+		return combo890{r, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 891:
+		return combo891{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 892:
+		return combo892{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 893:
+		return combo893{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 894:
+		return combo894{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 895:
+		return combo895{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 896:
+		return combo896{r, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 897:
+		return combo897{r, refundPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 898:
+		return combo898{r, disputeReadPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 899:
+		return combo899{r, refundPart{r}, disputeReadPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 900:
+		return combo900{r, disputeRespondPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 901:
+		return combo901{r, refundPart{r}, disputeRespondPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 902:
+		return combo902{r, disputeReadPart{r}, disputeRespondPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 903:
+		return combo903{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 904:
+		return combo904{r, listPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 905:
+		return combo905{r, refundPart{r}, listPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 906:
+		return combo906{r, disputeReadPart{r}, listPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 907:
+		return combo907{r, refundPart{r}, disputeReadPart{r}, listPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 908:
+		return combo908{r, disputeRespondPart{r}, listPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 909:
+		return combo909{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 910:
+		return combo910{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 911:
+		return combo911{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 912:
+		return combo912{r, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 913:
+		return combo913{r, refundPart{r}, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 914:
+		return combo914{r, disputeReadPart{r}, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 915:
+		return combo915{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 916:
+		return combo916{r, disputeRespondPart{r}, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 917:
+		return combo917{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 918:
+		return combo918{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 919:
+		return combo919{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 920:
+		return combo920{r, listPart{r}, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 921:
+		return combo921{r, refundPart{r}, listPart{r}, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 922:
+		return combo922{r, disputeReadPart{r}, listPart{r}, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 923:
+		return combo923{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 924:
+		return combo924{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 925:
+		return combo925{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 926:
+		return combo926{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 927:
+		return combo927{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 928:
+		return combo928{r, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 929:
+		return combo929{r, refundPart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 930:
+		return combo930{r, disputeReadPart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 931:
+		return combo931{r, refundPart{r}, disputeReadPart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 932:
+		return combo932{r, disputeRespondPart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 933:
+		return combo933{r, refundPart{r}, disputeRespondPart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 934:
+		return combo934{r, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 935:
+		return combo935{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 936:
+		return combo936{r, listPart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 937:
+		return combo937{r, refundPart{r}, listPart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 938:
+		return combo938{r, disputeReadPart{r}, listPart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 939:
+		return combo939{r, refundPart{r}, disputeReadPart{r}, listPart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 940:
+		return combo940{r, disputeRespondPart{r}, listPart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 941:
+		return combo941{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 942:
+		return combo942{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 943:
+		return combo943{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 944:
+		return combo944{r, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 945:
+		return combo945{r, refundPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 946:
+		return combo946{r, disputeReadPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 947:
+		return combo947{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 948:
+		return combo948{r, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 949:
+		return combo949{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 950:
+		return combo950{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 951:
+		return combo951{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 952:
+		return combo952{r, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 953:
+		return combo953{r, refundPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 954:
+		return combo954{r, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 955:
+		return combo955{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 956:
+		return combo956{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 957:
+		return combo957{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 958:
+		return combo958{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 959:
+		return combo959{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 960:
+		return combo960{r, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 961:
+		return combo961{r, refundPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 962:
+		return combo962{r, disputeReadPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 963:
+		return combo963{r, refundPart{r}, disputeReadPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 964:
+		return combo964{r, disputeRespondPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 965:
+		return combo965{r, refundPart{r}, disputeRespondPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 966:
+		return combo966{r, disputeReadPart{r}, disputeRespondPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 967:
+		return combo967{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 968:
+		return combo968{r, listPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 969:
+		return combo969{r, refundPart{r}, listPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 970:
+		return combo970{r, disputeReadPart{r}, listPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 971:
+		return combo971{r, refundPart{r}, disputeReadPart{r}, listPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 972:
+		return combo972{r, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 973:
+		return combo973{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 974:
+		return combo974{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 975:
+		return combo975{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 976:
+		return combo976{r, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 977:
+		return combo977{r, refundPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 978:
+		return combo978{r, disputeReadPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 979:
+		return combo979{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 980:
+		return combo980{r, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 981:
+		return combo981{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 982:
+		return combo982{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 983:
+		return combo983{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 984:
+		return combo984{r, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 985:
+		return combo985{r, refundPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 986:
+		return combo986{r, disputeReadPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 987:
+		return combo987{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 988:
+		return combo988{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 989:
+		return combo989{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 990:
+		return combo990{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 991:
+		return combo991{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 992:
+		return combo992{r, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 993:
+		return combo993{r, refundPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 994:
+		return combo994{r, disputeReadPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 995:
+		return combo995{r, refundPart{r}, disputeReadPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 996:
+		return combo996{r, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 997:
+		return combo997{r, refundPart{r}, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 998:
+		return combo998{r, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 999:
+		return combo999{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1000:
+		return combo1000{r, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1001:
+		return combo1001{r, refundPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1002:
+		return combo1002{r, disputeReadPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1003:
+		return combo1003{r, refundPart{r}, disputeReadPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1004:
+		return combo1004{r, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1005:
+		return combo1005{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1006:
+		return combo1006{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1007:
+		return combo1007{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1008:
+		return combo1008{r, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1009:
+		return combo1009{r, refundPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1010:
+		return combo1010{r, disputeReadPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1011:
+		return combo1011{r, refundPart{r}, disputeReadPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1012:
+		return combo1012{r, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1013:
+		return combo1013{r, refundPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1014:
+		return combo1014{r, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1015:
+		return combo1015{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1016:
+		return combo1016{r, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1017:
+		return combo1017{r, refundPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1018:
+		return combo1018{r, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1019:
+		return combo1019{r, refundPart{r}, disputeReadPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1020:
+		return combo1020{r, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1021:
+		return combo1021{r, refundPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1022:
+		return combo1022{r, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
+	case 1023:
+		return combo1023{r, refundPart{r}, disputeReadPart{r}, disputeRespondPart{r}, listPart{r}, settlePart{r}, cancelPart{r}, subscriptionPart{r}, mandatePart{r}, payoutPart{r}, webhookConfigPart{r}}
 	}
 	return r
 }

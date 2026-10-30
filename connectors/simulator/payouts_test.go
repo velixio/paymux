@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func payoutReq(ref string, amount int64) connector.PayoutRequest {

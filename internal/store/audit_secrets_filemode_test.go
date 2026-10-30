@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // Audit 2026-10: the SQLite database (sealed secrets, API key hashes, session

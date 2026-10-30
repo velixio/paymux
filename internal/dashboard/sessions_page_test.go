@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 var sessionIDRE = regexp.MustCompile(`/dashboard/account/sessions/(ses_[A-Za-z0-9_-]+)/revoke`)

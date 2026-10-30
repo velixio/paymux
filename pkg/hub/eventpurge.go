@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/paymux/paymux/internal/inbound"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/inbound"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // providerEventPurgeKind is the scheduled job that applies provider_event_retention.

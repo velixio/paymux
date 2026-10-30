@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/dblog"
-	"github.com/paymux/paymux/internal/redact"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/dblog"
+	"github.com/velixio/paymux/internal/redact"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // Audit R-A10: what goes to the collector is redacted like the database row.

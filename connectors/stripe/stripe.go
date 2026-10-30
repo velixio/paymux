@@ -29,17 +29,17 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 const configSchema = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": ["secret_key", "webhook_secret"],
+  "required": ["secret_key"],
   "additionalProperties": false,
   "properties": {
     "secret_key": {"type": "string", "title": "Secret key (sk_... or restricted rk_...)", "minLength": 8, "x-secret": true},
-    "webhook_secret": {"type": "string", "title": "Webhook signing secret (whsec_...)", "minLength": 1, "x-secret": true}
+    "webhook_secret": {"type": "string", "title": "Webhook signing secret (whsec_...)", "minLength": 1, "x-secret": true, "x-webhook-secret": true}
   }
 }`
 
@@ -48,7 +48,8 @@ var info = connector.Info{
 	DisplayName: "Stripe",
 	// Checkout is Stripe's hosted page; the hub redirects the buyer to nothing else.
 	CheckoutHosts: &connector.CheckoutHosts{Redirect: []string{"https://checkout.stripe.com"}},
-	Capabilities:  []connector.Capability{connector.CapRefund, connector.CapList, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapSettle, connector.CapSubscriptionManager},
+	Capabilities:  []connector.Capability{connector.CapRefund, connector.CapList, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapSettle, connector.CapSubscriptionManager, connector.CapWebhookConfig},
+	WebhookEvents: stripeWebhookEvents,
 	ConfigSchema:  json.RawMessage(configSchema),
 	// A common subset; Stripe supports many more. An account narrows it.
 	Currencies: []string{"USD", "EUR", "GBP", "INR", "AUD", "CAD", "SGD", "HKD", "JPY", "CHF", "SEK", "NOK", "DKK", "NZD", "AED", "BRL", "MXN", "PLN", "CZK", "KRW", "MYR", "THB"},
@@ -84,8 +85,8 @@ func New(raw json.RawMessage, deps connector.Deps) (connector.Connector, error) 
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("stripe: invalid config: %w", err)
 	}
-	if cfg.SecretKey == "" || cfg.WebhookSecret == "" {
-		return nil, errors.New("stripe: secret_key and webhook_secret are required")
+	if cfg.SecretKey == "" {
+		return nil, errors.New("stripe: secret_key is required")
 	}
 	if !strings.HasPrefix(cfg.SecretKey, "sk_") && !strings.HasPrefix(cfg.SecretKey, "rk_") {
 		return nil, errors.New("stripe: secret_key must be a secret (sk_...) or restricted (rk_...) key, not a publishable one")

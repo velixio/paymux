@@ -92,7 +92,41 @@ conformance kit fails when the two disagree.
 | `MandateManager`      | `mandate_manager`      | merchant-triggered debits on a mandate |
 | `Payouter`            | `payout`               | `CreatePayout`, `FetchPayout`: money out to a bank account or UPI id |
 | `OAuthConnector`      | `oauth`                | `OAuthDefaultScopes`, `OAuthAuthorizeURL`, `OAuthCallbackConfig`, `OAuthExchange`: the dashboard's **Connect** button |
+| `WebhookConfigurator` | `webhook_config`       | `ConfigureWebhook`: the provider page's **Configure webhook** button |
 | `ConnectionTester`    | (none)                 | `TestConnection`: the dashboard's **Test** button; see below |
+
+### Provider webhook setup (`WebhookConfigurator`)
+
+A connector whose provider exposes webhook-management APIs can implement
+`ConfigureWebhook` and declare `webhook_config`. Repeated calls must be safe:
+create the account-specific `cfg.URL` once, then update the matching endpoint's
+event selection. Subscribe only to the complete set that `ParseWebhook`
+understands, not every event the provider can send.
+Publish that same explicit set in `Info.WebhookEvents`; the provider page shows
+it as the authoritative checklist when an operator uses the manual fallback.
+
+Return a provider-generated signing secret only when the provider reveals a
+new one. Paymux immediately merges it into the encrypted account config as
+`webhook_secret` and never renders it. Mark that config property with
+`"x-webhook-secret": true`; add `"x-generate": true` only when the merchant,
+rather than the provider, chooses the secret. The provider page then offers a
+secure Generate button and a manual fallback. Provider-issued secrets (Stripe,
+Whop) and secrets derived from API credentials (Cashfree) must not opt into
+generation.
+
+Razorpay's webhook API is account-scoped. Configure `account_id` (`acc_...`)
+on the provider account before using the button. Paymux lists
+`/v2/accounts/{account_id}/webhooks`, updates an endpoint already using its URL,
+or creates one with a newly generated 256-bit secret. Although Razorpay's docs
+catalogue these endpoints under Partner/Sub-Merchant APIs, the official SDKs
+expose them on the normal key/secret client; availability still depends on the
+Razorpay account.
+
+Some providers configure delivery on each payment object instead of exposing a
+global webhook-management API. Cashfree is handled this way: every order Paymux
+creates includes the account-specific webhook URL as `order_meta.notify_url`,
+and webhook verification uses the Cashfree client secret by default. There is
+no separate provider-side setup button for that account.
 
 ### Testing the credentials (`ConnectionTester`)
 
@@ -327,7 +361,7 @@ new token); never rely on a write being visible to another process.
 Add a blank import of your package to `cmd/paymux/connectors.go`:
 
 ```go
-import _ "github.com/paymux/paymux/connectors/acme"
+import _ "github.com/velixio/paymux/connectors/acme"
 ```
 
 That is the only line outside your package. `init` registers the factory and

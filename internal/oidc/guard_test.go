@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/oidc"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/oidc"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Discovery, the token endpoint and the JWKS are only reached over https, and

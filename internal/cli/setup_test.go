@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/hub"
+	"github.com/velixio/paymux/pkg/hub"
 )
 
 func TestServeRunsSetupFunctionsOnTheAppBeforeStarting(t *testing.T) {

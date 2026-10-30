@@ -9,8 +9,8 @@ import (
 
 	"github.com/go-pdf/fpdf"
 
-	"github.com/paymux/paymux/internal/qrcode"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/qrcode"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 // Noto Sans (SIL OFL 1.1, see fonts/OFL.txt) carries the rupee sign U+20B9.

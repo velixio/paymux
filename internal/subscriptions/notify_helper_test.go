@@ -1,6 +1,6 @@
 package subscriptions_test
 
-import "github.com/paymux/paymux/pkg/connector"
+import "github.com/velixio/paymux/pkg/connector"
 
 // notify delivers a provider webhook notification whose subscription state the
 // provider's API agrees with (the hub checks what a webhook says against it).

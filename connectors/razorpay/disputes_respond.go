@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // evidenceFields are the evidence types the contest endpoint takes as named

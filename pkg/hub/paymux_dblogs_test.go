@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // logRows returns every stored log row, bodies included.

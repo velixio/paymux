@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/jobs"
 )
 
 func mustLoc(t *testing.T, name string) *time.Location {

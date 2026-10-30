@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/notify"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/notify"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 // JobAlert is the job that raises the ops alert of a tax exception. Documents

@@ -3,10 +3,10 @@ package checkout_test
 import (
 	"testing"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/checkout"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/checkout"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // What a provider returns for an id is only ever applied to the attempt it

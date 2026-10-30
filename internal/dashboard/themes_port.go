@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/paymux/paymux/internal/web"
+	"github.com/velixio/paymux/internal/web"
 )
 
 // themeImportMax is the largest theme.json an import accepts.

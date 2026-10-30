@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/migrations"
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/migrations"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // The purge job reads provider_event_retention (400 days by default) and

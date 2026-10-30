@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/selfupdate"
-	"github.com/paymux/paymux/internal/selfupdate/selfupdatetest"
+	"github.com/velixio/paymux/internal/selfupdate"
+	"github.com/velixio/paymux/internal/selfupdate/selfupdatetest"
 )
 
 type rig struct {

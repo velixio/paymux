@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 // orgValue resolves an org-level setting through q, or says it is unset when

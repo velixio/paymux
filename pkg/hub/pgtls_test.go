@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/logging"
+	"github.com/velixio/paymux/internal/logging"
 )
 
 // The startup warning is logged for a remote PostgreSQL host without

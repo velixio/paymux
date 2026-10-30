@@ -3,8 +3,8 @@ package checkout_test
 import (
 	"testing"
 
-	"github.com/paymux/paymux/internal/checkout"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/checkout"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // AUDIT (F3 spot-check): the core's own ownership check (snapshotIsOurs) only

@@ -42,7 +42,7 @@ These guides describe the implementation in this repository. Connector capabilit
 
 The running **payment hub** serves its API reference at `/docs` and the machine-readable contract at `/docs/openapi.yaml`. The separate **public website** also has a `/docs` path, which serves these guides; it does not proxy your hub or expose an API.
 
-Use [OpenAPI](openapi.yaml) for request and response fields. The [Go payment client example](../examples/api-client/main.go) uses the standard HTTP library. The signed webhook receiver, in [Python](../examples/webhook-receiver/receiver.py), [Go](../examples/webhook-receiver-go/main.go) and [JavaScript](../examples/webhook-receiver-js/receiver.mjs), demonstrates signature checks and a durable inbox. The [framework example](../examples/framework/main.go) extends the hub itself; it is not an application HTTP client.
+Use [OpenAPI](openapi.yaml) for exact request and response fields. Go applications can use the independent [merchant SDK](../sdk/go/README.md), while the [raw HTTP example](../examples/api-client/main.go) has no SDK dependency. The signed webhook receiver, in [Python](../examples/webhook-receiver/receiver.py), [Go](../examples/webhook-receiver-go/main.go) and [JavaScript](../examples/webhook-receiver-js/receiver.mjs), demonstrates signature checks and a durable inbox. The [framework example](../examples/framework/main.go) extends the hub itself; it is not an application HTTP client.
 
 ## Documentation maintenance
 

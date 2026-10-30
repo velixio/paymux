@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/subscriptions"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/subscriptions"
 )
 
 func (a *API) subsEnabled(w http.ResponseWriter, r *http.Request) bool {

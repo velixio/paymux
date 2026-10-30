@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // Audit 2026-10 (ledger lane). F9 refuses a refund of ours on a disputed

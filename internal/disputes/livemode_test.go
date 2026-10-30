@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // Every object the API and the events show says whether it is a live one.

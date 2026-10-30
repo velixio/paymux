@@ -3,8 +3,8 @@ package httpapi_test
 import (
 	"testing"
 
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core/state"
 )
 
 func TestGetPaymentListsItsAttempts(t *testing.T) {

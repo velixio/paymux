@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/inbound"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/inbound"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 var purgeNow = time.UnixMilli(1_800_000_000_000).UTC()

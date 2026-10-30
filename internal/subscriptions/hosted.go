@@ -6,18 +6,18 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
-	"github.com/paymux/paymux/internal/billingform"
-	"github.com/paymux/paymux/internal/connectors"
-	"github.com/paymux/paymux/internal/domains"
+	"github.com/velixio/paymux/internal/billingform"
+	"github.com/velixio/paymux/internal/connectors"
+	"github.com/velixio/paymux/internal/domains"
 	"net/http"
 	"sort"
 
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/look"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/web"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/look"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/web"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // CheckoutKind says what the hosted page must do.

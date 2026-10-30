@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
 )
 
 // oauthMock is the conformant mock plus the OAuth capability.

@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
 )
 
 const (

@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/migrations"
-	"github.com/paymux/paymux/internal/reseal"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/migrations"
+	"github.com/velixio/paymux/internal/reseal"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 var (

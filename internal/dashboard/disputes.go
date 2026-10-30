@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/disputes"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/disputes"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // dueSoon is the window in which an open dispute's deadline is flagged red.

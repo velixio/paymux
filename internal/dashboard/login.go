@@ -6,10 +6,10 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/paymux/paymux/internal/auth"
-	"github.com/paymux/paymux/internal/clientip"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/auth"
+	"github.com/velixio/paymux/internal/clientip"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
 )
 
 const (

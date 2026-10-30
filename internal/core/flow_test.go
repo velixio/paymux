@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/domains"
-	"github.com/paymux/paymux/internal/events"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/domains"
+	"github.com/velixio/paymux/internal/events"
+	"github.com/velixio/paymux/internal/store"
 )
 
 type routerFunc func(ctx context.Context, q store.Queryer, req core.RouteRequest) error

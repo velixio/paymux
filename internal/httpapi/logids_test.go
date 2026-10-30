@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/ids"
-	"github.com/paymux/paymux/internal/logctx"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/ids"
+	"github.com/velixio/paymux/internal/logctx"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // An API request tells the request scope which org, app and object it is about,

@@ -3,9 +3,9 @@ package subscriptions_test
 import (
 	"testing"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/internal/subscriptions"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/subscriptions"
 )
 
 // A provider refuses charges below its minimum. A proration credit therefore

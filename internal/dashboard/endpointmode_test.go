@@ -4,8 +4,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // An endpoint is added for one mode (live unless the form says test), and the

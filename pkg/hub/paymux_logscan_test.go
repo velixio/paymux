@@ -18,13 +18,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/dblog"
-	"github.com/paymux/paymux/internal/logging"
-	"github.com/paymux/paymux/internal/outbound/stdwebhooks"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/connectortest"
+	"github.com/velixio/paymux/internal/dblog"
+	"github.com/velixio/paymux/internal/logging"
+	"github.com/velixio/paymux/internal/outbound/stdwebhooks"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/connectortest"
 )
 
 // What the scan looks for. Secrets are credentials of every kind the app

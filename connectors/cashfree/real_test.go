@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // The fixtures real_*.json are responses recorded from the real Cashfree

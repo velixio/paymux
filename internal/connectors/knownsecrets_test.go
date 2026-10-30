@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/connectors"
-	"github.com/paymux/paymux/internal/fakeconn"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/connectors"
+	"github.com/velixio/paymux/internal/fakeconn"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // At start-up the secrets of every stored account are handed to the redactor,

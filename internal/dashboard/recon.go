@@ -6,12 +6,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/recon"
-	"github.com/paymux/paymux/internal/reconcile"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/recon"
+	"github.com/velixio/paymux/internal/reconcile"
+	"github.com/velixio/paymux/internal/store"
 )
 
 var reconKinds = []string{recon.KindStatusMismatch, recon.KindAmountMismatch, recon.KindCurrencyMismatch, recon.KindUnknownProviderObject,

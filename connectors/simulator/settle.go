@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 var ist = time.FixedZone("IST", 5*3600+1800)

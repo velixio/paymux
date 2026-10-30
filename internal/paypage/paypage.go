@@ -17,15 +17,15 @@ import (
 	"sort"
 	"time"
 
-	"github.com/paymux/paymux/internal/billingform"
-	"github.com/paymux/paymux/internal/checkout"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/domains"
-	"github.com/paymux/paymux/internal/settings"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/web"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/billingform"
+	"github.com/velixio/paymux/internal/checkout"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/domains"
+	"github.com/velixio/paymux/internal/settings"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/web"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 const maxForm = 1 << 20

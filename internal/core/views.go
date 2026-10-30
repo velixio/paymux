@@ -3,7 +3,7 @@ package core
 import (
 	"time"
 
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // PaymentView is the public JSON shape of a payment, used by the API and as

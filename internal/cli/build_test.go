@@ -36,7 +36,7 @@ func TestParseWith(t *testing.T) {
 
 func TestBuildMainImportsTheFrameworkAndEveryModule(t *testing.T) {
 	src := buildMain([]withSpec{{Module: "example.com/one", Version: "latest"}, {Module: "example.com/two/v2", Version: "v2.0.0"}})
-	for _, want := range []string{"package main", `"github.com/paymux/paymux/pkg/framework"`, `_ "example.com/one"`, `_ "example.com/two/v2"`, "framework.Main()"} {
+	for _, want := range []string{"package main", `"github.com/velixio/paymux/pkg/framework"`, `_ "example.com/one"`, `_ "example.com/two/v2"`, "framework.Main()"} {
 		if !strings.Contains(src, want) {
 			t.Errorf("generated main.go lacks %q:\n%s", want, src)
 		}
@@ -82,12 +82,12 @@ func TestBuildLinksAnExtraModule(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("go.mod", "module example.com/hookmod\n\ngo 1.27\n\nrequire github.com/paymux/paymux v0.0.0\n")
+	write("go.mod", "module example.com/hookmod\n\ngo 1.27\n\nrequire github.com/velixio/paymux v0.0.0\n")
 	write("hookmod.go", `package hookmod
 
 import (
-	"github.com/paymux/paymux/pkg/hub"
-	"github.com/paymux/paymux/pkg/framework"
+	"github.com/velixio/paymux/pkg/hub"
+	"github.com/velixio/paymux/pkg/framework"
 )
 
 // Marker is a string the test looks for in the built binary; it is used at
@@ -100,7 +100,7 @@ func init() {
 `)
 	out := filepath.Join(t.TempDir(), "bin", "paymux-custom")
 	var stdout, stderr bytes.Buffer
-	code := Run(context.Background(), []string{"build", "--with", "example.com/hookmod=" + ext, "--replace", "github.com/paymux/paymux=" + repo, "--out", out},
+	code := Run(context.Background(), []string{"build", "--with", "example.com/hookmod=" + ext, "--replace", "github.com/velixio/paymux=" + repo, "--out", out},
 		func(string) (string, bool) { return "", false }, &stdout, &stderr)
 	if code != 0 {
 		msg := stderr.String()

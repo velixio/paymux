@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // Settlements are read from POST /settlement/recon: one item per event (a

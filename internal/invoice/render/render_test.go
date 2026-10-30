@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 var issued = time.Date(2026, 11, 3, 10, 30, 0, 0, tax.IST)

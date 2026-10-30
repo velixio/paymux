@@ -21,7 +21,7 @@ import (
 
 	"github.com/go-pdf/fpdf"
 
-	"github.com/paymux/paymux/internal/invoice/pades"
+	"github.com/velixio/paymux/internal/invoice/pades"
 )
 
 const password = "test-dsc-pass"

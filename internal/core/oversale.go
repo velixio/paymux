@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/core/state"
-	"github.com/paymux/paymux/internal/notify"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/notify"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // FlagLinkAlreadyUsed marks a payment that succeeded on a single-use payment

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // acme is the smallest useful connector: it only declares what it is.

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
-	"github.com/paymux/paymux/pkg/connector/money"
+	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // Standing Instructions (SI): PayU's recurring payments for cards, UPI

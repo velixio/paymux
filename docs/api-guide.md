@@ -1,6 +1,6 @@
 # Application integration
 
-This guide covers the HTTP integration between your application backend and the Paymux hub. The [OpenAPI specification](openapi.yaml) defines exact fields and responses. There is no separate application-client Go SDK in this repository: `pkg/connector` is the provider integration SDK, and `framework` is for embedding the hub.
+This guide covers the HTTP integration between your application backend and the Paymux hub. The [OpenAPI specification](openapi.yaml) defines exact fields and responses. Go applications can use the independent [merchant SDK](../sdk/go/README.md); `pkg/connector` is the provider integration SDK, and `framework` is for embedding the hub.
 
 ## Authenticate from your backend
 
@@ -92,4 +92,4 @@ The API applies a token bucket of 20 requests per second per key. A rate-limited
 
 ## Examples and next steps
 
-The [Go client example](../examples/api-client/main.go) demonstrates a bounded HTTP timeout and explicit HTTP error handling. It does not add a runtime dependency to your application. For webhook verification, see [webhooks](webhooks.md). For checkout, failed attempts, refunds, and routing, see [payments](payments.md).
+The [Go SDK](../sdk/go/README.md) covers all public resources, idempotent mutations, typed errors, pagination, PDF downloads, and webhook verification without depending on hub internals. The [raw HTTP example](../examples/api-client/main.go) remains useful when you do not want an SDK dependency. For webhook delivery rules, see [webhooks](webhooks.md). For checkout, failed attempts, refunds, and routing, see [payments](payments.md).

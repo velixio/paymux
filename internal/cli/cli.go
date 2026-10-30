@@ -7,11 +7,11 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/paymux/paymux/internal/config"
-	"github.com/paymux/paymux/internal/migrations"
-	"github.com/paymux/paymux/internal/selfupdate"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/hub"
+	"github.com/velixio/paymux/internal/config"
+	"github.com/velixio/paymux/internal/migrations"
+	"github.com/velixio/paymux/internal/selfupdate"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/hub"
 )
 
 const usage = "usage: paymux <serve|migrate|backup|db|build|update|app|provider|domain|tax-entity|report|fx|endpoint|payout|version>"

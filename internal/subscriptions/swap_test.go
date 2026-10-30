@@ -3,8 +3,8 @@ package subscriptions_test
 import (
 	"testing"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 // A notice announces a debit on one mandate. If the mandate is replaced

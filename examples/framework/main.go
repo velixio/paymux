@@ -12,11 +12,11 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/paymux/paymux/pkg/framework"
-	"github.com/paymux/paymux/pkg/hub"
+	"github.com/velixio/paymux/pkg/framework"
+	"github.com/velixio/paymux/pkg/hub"
 
 	// An extra connector: importing it registers it.
-	_ "github.com/paymux/paymux/examples/framework/demopay"
+	_ "github.com/velixio/paymux/examples/framework/demopay"
 )
 
 func main() {

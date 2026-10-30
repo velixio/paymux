@@ -6,15 +6,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/authz"
-	"github.com/paymux/paymux/internal/fakeconn"
-	"github.com/paymux/paymux/internal/httpapi"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/payouts"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/fakeconn"
+	"github.com/velixio/paymux/internal/httpapi"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/payouts"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 type payoutFixture struct {

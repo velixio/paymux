@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 // chargeAmount is what the buyer is asked to pay for a price of `amount`.

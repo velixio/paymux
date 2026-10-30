@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/invoice/einvoice"
-	"github.com/paymux/paymux/internal/invoice/irp"
-	"github.com/paymux/paymux/internal/jobs"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/invoice/einvoice"
+	"github.com/velixio/paymux/internal/invoice/irp"
+	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 // GST e-invoice, offline mode: Paymux produces the portal's JSON; the operator

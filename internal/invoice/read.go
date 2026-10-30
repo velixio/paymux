@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store"
 )
 
 // ErrNotFound is returned for unknown documents and for documents outside the

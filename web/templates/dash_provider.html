@@ -21,7 +21,6 @@
 {{else}}
 <dl class="facts">
 <dt>Mode</dt><dd>{{.Mode}}</dd><dt>Status</dt><dd>{{.Status}}</dd>
-<dt>Webhook URL</dt><dd><code class="wrap">{{.Webhook}}</code> <button type="button" class="linkbtn" data-copy="{{.Webhook}}">Copy</button><br><small class="muted">Register this URL (and the signing secret) in the provider's dashboard.</small></dd>
 {{if .StatementDescriptor}}<dt>Statement descriptor</dt><dd>{{.StatementDescriptor}}</dd>{{end}}
 {{if .ProviderGSTIN}}<dt>Provider GSTIN</dt><dd>{{.ProviderGSTIN}}</dd>{{end}}
 <dt>Currencies</dt><dd>{{range .Currencies}}{{if .Checked}}{{.Value}} {{end}}{{end}}</dd>
@@ -29,6 +28,41 @@
 <dt>Apps</dt><dd>{{range .Linked}}<a href="/dashboard/apps/{{.ID}}">{{.Name}}</a> {{else}}<span class="muted">none</span>{{end}}</dd>
 </dl>
 {{if .Unavailable}}<p class="error">This connector is not built into this binary, so the account cannot be changed or tested.</p>{{end}}
+<section class="webhook-config" aria-labelledby="provider-webhook-title">
+<h3 id="provider-webhook-title">Provider webhook</h3>
+<p>Send provider events to this account-specific Paymux address.</p>
+<div class="webhook-url"><code class="wrap">{{.Webhook}}</code><button type="button" class="btn small" data-copy="{{.Webhook}}">Copy URL</button></div>
+{{if .HasWebhookSecret}}<p class="notice">A webhook signing secret is stored.</p>{{else}}<p class="muted">No webhook signing secret is currently stored.</p>{{end}}
+{{if .WebhookPerCheckout}}<p class="notice">Paymux automatically sends this URL with every {{.Display}} checkout. No provider-side webhook setup is required.</p>{{end}}
+{{if and .CanManage (not .Unavailable)}}
+{{if .CanAutoWebhook}}
+<form method="post" action="/dashboard/providers/{{.ID}}/webhook/configure" class="webhook-action">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<button class="btn" type="submit">Configure webhook</button>
+<small class="muted">Creates or updates the endpoint and required events at {{.Display}}. A provider-generated signing secret is saved encrypted.</small>
+</form>
+{{else if not .WebhookPerCheckout}}
+<p class="muted">Automatic registration is unavailable for {{.Display}}. Copy the URL, choose the required events in the provider dashboard, and save the matching signing secret below.</p>
+{{end}}
+{{if .WebhookEvents}}<details class="webhook-events-panel" open>
+<summary>Required events ({{len .WebhookEvents}})</summary>
+<p class="muted">If you configure the endpoint manually, select every event below.</p>
+<ul class="webhook-events">{{range .WebhookEvents}}<li><code>{{.}}</code></li>{{end}}</ul>
+</details>{{end}}
+{{with .WebhookField}}<details class="webhook-manual">
+<summary class="btn">{{if or $.Prov.CanAutoWebhook $.Prov.WebhookPerCheckout}}Enter secret manually{{else}}Configure webhook{{end}}</summary>
+<form method="post" action="/dashboard/providers/{{$.Prov.ID}}/webhook/secret" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>{{.Title}}<input class="field" type="password" name="webhook_secret" autocomplete="new-password" placeholder="{{if .HasValue}}set - enter a replacement{{else}}secret{{end}}"></label>
+{{if .Generate}}<div class="secret-generator">
+<button class="btn small" type="button" data-generate-secret="webhook_secret">Generate secret</button>
+<small class="muted" data-secret-help="webhook_secret" aria-live="polite">Generates a strong secret in this browser. Put the same value in the provider dashboard, then save it here.</small>
+</div>{{end}}
+<button class="btn" type="submit">Save webhook secret</button>
+</form>
+</details>{{end}}
+{{end}}
+</section>
 {{if and .CanManage (not .Unavailable)}}
 <h3>Settings</h3>
 <form method="post" action="/dashboard/providers/{{.ID}}" class="stack">

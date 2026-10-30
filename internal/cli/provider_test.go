@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/fakeconn"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/fakeconn"
+	"github.com/velixio/paymux/internal/store"
 )
 
 func writeCfg(t *testing.T, dir, body string) string {

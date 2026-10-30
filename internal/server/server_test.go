@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paymux/paymux/internal/logging"
-	"github.com/paymux/paymux/internal/metrics"
+	"github.com/velixio/paymux/internal/logging"
+	"github.com/velixio/paymux/internal/metrics"
 )
 
 func newServer(t *testing.T, checks ...Check) (*Server, *metrics.Registry, *bytes.Buffer) {

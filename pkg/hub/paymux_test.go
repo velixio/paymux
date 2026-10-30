@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/config"
-	"github.com/paymux/paymux/internal/inbound"
-	"github.com/paymux/paymux/internal/logging"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/config"
+	"github.com/velixio/paymux/internal/inbound"
+	"github.com/velixio/paymux/internal/logging"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 type syncBuf struct {

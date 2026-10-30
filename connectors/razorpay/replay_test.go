@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // L2: X-Razorpay-Event-Id is not covered by the signature, so it cannot name an

@@ -24,6 +24,7 @@ const (
 	CapMandateManager      Capability = "mandate_manager"
 	CapPayout              Capability = "payout"
 	CapOAuth               Capability = "oauth"
+	CapWebhookConfig       Capability = "webhook_config"
 )
 
 // BillingMode is how recurring renewals are driven.
@@ -82,12 +83,16 @@ type CheckoutHoster interface {
 
 // Info describes a connector.
 type Info struct {
-	Name         string          `json:"name"`
-	Version      string          `json:"version"`
-	DisplayName  string          `json:"display_name"`
-	Capabilities []Capability    `json:"capabilities"`
-	ConfigSchema json.RawMessage `json:"config_schema"`
-	Currencies   []string        `json:"currencies"`
+	Name         string       `json:"name"`
+	Version      string       `json:"version"`
+	DisplayName  string       `json:"display_name"`
+	Capabilities []Capability `json:"capabilities"`
+	// WebhookEvents is the exact provider event set the connector consumes.
+	// The dashboard shows it for manual setup, and a WebhookConfigurator should
+	// subscribe to the same set.
+	WebhookEvents []string        `json:"webhook_events,omitempty"`
+	ConfigSchema  json.RawMessage `json:"config_schema"`
+	Currencies    []string        `json:"currencies"`
 	// CheckoutHosts is what the hosted payment page must allow for this
 	// connector's SDK or form post; see CheckoutHosts.
 	CheckoutHosts *CheckoutHosts `json:"checkout_hosts,omitempty"`

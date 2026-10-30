@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/billing"
-	"github.com/paymux/paymux/internal/invoice"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/internal/subscriptions"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/billing"
+	"github.com/velixio/paymux/internal/invoice"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/subscriptions"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // The base fixture: 49,900 a month from t0 = 2027-01-31 04:00, the first period

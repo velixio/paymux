@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/store"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/store"
 )
 
 func hookApp(t *testing.T) *App {

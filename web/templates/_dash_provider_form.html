@@ -1,6 +1,6 @@
 {{define "dash_provider_fields"}}{{with .Prov}}
-{{range .Fields}}{{if not .Hidden}}
-<label>{{.Title}}{{if .Required}} *{{end}}
+{{range .Fields}}{{if and (not .Hidden) (or $.Prov.New (not .WebhookSecret))}}
+<label{{if .WebhookSecret}} id="provider-webhook-secret"{{end}}>{{.Title}}{{if .Required}} *{{end}}
 {{if .Enum}}<select class="field" name="cfg_{{.Name}}">{{if not .Required}}<option value="">(not set)</option>{{end}}{{range .Enum}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Value}}</option>{{end}}</select>
 {{else if eq .Type "boolean"}}<input type="checkbox" name="cfg_{{.Name}}" value="1"{{if .Checked}} checked{{end}}>
 {{else if eq .Type "object"}}<textarea class="field" name="cfg_{{.Name}}" rows="6" spellcheck="false"{{if .Required}} required{{end}}>{{.Value}}</textarea>
@@ -8,6 +8,10 @@
 {{else if or (eq .Type "integer") (eq .Type "number")}}<input class="field" type="number" step="any" name="cfg_{{.Name}}" value="{{.Value}}">
 {{else}}<input class="field" name="cfg_{{.Name}}" value="{{.Value}}"{{if .Required}} required{{end}}>{{end}}
 </label>
+{{if .Generate}}<div class="secret-generator">
+<button class="btn small" type="button" data-generate-secret="cfg_{{.Name}}">Generate secret</button>
+<small class="muted" data-secret-help="cfg_{{.Name}}" aria-live="polite">Generates a strong secret in this browser. Put the same value in the provider dashboard, then save these settings.</small>
+</div>{{end}}
 {{end}}{{end}}
 <fieldset><legend>Accepted currencies</legend>{{range .Currencies}}<label class="inline"><input type="checkbox" name="currency" value="{{.Value}}"{{if .Checked}} checked{{end}}> {{.Value}}</label> {{end}}</fieldset>
 <fieldset><legend>Enabled purposes</legend>{{range .Purposes}}<label class="inline"><input type="checkbox" name="purpose" value="{{.Value}}"{{if .Checked}} checked{{end}}> {{.Value}}</label> {{end}}</fieldset>

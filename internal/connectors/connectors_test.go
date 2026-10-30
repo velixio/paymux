@@ -11,15 +11,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/connectors"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/fakeconn"
-	"github.com/paymux/paymux/internal/inbound"
-	"github.com/paymux/paymux/internal/secrets"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/connectors"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/fakeconn"
+	"github.com/velixio/paymux/internal/inbound"
+	"github.com/velixio/paymux/internal/secrets"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 var (
@@ -38,6 +38,15 @@ type env struct {
 	fake *fakeconn.State
 	clk  *clock
 	box  *secrets.Box
+}
+
+type configurableConnector struct {
+	connector.Connector
+	configure func(context.Context, connector.ProviderWebhookConfig) (connector.ProviderWebhookResult, error)
+}
+
+func (c *configurableConnector) ConfigureWebhook(ctx context.Context, cfg connector.ProviderWebhookConfig) (connector.ProviderWebhookResult, error) {
+	return c.configure(ctx, cfg)
 }
 
 func newSvc(t *testing.T, db *store.DB, box *secrets.Box, clk *clock) *connectors.Service {
@@ -113,6 +122,51 @@ func TestCreateAccountEncryptsAndDefaults(t *testing.T) {
 			Config: json.RawMessage(fakeconn.ValidConfig), Currencies: []string{"INR"}})
 		if err != nil || len(narrowed.AcceptedCurrencies) != 1 {
 			t.Errorf("narrowed: %+v %v", narrowed, err)
+		}
+	})
+}
+
+func TestConfigureWebhookStoresProviderGeneratedSecret(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		const schema = `{"type":"object","required":["api_key","webhook_secret"],"additionalProperties":false,"properties":{"api_key":{"type":"string","x-secret":true},"webhook_secret":{"type":"string","x-secret":true}}}`
+		base := fakeconn.RegisterSchema("webhookbase", schema)
+		baseFactory, baseInfo, _ := connector.Lookup(base.Name)
+		name := base.Name + "config"
+		baseInfo.Capabilities = append(baseInfo.Capabilities, connector.CapWebhookConfig)
+		var configuredURL string
+		connector.Register(name, func(raw json.RawMessage, deps connector.Deps) (connector.Connector, error) {
+			inner, err := baseFactory(raw, deps)
+			if err != nil {
+				return nil, err
+			}
+			return &configurableConnector{Connector: inner, configure: func(_ context.Context, cfg connector.ProviderWebhookConfig) (connector.ProviderWebhookResult, error) {
+				configuredURL = cfg.URL
+				return connector.ProviderWebhookResult{Secret: "provider-generated-secret", Created: true}, nil
+			}}, nil
+		}, baseInfo)
+		pa, err := e.svc.CreateAccount(ctx, audit.System, org, connectors.CreateAccountInput{Connector: name, Name: "configured", Mode: "test",
+			Config: json.RawMessage(`{"api_key":"key","webhook_secret":"old"}`)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := e.svc.ConfigureWebhook(ctx, audit.System, org, pa.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !result.Created || configuredURL != "https://pay.example.com/hooks/"+pa.ID {
+			t.Fatalf("result=%+v url=%q", result, configuredURL)
+		}
+		stored, err := e.svc.Account(ctx, org, pa.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := e.box.Open(stored.ConfigEnc, []byte("provider_accounts.config_enc:"+pa.ID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), `"webhook_secret":"provider-generated-secret"`) || strings.Contains(string(raw), `"webhook_secret":"old"`) {
+			t.Fatalf("stored config = %s", raw)
 		}
 	})
 }

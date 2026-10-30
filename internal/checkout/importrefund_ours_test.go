@@ -4,11 +4,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/paymux/paymux/internal/audit"
-	"github.com/paymux/paymux/internal/checkout"
-	"github.com/paymux/paymux/internal/core"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/audit"
+	"github.com/velixio/paymux/internal/checkout"
+	"github.com/velixio/paymux/internal/core"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // A refund fetched from the provider is checked against the refund it claims to

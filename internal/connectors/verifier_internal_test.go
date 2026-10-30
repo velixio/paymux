@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/inbound"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/inbound"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // idConn is a connector that may derive a webhook's event id from the request

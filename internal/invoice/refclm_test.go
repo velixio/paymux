@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
-	"github.com/paymux/paymux/internal/tax"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/tax"
 )
 
 // The org setting einvoice_igst_refund_claim decides RefClm of an export that

@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/pkg/connector"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 func (e *env) providerRefund(key string, snap connector.RefundSnapshot) {

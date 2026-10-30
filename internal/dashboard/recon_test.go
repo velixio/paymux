@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paymux/paymux/internal/recon"
-	"github.com/paymux/paymux/internal/store"
-	"github.com/paymux/paymux/internal/store/storetest"
+	"github.com/velixio/paymux/internal/recon"
+	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/internal/store/storetest"
 )
 
 type reconWorld struct {
