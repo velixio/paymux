@@ -147,6 +147,54 @@ curl -s localhost:8080/v1/payments \
 
 Send your customer to `checkout_url`. Your app learns the result from a **signed webhook** or from `GET /v1/payments/{id}`. Never trust the browser redirect on its own.
 
+### JavaScript and TypeScript SDK
+
+Install the published SDK in your application:
+
+```bash
+npm install @paymux-js/sdk
+```
+
+Create payments only on your backend, where the API key stays private:
+
+```ts
+import { Paymux } from "@paymux-js/sdk";
+
+const paymux = new Paymux({
+  apiKey: process.env.PAYMUX_API_KEY!,
+  baseURL: "https://payments.example.com",
+});
+
+const payment = await paymux.payments.create(
+  {
+    amount: 49900,
+    currency: "INR",
+    order_ref: "order-123",
+    return_url: "https://shop.example.com/orders/order-123",
+  },
+  { idempotencyKey: "order-123-payment-v1" },
+);
+```
+
+Either redirect the customer to `payment.checkout_url`, or return that URL to
+the authenticated order page and let the browser entry point open the selected
+provider:
+
+```ts
+import { checkout } from "@paymux-js/sdk/checkout";
+
+const { checkout_url } = await fetch("/api/orders/order-123/payment", {
+  method: "POST",
+}).then((response) => response.json());
+
+await checkout({ checkoutUrl: checkout_url });
+```
+
+The browser entry point never receives the Paymux API key. Fulfill the order
+only after a verified webhook or authenticated backend lookup. See the complete
+[JavaScript SDK guide](docs/javascript-sdk.md) for refunds, subscriptions,
+invoices, payouts, webhook verification, CSP, and provider checkout behavior.
+
 No code on your side? Create a shareable payment link instead:
 
 ```bash
