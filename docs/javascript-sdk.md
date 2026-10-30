@@ -1,6 +1,6 @@
 # JavaScript SDK
 
-`@paymux/sdk` provides a type-safe backend client, Standard Webhooks verifier,
+`@paymux-js/sdk` provides a type-safe backend client, Standard Webhooks verifier,
 and a separate browser checkout entry point. The browser flow opens the provider
 selected by Paymux without showing the hosted payment page.
 
@@ -11,14 +11,14 @@ app webhooks.
 ## Install
 
 ```sh
-npm install @paymux/sdk
+npm install @paymux-js/sdk
 ```
 
 The application backend creates a payment with the JavaScript SDK, [Go SDK](../sdk/go/README.md),
 or HTTP API. Never create payments from browser code because that would expose the API key.
 
 ```ts
-import { Paymux } from "@paymux/sdk";
+import { Paymux } from "@paymux-js/sdk";
 
 const paymux = new Paymux({ apiKey: process.env.PAYMUX_API_KEY, baseURL: "https://payments.example.com" });
 const payment = await paymux.payments.create(
@@ -37,7 +37,7 @@ status, error type, request ID, replay status, and retry delay.
 Verify webhooks against the exact raw request bytes:
 
 ```ts
-import { WebhookVerifier } from "@paymux/sdk";
+import { WebhookVerifier } from "@paymux-js/sdk";
 
 const verifier = new WebhookVerifier(process.env.PAYMUX_WEBHOOK_SECRET);
 const event = await verifier.verify(request.headers, new Uint8Array(await request.arrayBuffer()));
@@ -52,7 +52,7 @@ Return only the customer checkout URL to that order's authenticated browser:
 Then open it:
 
 ```ts
-import { checkout } from "@paymux/sdk/checkout";
+import { checkout } from "@paymux-js/sdk/checkout";
 
 await checkout({ checkoutUrl });
 ```

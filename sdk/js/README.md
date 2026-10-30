@@ -3,7 +3,7 @@
 Type-safe server API, Standard Webhooks verification, and provider-neutral browser checkout for Paymux.
 
 ```bash
-npm install @paymux/sdk
+npm install @paymux-js/sdk
 ```
 
 ## Backend API
@@ -11,7 +11,7 @@ npm install @paymux/sdk
 Keep the API key on the server. Every mutation requires an idempotency key; reuse it only when retrying the same logical operation.
 
 ```ts
-import { Paymux } from "@paymux/sdk";
+import { Paymux } from "@paymux-js/sdk";
 
 const paymux = new Paymux({
   apiKey: process.env.PAYMUX_API_KEY!,
@@ -31,7 +31,7 @@ Services cover payments, refunds, payment links, subscriptions, invoices, credit
 Verify the exact raw request bytes before decoding or acting on an event:
 
 ```ts
-import { WebhookVerifier } from "@paymux/sdk";
+import { WebhookVerifier } from "@paymux-js/sdk";
 
 const verifier = new WebhookVerifier(process.env.PAYMUX_WEBHOOK_SECRET!);
 const event = await verifier.verify(request.headers, new Uint8Array(await request.arrayBuffer()));
@@ -44,7 +44,7 @@ Persist and deduplicate `event.id`. Unknown event types should be ignored safely
 The backend returns `payment.checkout_url` to that order's authenticated browser. The browser entry point contains no backend client and never receives the API key:
 
 ```ts
-import { checkout } from "@paymux/sdk/checkout";
+import { checkout } from "@paymux-js/sdk/checkout";
 
 await checkout({ checkoutUrl: paymentCheckoutURL });
 ```
