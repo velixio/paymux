@@ -8,6 +8,18 @@ Hosted checkout remains available and is the simplest option. Both modes use
 the same payment API, routing, provider webhooks, reconciliation, and normalized
 app webhooks.
 
+## Choose the checkout experience
+
+| Experience | Merchant implementation | Best when |
+|---|---|---|
+| Merchant-site provider checkout | Pass the server-created `checkout_url` to `@paymux-js/sdk/checkout`. The SDK opens the routed provider without displaying the Paymux-hosted page. | The merchant wants checkout to begin on its own storefront and can allow the provider's required CSP resources. |
+| Paymux-hosted checkout | Redirect the browser to the server-created `checkout_url`. | The merchant wants the smallest integration or cannot allow provider scripts and frames on its storefront. |
+
+Do not create a separate provider integration in the merchant browser. The
+checkout entry point handles redirects, signed form posts, official provider
+SDKs, required billing details, and recovery behavior without exposing backend
+or provider secrets.
+
 ## Install
 
 ```sh
@@ -106,3 +118,6 @@ the backend retrieves the payment with its Paymux API key.
 
 The return page should show a neutral "Confirming payment" state until its own
 backend reports the order paid, failed, or still processing.
+
+Coding agents can start with [`/llms.txt`](../llms.txt) and use the complete
+[`/llms-full.txt`](../llms-full.txt) integration contract and acceptance tests.

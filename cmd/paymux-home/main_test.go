@@ -9,7 +9,12 @@ import (
 )
 
 func TestWebsiteRoutes(t *testing.T) {
-	h := websiteHandler(fstest.MapFS{"index.html": {Data: []byte(`<html><div id="root"></div><script src="/assets/main-test.js"></script></html>`)}, "assets/main-test.js": {Data: []byte("console.log('test')")}})
+	h := websiteHandler(fstest.MapFS{
+		"index.html":          {Data: []byte(`<html><div id="root"></div><script src="/assets/main-test.js"></script></html>`)},
+		"assets/main-test.js": {Data: []byte("console.log('test')")},
+		"llms.txt":            {Data: []byte("# Paymux\n")},
+		"llms-full.txt":       {Data: []byte("# Paymux merchant integration guide for coding agents\n")},
+	})
 	paths := []string{"/", "/integrations", "/docs", "/self-hosting", "/healthz"}
 	var catalog []struct {
 		Slug string `json:"slug"`
@@ -45,6 +50,16 @@ func TestWebsiteRoutes(t *testing.T) {
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/assets/main-test.js", nil))
 	if w.Code != 200 || !strings.Contains(w.Header().Get("Cache-Control"), "immutable") {
 		t.Fatal("static asset is not served with immutable caching")
+	}
+	for _, path := range []string{"/llms.txt", "/llms-full.txt"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		if w.Code != 200 || !strings.HasPrefix(w.Body.String(), "# Paymux") {
+			t.Fatalf("%s: expected LLM documentation, got %d %q", path, w.Code, w.Body.String())
+		}
+		if got := w.Header().Get("Content-Type"); got != "text/plain; charset=utf-8" {
+			t.Fatalf("%s: content type %q", path, got)
+		}
 	}
 }
 func TestMissingFrontendIsNotReportedHealthy(t *testing.T) {

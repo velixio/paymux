@@ -1,0 +1,33 @@
+# Paymux
+
+> Paymux is a self-hosted payment hub that gives merchant applications one API for payments, refunds, subscriptions, invoices, payouts, and normalized webhooks across payment providers.
+
+Paymux offers two customer checkout experiences. A merchant can redirect to the Paymux-hosted checkout page, or use the JavaScript checkout entry point to open the routed provider directly from the merchant storefront. Both flows begin with a server-created payment and use the same provider routing and signed app webhooks.
+
+## Merchant integration
+
+- [Complete coding-agent integration guide](/llms-full.txt): implementation sequence, security invariants, examples, and acceptance criteria.
+- [JavaScript SDK guide](/docs/javascript-sdk): backend client, webhook verification, and merchant-site provider checkout.
+- [Application integration guide](/docs/api): authentication, amounts, idempotency, errors, and retries.
+- [Payments and routing](/docs/payments): payment states, checkout, routing, cancellation, and refunds.
+- [Webhooks](/docs/webhooks): exact-byte verification, durable acknowledgement, deduplication, ordering, and replay.
+- [npm package](https://www.npmjs.com/package/@paymux-js/sdk): `@paymux-js/sdk`.
+- [OpenAPI contract](https://raw.githubusercontent.com/velixio/paymux/main/docs/openapi.yaml): exact HTTP request and response fields.
+
+## Critical integration rules
+
+- Create payments on the merchant backend. Never expose a Paymux API key to browser code.
+- Derive amounts, currency, and order ownership from trusted server-side data.
+- Supply a stable, unique idempotency key for every mutation.
+- Return only the customer-specific `checkout_url` to its authenticated customer.
+- For merchant-site checkout, call `checkout` from `@paymux-js/sdk/checkout`; do not recreate provider-specific browser integrations.
+- Treat browser redirects and checkout events as interface signals, never proof of payment.
+- Fulfil an order only after a verified `payment.succeeded` app webhook or an authenticated backend payment lookup.
+- Verify app webhooks against the exact raw request bytes, then durably deduplicate the `webhook-id` header.
+- Keep provider webhooks and Paymux app webhooks separate; they use different URLs and secrets.
+
+## Source documentation
+
+- [Repository documentation index](https://github.com/velixio/paymux/blob/main/docs/README.md)
+- [JavaScript SDK source guide](https://github.com/velixio/paymux/blob/main/sdk/js/README.md)
+- [Go SDK source guide](https://github.com/velixio/paymux/blob/main/sdk/go/README.md)

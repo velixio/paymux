@@ -1,0 +1,244 @@
+# Paymux merchant integration guide for coding agents
+
+This document is the implementation contract for adding Paymux to a merchant application. Follow the merchant application's existing architecture, authentication, database, UI, testing, and deployment conventions. Use the Paymux SDK as a dependency; do not copy its internals into the merchant application.
+
+## 1. Choose the checkout experience
+
+Both checkout experiences start by creating a payment on the merchant backend.
+
+### Merchant-site provider checkout
+
+Use this when the merchant does not want to display the Paymux-hosted checkout page. The browser calls `checkout` from `@paymux-js/sdk/checkout` with the `checkout_url` returned by the backend.
+
+Paymux selects the provider. The SDK then performs the appropriate action:
+
+- redirects to a provider-hosted checkout when required;
+- submits a signed PayU form without exposing the PayU salt;
+- loads the official Razorpay, Cashfree, or Zoho browser SDK;
+- displays accessible billing, loading, error, retry, and recovery UI when needed.
+
+The SDK does not put the Paymux API key in the browser. The `return_url` origin must exactly match the merchant storefront origin. The storefront Content Security Policy must allow the selected provider's declared resources.
+
+### Paymux-hosted checkout
+
+Use this when the merchant prefers the simplest integration or cannot permit provider scripts and frames in its Content Security Policy. Redirect the customer to `payment.checkout_url`. No browser SDK import is required.
+
+Do not build a third checkout implementation. Choose one of these two supported experiences.
+
+## 2. Install and configure
+
+Install the JavaScript and TypeScript SDK:
+
+```sh
+npm install @paymux-js/sdk
+```
+
+Keep these values in the merchant backend's secret/configuration system:
+
+```dotenv
+PAYMUX_BASE_URL=https://payments.example.com
+PAYMUX_API_KEY=pmx_test_sk_REDACTED
+PAYMUX_WEBHOOK_SECRET=whsec_REDACTED
+APP_URL=https://shop.example.com
+```
+
+Never commit real values. `PAYMUX_API_KEY` and `PAYMUX_WEBHOOK_SECRET` must never be included in browser bundles, HTML, public environment variables, logs, analytics, or error messages.
+
+Use HTTPS for Paymux and merchant URLs outside loopback development.
+
+## 3. Create payments on the backend
+
+Create one shared server-side client:
+
+```ts
+import { Paymux } from "@paymux-js/sdk";
+
+export const paymux = new Paymux({
+  apiKey: process.env.PAYMUX_API_KEY!,
+  baseURL: process.env.PAYMUX_BASE_URL!,
+});
+```
+
+Add an authenticated merchant endpoint that creates or retrieves a payment for an order. Before calling Paymux:
+
+1. Authenticate the customer.
+2. Load the order from the merchant database.
+3. Verify that the customer owns the order and that it can still be paid.
+4. Read amount and currency from trusted database records, not from the request body.
+5. Reuse the recorded Paymux payment when the same logical checkout is retried.
+
+Create the payment:
+
+```ts
+const payment = await paymux.payments.create(
+  {
+    amount: order.totalMinorUnits,
+    currency: order.currency,
+    order_ref: order.id,
+    description: `Order ${order.id}`,
+    customer: {
+      external_ref: customer.id,
+      name: customer.name,
+      email: customer.email,
+    },
+    return_url: `${process.env.APP_URL}/orders/${order.id}`,
+  },
+  { idempotencyKey: `order-${order.id}-payment-v1` },
+);
+```
+
+Amounts are integer minor units. For example, INR 499.00 is `49900`.
+
+Every mutation requires a 1-255 character `idempotencyKey`. Reuse a key only when retrying the same logical operation. Use a new versioned key when the operation or amount changes.
+
+Store at least the Paymux payment ID, merchant order ID, expected amount, expected currency, and current local payment state. Return only the `checkout_url` needed by the authenticated browser:
+
+```json
+{
+  "checkout_url": "https://payments.example.com/pay/pay_example?t=customer-token"
+}
+```
+
+The checkout URL is a customer credential. Do not send it to a different customer, place it in analytics, or log its query string.
+
+## 4. Open merchant-site checkout
+
+Use the browser-only package entry point. It contains no backend API client and needs no API key:
+
+```ts
+import { checkout } from "@paymux-js/sdk/checkout";
+
+const response = await fetch(`/api/orders/${orderId}/payment`, {
+  method: "POST",
+  credentials: "same-origin",
+  headers: { "Content-Type": "application/json" },
+});
+
+if (!response.ok) throw new Error("Unable to start payment");
+const { checkout_url: checkoutUrl } = await response.json();
+
+await checkout({
+  checkoutUrl,
+  onEvent(event) {
+    // Use events only for loading, dismissed, and error interface states.
+    // Never mark the order paid from a browser event.
+  },
+});
+```
+
+The built-in UI is enabled by default. With a nonce-based Content Security Policy, pass the fresh nonce generated for that HTML response:
+
+```ts
+await checkout({ checkoutUrl, nonce: window.cspNonce });
+```
+
+Never reuse CSP nonces. Provider SDKs may require provider-specific script, frame, image, form, and connection hosts. If the merchant cannot allow them, use Paymux-hosted checkout.
+
+Do not parse the checkout URL, call its `/action` endpoint directly, load provider scripts yourself, sign provider fields in the browser, or expose provider secrets. The checkout SDK owns those operations.
+
+## 5. Handle the return page
+
+The return page is not payment proof. It should show a neutral state such as "Confirming payment" and query the merchant backend for the order's authoritative local status.
+
+The backend may use its saved webhook result or retrieve the payment with its API key:
+
+```ts
+const payment = await paymux.payments.get(savedPaymuxPaymentId);
+```
+
+Only `succeeded` is successful. Treat `created`, `requires_action`, and `processing` as incomplete. Handle `failed`, `expired`, `canceled`, and `needs_review` explicitly without automatically fulfilling the order.
+
+## 6. Verify Paymux app webhooks
+
+Configure an app webhook in Paymux for the merchant backend. This is different from the provider webhook configured on a provider account.
+
+Verify the exact raw request bytes before JSON parsing or middleware reserialization:
+
+```ts
+import { WebhookVerifier } from "@paymux-js/sdk";
+
+const verifier = new WebhookVerifier(
+  process.env.PAYMUX_WEBHOOK_SECRET!,
+);
+
+const rawBody = new Uint8Array(await request.arrayBuffer());
+const event = await verifier.verify(request.headers, rawBody);
+```
+
+Framework-specific body parsers must not consume or modify the bytes before verification. Configure that route for raw-body access.
+
+The verified `event.id` comes from the `webhook-id` header. In durable storage, deduplicate it within the application endpoint's context. Expect retries and out-of-order delivery.
+
+Recommended processing sequence:
+
+1. Verify the signature and timestamp.
+2. Begin a merchant database transaction.
+3. Insert the event into a durable inbox with a unique event ID constraint.
+4. If it already exists, commit and return 2xx.
+5. For `payment.succeeded`, validate the referenced order, amount, currency, livemode, and current state.
+6. Mark the order paid and record event processing in the same transaction.
+7. Commit before returning 2xx.
+
+Ignore unknown event types safely. Do not fail delivery merely because a newer Paymux version introduces an event the merchant does not use.
+
+If an event is older than the local object version or could regress state, retrieve the current payment from Paymux before updating the order.
+
+## 7. Cancellation and refunds
+
+Cancellation and refunds are backend-only, authenticated operations. Check merchant authorization and validate the payment against stored order data.
+
+```ts
+const canceled = await paymux.payments.cancel(paymentId, {
+  idempotencyKey: `order-${order.id}-cancel-v1`,
+});
+
+const refund = await paymux.refunds.create(
+  paymentId,
+  { amount: refundAmountMinorUnits, reason: "customer_request" },
+  { idempotencyKey: `order-${order.id}-refund-${refundRequest.id}` },
+);
+```
+
+Do not trust a refund amount or payment ID supplied by a browser. Load and validate both against merchant records. A provider may not support cancellation after processing has progressed; handle typed API errors rather than pretending cancellation succeeded.
+
+## 8. Errors and retries
+
+The SDK exports `APIError`. It includes HTTP status, error type, request ID, idempotent replay information, and retry delay. It also exposes `temporary`, `isNotFound`, and `isConflict` checks.
+
+Retry temporary failures only with the same idempotency key and bounded backoff. Do not retry validation, authentication, or authorization failures as if they were transient. Log the safe request ID for diagnosis, but never log API keys, webhook secrets, full checkout URLs, provider secrets, or sensitive customer data.
+
+Browser checkout errors should produce actionable retry or cancellation UI. They must not directly change the authoritative order state.
+
+## 9. Required acceptance tests
+
+An implementation is incomplete until it tests:
+
+- authenticated payment creation from database-owned amount and currency;
+- rejection of unauthorized order access;
+- stable idempotency for repeated creation requests;
+- API keys and webhook secrets absent from browser bundles and responses;
+- merchant-site checkout receives only `checkout_url`;
+- raw-body webhook signature verification;
+- rejection of invalid, stale, and tampered webhook deliveries;
+- durable duplicate-event handling;
+- `payment.succeeded` updates and fulfils an order exactly once;
+- browser redirects and browser checkout events do not mark an order paid;
+- failed, processing, canceled, expired, and needs-review states;
+- refund authorization, amount validation, and idempotency;
+- the return page polls or loads status from the merchant backend;
+- Content Security Policy behavior for every enabled provider.
+
+Run the merchant repository's formatter, linter, type checker, unit tests, and relevant browser/integration tests.
+
+## 10. Do not invent behavior
+
+Use the SDK's exported types and the checked-in OpenAPI contract for exact fields. Do not guess provider support, webhook payload fields, or terminal states. Provider capabilities vary by account and connector.
+
+Canonical references:
+
+- JavaScript integration: https://github.com/velixio/paymux/blob/main/docs/javascript-sdk.md
+- SDK API overview: https://github.com/velixio/paymux/blob/main/sdk/js/README.md
+- Webhooks: https://github.com/velixio/paymux/blob/main/docs/webhooks.md
+- Payments: https://github.com/velixio/paymux/blob/main/docs/payments.md
+- OpenAPI: https://raw.githubusercontent.com/velixio/paymux/main/docs/openapi.yaml
+- npm: https://www.npmjs.com/package/@paymux-js/sdk

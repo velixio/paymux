@@ -19,7 +19,7 @@ Open `http://localhost:5174`. Source files are in `frontend/home/src/`. Shared c
 bun run --cwd frontend build:home
 ```
 
-Deploy `cmd/paymux-home/dist/` to any static host, with the marketing and guide routes (`/`, `/integrations`, `/docs`, `/docs/<guide>`, `/self-hosting`) mapped to `index.html`. Asset files under `/assets/` should be served normally. The public `/docs` is a developer entry guide; the payment hub's `/docs` remains its API reference.
+Deploy `cmd/paymux-home/dist/` to any static host, with the marketing and guide routes (`/`, `/integrations`, `/docs`, `/docs/<guide>`, `/self-hosting`) mapped to `index.html`. Asset files under `/assets/` should be served normally. Serve `/llms.txt` and `/llms-full.txt` as the generated plain-text files rather than mapping them to `index.html`. The public `/docs` is a developer entry guide; the payment hub's `/docs` remains its API reference.
 
 The separate Go binary is retained as an optional static-file server:
 
