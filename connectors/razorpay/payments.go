@@ -146,7 +146,8 @@ func rank(p paymentEntity) int {
 
 func (r *razorpay) captureIfAuthorized(ctx context.Context, p paymentEntity, providerRef string) (connector.PaymentSnapshot, error) {
 	if p.Status == "authorized" {
-		priorCard := p.Card
+		priorCard, priorUPI := p.Card, p.UPI
+		priorBank, priorWallet, priorMethod := p.Bank, p.Wallet, p.Method
 		var captured paymentEntity
 		body := map[string]any{"amount": p.Amount, "currency": p.Currency}
 		err := r.api.do(ctx, "POST", "/v1/payments/"+url.PathEscape(p.ID)+"/capture", nil, body, &captured, nil)
@@ -160,6 +161,18 @@ func (r *razorpay) captureIfAuthorized(ctx context.Context, p paymentEntity, pro
 			if p.Card == nil {
 				p.Card = priorCard
 			}
+			if p.UPI == nil {
+				p.UPI = priorUPI
+			}
+			if p.Bank == "" {
+				p.Bank = priorBank
+			}
+			if p.Wallet == "" {
+				p.Wallet = priorWallet
+			}
+			if p.Method == "" {
+				p.Method = priorMethod
+			}
 		case errors.As(err, &ae) && ae.Status == 400 && strings.Contains(strings.ToLower(ae.Description), "already"):
 			// Captured concurrently (or by auto-capture): read the current state.
 			if err := r.api.do(ctx, "GET", "/v1/payments/"+url.PathEscape(p.ID), nil, nil, &p, nil); err != nil {
@@ -171,7 +184,11 @@ func (r *razorpay) captureIfAuthorized(ctx context.Context, p paymentEntity, pro
 	}
 	if p.Method == "card" && p.Card == nil {
 		if err := r.api.do(ctx, "GET", "/v1/payments/"+url.PathEscape(p.ID), url.Values{"expand[]": {"card"}}, nil, &p, nil); err != nil {
-			return connector.PaymentSnapshot{}, err
+			// Card expansion is optional enrichment. Never lose an already fetched
+			// captured state merely because that follow-up request failed.
+			s := p.snapshot()
+			s.ProviderRef = providerRef
+			return s, nil
 		}
 	}
 	s := p.snapshot()

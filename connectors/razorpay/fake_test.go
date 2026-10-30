@@ -29,21 +29,24 @@ type fake struct {
 	mu    sync.Mutex
 	calls []call
 
-	payStatus     string // status of payment pay_Nx1
-	refundStatus  string
-	captureFails  bool // capture answers "already captured" 400
-	refundErrCode int  // when set, refund answers this status with an error body
-	listPages     int  // number of full pages to serve for lists
-	plans         int  // plans created
-	subStatus     string
-	settlements   []map[string]any // GET /v1/settlements
-	documents     int              // documents uploaded
-	docFail       int              // when set, POST /v1/documents answers this status
-	acceptErr     int              // when set, dispute accept answers this status
-	contestErr    int              // when set, dispute contest answers this status
-	patchSubErr   string           // when set, PATCH of the subscription answers 400 with this description
-	recon         map[string][]any // GET /v1/settlements/recon/combined, keyed "Y-M-D"
-	listReceipt   string           // when set, GET /v1/orders ignores the receipt filter and returns this receipt
+	payStatus       string // status of payment pay_Nx1
+	refundStatus    string
+	captureFails    bool // capture answers "already captured" 400
+	captureOmitsUPI bool
+	captureCard     bool
+	cardExpandFails bool
+	refundErrCode   int // when set, refund answers this status with an error body
+	listPages       int // number of full pages to serve for lists
+	plans           int // plans created
+	subStatus       string
+	settlements     []map[string]any // GET /v1/settlements
+	documents       int              // documents uploaded
+	docFail         int              // when set, POST /v1/documents answers this status
+	acceptErr       int              // when set, dispute accept answers this status
+	contestErr      int              // when set, dispute contest answers this status
+	patchSubErr     string           // when set, PATCH of the subscription answers 400 with this description
+	recon           map[string][]any // GET /v1/settlements/recon/combined, keyed "Y-M-D"
+	listReceipt     string           // when set, GET /v1/orders ignores the receipt filter and returns this receipt
 }
 
 func newFake(status string) *fake { return &fake{payStatus: status, refundStatus: "processed"} }
@@ -72,6 +75,7 @@ func payJSON(status string) map[string]any {
 	return map[string]any{
 		"id": "pay_Nx1", "entity": "payment", "amount": 49900, "currency": "INR", "status": status,
 		"order_id": "order_Nx0", "method": "upi", "amount_refunded": 0, "fee": 1178, "tax": 180,
+		"upi":        map[string]any{"payer_account_type": "bank_account"},
 		"error_code": nil, "error_description": nil, "created_at": 1760000000,
 	}
 }
@@ -129,6 +133,10 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, 200, fakeCollection(payJSON(f.payStatus)))
 	case r.Method == "GET" && p == "/v1/payments/pay_Nx1":
+		if f.cardExpandFails && r.URL.Query().Get("expand[]") == "card" {
+			writeAPIError(w, 500, "card expansion unavailable")
+			return
+		}
 		writeJSON(w, 200, payJSON(f.payStatus))
 	case r.Method == "POST" && p == "/v1/payments/pay_Nx1/capture":
 		if f.captureFails {
@@ -138,7 +146,14 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.payStatus = "captured"
 		f.mu.Unlock()
-		writeJSON(w, 200, payJSON("captured"))
+		captured := payJSON("captured")
+		if f.captureOmitsUPI {
+			delete(captured, "upi")
+		}
+		if f.captureCard {
+			captured["method"] = "card"
+		}
+		writeJSON(w, 200, captured)
 	case r.Method == "POST" && p == "/v1/payments/pay_Nx1/refund":
 		if f.refundErrCode != 0 {
 			writeAPIError(w, f.refundErrCode, "The refund amount provided is greater than amount captured")

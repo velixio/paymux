@@ -146,6 +146,33 @@ func TestFetchPaymentCapturesAuthorized(t *testing.T) {
 	}
 }
 
+func TestFetchPaymentPreservesUPIDetailsWhenCaptureOmitsThem(t *testing.T) {
+	f := newFake("authorized")
+	f.captureOmitsUPI = true
+	c := newConn(t, f)
+	snap, err := c.FetchPayment(context.Background(), connector.PaymentRef{ProviderOrderID: "order_Nx0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.Status != connector.PaymentSucceeded || snap.MethodDetails.UPI == nil || snap.MethodDetails.UPI.PayerAccountType != "bank_account" {
+		t.Fatalf("capture lost UPI details: %+v", snap)
+	}
+}
+
+func TestFetchPaymentKeepsCapturedStateWhenCardEnrichmentFails(t *testing.T) {
+	f := newFake("authorized")
+	f.captureCard = true
+	f.cardExpandFails = true
+	c := newConn(t, f)
+	snap, err := c.FetchPayment(context.Background(), connector.PaymentRef{ProviderOrderID: "order_Nx0"})
+	if err != nil {
+		t.Fatalf("optional card enrichment failed the captured payment: %v", err)
+	}
+	if snap.Status != connector.PaymentSucceeded || snap.ProviderPaymentID != "pay_Nx1" || snap.Method != "card" {
+		t.Fatalf("captured state was lost: %+v", snap)
+	}
+}
+
 func TestFetchPaymentCaptureAlreadyDone(t *testing.T) {
 	f := newFake("authorized")
 	f.captureFails = true

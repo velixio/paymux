@@ -157,9 +157,8 @@ No migration. `PAYMUX_CHECKOUT_URL` is optional and unset by default, so an upgr
 
 ## Release note: payment method details
 
-Migration 0036 adds a `method_details` JSON column to payment attempts. Existing
-rows get an empty object, so the migration is immediate and does not rewrite
-payment data. Verified provider webhooks and reconciliation populate safe
+Migration 0036 adds a `method_details` text column that stores JSON on payment
+attempts. Existing rows get an empty object. Verified provider webhooks and reconciliation populate safe
 display metadata when a provider supplies it. Full card numbers, expiry, CVV,
 authentication data, fingerprints and reusable tokens are not stored there.
 
