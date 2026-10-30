@@ -120,6 +120,7 @@ type Payment struct {
 	Flags             []string          `json:"flags"`
 	CheckoutMode      string            `json:"checkout_mode,omitempty"`
 	CheckoutURL       string            `json:"checkout_url,omitempty"`
+	Checkout          *CheckoutAction   `json:"checkout,omitempty"`
 	Attempts          []PaymentAttempt  `json:"attempts,omitempty"`
 }
 

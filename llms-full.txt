@@ -10,7 +10,7 @@ All checkout experiences start by creating a payment on the merchant backend.
 
 Use this when the merchant does not want to pass a Paymux checkout URL or token through its UI. In Paymux, open Apps, choose the App, open Settings, and set `checkout_mode` to `provider_action`.
 
-Payment creation then returns `checkout_mode: "provider_action"` without `checkout_url`. The merchant backend calls `paymux.payments.checkoutAction(payment.id, {}, { idempotencyKey })`, returns that provider action JSON to the authenticated order owner, and the browser passes it to `executeCheckout` from `@paymux-js/sdk/checkout`.
+Payment creation then creates the provider order and returns `checkout_mode: "provider_action"` with an executable `checkout` action and no `checkout_url`. The merchant backend returns only `payment.checkout` to the authenticated order owner, and the browser passes it to `executeCheckout` from `@paymux-js/sdk/checkout`. Use `checkoutAction` only for recovery or an intentionally fresh attempt.
 
 Provide the customer and all billing information required by the App's tax policy when creating the payment. This mode does not use Paymux browser UI to collect missing billing information.
 
@@ -88,6 +88,7 @@ const payment = await paymux.payments.create(
       external_ref: customer.id,
       name: customer.name,
       email: customer.email,
+      billing: customer.billing,
     },
     return_url: `${process.env.APP_URL}/orders/${order.id}`,
   },
@@ -101,16 +102,10 @@ Every mutation requires a 1-255 character `idempotencyKey`. Reuse a key only whe
 
 Store at least the Paymux payment ID, merchant order ID, expected amount, expected currency, current local payment state, expiry, and checkout mode. In `hosted` mode also store `checkout_url`. The checkout URL contains a customer credential and is returned only by payment creation; `payments.get()` cannot reconstruct it. Protect it like a short-lived secret in encrypted or equivalently access-controlled server storage, return it only to the authenticated order owner, and remove it after expiry or a terminal outcome. This lets the same logical checkout reopen after a browser or network retry without creating another payment.
 
-In `provider_action` mode, do not expect or expose `checkout_url`. Resolve the action on the merchant backend:
+In `provider_action` mode, do not expect or expose `checkout_url`. Payment creation already returns the action:
 
 ```ts
-const checkoutAction = await paymux.payments.checkoutAction(
-  payment.id,
-  {},
-  { idempotencyKey: `order-${order.id}-checkout-v1` },
-);
-
-return checkoutAction;
+return payment.checkout;
 ```
 
 Then execute it in the merchant UI:
@@ -122,6 +117,8 @@ await executeCheckout(await merchantApi.startCheckout(order.id));
 ```
 
 The merchant UI receives no Paymux URL, token, API key, or provider secret. It receives a provider launch action or terminal `complete` response validated by Paymux.
+
+If initial provider creation returns `provider_unavailable`, the error includes the existing `payment_id`. Do not create another payment. Retry that payment with `payments.checkoutAction` and a new operation-specific idempotency key.
 
 In `hosted` mode, if the checkout URL was not retained or is unavailable, do not silently create a second payable payment. Inspect the recorded payment, cancel it when possible, preserve its link to the order for later webhook reconciliation, and create a replacement with a new idempotency key only after the merchant's duplicate-charge policy permits it. Return only the active `checkout_url` needed by the authenticated browser:
 

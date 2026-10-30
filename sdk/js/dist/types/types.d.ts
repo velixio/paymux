@@ -98,6 +98,7 @@ export interface Payment {
     flags: string[];
     checkout_mode?: CheckoutMode;
     checkout_url?: string;
+    checkout?: CheckoutAction;
     attempts?: PaymentAttempt[];
 }
 export interface ListPaymentsParams extends PageParams {

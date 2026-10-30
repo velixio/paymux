@@ -95,7 +95,9 @@ func (s *Service) GetApp(ctx context.Context, id string) (store.App, error) {
 	return a, mapStoreErr(err, "app")
 }
 
-func validateCreate(in *CreatePaymentInput) error {
+// ValidateCreatePaymentInput validates and normalizes a payment before any
+// database or provider side effect.
+func ValidateCreatePaymentInput(in *CreatePaymentInput) error {
 	if err := in.Scope.validate(); err != nil {
 		return err
 	}
@@ -148,7 +150,7 @@ func validURL(raw string) bool {
 // setting, stores the payment (status created) with the hash of a fresh
 // client secret, and emits payment.created.
 func (s *Service) CreatePayment(ctx context.Context, in CreatePaymentInput) (CreatedPayment, error) {
-	if err := validateCreate(&in); err != nil {
+	if err := ValidateCreatePaymentInput(&in); err != nil {
 		return CreatedPayment{}, err
 	}
 	secret := newClientSecret()

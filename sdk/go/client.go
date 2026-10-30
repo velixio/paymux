@@ -174,8 +174,9 @@ type Response struct {
 // APIError is returned for every non-2xx API response.
 type APIError struct {
 	Response
-	Type    string
-	Message string
+	Type      string
+	Message   string
+	PaymentID string
 }
 
 func (e *APIError) Error() string {
@@ -196,6 +197,7 @@ type errorEnvelope struct {
 		Type      string `json:"type"`
 		Message   string `json:"message"`
 		RequestID string `json:"request_id"`
+		PaymentID string `json:"payment_id"`
 	} `json:"error"`
 }
 
@@ -251,7 +253,7 @@ func decodeAPIError(resp *http.Response) error {
 	e := &APIError{Response: meta, Type: http.StatusText(resp.StatusCode), Message: strings.TrimSpace(string(b))}
 	var envelope errorEnvelope
 	if json.Unmarshal(b, &envelope) == nil && envelope.Error.Message != "" {
-		e.Type, e.Message = envelope.Error.Type, envelope.Error.Message
+		e.Type, e.Message, e.PaymentID = envelope.Error.Type, envelope.Error.Message, envelope.Error.PaymentID
 		if envelope.Error.RequestID != "" {
 			e.RequestID = envelope.Error.RequestID
 		}

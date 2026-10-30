@@ -13,6 +13,7 @@ export class APIError extends Error {
     readonly requestId?: string,
     readonly idempotentReplay = false,
     readonly retryAfterMs = 0,
+    readonly paymentId?: string,
   ) { super(message); this.name = "APIError"; }
   get temporary(): boolean { return this.statusCode === 429 || this.statusCode >= 500; }
   get isNotFound(): boolean { return this.statusCode === 404; }
@@ -24,7 +25,8 @@ export class APIError extends Error {
     const seconds = /^\d+$/.test(retry) ? Number(retry) * 1000 : Math.max(0, Date.parse(retry) - Date.now()) || 0;
     const message = value?.error?.message ?? (text.trim() || response.statusText);
     return new APIError(response.status, value?.error?.type ?? response.statusText, message,
-      value?.error?.request_id ?? response.headers.get("X-Request-Id") ?? undefined, response.headers.get("Idempotent-Replay")?.toLowerCase() === "true", seconds);
+      value?.error?.request_id ?? response.headers.get("X-Request-Id") ?? undefined, response.headers.get("Idempotent-Replay")?.toLowerCase() === "true", seconds,
+      value?.error?.payment_id);
   }
 }
 

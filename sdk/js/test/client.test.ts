@@ -36,9 +36,9 @@ test("resource paths, query parameters, and PDF downloads are normalized", async
 });
 
 test("API errors retain safe retry and request metadata", async () => {
-  const client = new Paymux({ apiKey: "key", fetch: async () => new Response(JSON.stringify({ error: { type: "rate_limited", message: "Slow down", request_id: "req_1" } }), { status: 429, headers: { "Retry-After": "3", "Idempotent-Replay": "true" } }) });
+  const client = new Paymux({ apiKey: "key", fetch: async () => new Response(JSON.stringify({ error: { type: "rate_limited", message: "Slow down", request_id: "req_1", payment_id: "pay_1" } }), { status: 429, headers: { "Retry-After": "3", "Idempotent-Replay": "true" } }) });
   try { await client.payments.get("pay_1"); throw new Error("expected API error"); }
-  catch (error) { expect(error).toBeInstanceOf(APIError); expect(error).toMatchObject({ type: "rate_limited", requestId: "req_1", temporary: true, retryAfterMs: 3000, idempotentReplay: true }); }
+  catch (error) { expect(error).toBeInstanceOf(APIError); expect(error).toMatchObject({ type: "rate_limited", requestId: "req_1", paymentId: "pay_1", temporary: true, retryAfterMs: 3000, idempotentReplay: true }); }
 });
 
 describe("WebhookVerifier", () => {
