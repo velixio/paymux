@@ -59,9 +59,11 @@ Confirm fulfillment from a verified `payment.succeeded` event or the authoritati
 Payment details include provider attempts. When the provider supplies safe
 instrument metadata, an attempt's `method_details` contains display fields such
 as card network, last four digits, funding type, issuer and domestic or
-international status. Paymux never exposes a full card number, expiry, CVV,
-authentication data, fingerprint or reusable provider token. Use these fields
-for support and recognition only; payment status remains authoritative.
+international status. Bank payments may include the provider's bank code or
+name, wallets may include the wallet code or name, and UPI may include only the
+payer account type. Paymux never exposes a full card number, expiry, CVV, UPI
+VPA, authentication data, fingerprint or reusable provider token. Use these
+fields for support and recognition only; payment status remains authoritative.
 
 ## Amounts and timestamps
 
