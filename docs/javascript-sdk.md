@@ -61,6 +61,15 @@ Return only the customer checkout URL to that order's authenticated browser:
 {"checkout_url":"https://pay.example.com/pay/pay_...?t=..."}
 ```
 
+The checkout URL is returned only when the payment is created; retrieving the
+payment does not reproduce its customer token. Keep the URL in encrypted or
+equivalently access-controlled server storage until payment expiry, return it
+only to the authenticated order owner, and remove it after expiry or a terminal
+outcome. If it is lost, inspect and cancel the old payment when possible before
+creating a replacement. Keep every payment linked to the order so a late
+success or `needs_review` result is reconciled instead of causing automatic
+duplicate fulfilment.
+
 Then open it:
 
 ```ts
@@ -93,10 +102,12 @@ return origin and are never cacheable.
 ## Content Security Policy
 
 Razorpay, Cashfree, and Zoho run their own scripts and frames on the storefront.
-The storefront CSP must permit the selected provider's declared checkout hosts.
-Use hosted Paymux checkout when the storefront cannot allow those resources.
-Redirect and form-post integrations leave the page and do not execute provider
-scripts in it.
+The storefront CSP must include the origin that issued `checkout_url` in
+`connect-src`, because the checkout SDK first posts to that Paymux origin. It
+must also permit the selected provider's declared checkout hosts. Use hosted
+Paymux checkout when the storefront cannot allow those resources. Redirect and
+form-post integrations leave the page and do not execute provider scripts in
+it.
 
 With a nonce-based policy, pass the fresh nonce generated for the current HTML
 response. Paymux applies it to the built-in dialog style and dynamically loaded

@@ -20,7 +20,9 @@ Paymux offers two customer checkout experiences. A merchant can redirect to the 
 - Derive amounts, currency, and order ownership from trusted server-side data.
 - Supply a stable, unique idempotency key for every mutation.
 - Return only the customer-specific `checkout_url` to its authenticated customer.
+- Store `checkout_url` as a short-lived server-side secret until payment expiry so the same payment can reopen after a retry; it cannot be recovered by retrieving the payment.
 - For merchant-site checkout, call `checkout` from `@paymux-js/sdk/checkout`; do not recreate provider-specific browser integrations.
+- Permit the Paymux checkout origin in the storefront's CSP `connect-src`, plus the selected provider's required hosts.
 - Treat browser redirects and checkout events as interface signals, never proof of payment.
 - Fulfil an order only after a verified `payment.succeeded` app webhook or an authenticated backend payment lookup.
 - Verify app webhooks against the exact raw request bytes, then durably deduplicate the `webhook-id` header.
