@@ -12,7 +12,7 @@ app webhooks.
 
 | Experience | Merchant implementation | Best when |
 |---|---|---|
-| Backend-resolved provider checkout | Set the App's `checkout_mode` to `provider_action`. The merchant backend resolves an action and the browser calls `executeCheckout`. No Paymux URL or token enters the browser. | The merchant wants checkout to begin on its own storefront and keep Paymux out of browser requests. |
+| Backend-resolved provider checkout | Set the App's `checkout_mode` to `provider_action`. Payment creation returns an action and the browser calls `executeCheckout`. No Paymux URL or token enters the browser. | The merchant wants checkout to begin on its own storefront and keep Paymux out of browser requests. |
 | Browser-resolved provider checkout | Keep `hosted` mode but pass the server-created `checkout_url` to `checkout`. The SDK opens the routed provider without displaying the Paymux-hosted page. | An existing integration wants SDK-managed billing and retries with the least backend code. |
 | Paymux-hosted checkout | Redirect the browser to the server-created `checkout_url`. | The merchant wants the smallest integration or cannot allow provider scripts and frames on its storefront. |
 
@@ -51,21 +51,17 @@ status, error type, request ID, replay status, and retry delay.
 ## Provider action without a Paymux URL in the browser
 
 With `checkout_mode=provider_action`, payment creation returns
-`checkout_mode: "provider_action"` and no `checkout_url`. Resolve the provider
-action on the authenticated merchant backend:
+`checkout_mode: "provider_action"`, no `checkout_url`, and an executable
+`checkout` action. Include required customer billing data in the same request:
 
 ```ts
-const payment = await paymux.payments.create(params, {
-  idempotencyKey: `order-${order.id}-payment-v1`,
-});
-
-const checkoutAction = await paymux.payments.checkoutAction(
-  payment.id,
-  {},
-  { idempotencyKey: `order-${order.id}-checkout-v1` },
+const payment = await paymux.payments.create(
+  { ...params, customer: { name: order.customerName, billing: order.billing } },
+  { idempotencyKey: `order-${order.id}-payment-v1` },
 );
 
-// Return only checkoutAction to the authenticated owner of this order.
+// Return only this action to the authenticated owner of this order.
+return payment.checkout;
 ```
 
 The merchant UI executes that JSON directly:
@@ -81,7 +77,9 @@ const checkoutAction = await fetch(`/api/orders/${orderId}/checkout`, {
 await executeCheckout(checkoutAction);
 ```
 
-The merchant UI receives no Paymux checkout URL or token. A provider may still
+The merchant UI receives no Paymux checkout URL or token. Use
+`payments.checkoutAction` only for recovery or an intentionally fresh provider
+attempt. A provider may still
 return the customer through Paymux's verified return endpoint before Paymux
 redirects to the merchant `return_url`; configure an App custom domain if that
 return hop must use the merchant's domain. Include all customer and billing

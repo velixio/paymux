@@ -31,19 +31,22 @@ To open the selected provider from the merchant storefront instead, return
 [JavaScript checkout SDK](../js/README.md). Never expose the API key.
 
 For no Paymux URL in the browser, set the App's `checkout_mode` to
-`provider_action`, then resolve the public provider action on the backend:
+`provider_action`. The same create call returns the public provider action:
 
 ```go
-action, err := client.Payments.CheckoutAction(ctx, payment.ID,
-    paymux.CheckoutActionParams{},
-    paymux.WithIdempotencyKey("order-1048-checkout-v1"),
-)
+payment, err := client.Payments.Create(ctx, paymux.CreatePaymentParams{
+    Amount: 49900,
+    Currency: "INR",
+    Customer: &paymux.Customer{Name: "Asha Rao", Billing: &paymux.BillingAddress{Country: "IN", StateCode: "27"}},
+}, paymux.WithIdempotencyKey("order-1048-payment-v1"))
+action := payment.Checkout
 ```
 
 Return only `action` to the authenticated order owner and execute it with
 `executeCheckout` from the JavaScript checkout SDK. Supply billing details
-required by the App's tax policy during payment creation or in
-`CheckoutActionParams`; the browser never receives a Paymux URL or API key.
+required by the App's tax policy during payment creation. Use
+`CheckoutActionParams` only for recovery or a fresh attempt; the browser never
+receives a Paymux URL or API key.
 
 Every mutation requires `WithIdempotencyKey`. Reuse a key only when retrying
 the same logical operation. The client does not automatically retry mutations.

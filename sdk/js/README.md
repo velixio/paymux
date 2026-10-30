@@ -42,14 +42,19 @@ Persist and deduplicate `event.id`. Unknown event types should be ignored safely
 ## Browser checkout
 
 For no Paymux URL in the browser, set the App's `checkout_mode` to
-`provider_action`. Resolve the action on the backend:
+`provider_action`. The same create call returns the action:
 
 ```ts
-const action = await paymux.payments.checkoutAction(
-  payment.id,
-  {},
-  { idempotencyKey: "order-1048-checkout-v1" },
+const payment = await paymux.payments.create(
+  {
+    amount: 49900,
+    currency: "INR",
+    customer: { name: "Asha Rao", billing: { country: "IN", state_code: "27" } },
+  },
+  { idempotencyKey: "order-1048-payment-v1" },
 );
+
+const action = payment.checkout;
 ```
 
 Return only `action` to the authenticated order owner and execute it in the UI:
@@ -64,8 +69,8 @@ The merchant UI receives no Paymux checkout URL or token. A provider may still
 return the customer through Paymux's verified return endpoint before the
 merchant `return_url`; use an App custom domain when that hop should carry the
 merchant's domain. Provider-action mode requires the backend to supply billing
-details required by the App's tax policy during payment creation or
-`checkoutAction`.
+details required by the App's tax policy during payment creation. Use
+`checkoutAction` only for recovery or an intentionally fresh attempt.
 
 For browser-resolved checkout, keep the App in `hosted` mode. The backend
 returns `payment.checkout_url` to that order's authenticated browser:

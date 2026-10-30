@@ -308,12 +308,20 @@ type errorBody struct {
 		Type      string `json:"type"`
 		Message   string `json:"message"`
 		RequestID string `json:"request_id"`
+		PaymentID string `json:"payment_id,omitempty"`
 	} `json:"error"`
 }
 
 func (a *API) fail(w http.ResponseWriter, r *http.Request, status int, typ, msg string) {
 	var b errorBody
 	b.Error.Type, b.Error.Message, b.Error.RequestID = typ, msg, server.RequestID(r.Context())
+	writeJSON(w, status, b)
+}
+
+func (a *API) failPayment(w http.ResponseWriter, r *http.Request, status int, typ, msg, paymentID string) {
+	var b errorBody
+	b.Error.Type, b.Error.Message, b.Error.RequestID = typ, msg, server.RequestID(r.Context())
+	b.Error.PaymentID = paymentID
 	writeJSON(w, status, b)
 }
 

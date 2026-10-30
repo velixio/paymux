@@ -40,13 +40,13 @@ func TestCreatePayment(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"id":"pay_1","object":"payment","status":"created","checkout_url":"https://pay.example/pay/pay_1?t=x","expires_at":"2026-10-30T12:00:00Z","created_at":"2026-10-30T11:00:00Z"}`))
+		_, _ = w.Write([]byte(`{"id":"pay_1","object":"payment","status":"created","checkout_mode":"provider_action","checkout":{"kind":"checkout","payment_id":"pay_1","status":"created","launcher":"razorpay","action":{"kind":"sdk"}},"expires_at":"2026-10-30T12:00:00Z","created_at":"2026-10-30T11:00:00Z"}`))
 	})
 	payment, err := client.Payments.Create(context.Background(), CreatePaymentParams{Amount: 49900, Currency: "INR"}, WithIdempotencyKey("order-1-payment"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if payment.ID != "pay_1" || payment.CheckoutURL == "" {
+	if payment.ID != "pay_1" || payment.Checkout == nil || payment.Checkout.Action == nil || payment.Checkout.Action.Kind != "sdk" {
 		t.Fatalf("payment = %+v", payment)
 	}
 }
@@ -103,14 +103,14 @@ func TestAPIError(t *testing.T) {
 		w.Header().Set("X-Request-Id", "req_1")
 		w.Header().Set("Retry-After", "7")
 		w.WriteHeader(http.StatusTooManyRequests)
-		_, _ = w.Write([]byte(`{"error":{"type":"rate_limited","message":"slow down","request_id":"req_body"}}`))
+		_, _ = w.Write([]byte(`{"error":{"type":"rate_limited","message":"slow down","request_id":"req_body","payment_id":"pay_1"}}`))
 	})
 	_, err := client.Payments.Get(context.Background(), "pay_1")
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) {
 		t.Fatalf("error = %T %v", err, err)
 	}
-	if apiErr.Type != "rate_limited" || apiErr.RequestID != "req_body" || !apiErr.Temporary() {
+	if apiErr.Type != "rate_limited" || apiErr.RequestID != "req_body" || apiErr.PaymentID != "pay_1" || !apiErr.Temporary() {
 		t.Fatalf("API error = %+v", apiErr)
 	}
 }

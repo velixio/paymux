@@ -122,19 +122,51 @@ func TestProviderActionCheckoutStaysOnTheMerchantBackend(t *testing.T) {
 			}
 			return payment
 		}
+		setMode := func(mode string) {
+			t.Helper()
+			if err := set.SetApp(ctx, audit.System, app.OrgID, app.ID, "checkout_mode", json.RawMessage(`"`+mode+`"`)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		createUnstarted := func(order string, withBilling bool) map[string]any {
+			setMode("hosted")
+			payment := create(order, withBilling)
+			setMode("provider_action")
+			return payment
+		}
+		status, missingKey := callWithKey(key, "/v1/payments", "", `{"amount":118,"currency":"INR","order_ref":"order-no-key","customer":{"name":"Asha Rao","billing":{"country":"IN","state_code":"27"}}}`)
+		missingKeyEnvelope, _ := missingKey["error"].(map[string]any)
+		if status != http.StatusBadRequest || missingKeyEnvelope["type"] != "invalid_request" {
+			t.Fatalf("missing idempotency key: %d %+v", status, missingKey)
+		}
 
 		payment := create("order-1", true)
 		if payment["checkout_mode"] != "provider_action" || payment["checkout_url"] != nil {
 			t.Fatalf("payment response: %+v", payment)
 		}
 		paymentID := payment["id"].(string)
-		status, _ := callWithKey(otherKey, "/v1/payments/"+paymentID+"/checkout-action", "other-app", `{}`)
+		initial, _ := payment["checkout"].(map[string]any)
+		provider, _ := initial["action"].(map[string]any)
+		if payment["status"] != "created" || initial["kind"] != "checkout" || initial["launcher"] != fake.Name || provider["kind"] != "redirect" || attemptCount(paymentID) != 1 {
+			t.Fatalf("initial checkout: payment=%+v attempts=%d", payment, attemptCount(paymentID))
+		}
+		status, _ = callWithKey(otherKey, "/v1/payments/"+paymentID+"/checkout-action", "other-app", `{}`)
 		if status != http.StatusNotFound {
 			t.Fatalf("other app checkout status = %d", status)
 		}
-		missingBilling := create("order-2", false)
-		status, billingError := call("/v1/payments/"+missingBilling["id"].(string)+"/checkout-action", "checkout-order-2", `{}`)
+		status, billingError := call("/v1/payments", "create-order-2-missing", `{"amount":118,"currency":"INR","order_ref":"order-2-missing"}`)
 		errEnvelope, _ := billingError["error"].(map[string]any)
+		if status != http.StatusUnprocessableEntity || errEnvelope["type"] != "billing_required" {
+			t.Fatalf("create missing billing response: %d %+v", status, billingError)
+		}
+		status, invalidCreateBilling := call("/v1/payments", "create-order-2-invalid", `{"amount":118,"currency":"INR","order_ref":"order-2-invalid","customer":{"name":"Asha Rao","billing":{"country":"IN","state_code":"99"}}}`)
+		invalidCreateEnvelope, _ := invalidCreateBilling["error"].(map[string]any)
+		if status != http.StatusUnprocessableEntity || invalidCreateEnvelope["type"] != "invalid_billing" {
+			t.Fatalf("create invalid billing response: %d %+v", status, invalidCreateBilling)
+		}
+		missingBilling := createUnstarted("order-2", false)
+		status, billingError = call("/v1/payments/"+missingBilling["id"].(string)+"/checkout-action", "checkout-order-2", `{}`)
+		errEnvelope, _ = billingError["error"].(map[string]any)
 		if status != http.StatusUnprocessableEntity || errEnvelope["type"] != "billing_required" {
 			t.Fatalf("missing billing response: %d %+v", status, billingError)
 		}
@@ -149,7 +181,7 @@ func TestProviderActionCheckoutStaysOnTheMerchantBackend(t *testing.T) {
 		}
 
 		status, action := call("/v1/payments/"+paymentID+"/checkout-action", "checkout-order-1", `{}`)
-		provider, _ := action["action"].(map[string]any)
+		provider, _ = action["action"].(map[string]any)
 		if status != http.StatusOK || action["kind"] != "checkout" || action["launcher"] != fake.Name || provider["kind"] != "redirect" {
 			t.Fatalf("checkout action: %d %+v", status, action)
 		}
@@ -186,12 +218,10 @@ func TestProviderActionCheckoutStaysOnTheMerchantBackend(t *testing.T) {
 		}
 		status, processingError := call("/v1/payments/"+processingID+"/checkout-action", "checkout-processing", `{"fresh":true}`)
 		processingEnvelope, _ := processingError["error"].(map[string]any)
-		if status != http.StatusConflict || processingEnvelope["type"] != "state_conflict" || attemptCount(processingID) != 0 {
+		if status != http.StatusConflict || processingEnvelope["type"] != "state_conflict" || attemptCount(processingID) != 1 {
 			t.Fatalf("processing checkout: %d %+v", status, processingError)
 		}
 
-		retrying := create("order-retry", true)
-		retryingID := retrying["id"].(string)
 		calls := 0
 		fake.Locked(func() {
 			fake.CheckoutFn = func(req connector.CheckoutRequest) (connector.CheckoutResult, error) {
@@ -203,9 +233,16 @@ func TestProviderActionCheckoutStaysOnTheMerchantBackend(t *testing.T) {
 					NextAction: connector.NextAction{Kind: connector.ActionRedirect, URL: "https://fake.example.com/checkout/" + req.ProviderRef}}, nil
 			}
 		})
-		status, _ = call("/v1/payments/"+retryingID+"/checkout-action", "checkout-retry-failed", `{}`)
+		status, failedCreate := call("/v1/payments", "create-order-retry", `{"amount":118,"currency":"INR","order_ref":"order-retry","customer":{"name":"Asha Rao","billing":{"country":"IN","state_code":"27"}}}`)
+		failedEnvelope, _ := failedCreate["error"].(map[string]any)
+		retryingID, _ := failedEnvelope["payment_id"].(string)
 		if status != http.StatusBadGateway || attemptCount(retryingID) != 1 {
-			t.Fatalf("provider failure: %d attempts=%d", status, attemptCount(retryingID))
+			t.Fatalf("provider failure: %d %+v attempts=%d", status, failedCreate, attemptCount(retryingID))
+		}
+		status, failedReplay := call("/v1/payments", "create-order-retry", `{"amount":118,"currency":"INR","order_ref":"order-retry","customer":{"name":"Asha Rao","billing":{"country":"IN","state_code":"27"}}}`)
+		replayEnvelope, _ := failedReplay["error"].(map[string]any)
+		if status != http.StatusBadGateway || replayEnvelope["payment_id"] != retryingID || attemptCount(retryingID) != 1 {
+			t.Fatalf("provider failure replay: %d %+v attempts=%d", status, failedReplay, attemptCount(retryingID))
 		}
 		status, _ = call("/v1/payments/"+retryingID+"/checkout-action", "checkout-retry-failed", `{}`)
 		if status != http.StatusOK || attemptCount(retryingID) != 2 {
