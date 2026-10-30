@@ -242,6 +242,9 @@ class CheckoutUI {
     this.host.remove();
     if (this.previousFocus instanceof HTMLElement) this.previousFocus.focus();
   }
+
+  detach(): void { this.host.remove(); }
+  attach(): void { if (!this.host.isConnected) this.doc.body.append(this.host); }
 }
 
 function checkoutError(value: unknown): CheckoutError {
@@ -273,8 +276,9 @@ function safeProviderURL(raw: string | undefined, kind: string): string {
 }
 
 const documentScripts = new WeakMap<Document, Map<string, Promise<void>>>();
-function loadScript(doc: Document, raw: string | undefined, nonce?: string): Promise<void> {
+function loadScript(doc: Document, raw: string | undefined, nonce?: string, alreadyLoaded?: () => boolean): Promise<void> {
   const url = safeProviderURL(raw, "script");
+  if (alreadyLoaded?.()) return Promise.resolve();
   let scripts = documentScripts.get(doc);
   if (!scripts) { scripts = new Map(); documentScripts.set(doc, scripts); }
   const existing = scripts.get(url);
@@ -283,7 +287,7 @@ function loadScript(doc: Document, raw: string | undefined, nonce?: string): Pro
     const script = doc.createElement("script"); script.src = url; script.async = true; script.referrerPolicy = "no-referrer";
     if (nonce) script.nonce = nonce;
     script.addEventListener("load", () => resolve(), { once: true });
-    script.addEventListener("error", () => reject(new CheckoutError("provider_script_failed", "The payment provider could not be loaded.")), { once: true });
+    script.addEventListener("error", () => { script.remove(); reject(new CheckoutError("provider_script_failed", "The payment provider could not be loaded.")); }, { once: true });
     doc.head.append(script);
   });
   scripts.set(url, loaded); loaded.catch(() => scripts.delete(url));
@@ -297,8 +301,9 @@ function submitForm(doc: Document, action: ProviderAction): void {
 }
 
 async function openProvider(win: Window, doc: Document, launcher: string, action: ProviderAction, nonce?: string): Promise<"opened" | "dismissed"> {
-  await loadScript(doc, action.script_url, nonce);
   const globals = win as unknown as Record<string, any>;
+  const providerGlobal = launcher === "razorpay" ? "Razorpay" : launcher === "cashfree" ? "Cashfree" : launcher === "zoho" ? "ZPayments" : "";
+  await loadScript(doc, action.script_url, nonce, () => providerGlobal !== "" && typeof globals[providerGlobal] === "function");
   const providerOptions = { ...(action.options ?? {}) } as Record<string, any>;
   if (launcher === "razorpay") {
     if (typeof globals.Razorpay !== "function") throw new CheckoutError("provider_script_failed", "Razorpay Checkout is unavailable.");
@@ -320,11 +325,12 @@ async function openProvider(win: Window, doc: Document, launcher: string, action
     const widget = new globals.ZPayments({ account_id: providerOptions.account_id, domain: providerOptions.domain, otherOptions: { api_key: providerOptions.api_key, is_test_mode: providerOptions.is_test_mode === true } });
     try {
       const data = await widget.requestPaymentMethod({ amount: providerOptions.amount, currency_code: providerOptions.currency, payments_session_id: providerOptions.payments_session_id, description: providerOptions.description });
-      const back = new URL(String(providerOptions.return_url)); back.searchParams.set("payments_session_id", String(providerOptions.payments_session_id));
+      const back = new URL(safeProviderURL(String(providerOptions.return_url), "return")); back.searchParams.set("payments_session_id", String(providerOptions.payments_session_id));
       const id = data?.payment_id ?? data?.paymentId; if (id) back.searchParams.set("payment_id", String(id));
       win.location.assign(back.toString()); return "opened";
     } catch (error: any) {
       if (error?.code === "widget_closed") return "dismissed";
+      if (error instanceof CheckoutError) throw error;
       throw new CheckoutError("provider_error", error?.message ?? "Zoho Payments could not open checkout.");
     } finally { try { widget.close(); } catch { /* provider cleanup */ } }
   }
@@ -380,8 +386,14 @@ export async function checkout(options: CheckoutOptions): Promise<CheckoutResult
         return { status: "redirecting", paymentId: response.payment_id };
       }
       if (action.kind === "sdk" && response.launcher) {
-        emit({ type: "provider", provider: response.launcher }); ui?.destroy();
-        const status = await openProvider(win, doc, response.launcher, action, options.nonce);
+        emit({ type: "provider", provider: response.launcher }); ui?.detach();
+        let status: "opened" | "dismissed";
+        try { status = await openProvider(win, doc, response.launcher, action, options.nonce); }
+        catch (raw) {
+          const error = checkoutError(raw); emit({ type: "error", error }); ui?.attach();
+          if (ui && error.type !== "aborted" && await ui.error(error)) continue;
+          throw error;
+        }
         if (status === "dismissed") emit({ type: "dismissed" });
         return { status, paymentId: response.payment_id };
       }

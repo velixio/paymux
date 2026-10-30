@@ -30,7 +30,7 @@ export class WebhookVerifier {
     const encoded = secret.startsWith("whsec_") ? secret.slice(6) : secret;
     const key = base64(encoded); if (!key.byteLength) throw new WebhookError("signature", "paymux: webhook secret is empty");
     this.toleranceMs = options.toleranceMs ?? 300_000;
-    if (this.toleranceMs <= 0 || this.toleranceMs > 3_600_000) throw new RangeError("paymux: webhook tolerance must be between zero and one hour");
+    if (!Number.isFinite(this.toleranceMs) || this.toleranceMs <= 0 || this.toleranceMs > 3_600_000) throw new RangeError("paymux: webhook tolerance must be between zero and one hour");
     this.now = options.now ?? Date.now;
     this.key = crypto.subtle.importKey("raw", source(key), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
   }
