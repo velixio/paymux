@@ -19,8 +19,8 @@ Paymux offers hosted, browser-resolved, and backend-resolved checkout. For no Pa
 - Create payments on the merchant backend. Never expose a Paymux API key to browser code.
 - Derive amounts, currency, and order ownership from trusted server-side data.
 - Supply a stable, unique idempotency key for every mutation.
-- Return only the customer-specific `checkout_url` to its authenticated customer.
-- Store `checkout_url` as a short-lived server-side secret until payment expiry so the same payment can reopen after a retry; it cannot be recovered by retrieving the payment.
+- In hosted or browser-resolved mode, return only the customer-specific `checkout_url` to its authenticated customer.
+- In hosted or browser-resolved mode, store `checkout_url` as a short-lived server-side secret until payment expiry so the same payment can reopen after a retry; it cannot be recovered by retrieving the payment.
 - For merchant-site checkout, call `checkout` from `@paymux-js/sdk/checkout`; do not recreate provider-specific browser integrations.
 - Permit the Paymux checkout origin in the storefront's CSP `connect-src`, plus the selected provider's required hosts.
 - Treat browser redirects and checkout events as interface signals, never proof of payment.

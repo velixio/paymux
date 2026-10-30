@@ -45,8 +45,9 @@ the buyer to that URL. Do not log the checkout token. With the App set to
 `executeCheckout` from the browser SDK. A `201` means the payment was created,
 not that money has been collected.
 
-To keep the buyer on the storefront until the selected provider opens, pass the
-same `checkout_url` to the [JavaScript checkout SDK](javascript-sdk.md). The SDK
+In `hosted` mode, to keep the buyer on the storefront until the selected
+provider opens, pass the same `checkout_url` to the
+[JavaScript checkout SDK](javascript-sdk.md). The SDK
 handles redirects, signed forms, provider scripts, and required billing details.
 The payment `return_url` must share the storefront's origin. The API key always
 stays on the backend.

@@ -148,11 +148,11 @@ type ProviderAction struct {
 }
 
 type CheckoutAction struct {
-	Kind      string         `json:"kind"`
-	PaymentID string         `json:"payment_id"`
-	Status    PaymentStatus  `json:"status"`
-	Launcher  string         `json:"launcher,omitempty"`
-	Action    ProviderAction `json:"action,omitempty"`
+	Kind      string          `json:"kind"`
+	PaymentID string          `json:"payment_id"`
+	Status    PaymentStatus   `json:"status"`
+	Launcher  string          `json:"launcher,omitempty"`
+	Action    *ProviderAction `json:"action,omitempty"`
 }
 
 type PaymentAttempt struct {

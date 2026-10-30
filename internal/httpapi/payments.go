@@ -52,6 +52,8 @@ type createdPaymentResp struct {
 	CheckoutURL  string `json:"checkout_url,omitempty"`
 }
 
+// checkoutMode resolves the App's response mode, preserving hosted checkout
+// for API embedders that do not install the settings service.
 func (a *API) checkoutMode(r *http.Request, appID string) (string, error) {
 	if a.settings == nil {
 		return "hosted", nil
@@ -157,6 +159,13 @@ func (a *API) createCheckoutAction(w http.ResponseWriter, r *http.Request, pr co
 		writeJSON(w, http.StatusOK, checkoutActionResp{Kind: "complete", PaymentID: p.ID, Status: string(state.PaymentExpired)})
 		return
 	}
+	switch state.PaymentStatus(p.Status) {
+	case state.PaymentCreated, state.PaymentRequiresAction, state.PaymentFailed:
+		// These states can safely start or retry customer checkout.
+	default:
+		a.fail(w, r, http.StatusConflict, "state_conflict", "payment cannot be started in its current state")
+		return
+	}
 	var req checkoutActionReq
 	if !a.decodeBody(w, r, body, &req, true) {
 		return
@@ -178,7 +187,7 @@ func (a *API) createCheckoutAction(w http.ResponseWriter, r *http.Request, pr co
 	if req.Billing != nil {
 		in, message := billingform.Parse(req.Billing.values(), p.Currency, need)
 		if message != "" {
-			a.fail(w, r, http.StatusUnprocessableEntity, "invalid_billing", "billing details are incomplete or invalid")
+			a.fail(w, r, http.StatusUnprocessableEntity, "invalid_billing", "billing details are incomplete or invalid ("+message+")")
 			return
 		}
 		if err := a.core.SetBilling(r.Context(), p.ID, in); err != nil {

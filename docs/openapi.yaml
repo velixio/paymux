@@ -198,11 +198,16 @@ paths:
               $ref: "#/components/schemas/CheckoutActionRequest"
       responses:
         "200":
-          description: Provider action ready for the browser SDK.
+          description: Provider action ready for the browser SDK, or a terminal payment result.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/CheckoutAction"
+        "400":
+          description: The request body is invalid (`invalid_request`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
@@ -210,14 +215,22 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          $ref: "#/components/responses/StateConflict"
+          description: The payment state does not allow checkout (`state_conflict`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "422":
-          description: No configured provider can take this payment.
+          description: No payment method is available (`no_route`), or required billing details are missing or invalid (`billing_required`, `invalid_billing`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Checkout could not be started (`internal`).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "502":
-          description: Every routed provider was temporarily unavailable.
+          description: Every routed provider was temporarily unavailable (`provider_unavailable`).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -934,10 +947,14 @@ components:
                 - insufficient_scope
                 - not_found
                 - invalid_state
+                - state_conflict
                 - not_refundable
                 - refund_amount_exceeds_balance
                 - conflict
                 - no_route
+                - billing_required
+                - invalid_billing
+                - provider_unavailable
                 - payout_needs_review
                 - currency_not_accepted
                 - idempotency_key_reuse

@@ -198,7 +198,7 @@ the action on the merchant backend and return only that JSON:
 ```ts
 const action = await paymux.payments.checkoutAction(
   payment.id,
-  {},
+  { billing: { name: "Asha Rao", country: "IN", state_code: "27" } },
   { idempotencyKey: "order-123-checkout-v1" },
 );
 ```

@@ -75,7 +75,7 @@ func TestCheckoutAction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action.PaymentID != "pay_1" || action.Launcher != "razorpay" || action.Action.Kind != "sdk" {
+	if action.PaymentID != "pay_1" || action.Launcher != "razorpay" || action.Action == nil || action.Action.Kind != "sdk" {
 		t.Fatalf("action = %+v", action)
 	}
 }

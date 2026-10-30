@@ -4,7 +4,7 @@ This document is the implementation contract for adding Paymux to a merchant app
 
 ## 1. Choose the checkout experience
 
-Both checkout experiences start by creating a payment on the merchant backend.
+All checkout experiences start by creating a payment on the merchant backend.
 
 ### Backend-resolved provider checkout (no Paymux URL in the browser)
 
@@ -121,9 +121,9 @@ import { executeCheckout } from "@paymux-js/sdk/checkout";
 await executeCheckout(await merchantApi.startCheckout(order.id));
 ```
 
-The merchant UI receives no Paymux URL, token, API key, or provider secret. It receives only the provider launch action validated by Paymux.
+The merchant UI receives no Paymux URL, token, API key, or provider secret. It receives a provider launch action or terminal `complete` response validated by Paymux.
 
-If the checkout URL was not retained or is unavailable, do not silently create a second payable payment. Inspect the recorded payment, cancel it when possible, preserve its link to the order for later webhook reconciliation, and create a replacement with a new idempotency key only after the merchant's duplicate-charge policy permits it. Return only the active `checkout_url` needed by the authenticated browser:
+In `hosted` mode, if the checkout URL was not retained or is unavailable, do not silently create a second payable payment. Inspect the recorded payment, cancel it when possible, preserve its link to the order for later webhook reconciliation, and create a replacement with a new idempotency key only after the merchant's duplicate-charge policy permits it. Return only the active `checkout_url` needed by the authenticated browser:
 
 ```json
 {
