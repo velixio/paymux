@@ -26,6 +26,10 @@ if err != nil {
 http.Redirect(w, r, payment.CheckoutURL, http.StatusSeeOther)
 ```
 
+To open the selected provider from the merchant storefront instead, return
+`payment.CheckoutURL` to that order's authenticated browser and pass it to the
+[JavaScript checkout SDK](../js/README.md). Never expose the API key.
+
 Every mutation requires `WithIdempotencyKey`. Reuse a key only when retrying
 the same logical operation. The client does not automatically retry mutations.
 

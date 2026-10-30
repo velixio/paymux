@@ -9,8 +9,9 @@ These guides describe the implementation in this repository. Connector capabilit
 1. [Installation](installation.md): build or download the hub and understand the separate public website.
 2. [Simulator quickstart](quickstart.md): create an app, receive an event, make a test payment, and issue a refund without a bank account.
 3. [Integration guide](api-guide.md): authentication, scopes, amounts, errors, pagination, and idempotency.
-4. [Payments and routing](payments.md): payment versus attempt state, route selection, checkout, and refunds.
-5. [Webhooks](webhooks.md): signature verification, duplicate delivery, ordering, and replay.
+4. [JavaScript SDK](javascript-sdk.md): backend API, verified webhooks, and browser checkout.
+5. [Payments and routing](payments.md): payment versus attempt state, route selection, checkout, and refunds.
+6. [Webhooks](webhooks.md): signature verification, duplicate delivery, ordering, and replay.
 
 ## Operate the product
 
@@ -42,7 +43,7 @@ These guides describe the implementation in this repository. Connector capabilit
 
 The running **payment hub** serves its API reference at `/docs` and the machine-readable contract at `/docs/openapi.yaml`. The separate **public website** also has a `/docs` path, which serves these guides; it does not proxy your hub or expose an API.
 
-Use [OpenAPI](openapi.yaml) for exact request and response fields. Go applications can use the independent [merchant SDK](../sdk/go/README.md), while the [raw HTTP example](../examples/api-client/main.go) has no SDK dependency. The signed webhook receiver, in [Python](../examples/webhook-receiver/receiver.py), [Go](../examples/webhook-receiver-go/main.go) and [JavaScript](../examples/webhook-receiver-js/receiver.mjs), demonstrates signature checks and a durable inbox. The [framework example](../examples/framework/main.go) extends the hub itself; it is not an application HTTP client.
+Use [OpenAPI](openapi.yaml) for exact request and response fields. Backends can use the independent [Go merchant SDK](../sdk/go/README.md) or [JavaScript SDK](javascript-sdk.md); the JavaScript package also opens the selected provider without a Paymux-hosted page. The [raw HTTP example](../examples/api-client/main.go) has no SDK dependency. The signed webhook receiver, in [Python](../examples/webhook-receiver/receiver.py), [Go](../examples/webhook-receiver-go/main.go) and [JavaScript](../examples/webhook-receiver-js/receiver.mjs), demonstrates signature checks and a durable inbox. The [framework example](../examples/framework/main.go) extends the hub itself; it is not an application HTTP client.
 
 ## Documentation maintenance
 

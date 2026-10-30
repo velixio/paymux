@@ -66,6 +66,8 @@ func New(o Options) *Handler {
 func (h *Handler) Register(m Mux) {
 	m.HandleFunc("GET /pay/{id}", withLook(h.pay))
 	m.HandleFunc("POST /pay/{id}", withLook(h.billingPost))
+	m.HandleFunc("OPTIONS /pay/{id}/action", h.actionOptions)
+	m.HandleFunc("POST /pay/{id}/action", h.action)
 	m.HandleFunc("GET /.well-known/paymux/{token}", h.wellKnown)
 	m.HandleFunc("GET /return/{pa}/{ref}", withLook(h.ret))
 	m.HandleFunc("POST /return/{pa}/{ref}", withLook(h.ret))

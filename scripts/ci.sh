@@ -103,6 +103,14 @@ s_sdk() {
 	(cd sdk/go && go vet ./... && go test -race ./...)
 }
 
+s_js_sdk() {
+	step "merchant JavaScript SDK"
+	bun install --cwd sdk/js --frozen-lockfile
+	bun run --cwd sdk/js typecheck
+	bun run --cwd sdk/js test
+	bun run --cwd sdk/js build
+}
+
 s_apisnap() {
 	step "API snapshot (pkg/... exported API == scripts/apisnap/pkg.txt)"
 	go run ./scripts/apisnap -check
@@ -250,6 +258,7 @@ g_checks() {
 	s_examples
 	s_vet
 	s_sdk
+	s_js_sdk
 	s_apisnap
 	s_capmatrix
 	s_shards 3
@@ -278,6 +287,7 @@ g_full() {
 	s_examples
 	s_vet
 	s_sdk
+	s_js_sdk
 	s_apisnap
 	s_capmatrix
 	s_shards 3

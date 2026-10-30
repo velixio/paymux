@@ -65,6 +65,16 @@ Payment pages run scripts that are not yours (a provider's checkout script, a re
 
 Checkout and hosted-document URLs contain access tokens. Avoid leaking them into public logs, analytics, shared screenshots, or referrer-sensitive redirects. A custom domain is activated only when the zone owner has published the DNS TXT record `_paymux-challenge.<host>` = `paymux-verify=<token>` and `https://<host>/.well-known/paymux/<token>` answers; a hostname that only points at the hub proves nothing. Validate proxy/TLS configuration before marking a domain ready.
 
+The JavaScript checkout SDK treats the payment checkout token as a bearer
+credential and sends it only in `Paymux-Checkout-Token` to the matching checkout
+origin. The browser action endpoint answers only when the request `Origin`
+exactly matches the payment's `return_url` origin, sends no credentialed CORS,
+and marks every response `no-store`. This prevents another storefront from
+reading provider actions; it does not make a leaked token harmless. Keep checkout
+URLs out of HTML for other users, analytics, error reports, and third-party tags.
+Provider actions are validated against connector-declared hosts before they are
+stored or returned.
+
 The hosted payment pages (`/pay`, `/l`, `/s` and the return pages) send an enforced `Content-Security-Policy` (audit H-7): the page's own scripts carry a per-response nonce, and the only other script, frame, connect, image and form-post hosts are the ones the account's connector declared (`CheckoutHosts`; for a remote connector, the `checkout_hosts` of the account). The same declaration is what the hub checks a checkout's URLs against before showing it. The policy reports violations to `POST /csp-report` (served on the base host and on custom domains, 4 KB per report, 20 reports a minute per address); the hub counts them in `paymux_csp_violations_total{directive}` and logs only the directive and the blocked origin, never a page URL or a query string. A steady count of `script-src` or `form-action` violations on a real checkout means a provider host is missing from the connector's list.
 
 The public React site is a separate static application and makes no production payment requests from its sample demo. It should never collect live provider credentials.

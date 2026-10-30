@@ -6,6 +6,7 @@
 /.playwright-mcp/
 /node_modules/
 /frontend/node_modules/
+/sdk/js/node_modules/
 /cmd/paymux-home/dist/*
 !/cmd/paymux-home/dist/.keep
 /web/static/dashboard/
