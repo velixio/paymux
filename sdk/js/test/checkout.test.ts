@@ -120,6 +120,25 @@ test("provider SDK action loads and reports modal dismissal", async () => {
   expect(result).toEqual({ status: "dismissed", paymentId: "pay_rzp" });
 });
 
+test("Razorpay SDK completes through its handler without exposing a Paymux callback", async () => {
+  let received: Record<string, unknown> = {};
+  const window = { location: { href: "https://shop.example.com/order" }, Razorpay: class {
+    constructor(options: Record<string, unknown>) { received = options; }
+    open() { (received.handler as (value: unknown) => void)({ razorpay_payment_id: "pay_provider" }); }
+  } } as unknown as Window;
+  const result = await executeCheckout({
+    kind: "checkout", payment_id: "pay_rzp", status: "created", launcher: "razorpay",
+    action: { kind: "sdk", script_url: "https://checkout.razorpay.com/v1/checkout.js", options: {
+      key: "public-key", order_id: "order_1", callback_url: "https://pay.example.com/return/pa/ref", redirect: true,
+    } },
+  }, { document: {} as Document, window });
+  expect(received.key).toBe("public-key");
+  expect(received.order_id).toBe("order_1");
+  expect(received.callback_url).toBeUndefined();
+  expect(received.redirect).toBeUndefined();
+  expect(result).toEqual({ status: "opened", paymentId: "pay_rzp" });
+});
+
 test("provider SDK action reuses an already loaded provider", async () => {
   let created = 0;
   const document = { createElement: () => { created++; return {}; } } as unknown as Document;

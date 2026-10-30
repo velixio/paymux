@@ -65,12 +65,15 @@ import { executeCheckout } from "@paymux-js/sdk/checkout";
 await executeCheckout(actionFromMerchantBackend);
 ```
 
-The merchant UI receives no Paymux checkout URL or token. A provider may still
-return the customer through Paymux's verified return endpoint before the
-merchant `return_url`; use an App custom domain when that hop should carry the
-merchant's domain. Provider-action mode requires the backend to supply billing
-details required by the App's tax policy during payment creation. Use
-`checkoutAction` only for recovery or an intentionally fresh attempt.
+The merchant UI receives no Paymux checkout URL or token. Razorpay stays in its
+modal on the merchant page: Paymux removes its hosted callback from the browser
+action and the SDK completes through Razorpay's handler. Webhooks and an
+authenticated backend lookup remain the source of truth. Providers that require
+a redirect may still return the customer through Paymux's verified endpoint;
+use an App custom domain when that hop should carry the merchant's domain.
+Provider-action mode requires the backend to supply billing details required by
+the App's tax policy during payment creation. Use `checkoutAction` only for
+recovery or an intentionally fresh attempt.
 
 For browser-resolved checkout, keep the App in `hosted` mode. The backend
 returns `payment.checkout_url` to that order's authenticated browser:

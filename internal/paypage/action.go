@@ -178,7 +178,7 @@ func (h *Handler) action(w http.ResponseWriter, r *http.Request) {
 	started, err := start(r.Context(), p.ID)
 	switch {
 	case err == nil:
-		a := started.Action
+		a := merchantBrowserAction(started.Action)
 		actionJSON(w, http.StatusOK, actionResponse{Kind: "checkout", PaymentID: p.ID, Status: p.Status, Launcher: started.Connector, Action: &a})
 	case errors.Is(err, checkout.ErrCheckoutFailed):
 		actionFail(w, http.StatusBadGateway, "provider_unavailable", "no payment provider is available; try again")
@@ -194,6 +194,28 @@ func (h *Handler) action(w http.ResponseWriter, r *http.Request) {
 		h.o.Logger.Error("paypage: browser checkout", "payment", p.ID, "err", err)
 		actionFail(w, http.StatusInternalServerError, "internal", "checkout could not be started")
 	}
+}
+
+// merchantBrowserAction removes a provider callback to Paymux from an SDK
+// action returned to merchant JavaScript. The merchant-side SDK completes via
+// the provider's handler while webhooks and provider fetches remain
+// authoritative. Hosted Paymux pages do not use this response and retain their
+// callback flow.
+func merchantBrowserAction(action connector.NextAction) connector.NextAction {
+	if action.Kind != connector.ActionSDK || action.Options == nil {
+		return action
+	}
+	if _, hasCallback := action.Options["callback_url"]; !hasCallback {
+		return action
+	}
+	options := make(map[string]any, len(action.Options)-1)
+	for key, value := range action.Options {
+		if key != "callback_url" && key != "redirect" {
+			options[key] = value
+		}
+	}
+	action.Options = options
+	return action
 }
 
 func (h *Handler) actionComplete(w http.ResponseWriter, p store.Payment) bool {
