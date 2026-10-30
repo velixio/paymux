@@ -179,6 +179,12 @@ func accessLog(next http.Handler, log *slog.Logger, requests *metrics.CounterVec
 		if onResponse != nil {
 			onResponse(r.Context(), r.Method, route, sw.status, time.Since(start))
 		}
+		// Successful static files are high-volume browser plumbing. Keep them in
+		// request metrics and response recording, but leave routine asset and
+		// theme traffic out of the application log. Errors remain visible.
+		if routineStaticRequest(r, sw.status) {
+			return
+		}
 		log.LogAttrs(r.Context(), slog.LevelInfo, "http request",
 			slog.String("request_id", RequestID(r.Context())),
 			slog.String("method", r.Method),
@@ -188,6 +194,13 @@ func accessLog(next http.Handler, log *slog.Logger, requests *metrics.CounterVec
 			slog.Duration("duration", time.Since(start)),
 		)
 	})
+}
+
+func routineStaticRequest(r *http.Request, status int) bool {
+	if (r.Method != http.MethodGet && r.Method != http.MethodHead) || status >= http.StatusBadRequest {
+		return false
+	}
+	return strings.HasPrefix(r.URL.Path, "/assets/") || strings.HasPrefix(r.URL.Path, "/theme/")
 }
 
 func recoverer(next http.Handler, log *slog.Logger) http.Handler {

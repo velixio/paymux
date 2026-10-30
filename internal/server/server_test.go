@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/velixio/paymux/internal/logging"
 	"github.com/velixio/paymux/internal/metrics"
@@ -114,7 +115,7 @@ func TestReadyzNotReadyBeforeQueue(t *testing.T) {
 }
 
 func TestRequestMetricsAndAccessLog(t *testing.T) {
-	s, reg, logs := newServer(t)
+	s, _, logs := newServer(t)
 	get(s.Handler(), "/healthz")
 	get(s.Handler(), "/nope")
 	rec := get(s.InternalHandler(), "/metrics")
@@ -127,9 +128,32 @@ func TestRequestMetricsAndAccessLog(t *testing.T) {
 			t.Errorf("missing %s in\n%s", want, out)
 		}
 	}
-	_ = reg
 	if !strings.Contains(logs.String(), `"msg":"http request"`) || !strings.Contains(logs.String(), `"request_id":"req_`) {
 		t.Errorf("access log: %s", logs)
+	}
+}
+
+func TestSuccessfulStaticRequestsDoNotFloodAccessLog(t *testing.T) {
+	s, _, logs := newServer(t)
+	var responses int
+	s.onResp = func(context.Context, string, string, int, time.Duration) { responses++ }
+	s.HandleFunc("GET /assets/", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("asset")) })
+	s.HandleFunc("GET /theme/", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNotFound) })
+
+	get(s.Handler(), "/assets/dashboard/main.js")
+	get(s.Handler(), "/theme/missing/theme.css")
+	if strings.Contains(logs.String(), `"path":"/assets/dashboard/main.js"`) {
+		t.Fatalf("successful asset request was logged: %s", logs)
+	}
+	if !strings.Contains(logs.String(), `"path":"/theme/missing/theme.css"`) {
+		t.Fatalf("failed theme request was not logged: %s", logs)
+	}
+	if responses != 2 {
+		t.Fatalf("response hook calls = %d, want 2", responses)
+	}
+	rec := get(s.InternalHandler(), "/metrics")
+	if !strings.Contains(rec.Body.String(), `paymux_http_requests_total{route="GET /assets/",code="200"} 1`) {
+		t.Fatalf("asset request missing from metrics:\n%s", rec.Body.String())
 	}
 }
 
