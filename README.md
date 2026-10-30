@@ -183,7 +183,7 @@ Tip: `make dev` builds everything and runs the hub and the public website togeth
 - **Add a gateway.** A connector is a Go package against a small public SDK, with a conformance kit that tells you when it is right. Or write it in any language and run it as a signed HTTP service. See [docs/connectors.md](docs/connectors.md).
 - **React to events.** Go hooks and sandboxed JavaScript hooks run after commit and cannot move money. See [docs/extending.md](docs/extending.md).
 - **Themes and translations.** Drop your own themes or a language catalog into your data folder. No restart, no fork.
-- **Merchant SDK.** The independent [Go SDK](sdk/go/README.md) covers payments, refunds, links, subscriptions, invoices, payouts, and verified app webhooks without importing the hub.
+- **Merchant SDKs.** The independent [Go SDK](sdk/go/README.md) and [JavaScript SDK](docs/javascript-sdk.md) cover backend payments, refunds, links, subscriptions, invoices, payouts, and verified app webhooks. The JavaScript package also has an API-key-free browser entry point for provider checkout.
 - **Examples.** Small, tested programs in [`examples/`](examples): a raw HTTP API client, a framework-mode binary, a remote connector, and signed-webhook receivers in [Go](examples/webhook-receiver-go), [JavaScript](examples/webhook-receiver-js) and [Python](examples/webhook-receiver).
 
 ## 📦 Run it for real

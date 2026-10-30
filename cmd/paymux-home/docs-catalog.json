@@ -42,6 +42,13 @@
     "source": "docs/payments.md"
   },
   {
+    "slug": "javascript-sdk",
+    "title": "JavaScript SDK",
+    "section": "Build an integration",
+    "description": "Open routed provider checkout from a merchant storefront.",
+    "source": "docs/javascript-sdk.md"
+  },
+  {
     "slug": "webhooks",
     "title": "Webhooks",
     "section": "Build an integration",

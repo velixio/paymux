@@ -39,6 +39,12 @@ curl --fail-with-body "$PAYMUX_URL/v1/payments" \
 
 The response is a payment object with a `checkout_url`. Store its `id` against your order and redirect the buyer to that URL. Do not log the checkout token. A `201` means the payment was created, not that money has been collected.
 
+To keep the buyer on the storefront until the selected provider opens, pass the
+same `checkout_url` to the [JavaScript checkout SDK](javascript-sdk.md). The SDK
+handles redirects, signed forms, provider scripts, and required billing details.
+The payment `return_url` must share the storefront's origin. The API key always
+stays on the backend.
+
 Confirm fulfillment from a verified `payment.succeeded` event or the authoritative `GET /v1/payments/{id}` response. Match the app's order, expected amount/currency, and payment state before fulfillment. Treat `needs_review` as a reason for investigation.
 
 ## Amounts and timestamps

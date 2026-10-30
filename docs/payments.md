@@ -5,8 +5,8 @@ A **payment** is your application's request to collect an amount. An **attempt**
 ## End-to-end lifecycle
 
 1. Your backend creates a payment with `POST /v1/payments` and saves its ID.
-2. Your frontend sends the customer to the returned `checkout_url`.
-3. Paymux collects required billing details and starts an eligible provider attempt.
+2. Your frontend sends the customer to the returned `checkout_url`, or passes it to the [JavaScript checkout SDK](javascript-sdk.md).
+3. Paymux or the JavaScript SDK collects required billing details and starts an eligible provider attempt.
 4. The provider notifies Paymux; Paymux verifies the notification and re-fetches authoritative provider state.
 5. The hub commits the state change, ledger entries, and outbound event together.
 6. Your application verifies the app webhook and updates its order idempotently.
@@ -45,6 +45,13 @@ For local integration, link a test-mode simulator account. Its test fallback avo
 ## Hosted checkout and links
 
 The create response contains a checkout token shown once and valid until expiry. Treat the URL as a customer capability: do not place it in public logs or analytics.
+
+Hosted checkout executes on Paymux's checkout origin. The JavaScript SDK instead
+exchanges the token for a validated provider action from the merchant storefront;
+Paymux only answers the exact origin of the payment's `return_url`. It does not
+expose the merchant API key or provider signing secrets. Provider SDK checkouts
+still load the provider's official browser script and require the matching CSP
+allowances on the storefront.
 
 Payment links are reusable or single-use entry pages under `/l/{slug}` that create a payment for a visitor. They can use a fixed amount or bounded customer-chosen amount and may expire or be deactivated. Create and manage them using `/v1/payment_links` or the dashboard. The API reference defines the exact shape and limits.
 
