@@ -85,12 +85,12 @@ test("provider SDK action loads and reports modal dismissal", async () => {
   let opened = 0;
   let loaded: (() => void) | undefined;
   const script = { src: "", async: false, referrerPolicy: "", nonce: "", addEventListener(type: string, handler: () => void) { if (type === "load") loaded = handler; } };
-  const document = { createElement: () => script, head: { append: () => queueMicrotask(() => loaded?.()) } } as unknown as Document;
   const window = { location: { href: "https://shop.example.com/order" } } as unknown as Window;
-  (window as unknown as Record<string, unknown>).Razorpay = class {
+  const Razorpay = class {
     constructor(private readonly options: { modal: { ondismiss: () => void } }) {}
     open() { opened++; this.options.modal.ondismiss(); }
   };
+  const document = { createElement: () => script, head: { append: () => queueMicrotask(() => { (window as any).Razorpay = Razorpay; loaded?.(); }) } } as unknown as Document;
   const result = await checkout({
     checkoutUrl: "https://pay.example.com/pay/pay_rzp?t=secret",
     ui: false,
@@ -102,4 +102,29 @@ test("provider SDK action loads and reports modal dismissal", async () => {
   expect(opened).toBe(1);
   expect(script.nonce).toBe("request-nonce");
   expect(result).toEqual({ status: "dismissed", paymentId: "pay_rzp" });
+});
+
+test("provider SDK action reuses an already loaded provider", async () => {
+  let created = 0;
+  const document = { createElement: () => { created++; return {}; } } as unknown as Document;
+  const window = { location: { href: "https://shop.example.com/order" }, Razorpay: class {
+    constructor(private readonly options: { modal: { ondismiss: () => void } }) {}
+    open() { this.options.modal.ondismiss(); }
+  } } as unknown as Window;
+  const result = await checkout({ checkoutUrl: "https://pay.example.com/pay/pay_existing?t=secret", ui: false, document, window,
+    fetch: async () => Response.json({ kind: "checkout", payment_id: "pay_existing", status: "created", launcher: "razorpay", action: { kind: "sdk", script_url: "https://checkout.razorpay.com/v1/checkout.js", options: {} } }) });
+  expect(created).toBe(0);
+  expect(result.status).toBe("dismissed");
+});
+
+test("failed provider scripts are removed before retry", async () => {
+  let failed: (() => void) | undefined;
+  let removed = 0;
+  const script = { src: "", async: false, referrerPolicy: "", addEventListener(type: string, handler: () => void) { if (type === "error") failed = handler; }, remove() { removed++; } };
+  const document = { createElement: () => script, head: { append: () => queueMicrotask(() => failed?.()) } } as unknown as Document;
+  await expect(checkout({ checkoutUrl: "https://pay.example.com/pay/pay_failed?t=secret", ui: false, document,
+    window: { location: { href: "https://shop.example.com/order" } } as unknown as Window,
+    fetch: async () => Response.json({ kind: "checkout", payment_id: "pay_failed", status: "created", launcher: "razorpay", action: { kind: "sdk", script_url: "https://checkout.razorpay.com/v1/checkout.js", options: {} } })
+  })).rejects.toMatchObject({ type: "provider_script_failed" });
+  expect(removed).toBe(1);
 });

@@ -1,4 +1,4 @@
-import type * as T from "./types";
+import type * as T from "./types.js";
 
 export type Fetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 export interface PaymuxOptions { apiKey: string; baseURL?: string; fetch?: Fetch; userAgent?: string }
@@ -37,7 +37,7 @@ function baseURL(raw: string): URL {
   url.pathname = `${url.pathname.replace(/\/+$/, "")}/`;
   return url;
 }
-function id(value: string): string { if (!value || value.includes("/")) throw new Error("paymux: invalid object ID"); return encodeURIComponent(value); }
+function id(value: string): string { if (!value || value === "." || value === ".." || value.includes("/")) throw new Error("paymux: invalid object ID"); return encodeURIComponent(value); }
 function mutation(options: MutationOptions): void {
   const key = options?.idempotencyKey;
   if (!key || key.trim() !== key || key.length > 255 || /[\r\n]/.test(key)) throw new Error("paymux: mutation requires a 1-255 character idempotencyKey");

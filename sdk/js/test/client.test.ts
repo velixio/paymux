@@ -27,6 +27,8 @@ test("resource paths, query parameters, and PDF downloads are normalized", async
   expect(await client.invoices.downloadPDF("in_1")).toEqual(new Uint8Array([1, 2, 3]));
   expect(requests[1].url).toBe("http://localhost:8080/v1/invoices/in_1/pdf");
   expect(() => client.refunds.get("bad/id")).toThrow("invalid object ID");
+  expect(() => client.refunds.get("..")).toThrow("invalid object ID");
+  expect(() => client.refunds.get(".")).toThrow("invalid object ID");
 });
 
 test("API errors retain safe retry and request metadata", async () => {
@@ -36,6 +38,12 @@ test("API errors retain safe retry and request metadata", async () => {
 });
 
 describe("WebhookVerifier", () => {
+  test("rejects non-finite timestamp tolerances", () => {
+    const secret = `whsec_${Buffer.from("test-key").toString("base64")}`;
+    expect(() => new WebhookVerifier(secret, { toleranceMs: Number.NaN })).toThrow(RangeError);
+    expect(() => new WebhookVerifier(secret, { toleranceMs: Number.POSITIVE_INFINITY })).toThrow(RangeError);
+  });
+
   test("verifies the exact raw Standard Webhooks body", async () => {
     const key = crypto.getRandomValues(new Uint8Array(32));
     const secret = `whsec_${Buffer.from(key).toString("base64")}`;

@@ -3,6 +3,7 @@ package paypage_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/velixio/paymux/internal/audit"
 	"github.com/velixio/paymux/internal/core"
 	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 type browserAction struct {
@@ -137,6 +139,81 @@ func TestBrowserActionRejectsAmbiguousJSON(t *testing.T) {
 		}
 		if e.count("SELECT COUNT(*) FROM payment_attempts WHERE payment_id = ?", c.id) != 0 {
 			t.Error("invalid request created an attempt")
+		}
+	})
+}
+
+func TestBrowserActionCompletedAndUnknownPayments(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		c := e.create(core.CreatePaymentInput{ReturnURL: "https://shop.example.com/order"})
+		if _, err := e.core.CancelPayment(ctx, e.scope, audit.System, c.id); err != nil {
+			t.Fatal(err)
+		}
+		status, _, out := e.browserAction(c, "https://shop.example.com", c.secret, `{}`)
+		if status != http.StatusOK || out.Kind != "complete" || out.Status != "canceled" {
+			t.Fatalf("completed payment: %d %+v", status, out)
+		}
+		status, _, out = e.browserAction(created{id: "pay_missing", secret: "secret"}, "https://shop.example.com", "secret", `{}`)
+		if status != http.StatusNotFound || out.Error.Type != "not_found" {
+			t.Fatalf("unknown payment: %d %+v", status, out)
+		}
+	})
+}
+
+func TestBrowserActionRejectsInvalidBilling(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		if err := e.set.SetApp(ctx, audit.System, store.DefaultOrgID, "app_1", "billing_details", json.RawMessage(`"required"`)); err != nil {
+			t.Fatal(err)
+		}
+		c := e.create(core.CreatePaymentInput{Currency: "INR", Amount: 1000, ReturnURL: "https://shop.example.com/order"})
+		body := `{"billing":{"name":"","country":"IN","state_code":"27","line1":"1 Main Road","postal_code":"bad"}}`
+		status, _, out := e.browserAction(c, "https://shop.example.com", c.secret, body)
+		if status != http.StatusUnprocessableEntity || !strings.HasPrefix(out.Error.Type, "billing.err.") {
+			t.Fatalf("invalid billing: %d %+v", status, out)
+		}
+		if e.count("SELECT COUNT(*) FROM payment_attempts WHERE payment_id = ?", c.id) != 0 {
+			t.Error("invalid billing created an attempt")
+		}
+	})
+}
+
+func TestBrowserActionFreshStartsAnotherAttempt(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		c := e.create(core.CreatePaymentInput{ReturnURL: "https://shop.example.com/order"})
+		firstStatus, _, first := e.browserAction(c, "https://shop.example.com", c.secret, `{}`)
+		freshStatus, _, fresh := e.browserAction(c, "https://shop.example.com", c.secret, `{"fresh":true}`)
+		if firstStatus != http.StatusOK || freshStatus != http.StatusOK || first.Action.URL == fresh.Action.URL {
+			t.Fatalf("fresh checkout: first=%d %+v fresh=%d %+v", firstStatus, first, freshStatus, fresh)
+		}
+		if n := e.count("SELECT COUNT(*) FROM payment_attempts WHERE payment_id = ?", c.id); n != 2 {
+			t.Fatalf("attempts = %d, want 2", n)
+		}
+	})
+}
+
+func TestBrowserActionMapsRoutingAndProviderFailures(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		noRoute := e.create(core.CreatePaymentInput{ReturnURL: "https://shop.example.com/order"})
+		if err := e.db.Write(ctx, func(tx store.Tx) error {
+			_, err := tx.ExecContext(ctx, "UPDATE payments SET allowed_connectors = ? WHERE id = ?", `["unconfigured"]`, noRoute.id)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		status, _, out := e.browserAction(noRoute, "https://shop.example.com", noRoute.secret, `{}`)
+		if status != http.StatusUnprocessableEntity || out.Error.Type != "no_route" {
+			t.Fatalf("no route: %d %+v", status, out)
+		}
+
+		e.fake.Locked(func() {
+			e.fake.CheckoutFn = func(connector.CheckoutRequest) (connector.CheckoutResult, error) {
+				return connector.CheckoutResult{}, errors.New("provider down")
+			}
+		})
+		failed := e.create(core.CreatePaymentInput{ReturnURL: "https://shop.example.com/order"})
+		status, _, out = e.browserAction(failed, "https://shop.example.com", failed.secret, `{}`)
+		if status != http.StatusBadGateway || out.Error.Type != "provider_unavailable" {
+			t.Fatalf("provider failure: %d %+v", status, out)
 		}
 	})
 }
