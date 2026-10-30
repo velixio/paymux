@@ -9,7 +9,7 @@
 #   bash scripts/ci.sh build            cross builds and the docker build
 #   bash scripts/ci.sh browser          the dashboard browser tests
 #   bash scripts/ci.sh website          the public website browser tests
-#   bash scripts/ci.sh shards [M]       print how the packages are split into M shards (default 6)
+#   bash scripts/ci.sh shards [M]       print how the packages are split into M shards (default 3)
 #
 # GitHub runs the groups as parallel jobs (.github/workflows/ci.yml; the website
 # tests have their own job there, so `browser` leaves them out). Together the
@@ -31,7 +31,6 @@ cd "$(dirname "$0")/.."
 STATICCHECK_VERSION=v0.8.2
 GOVULNCHECK_VERSION=v1.9.0
 SHARD_WEIGHTS=scripts/ci-shards.txt
-DEFAULT_SHARDS=6
 
 step() { printf '\n==> %s\n' "$*"; }
 
@@ -163,7 +162,7 @@ shard_plan() {
 }
 
 s_shards() {
-	local m="${1:-$DEFAULT_SHARDS}"
+	local m="${1:-3}"
 	step "test shard map (${m} shards: every package in exactly one)"
 	local plan
 	plan="$(shard_plan "$m")"
@@ -262,7 +261,7 @@ g_checks() {
 	s_js_sdk
 	s_apisnap
 	s_capmatrix
-	s_shards "$DEFAULT_SHARDS"
+	s_shards 3
 	s_staticcheck
 	s_govulncheck
 }
@@ -291,7 +290,7 @@ g_full() {
 	s_js_sdk
 	s_apisnap
 	s_capmatrix
-	s_shards "$DEFAULT_SHARDS"
+	s_shards 3
 	s_staticcheck
 	s_govulncheck
 	s_test_sqlite
@@ -312,7 +311,7 @@ smoke) s_smoke ;;
 build) s_build ;;
 browser) g_browser ;;
 website) g_website ;;
-shards) s_shards "${2:-$DEFAULT_SHARDS}"; shard_plan "${2:-$DEFAULT_SHARDS}" | sort -n ;;
+shards) s_shards "${2:-3}"; shard_plan "${2:-3}" | sort -n ;;
 *)
 	echo "usage: scripts/ci.sh [checks | test N/M | smoke | build | browser | website | shards [M]]" >&2
 	exit 2
