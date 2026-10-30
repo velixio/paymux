@@ -31,6 +31,7 @@ export declare class Paymux {
     private readonly userAgent;
     readonly payments: {
         create: (params: T.CreatePaymentParams, options: MutationOptions) => Promise<T.Payment>;
+        checkoutAction: (paymentId: string, params: T.CheckoutActionParams, options: MutationOptions) => Promise<T.CheckoutAction>;
         get: (paymentId: string, options?: RequestOptions) => Promise<T.Payment>;
         list: (params?: T.ListPaymentsParams, options?: RequestOptions) => Promise<T.PaymentPage>;
         cancel: (paymentId: string, options: MutationOptions) => Promise<T.Payment>;

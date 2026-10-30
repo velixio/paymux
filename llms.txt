@@ -2,7 +2,7 @@
 
 > Paymux is a self-hosted payment hub that gives merchant applications one API for payments, refunds, subscriptions, invoices, payouts, and normalized webhooks across payment providers.
 
-Paymux offers two customer checkout experiences. A merchant can redirect to the Paymux-hosted checkout page, or use the JavaScript checkout entry point to open the routed provider directly from the merchant storefront. Both flows begin with a server-created payment and use the same provider routing and signed app webhooks.
+Paymux offers hosted, browser-resolved, and backend-resolved checkout. For no Paymux URL in the browser, set the App's `checkout_mode` to `provider_action`, resolve the action with the server SDK, and pass only that action to `executeCheckout` in the merchant UI. All flows use the same provider routing and signed app webhooks.
 
 ## Merchant integration
 

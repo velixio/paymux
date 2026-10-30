@@ -45,7 +45,7 @@ export class CheckoutError extends Error {
   }
 }
 
-interface ProviderAction {
+export interface ProviderAction {
   kind: "redirect" | "form_post" | "sdk";
   url?: string;
   fields?: Record<string, string>;
@@ -72,13 +72,21 @@ interface BillingAction {
   country_required: boolean;
 }
 
-interface ActionResponse {
+export interface ActionResponse {
   kind: "billing" | "checkout" | "complete";
   payment_id: string;
   status: string;
   launcher?: string;
   action?: ProviderAction;
   billing?: BillingAction;
+}
+
+export interface ExecuteCheckoutOptions {
+	/** CSP nonce applied to dynamically loaded provider scripts. */
+	nonce?: string;
+	onEvent?: (event: CheckoutEvent) => void;
+	window?: Window;
+	document?: Document;
 }
 
 interface ParsedCheckout {
@@ -400,6 +408,38 @@ export async function checkout(options: CheckoutOptions): Promise<CheckoutResult
       throw new CheckoutError("invalid_action", "Paymux returned an unsupported checkout action.");
     }
   } finally { ui?.destroy(); }
+}
+
+/** Execute provider-launch JSON resolved by the merchant backend. */
+export async function executeCheckout(response: ActionResponse, options: ExecuteCheckoutOptions = {}): Promise<CheckoutResult> {
+	const win = options.window ?? globalThis.window;
+	const doc = options.document ?? globalThis.document;
+	if (!win || !doc) throw new CheckoutError("browser_required", "Checkout must run in a browser.");
+	if (response.kind === "complete") {
+		options.onEvent?.({ type: "complete", paymentId: response.payment_id, status: response.status });
+		return { status: "complete", paymentId: response.payment_id, paymentStatus: response.status };
+	}
+	const action = response.action;
+	if (response.kind !== "checkout" || !action) throw new CheckoutError("invalid_response", "The merchant backend returned an invalid checkout action.");
+	if (action.kind === "redirect") {
+		const url = safeProviderURL(action.url, "redirect");
+		options.onEvent?.({ type: "redirecting", url });
+		win.location.assign(url);
+		return { status: "redirecting", paymentId: response.payment_id };
+	}
+	if (action.kind === "form_post") {
+		const url = safeProviderURL(action.url, "form");
+		options.onEvent?.({ type: "redirecting", url });
+		submitForm(doc, action);
+		return { status: "redirecting", paymentId: response.payment_id };
+	}
+	if (action.kind === "sdk" && response.launcher) {
+		options.onEvent?.({ type: "provider", provider: response.launcher });
+		const status = await openProvider(win, doc, response.launcher, action, options.nonce);
+		if (status === "dismissed") options.onEvent?.({ type: "dismissed" });
+		return { status, paymentId: response.payment_id };
+	}
+	throw new CheckoutError("invalid_action", "The merchant backend returned an unsupported checkout action.");
 }
 
 export class PaymuxCheckout {

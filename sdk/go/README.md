@@ -30,6 +30,21 @@ To open the selected provider from the merchant storefront instead, return
 `payment.CheckoutURL` to that order's authenticated browser and pass it to the
 [JavaScript checkout SDK](../js/README.md). Never expose the API key.
 
+For no Paymux URL in the browser, set the App's `checkout_mode` to
+`provider_action`, then resolve the public provider action on the backend:
+
+```go
+action, err := client.Payments.CheckoutAction(ctx, payment.ID,
+    paymux.CheckoutActionParams{},
+    paymux.WithIdempotencyKey("order-1048-checkout-v1"),
+)
+```
+
+Return only `action` to the authenticated order owner and execute it with
+`executeCheckout` from the JavaScript checkout SDK. Supply billing details
+required by the App's tax policy during payment creation or in
+`CheckoutActionParams`; the browser never receives a Paymux URL or API key.
+
 Every mutation requires `WithIdempotencyKey`. Reuse a key only when retrying
 the same logical operation. The client does not automatically retry mutations.
 
@@ -62,4 +77,4 @@ the default five-minute tolerance. Unknown event types should be ignored safely.
 ## Versioning
 
 This module is released from the main repository using directory-prefixed tags,
-for example `sdk/go/v0.1.0`. It does not require a separate repository.
+for example `sdk/go/v0.2.0`. It does not require a separate repository.

@@ -142,7 +142,7 @@ curl -s localhost:8080/v1/payments \
   -H "Authorization: Bearer pmx_test_sk_..." \
   -H "Idempotency-Key: order-123" \
   -d '{"amount":49900,"currency":"INR","order_ref":"order-123","description":"Pro plan"}'
-# → { "id": "pay_…", "status": "created", "checkout_url": "https://…/pay/pay_…?t=…" }
+# → { "id": "pay_…", "status": "created", "checkout_mode": "hosted", "checkout_url": "https://…/pay/pay_…?t=…" }
 ```
 
 Send your customer to `checkout_url`. Your app learns the result from a **signed webhook** or from `GET /v1/payments/{id}`. Never trust the browser redirect on its own.
@@ -176,7 +176,8 @@ const payment = await paymux.payments.create(
 );
 ```
 
-Either redirect the customer to `payment.checkout_url`, or return that URL to
+For the default `hosted` App mode, either redirect the customer to
+`payment.checkout_url`, or return that URL to
 the authenticated order page and let the browser entry point open the selected
 provider:
 
@@ -188,6 +189,24 @@ const { checkout_url } = await fetch("/api/orders/order-123/payment", {
 }).then((response) => response.json());
 
 await checkout({ checkoutUrl: checkout_url });
+```
+
+To keep the Paymux URL out of the browser entirely, select
+`provider_action` under **Apps → your app → Settings → checkout_mode**. Resolve
+the action on the merchant backend and return only that JSON:
+
+```ts
+const action = await paymux.payments.checkoutAction(
+  payment.id,
+  {},
+  { idempotencyKey: "order-123-checkout-v1" },
+);
+```
+
+```ts
+import { executeCheckout } from "@paymux-js/sdk/checkout";
+
+await executeCheckout(await merchantBackend.startCheckout("order-123"));
 ```
 
 The browser entry point never receives the Paymux API key. Fulfill the order

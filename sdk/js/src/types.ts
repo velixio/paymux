@@ -9,7 +9,14 @@ export interface BillingAddress { legal_name?: string; gstin?: string; line1?: s
 export interface Customer { external_ref?: string; name?: string; email?: string; phone?: string; billing?: BillingAddress }
 export interface CreatePaymentParams { amount: number; currency: string; order_ref?: string; description?: string; customer?: Customer; metadata?: Record<string, string>; return_url?: string; allowed_connectors?: string[]; country?: string }
 export interface PaymentAttempt { id: string; status: string; provider: string; provider_payment_id?: string; method?: string; failure_code?: string; failure_message?: string; created_at: string }
-export interface Payment { id: string; object: string; livemode: boolean; status: PaymentStatus; kind: string; amount: number; currency: string; amount_received: number; amount_refunded: number; order_ref?: string; description?: string; customer_id?: string; metadata: Record<string, string>; return_url?: string; allowed_connectors?: string[]; country?: string; expires_at: string; created_at: string; version: number; flags: string[]; checkout_url?: string; attempts?: PaymentAttempt[] }
+export type CheckoutMode = "hosted" | "provider_action";
+export interface ProviderAction { kind: "redirect" | "form_post" | "sdk"; url?: string; fields?: Record<string, string>; script_url?: string; options?: Record<string, unknown> }
+export type CheckoutAction =
+  | { kind: "checkout"; payment_id: string; status: PaymentStatus; launcher: string; action: ProviderAction }
+  | { kind: "complete"; payment_id: string; status: PaymentStatus };
+export interface CheckoutBilling { name: string; email?: string; country?: string; state_code?: string; line1?: string; postal_code?: string; gstin?: string; legal_name?: string }
+export interface CheckoutActionParams { fresh?: boolean; billing?: CheckoutBilling }
+export interface Payment { id: string; object: string; livemode: boolean; status: PaymentStatus; kind: string; amount: number; currency: string; amount_received: number; amount_refunded: number; order_ref?: string; description?: string; customer_id?: string; metadata: Record<string, string>; return_url?: string; allowed_connectors?: string[]; country?: string; expires_at: string; created_at: string; version: number; flags: string[]; checkout_mode?: CheckoutMode; checkout_url?: string; attempts?: PaymentAttempt[] }
 export interface ListPaymentsParams extends PageParams { status?: PaymentStatus }
 export interface CreateRefundParams { amount?: number; attempt_id?: string; reason?: string }
 export interface Refund { id: string; object: string; livemode: boolean; payment_id: string; attempt_id: string; amount: number; currency: string; status: string; reason?: string; initiated_by: string; provider_refund_id?: string; created_at: string }

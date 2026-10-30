@@ -34,6 +34,8 @@ type Meta struct {
 
 var metas = map[string]Meta{
 	"routing": {Kind: KindJSON, Help: "Which provider accounts take which payments: ordered rules, then a catch-all. Edited on the org Settings page."},
+	"checkout_mode": {Kind: KindEnum, Options: []string{"hosted", "provider_action"},
+		Help: "How this app starts customer checkout: show the Paymux-hosted page, or have the merchant backend resolve a provider action for the browser SDK."},
 	"duplicate_payment_action": {Kind: KindEnum, Options: []string{"review", "auto_refund"},
 		Help: "What to do when a customer pays an already-paid order a second time: hold it for review, or refund it automatically."},
 	"billing_details": {Kind: KindEnum, Options: []string{"off", "state_required", "optional", "required"},

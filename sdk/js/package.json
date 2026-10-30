@@ -1,6 +1,6 @@
 {
   "name": "@paymux-js/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Type-safe server API, webhook, and browser checkout SDK for Paymux",
   "type": "module",
   "sideEffects": false,

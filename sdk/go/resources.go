@@ -30,6 +30,19 @@ func (s *PaymentsService) Get(ctx context.Context, id string) (*Payment, error) 
 	err = s.client.doJSON(ctx, http.MethodGet, path, nil, nil, &out, nil)
 	return &out, err
 }
+func (s *PaymentsService) CheckoutAction(ctx context.Context, id string, params CheckoutActionParams, options ...RequestOption) (*CheckoutAction, error) {
+	path, err := objectPath("payments", id, "checkout-action")
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := mutationOptions(options)
+	if err != nil {
+		return nil, err
+	}
+	var out CheckoutAction
+	err = s.client.doJSON(ctx, http.MethodPost, path, nil, params, &out, &cfg)
+	return &out, err
+}
 func (s *PaymentsService) List(ctx context.Context, params ListPaymentsParams) (*PaymentPage, error) {
 	q := url.Values{}
 	addPageQuery(q, params.Limit, params.StartingAfter)

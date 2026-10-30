@@ -88,6 +88,7 @@ const defaultRouting = `{"rules":[` +
 //     subscriptions service, which knows the mandate method.
 var defs = []Def{
 	{"routing", defaultRouting, orgApp, validRouting},
+	{"checkout_mode", `"hosted"`, LevelApp, oneOf("hosted", "provider_action")},
 	{"duplicate_payment_action", `"review"`, orgApp, oneOf("review", "auto_refund")},
 	{"billing_details", `"state_required"`, orgApp, oneOf("off", "state_required", "optional", "required")},
 	{"payment_ttl", `60`, orgApp, intRange(10, 7*24*60)}, // minutes

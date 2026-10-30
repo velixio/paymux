@@ -61,6 +61,25 @@ func TestMutationRequiresIdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestCheckoutAction(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/payments/pay_1/checkout-action" {
+			t.Errorf("request = %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.Header.Get("Idempotency-Key"); got != "order-1-checkout" {
+			t.Errorf("idempotency = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"kind":"checkout","payment_id":"pay_1","status":"created","launcher":"razorpay","action":{"kind":"sdk","script_url":"https://checkout.razorpay.com/v1/checkout.js","options":{"key":"public"}}}`))
+	})
+	action, err := client.Payments.CheckoutAction(context.Background(), "pay_1", CheckoutActionParams{}, WithIdempotencyKey("order-1-checkout"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if action.PaymentID != "pay_1" || action.Launcher != "razorpay" || action.Action.Kind != "sdk" {
+		t.Fatalf("action = %+v", action)
+	}
+}
+
 func TestListQuery(t *testing.T) {
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("limit"); got != "10" {
