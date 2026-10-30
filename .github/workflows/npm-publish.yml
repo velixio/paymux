@@ -46,11 +46,9 @@ jobs:
           bun test
           bun run build
           npm pack --dry-run
-      - name: Publish to npm
+      - name: Publish to npm with trusted publishing
         working-directory: sdk/js
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance
+        run: npm publish --access public
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
