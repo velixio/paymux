@@ -32,12 +32,32 @@ export interface CreatePaymentParams {
     allowed_connectors?: string[];
     country?: string;
 }
+export interface CardDetails {
+    last4?: string;
+    network?: string;
+    funding?: string;
+    issuer?: string;
+    country?: string;
+    international?: boolean;
+    emi?: boolean;
+    sub_type?: string;
+}
+export interface UPIDetails {
+    payer_account_type?: string;
+}
+export interface PaymentMethodDetails {
+    card?: CardDetails;
+    bank?: string;
+    wallet?: string;
+    upi?: UPIDetails;
+}
 export interface PaymentAttempt {
     id: string;
     status: string;
     provider: string;
     provider_payment_id?: string;
     method?: string;
+    method_details?: PaymentMethodDetails;
     failure_code?: string;
     failure_message?: string;
     created_at: string;

@@ -56,6 +56,13 @@ stays on the backend.
 
 Confirm fulfillment from a verified `payment.succeeded` event or the authoritative `GET /v1/payments/{id}` response. Match the app's order, expected amount/currency, and payment state before fulfillment. Treat `needs_review` as a reason for investigation.
 
+Payment details include provider attempts. When the provider supplies safe
+instrument metadata, an attempt's `method_details` contains display fields such
+as card network, last four digits, funding type, issuer and domestic or
+international status. Paymux never exposes a full card number, expiry, CVV,
+authentication data, fingerprint or reusable provider token. Use these fields
+for support and recognition only; payment status remains authoritative.
+
 ## Amounts and timestamps
 
 Amounts are integer minor units: `49900` is ₹499.00 for INR. Do not use floating-point arithmetic for stored amounts. Timestamps use RFC 3339 UTC.

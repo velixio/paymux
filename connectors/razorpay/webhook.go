@@ -14,10 +14,25 @@ import (
 
 // Wire entities (only the fields Paymux reads). Timestamps are unix seconds.
 type paymentEntity struct {
-	ID       string `json:"id"`
-	OrderID  string `json:"order_id"`
-	Status   string `json:"status"`
-	Method   string `json:"method"`
+	ID            string `json:"id"`
+	OrderID       string `json:"order_id"`
+	Status        string `json:"status"`
+	Method        string `json:"method"`
+	International bool   `json:"international"`
+	Bank          string `json:"bank"`
+	Wallet        string `json:"wallet"`
+	Card          *struct {
+		Last4         string `json:"last4"`
+		Network       string `json:"network"`
+		Type          string `json:"type"`
+		Issuer        string `json:"issuer"`
+		International bool   `json:"international"`
+		EMI           bool   `json:"emi"`
+		SubType       string `json:"sub_type"`
+	} `json:"card"`
+	UPI *struct {
+		PayerAccountType string `json:"payer_account_type"`
+	} `json:"upi"`
 	Currency string `json:"currency"`
 	// SubscriptionID is set by Razorpay on payments that charge a subscription.
 	SubscriptionID   string `json:"subscription_id"`
@@ -96,10 +111,19 @@ func mapDisputeStatus(raw string) connector.DisputeStatus {
 }
 
 func (p paymentEntity) snapshot() connector.PaymentSnapshot {
+	details := connector.PaymentMethodDetails{Bank: p.Bank, Wallet: p.Wallet}
+	if p.Card != nil {
+		international, emi := p.Card.International, p.Card.EMI
+		details.Card = &connector.CardDetails{Last4: p.Card.Last4, Network: p.Card.Network, Funding: p.Card.Type,
+			Issuer: p.Card.Issuer, International: &international, EMI: &emi, SubType: p.Card.SubType}
+	}
+	if p.UPI != nil && p.UPI.PayerAccountType != "" {
+		details.UPI = &connector.UPIDetails{PayerAccountType: p.UPI.PayerAccountType}
+	}
 	return connector.PaymentSnapshot{
 		ProviderOrderID: p.OrderID, ProviderPaymentID: p.ID, SubscriptionID: p.SubscriptionID,
 		Status: mapPaymentStatus(p.Status), RawStatus: p.Status,
-		Amount: p.Amount, Currency: p.Currency, Method: p.Method,
+		Amount: p.Amount, Currency: p.Currency, Method: p.Method, MethodDetails: details,
 		Fee: p.Fee, Tax: p.Tax, AmountRefunded: p.AmountRefunded,
 		ErrorCode: p.ErrorCode, ErrorMessage: p.ErrorDescription, CreatedAt: ms(p.CreatedAt),
 	}

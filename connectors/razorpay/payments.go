@@ -40,7 +40,7 @@ func (r *razorpay) FetchPayment(ctx context.Context, ref connector.PaymentRef) (
 	switch {
 	case ref.ProviderPaymentID != "":
 		var p paymentEntity
-		if err := r.api.do(ctx, "GET", "/v1/payments/"+url.PathEscape(ref.ProviderPaymentID), nil, nil, &p, nil); err != nil {
+		if err := r.api.do(ctx, "GET", "/v1/payments/"+url.PathEscape(ref.ProviderPaymentID), url.Values{"expand[]": {"card"}}, nil, &p, nil); err != nil {
 			return connector.PaymentSnapshot{}, err
 		}
 		// The payment id may have come from outside (a return URL, a
@@ -111,7 +111,7 @@ func (r *razorpay) fetchOrder(ctx context.Context, orderID, providerRef string) 
 		return connector.PaymentSnapshot{}, connector.ErrNotFound
 	}
 	var c collection[paymentEntity]
-	if err := r.api.do(ctx, "GET", "/v1/orders/"+url.PathEscape(orderID)+"/payments", nil, nil, &c, nil); err != nil {
+	if err := r.api.do(ctx, "GET", "/v1/orders/"+url.PathEscape(orderID)+"/payments", url.Values{"expand[]": {"card"}}, nil, &c, nil); err != nil {
 		return connector.PaymentSnapshot{}, err
 	}
 	if len(c.Items) == 0 {
@@ -146,6 +146,7 @@ func rank(p paymentEntity) int {
 
 func (r *razorpay) captureIfAuthorized(ctx context.Context, p paymentEntity, providerRef string) (connector.PaymentSnapshot, error) {
 	if p.Status == "authorized" {
+		priorCard := p.Card
 		var captured paymentEntity
 		body := map[string]any{"amount": p.Amount, "currency": p.Currency}
 		err := r.api.do(ctx, "POST", "/v1/payments/"+url.PathEscape(p.ID)+"/capture", nil, body, &captured, nil)
@@ -156,6 +157,9 @@ func (r *razorpay) captureIfAuthorized(ctx context.Context, p paymentEntity, pro
 				captured.OrderID = p.OrderID
 			}
 			p = captured
+			if p.Card == nil {
+				p.Card = priorCard
+			}
 		case errors.As(err, &ae) && ae.Status == 400 && strings.Contains(strings.ToLower(ae.Description), "already"):
 			// Captured concurrently (or by auto-capture): read the current state.
 			if err := r.api.do(ctx, "GET", "/v1/payments/"+url.PathEscape(p.ID), nil, nil, &p, nil); err != nil {
@@ -163,6 +167,11 @@ func (r *razorpay) captureIfAuthorized(ctx context.Context, p paymentEntity, pro
 			}
 		default:
 			return connector.PaymentSnapshot{}, fmt.Errorf("razorpay: capturing %s: %w", p.ID, err)
+		}
+	}
+	if p.Method == "card" && p.Card == nil {
+		if err := r.api.do(ctx, "GET", "/v1/payments/"+url.PathEscape(p.ID), url.Values{"expand[]": {"card"}}, nil, &p, nil); err != nil {
+			return connector.PaymentSnapshot{}, err
 		}
 	}
 	s := p.snapshot()
@@ -260,6 +269,7 @@ func (r *razorpay) ListPayments(ctx context.Context, tr connector.TimeRange, cur
 	if err != nil {
 		return connector.Page[connector.PaymentSnapshot]{}, err
 	}
+	q.Add("expand[]", "card")
 	var c collection[paymentEntity]
 	if err := r.api.do(ctx, "GET", "/v1/payments", q, nil, &c, nil); err != nil {
 		return connector.Page[connector.PaymentSnapshot]{}, err

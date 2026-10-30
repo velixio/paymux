@@ -232,10 +232,21 @@ func (e *env) detailFixture() detailFixture {
 		e.t.Fatal(err)
 	}
 	e.seedAttempt(store.Attempt{ID: "att_fail", Mode: "live", PaymentID: p.ID, ProviderAccountID: "pa_rzp", ProviderRef: "pr_fail", ProviderOrderID: "order_F1",
-		Status: "failed", Method: "card", FailureCode: "card_declined", FailureMessage: "Your card was declined"})
+		Status: "failed", Method: "card", MethodDetails: `{"card":{"last4":"5000","network":"American Express","funding":"credit","issuer":"AMEX","international":false,"emi":false,"sub_type":"consumer"}}`,
+		FailureCode: "card_declined", FailureMessage: "Your card was declined"})
 	e.seedAttempt(store.Attempt{ID: "att_ok", Mode: "live", PaymentID: p.ID, ProviderAccountID: "pa_rzp", ProviderRef: "pr_ok", ProviderOrderID: "order_OK",
 		ProviderPaymentID: "pay_RZP_OK", Status: "captured", Method: "upi", AmountReceived: 10000, CurrencyReceived: "INR"})
 	err = e.db.Write(ctx, func(tx store.Tx) error {
+		customerID, err := store.UpsertCustomer(ctx, tx, store.Customer{ID: "cus_detail", OrgID: store.DefaultOrgID, AppID: app.ID, Mode: "live",
+			ExternalRef: "merchant-customer-1", Name: "Asha Rao", Email: "asha@example.com", Phone: "+919876543210",
+			Billing: store.Billing{LegalName: "Asha Rao", GSTIN: "27ABCDE1234F1Z5", Line1: "10 Market Road", Line2: "Suite 2",
+				City: "Mumbai", StateCode: "27", PostalCode: "400001", Country: "IN"}}, e.clk.Now())
+		if err != nil {
+			return err
+		}
+		if err := store.SetPaymentCustomer(ctx, tx, p.ID, customerID, e.clk.Now()); err != nil {
+			return err
+		}
 		if err := store.InsertLedgerEntry(ctx, tx, store.LedgerEntry{ID: "led_1", OrgID: store.DefaultOrgID, Mode: "live", Kind: "charge",
 			Amount: 10000, Currency: "INR", PaymentID: p.ID, OccurredAt: e.clk.Now()}); err != nil {
 			return err
@@ -292,8 +303,10 @@ func TestPaymentDetailShowsTimeline(t *testing.T) {
 		c := e.roleClient("viewer")
 		body := e.pageOK(c, "/dashboard/payments/"+f.pay.ID)
 		has(t, body, "pay_d1", "ORD-D1", "100.00 INR", "succeeded",
+			// customer and billing details
+			"merchant-customer-1", "Asha Rao", "asha@example.com", "919876543210", "10 Market Road", "Mumbai", "400001", "27ABCDE1234F1Z5",
 			// attempts
-			"att_fail", "failed", "card_declined", "Your card was declined", "order_F1",
+			"att_fail", "failed", "card_declined", "Your card was declined", "order_F1", "American Express", "•••• 5000", "credit · AMEX · consumer · domestic",
 			"att_ok", "captured", "pay_RZP_OK", "order_OK", "upi", "Razorpay main", "razorpay",
 			// ledger
 			"charge", "100.00 INR",

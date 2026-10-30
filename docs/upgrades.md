@@ -155,6 +155,14 @@ No migration. `PAYMUX_CHECKOUT_URL` is optional and unset by default, so an upgr
 5. Webhook URLs (`/hooks/...`) do not change: they stay on `PAYMUX_BASE_URL`. Do not move them.
 6. If your reverse proxy restricts paths per host, allow the customer paths on the new host only and keep dashboard, API and `/hooks` on the base host.
 
+## Release note: payment method details
+
+Migration 0036 adds a `method_details` JSON column to payment attempts. Existing
+rows get an empty object, so the migration is immediate and does not rewrite
+payment data. Verified provider webhooks and reconciliation populate safe
+display metadata when a provider supplies it. Full card numbers, expiry, CVV,
+authentication data, fingerprints and reusable tokens are not stored there.
+
 ## Release note: custom domains need a DNS TXT record
 
 Migration 0035 adds two nullable columns to `app_domains`; nothing can fail.

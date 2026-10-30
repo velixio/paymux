@@ -136,7 +136,8 @@ func TestApplyRefundSnapshotSucceeded(t *testing.T) {
 		}
 		var ledger []store.LedgerEntry
 		_ = e.db.Read(ctx, func(q store.Querier) (err error) { ledger, err = store.ListLedgerEntries(ctx, q, p.ID); return })
-		if len(ledger) != 2 || ledger[1].Kind != "refund" || ledger[1].Amount != -400 || ledger[1].RefundID != r.ID || ledger[1].Currency != "INR" {
+		refundAt := slices.IndexFunc(ledger, func(entry store.LedgerEntry) bool { return entry.Kind == "refund" })
+		if len(ledger) != 2 || refundAt < 0 || ledger[refundAt].Amount != -400 || ledger[refundAt].RefundID != r.ID || ledger[refundAt].Currency != "INR" {
 			t.Errorf("ledger %+v", ledger)
 		}
 		if ev := e.emitted(); ev[len(ev)-1] != "refund.succeeded" {

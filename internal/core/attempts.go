@@ -9,12 +9,14 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/velixio/paymux/internal/audit"
 	"github.com/velixio/paymux/internal/core/state"
 	"github.com/velixio/paymux/internal/ids"
 	"github.com/velixio/paymux/internal/notify"
 	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 	"github.com/velixio/paymux/pkg/connector/money"
 )
 
@@ -75,6 +77,7 @@ type Snapshot struct {
 	Amount                      int64
 	Currency                    string
 	Method, ProviderPaymentID   string
+	MethodDetails               connector.PaymentMethodDetails
 	ProviderOrderID             string
 	FailureCode, FailureMessage string
 }
@@ -114,6 +117,7 @@ func addFlag(p *store.Payment, f string) {
 }
 
 func validateSnapshot(snap *Snapshot) error {
+	snap.MethodDetails = safeMethodDetails(snap.MethodDetails)
 	if !slices.Contains(state.AllAttemptStatuses, snap.Status) {
 		return newErr(ErrInvalid, "unknown attempt status %q", snap.Status)
 	}
@@ -127,6 +131,52 @@ func validateSnapshot(snap *Snapshot) error {
 		}
 	}
 	return nil
+}
+
+func safeMethodDetails(in connector.PaymentMethodDetails) connector.PaymentMethodDetails {
+	out := connector.PaymentMethodDetails{Bank: safeInstrumentText(in.Bank, 100), Wallet: safeInstrumentText(in.Wallet, 100)}
+	if in.UPI != nil {
+		if value := safeInstrumentText(in.UPI.PayerAccountType, 50); value != "" {
+			out.UPI = &connector.UPIDetails{PayerAccountType: value}
+		}
+	}
+	if in.Card != nil {
+		c := *in.Card
+		c.Last4 = safeLast4(c.Last4)
+		c.Network = safeInstrumentText(c.Network, 64)
+		c.Funding = safeInstrumentText(c.Funding, 32)
+		c.Issuer = safeInstrumentText(c.Issuer, 100)
+		c.SubType = safeInstrumentText(c.SubType, 32)
+		c.Country = strings.ToUpper(strings.TrimSpace(c.Country))
+		if len(c.Country) != 2 || c.Country[0] < 'A' || c.Country[0] > 'Z' || c.Country[1] < 'A' || c.Country[1] > 'Z' {
+			c.Country = ""
+		}
+		if c.Last4 != "" || c.Network != "" || c.Funding != "" || c.Issuer != "" || c.Country != "" ||
+			c.International != nil || c.EMI != nil || c.SubType != "" {
+			out.Card = &c
+		}
+	}
+	return out
+}
+
+func safeInstrumentText(value string, max int) string {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > max || strings.IndexFunc(value, unicode.IsControl) >= 0 {
+		return ""
+	}
+	return value
+}
+
+func safeLast4(value string) string {
+	if len(value) != 4 {
+		return ""
+	}
+	for i := range value {
+		if value[i] < '0' || value[i] > '9' {
+			return ""
+		}
+	}
+	return value
 }
 
 // ApplyAttemptSnapshot moves an attempt, and through it its payment, to the
@@ -159,6 +209,21 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 		case state.Reject:
 			return newErr(ErrInvalidState, "attempt cannot move from %s to %s", a.Status, snap.Status)
 		case state.Ignore:
+			// A repeated provider snapshot may be richer than the webhook that
+			// first settled the attempt. Enrich display-safe method details without
+			// replaying ledger entries, events or payment transitions.
+			if (a.MethodDetails == "" || a.MethodDetails == "{}") && !snap.MethodDetails.Empty() {
+				raw, marshalErr := json.Marshal(snap.MethodDetails)
+				if marshalErr != nil {
+					return marshalErr
+				}
+				a.MethodDetails = string(raw)
+				a.Method = firstNonEmpty(snap.Method, a.Method)
+				if err := store.UpdateAttempt(ctx, tx, a, s.nowUTC()); err != nil {
+					return err
+				}
+				res.Attempt, res.Changed = a, true
+			}
 			return nil
 		}
 		now := s.nowUTC()
@@ -178,6 +243,11 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 
 		a.Status = string(snap.Status)
 		a.Method = firstNonEmpty(snap.Method, a.Method)
+		if !snap.MethodDetails.Empty() {
+			if raw, err := json.Marshal(snap.MethodDetails); err == nil {
+				a.MethodDetails = string(raw)
+			}
+		}
 		a.ProviderPaymentID = firstNonEmpty(snap.ProviderPaymentID, a.ProviderPaymentID)
 		a.ProviderOrderID = firstNonEmpty(snap.ProviderOrderID, a.ProviderOrderID)
 		if snap.Status == state.AttemptFailed {

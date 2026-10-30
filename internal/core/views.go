@@ -1,9 +1,11 @@
 package core
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 )
 
 // PaymentView is the public JSON shape of a payment, used by the API and as
@@ -83,12 +85,21 @@ type paymentEventData struct {
 // AttemptView is the public JSON shape of a payment attempt: what an app needs
 // to debug a failed payment, and nothing internal.
 type AttemptView struct {
-	ID                string    `json:"id"`
-	Status            string    `json:"status"`
-	Provider          string    `json:"provider"` // the connector, for example "razorpay"
-	ProviderPaymentID string    `json:"provider_payment_id,omitempty"`
-	Method            string    `json:"method,omitempty"`
-	FailureCode       string    `json:"failure_code,omitempty"`
-	FailureMessage    string    `json:"failure_message,omitempty"`
-	CreatedAt         time.Time `json:"created_at"`
+	ID                string                          `json:"id"`
+	Status            string                          `json:"status"`
+	Provider          string                          `json:"provider"` // the connector, for example "razorpay"
+	ProviderPaymentID string                          `json:"provider_payment_id,omitempty"`
+	Method            string                          `json:"method,omitempty"`
+	MethodDetails     *connector.PaymentMethodDetails `json:"method_details,omitempty"`
+	FailureCode       string                          `json:"failure_code,omitempty"`
+	FailureMessage    string                          `json:"failure_message,omitempty"`
+	CreatedAt         time.Time                       `json:"created_at"`
+}
+
+func methodDetails(raw string) *connector.PaymentMethodDetails {
+	var details connector.PaymentMethodDetails
+	if raw == "" || json.Unmarshal([]byte(raw), &details) != nil || details.Empty() {
+		return nil
+	}
+	return &details
 }

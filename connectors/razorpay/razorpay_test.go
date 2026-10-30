@@ -171,6 +171,26 @@ func TestFetchPaymentFeeTaxAndRefs(t *testing.T) {
 	}
 }
 
+func TestPaymentSnapshotKeepsSafeMethodDetails(t *testing.T) {
+	international, emi := false, false
+	p := paymentEntity{ID: "pay_card", Status: "captured", Method: "card", Amount: 100, Currency: "INR", Bank: "",
+		Card: &struct {
+			Last4         string `json:"last4"`
+			Network       string `json:"network"`
+			Type          string `json:"type"`
+			Issuer        string `json:"issuer"`
+			International bool   `json:"international"`
+			EMI           bool   `json:"emi"`
+			SubType       string `json:"sub_type"`
+		}{Last4: "5000", Network: "American Express", Type: "credit", Issuer: "AMEX", International: international, EMI: emi, SubType: "consumer"}}
+	snap := p.snapshot()
+	card := snap.MethodDetails.Card
+	if card == nil || card.Last4 != "5000" || card.Network != "American Express" || card.Funding != "credit" ||
+		card.Issuer != "AMEX" || card.International == nil || *card.International || card.EMI == nil || *card.EMI || card.SubType != "consumer" {
+		t.Fatalf("method details = %+v", snap.MethodDetails)
+	}
+}
+
 func TestFetchPaymentOrderWithoutPayments(t *testing.T) {
 	c := newConn(t, newFake(""))
 	snap, err := c.FetchPayment(context.Background(), connector.PaymentRef{ProviderOrderID: "order_Nx0"})

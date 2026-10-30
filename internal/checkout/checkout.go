@@ -339,6 +339,7 @@ func (s *Service) failAttempt(ctx context.Context, a store.Attempt, cause error)
 // authorized, and canceled and expired become failed.
 func ToSnapshot(s connector.PaymentSnapshot) core.Snapshot {
 	out := core.Snapshot{Amount: s.Amount, Currency: strings.ToUpper(s.Currency), Method: s.Method,
+		MethodDetails:     s.MethodDetails,
 		ProviderPaymentID: s.ProviderPaymentID, ProviderOrderID: s.ProviderOrderID, FailureCode: s.ErrorCode, FailureMessage: s.ErrorMessage}
 	switch s.Status {
 	case connector.PaymentSucceeded:

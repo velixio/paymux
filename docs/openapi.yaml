@@ -1085,9 +1085,38 @@ components:
         provider: { type: string, description: "The connector, for example razorpay." }
         provider_payment_id: { type: string }
         method: { type: string, description: "For example upi, card, netbanking." }
+        method_details:
+          $ref: "#/components/schemas/PaymentMethodDetails"
         failure_code: { type: string }
         failure_message: { type: string }
         created_at: { type: string, format: date-time }
+    PaymentMethodDetails:
+      type: object
+      description: Display-safe payment instrument information. Full card numbers, expiry, CVV, authentication data, fingerprints and reusable tokens are never returned.
+      properties:
+        card:
+          $ref: "#/components/schemas/CardDetails"
+        bank: { type: string, description: Provider bank code or display name for bank-based payments. }
+        wallet: { type: string, description: Provider wallet code or display name. }
+        upi:
+          type: object
+          properties:
+            payer_account_type: { type: string, description: For example bank_account, credit_card or wallet. }
+          additionalProperties: false
+      additionalProperties: false
+    CardDetails:
+      type: object
+      description: Non-sensitive card attributes supplied by the provider.
+      properties:
+        last4: { type: string, pattern: "^[0-9]{4}$" }
+        network: { type: string, examples: [Visa, Mastercard, RuPay, American Express] }
+        funding: { type: string, examples: [credit, debit, prepaid] }
+        issuer: { type: string, description: Provider issuer code or display name. }
+        country: { type: string, pattern: "^[A-Z]{2}$" }
+        international: { type: boolean }
+        emi: { type: boolean }
+        sub_type: { type: string, examples: [consumer, business] }
+      additionalProperties: false
     PaymentDetail:
       allOf:
         - $ref: "#/components/schemas/Payment"

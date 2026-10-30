@@ -5,17 +5,19 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
-	"github.com/velixio/paymux/connectors/simulator"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/velixio/paymux/connectors/simulator"
 	"github.com/velixio/paymux/internal/authz"
 	"github.com/velixio/paymux/internal/core"
 	"github.com/velixio/paymux/internal/core/state"
 	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector"
 	"github.com/velixio/paymux/pkg/connector/money"
 )
 
@@ -27,7 +29,14 @@ type payFilter struct{ App, Status, Q, From, To string }
 
 type attemptRow struct {
 	ID, Status, Provider, ProviderRef, OrderID, PaymentID, Method, FailureCode, FailureMessage, Created string
+	MethodSummary, MethodMeta                                                                           string
 	Duplicate                                                                                           bool
+}
+
+type customerDetail struct {
+	ExternalRef, Name, Email, Phone                                      string
+	LegalName, GSTIN, Line1, Line2, City, StateCode, PostalCode, Country string
+	HasBilling                                                           bool
 }
 
 type ledgerRow struct{ Kind, Amount, At string }
@@ -48,16 +57,17 @@ type eventRow struct {
 type attemptOpt struct{ ID, Label string }
 
 type payDetail struct {
-	ID, App, AppID, Mode, Status, Amount, Received, Refunded, OrderRef, Description, Customer, Created string
-	Currency                                                                                           string
-	Flags                                                                                              []string
-	Attempts                                                                                           []attemptRow
-	Ledger                                                                                             []ledgerRow
-	Refunds                                                                                            []refundRow
-	Deliveries                                                                                         []deliveryRow
-	Events                                                                                             []eventRow
-	Pickable                                                                                           []attemptOpt
-	CanRefund, CanReplay                                                                               bool
+	ID, App, AppID, Mode, Status, Amount, Received, Refunded, OrderRef, Description, Created string
+	Currency                                                                                 string
+	Customer                                                                                 *customerDetail
+	Flags                                                                                    []string
+	Attempts                                                                                 []attemptRow
+	Ledger                                                                                   []ledgerRow
+	Refunds                                                                                  []refundRow
+	Deliveries                                                                               []deliveryRow
+	Events                                                                                   []eventRow
+	Pickable                                                                                 []attemptOpt
+	CanRefund, CanReplay                                                                     bool
 	// RefundNonce is the single-use key of the refund form on this page.
 	RefundNonce string
 	// SimAttempts are the captured attempts on a test-mode simulator account,
@@ -229,16 +239,25 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	}
 	det := &payDetail{ID: p.ID, App: app.Name, AppID: app.ID, Mode: p.Mode, Status: p.Status, Currency: p.Currency,
 		Amount: fmtMoney(p.Amount, p.Currency), Received: fmtMoney(p.AmountReceived, p.Currency), Refunded: fmtMoney(p.AmountRefunded, p.Currency),
-		OrderRef: p.OrderRef, Description: p.Description, Customer: cust.Email, Created: d.fmtTime(p.CreatedAt), Flags: p.Flags,
+		OrderRef: p.OrderRef, Description: p.Description, Created: d.fmtTime(p.CreatedAt), Flags: p.Flags,
 		CanReplay: s.can(authz.WebhookReplay)}
+	if cust.ID != "" {
+		det.Customer = &customerDetail{ExternalRef: cust.ExternalRef, Name: cust.Name, Email: cust.Email, Phone: cust.Phone,
+			LegalName: cust.Billing.LegalName, GSTIN: cust.Billing.GSTIN, Line1: cust.Billing.Line1, Line2: cust.Billing.Line2,
+			City: cust.Billing.City, StateCode: cust.Billing.StateCode, PostalCode: cust.Billing.PostalCode, Country: cust.Billing.Country,
+			HasBilling: cust.Billing.Line1 != "" || cust.Billing.Line2 != "" || cust.Billing.City != "" || cust.Billing.StateCode != "" ||
+				cust.Billing.PostalCode != "" || cust.Billing.Country != ""}
+	}
 	for _, a := range attempts {
 		name := provider[a.ProviderAccountID]
 		if name == "" {
 			name = a.ProviderAccountID
 		}
+		methodSummary, methodMeta := paymentMethodSummary(a)
 		det.Attempts = append(det.Attempts, attemptRow{ID: a.ID, Status: a.Status, Provider: name, ProviderRef: a.ProviderRef,
 			OrderID: a.ProviderOrderID, PaymentID: a.ProviderPaymentID, Method: a.Method, FailureCode: a.FailureCode,
-			FailureMessage: a.FailureMessage, Created: d.fmtTime(a.CreatedAt), Duplicate: a.Duplicate})
+			FailureMessage: a.FailureMessage, Created: d.fmtTime(a.CreatedAt), Duplicate: a.Duplicate,
+			MethodSummary: methodSummary, MethodMeta: methodMeta})
 		if a.Status == string(state.AttemptCaptured) && !a.Duplicate {
 			det.Pickable = append(det.Pickable, attemptOpt{ID: a.ID, Label: a.ID + " - " + fmtMoney(a.AmountReceived, a.CurrencyReceived) + " via " + name})
 		}
@@ -268,6 +287,49 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	v := d.shell(r, s, "payments", "Payment "+p.ID)
 	v.Pay, v.Error, v.Notice = det, errMsg, notice
 	d.render(w, status, "dash_payment", v)
+}
+
+func paymentMethodSummary(a store.Attempt) (string, string) {
+	var details connector.PaymentMethodDetails
+	if json.Unmarshal([]byte(a.MethodDetails), &details) != nil {
+		return "", ""
+	}
+	if c := details.Card; c != nil {
+		summary := c.Network
+		if c.Last4 != "" {
+			if summary != "" {
+				summary += " "
+			}
+			summary += "•••• " + c.Last4
+		}
+		parts := []string{}
+		for _, value := range []string{c.Funding, c.Issuer, c.Country, c.SubType} {
+			if value != "" {
+				parts = append(parts, value)
+			}
+		}
+		if c.International != nil {
+			if *c.International {
+				parts = append(parts, "international")
+			} else {
+				parts = append(parts, "domestic")
+			}
+		}
+		if c.EMI != nil && *c.EMI {
+			parts = append(parts, "EMI")
+		}
+		return summary, strings.Join(parts, " · ")
+	}
+	if details.Bank != "" {
+		return details.Bank, ""
+	}
+	if details.Wallet != "" {
+		return details.Wallet, ""
+	}
+	if details.UPI != nil {
+		return details.UPI.PayerAccountType, ""
+	}
+	return "", ""
 }
 
 func (d *Dashboard) refundSubmit(w http.ResponseWriter, r *http.Request, s *session) {

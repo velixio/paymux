@@ -15,10 +15,22 @@
 <dt>Refunded</dt><dd>{{.Refunded}}</dd>
 {{if .OrderRef}}<dt>Order ref</dt><dd>{{.OrderRef}}</dd>{{end}}
 {{if .Description}}<dt>Description</dt><dd>{{.Description}}</dd>{{end}}
-{{if .Customer}}<dt>Customer</dt><dd>{{.Customer}}</dd>{{end}}
 <dt>Created</dt><dd>{{.Created}}</dd>
 {{if .Flags}}<dt>Flags</dt><dd>{{range .Flags}}<span class="flag">{{.}}</span> {{end}}</dd>{{end}}
 </dl>
+
+{{with .Customer}}
+<h3>Customer details</h3>
+<dl class="facts">
+{{if .ExternalRef}}<dt>Merchant customer ref</dt><dd>{{.ExternalRef}}</dd>{{end}}
+{{if .Name}}<dt>Name</dt><dd>{{.Name}}</dd>{{end}}
+{{if .Email}}<dt>Email</dt><dd>{{.Email}}</dd>{{end}}
+{{if .Phone}}<dt>Phone</dt><dd>{{.Phone}}</dd>{{end}}
+{{if .LegalName}}<dt>Legal name</dt><dd>{{.LegalName}}</dd>{{end}}
+{{if .GSTIN}}<dt>GSTIN</dt><dd>{{.GSTIN}}</dd>{{end}}
+{{if .HasBilling}}<dt>Billing address</dt><dd>{{if .Line1}}{{.Line1}}{{end}}{{if .Line2}}{{if .Line1}}<br>{{end}}{{.Line2}}{{end}}{{if .City}}<br>{{.City}}{{end}}{{if .StateCode}}{{if .City}}, {{end}}{{.StateCode}}{{end}}{{if .PostalCode}} {{.PostalCode}}{{end}}{{if .Country}}<br>{{.Country}}{{end}}</dd>{{end}}
+</dl>
+{{end}}
 
 <h3>Attempts</h3>
 <div class="table-scroll"><table class="grid">
@@ -27,7 +39,7 @@
 {{range .Attempts}}<tr>
 <td>{{.ID}}{{if .Duplicate}} <span class="flag">duplicate</span>{{end}}{{if $.CanLogs}}<br><small><a href="/dashboard/logs?id={{.ID}}">logs</a></small>{{end}}</td><td>{{.Status}}</td><td>{{.Provider}}</td>
 <td><small>ref {{.ProviderRef}}{{if .OrderID}}<br>order {{.OrderID}}{{end}}{{if .PaymentID}}<br>payment {{.PaymentID}}{{end}}</small></td>
-<td>{{.Method}}</td><td>{{if .FailureCode}}{{.FailureCode}}{{if .FailureMessage}}: {{.FailureMessage}}{{end}}{{end}}</td><td>{{.Created}}</td>
+<td>{{.Method}}{{if .MethodSummary}}<br><small>{{.MethodSummary}}</small>{{end}}{{if .MethodMeta}}<br><small class="muted">{{.MethodMeta}}</small>{{end}}</td><td>{{if .FailureCode}}{{.FailureCode}}{{if .FailureMessage}}: {{.FailureMessage}}{{end}}{{end}}</td><td>{{.Created}}</td>
 </tr>{{else}}<tr><td colspan="7" class="muted">No attempts yet.</td></tr>{{end}}
 </tbody>
 </table></div>
