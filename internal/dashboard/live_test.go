@@ -15,14 +15,15 @@ import (
 
 func TestDashboardEventStreamResumesAndScopesMode(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
-		e := newEnv(t, db)
+		e := newEnv(t, db, func(o *Options) { o.LivePollInterval = time.Millisecond })
 		viewer := e.roleClient("viewer")
 		now := e.clk.Now()
 		if err := db.Write(ctx, func(tx store.Tx) error {
 			for _, event := range []store.EventRow{
-				{ID: "evt_01", OrgID: store.DefaultOrgID, AppID: "app_live", Mode: "live", Type: "payment.created", ObjectType: "payment", ObjectID: "pay_old", ObjectVersion: 1, Data: json.RawMessage(`{"secret":"not streamed"}`), CreatedAt: now},
-				{ID: "evt_02", OrgID: store.DefaultOrgID, AppID: "app_test", Mode: "test", Type: "payment.succeeded", ObjectType: "payment", ObjectID: "pay_test", ObjectVersion: 2, Data: json.RawMessage(`{}`), CreatedAt: now},
-				{ID: "evt_03", OrgID: store.DefaultOrgID, AppID: "app_live", Mode: "live", Type: "payment.succeeded", ObjectType: "payment", ObjectID: "pay_live", ObjectVersion: 2, Data: json.RawMessage(`{"secret":"not streamed"}`), CreatedAt: now},
+				{ID: "evt_z", OrgID: store.DefaultOrgID, AppID: "app_live", Mode: "live", Type: "payment.created", ObjectType: "payment", ObjectID: "pay_old", ObjectVersion: 1, Data: json.RawMessage(`{"secret":"not streamed"}`), CreatedAt: now},
+				{ID: "evt_test", OrgID: store.DefaultOrgID, AppID: "app_test", Mode: "test", Type: "payment.succeeded", ObjectType: "payment", ObjectID: "pay_test", ObjectVersion: 2, Data: json.RawMessage(`{}`), CreatedAt: now},
+				// A later insert in the same millisecond may have a lower UUIDv7 ID.
+				{ID: "evt_a", OrgID: store.DefaultOrgID, AppID: "app_live", Mode: "live", Type: "payment.succeeded", ObjectType: "payment", ObjectID: "pay_live", ObjectVersion: 2, Data: json.RawMessage(`{"secret":"not streamed"}`), CreatedAt: now},
 			} {
 				if err := db.InsertEvent(ctx, tx, event); err != nil {
 					return err
@@ -33,10 +34,10 @@ func TestDashboardEventStreamResumesAndScopesMode(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		streamCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		streamCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		req, _ := http.NewRequestWithContext(streamCtx, http.MethodGet, e.srv.URL+"/dashboard/events", nil)
-		req.Header.Set("Last-Event-ID", "evt_01")
+		req.Header.Set("Last-Event-ID", "evt_z")
 		resp, err := viewer.Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -55,7 +56,7 @@ func TestDashboardEventStreamResumesAndScopesMode(t *testing.T) {
 			}
 		}
 		body := strings.Join(lines, "\n")
-		if !strings.Contains(body, "id: evt_03") || !strings.Contains(body, `"object_id":"pay_live"`) ||
+		if !strings.Contains(body, "id: evt_a") || !strings.Contains(body, `"object_id":"pay_live"`) ||
 			strings.Contains(body, "pay_test") || strings.Contains(body, "not streamed") {
 			t.Fatalf("stream body:\n%s", body)
 		}

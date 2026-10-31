@@ -168,19 +168,19 @@ func TestDashboardEventsAreOrderedAndScoped(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := db.Read(ctx, func(q store.Querier) error {
-			visible, err := store.DashboardEventVisible(ctx, q, "evt_01", "org_1", "live")
+			cursor, visible, err := store.DashboardEventCursor(ctx, q, "evt_01", "org_1", "live")
 			if err != nil || !visible {
 				t.Fatalf("visible = %v, %v", visible, err)
 			}
-			visible, err = store.DashboardEventVisible(ctx, q, "evt_02", "org_1", "live")
+			_, visible, err = store.DashboardEventCursor(ctx, q, "evt_02", "org_1", "live")
 			if err != nil || visible {
 				t.Fatalf("cross-mode visible = %v, %v", visible, err)
 			}
-			latest, err := store.LatestDashboardEventID(ctx, q, "org_1", "live")
-			if err != nil || latest != "evt_04" {
-				t.Fatalf("latest = %q, %v", latest, err)
+			latest, err := store.LatestDashboardEventCursor(ctx, q, "org_1", "live")
+			if err != nil || latest.ID != "evt_04" {
+				t.Fatalf("latest = %+v, %v", latest, err)
 			}
-			got, err := store.DashboardEventsAfter(ctx, q, "org_1", "live", "evt_01", 10)
+			got, err := store.DashboardEventsPage(ctx, q, "org_1", "live", cursor, 10)
 			if err != nil || len(got) != 1 || got[0].ID != "evt_04" || got[0].ObjectID != "pay_1" {
 				t.Fatalf("events = %+v, %v", got, err)
 			}

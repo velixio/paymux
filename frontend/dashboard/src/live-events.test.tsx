@@ -7,11 +7,13 @@ import {
 } from "./live-events";
 
 class FakeEventSource {
+  static readonly CLOSED = 2;
   static current: FakeEventSource | undefined;
   onopen: (() => void) | null = null;
   onerror: (() => void) | null = null;
   onmessage: (() => void) | null = null;
   closed = false;
+  readyState = 0;
   constructor(readonly url: string) {
     FakeEventSource.current = this;
   }
@@ -74,4 +76,30 @@ test("an SSE event invalidates clean operational tabs as one burst", async () =>
   ).toBe(false);
   unmount();
   expect(FakeEventSource.current?.closed).toBe(true);
+});
+
+test("reconnect refreshes data and a permanently closed stream stops retrying", () => {
+  const client = new QueryClient();
+  client.setQueryData(["dashboard", "/dashboard/overview"], {});
+  const { result } = renderHook(() =>
+    useDashboardLiveEvents(client, new Set()),
+  );
+  const source = FakeEventSource.current!;
+
+  act(() => source.onerror?.());
+  expect(result.current).toBe("connecting");
+  act(() => {
+    source.onopen?.();
+    vi.advanceTimersByTime(100);
+  });
+  expect(result.current).toBe("live");
+  expect(
+    client.getQueryState(["dashboard", "/dashboard/overview"])?.isInvalidated,
+  ).toBe(true);
+
+  act(() => {
+    source.readyState = FakeEventSource.CLOSED;
+    source.onerror?.();
+  });
+  expect(result.current).toBe("unavailable");
 });
