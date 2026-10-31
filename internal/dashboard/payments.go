@@ -130,6 +130,7 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 	var apps []store.App
 	var accounts []store.ProviderAccountInfo
 	var attempts []store.Attempt
+	var providerAttemptCounts map[string]int
 	err = d.o.DB.Read(r.Context(), func(q store.Querier) (err error) {
 		if apps, err = store.ListApps(r.Context(), q, org); err != nil {
 			return err
@@ -146,6 +147,9 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 			ids[i] = visible[i].ID
 		}
 		if attempts, err = store.ListAttemptsForPayments(r.Context(), q, ids); err != nil {
+			return err
+		}
+		if providerAttemptCounts, err = store.CountProviderPaymentAttemptsForPayments(r.Context(), q, ids); err != nil {
 			return err
 		}
 		accounts, err = store.ListProviderAccounts(r.Context(), q, org, d.mode(r, s))
@@ -178,7 +182,10 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 		row := payRow{ID: p.ID, App: names[p.AppID], Status: status, StatusClass: statusClass, Amount: fmtMoney(p.Amount, p.Currency), OrderRef: p.OrderRef,
 			Created: d.fmtTime(p.CreatedAt)}
 		paymentAttempts := attemptsByPayment[p.ID]
-		row.Attempts = len(paymentAttempts)
+		row.Attempts = providerAttemptCounts[p.ID]
+		if row.Attempts == 0 {
+			row.Attempts = len(paymentAttempts)
+		}
 		if selected, ok := paymentListAttempt(p, paymentAttempts); ok {
 			connectorName := accountConnectors[selected.ProviderAccountID]
 			row.ProviderKey = connectorName

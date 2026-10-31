@@ -95,6 +95,7 @@ function Form({ node }: { node: ViewNode }) {
   const { submit, pending, markDirty } = useRuntime();
   const form = useRef<HTMLFormElement>(null);
   const baseline = useRef<string | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [dirty, setDirty] = useState(false);
   const fingerprint = (el: HTMLFormElement) =>
     JSON.stringify(
@@ -108,12 +109,14 @@ function Form({ node }: { node: ViewNode }) {
   useEffect(() => {
     const el = form.current;
     return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
       if (el) markDirty(el, false);
     };
   }, [markDirty]);
   const filterForm =
     (node.attrs.class ?? "").split(/\s+/).includes("filters") &&
     (node.attrs.method ?? "get").toLowerCase() === "get";
+  const autoSearch = filterForm && node.attrs["data-auto-search"] === "true";
   return (
     <form
       {...attributes(node)}
@@ -127,6 +130,18 @@ function Form({ node }: { node: ViewNode }) {
         const changed = fingerprint(event.currentTarget) !== baseline.current;
         setDirty(changed);
         markDirty(event.currentTarget, changed);
+        const target = event.target;
+        if (
+          autoSearch &&
+          target instanceof HTMLInputElement &&
+          target.type === "search" &&
+          target.name === "q"
+        ) {
+          if (searchTimer.current) clearTimeout(searchTimer.current);
+          searchTimer.current = setTimeout(() => {
+            if (form.current) submit(form.current, null);
+          }, 250);
+        }
       }}
       onSubmit={(event) => {
         event.preventDefault();

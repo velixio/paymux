@@ -15,8 +15,8 @@ afterEach(() => {
 });
 
 const KEY = "paymux-filters:u@example.com (admin):/dashboard/payments";
-const form = (method = "get") =>
-  `<form class="filters" method="${method}" action="/dashboard/payments"><input type="search" name="q" aria-label="Search payments"><select name="status" aria-label="Status"><option value="">Any</option><option value="succeeded">Succeeded</option></select><input type="hidden" name="csrf" value="tok"><button type="submit">Filter</button></form><p>Payments body</p>`;
+const form = (method = "get", autoSearch = false) =>
+  `<form class="filters" method="${method}" action="/dashboard/payments"${autoSearch ? ' data-auto-search="true"' : ""}><input type="search" name="q" aria-label="Search payments"><select name="status" aria-label="Status"><option value="">Any</option><option value="succeeded">Succeeded</option></select><input type="hidden" name="csrf" value="tok"><button type="submit">Filter</button></form><p>Payments body</p>`;
 
 async function payments(method = "get") {
   handlers["/dashboard/payments"] = () => pageHtml("Payments", form(method));
@@ -69,6 +69,17 @@ test("a chip applies its filter to the current tab", async () => {
     expect(router.state.location.searchStr).toBe("?q=alice&status=succeeded"),
   );
   expect(router.state.location.pathname).toBe("/dashboard/payments");
+});
+
+test("payment search submits automatically after typing pauses", async () => {
+  handlers["/dashboard/payments"] = () =>
+    pageHtml("Payments", form("get", true));
+  const router = await mount("/dashboard/payments");
+  fireEvent.input(search(""), { target: { value: "order_123" } });
+  await waitFor(
+    () => expect(router.state.location.searchStr).toContain("q=order_123"),
+    { timeout: 1000 },
+  );
 });
 
 test("a chip can be removed", async () => {

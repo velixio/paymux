@@ -220,8 +220,8 @@ func SetAppProviderAccounts(ctx context.Context, tx Tx, appID string, accountIDs
 
 // PaymentFilter selects payments for the dashboard list. Empty fields match
 // anything. From is inclusive, To exclusive. Search matches the id prefix,
-// part of the order_ref or part of the customer's email (case-insensitive,
-// wildcards literal).
+// part of the order_ref, provider transaction identifiers or part of the
+// customer's email (case-insensitive, wildcards literal).
 type PaymentFilter struct {
 	OrgID                       string // required: an empty org matches nothing
 	AppID, Mode, Status, Search string
@@ -261,8 +261,14 @@ func SearchPayments(ctx context.Context, q Queryer, f PaymentFilter, afterID str
 	if s := strings.TrimSpace(f.Search); s != "" {
 		e := likeEscape(s)
 		add(`(LOWER(id) LIKE ? ESCAPE '\' OR LOWER(COALESCE(order_ref,'')) LIKE ? ESCAPE '\'
-			OR customer_id IN (SELECT id FROM customers WHERE LOWER(COALESCE(email,'')) LIKE ? ESCAPE '\'))`,
-			e+"%", "%"+e+"%", "%"+e+"%")
+			OR customer_id IN (SELECT id FROM customers WHERE LOWER(COALESCE(email,'')) LIKE ? ESCAPE '\')
+			OR EXISTS (SELECT 1 FROM payment_attempts a LEFT JOIN provider_payment_attempts pa ON pa.attempt_id = a.id
+				WHERE a.payment_id = payments.id AND (LOWER(COALESCE(a.provider_ref,'')) LIKE ? ESCAPE '\'
+					OR LOWER(COALESCE(a.provider_order_id,'')) LIKE ? ESCAPE '\'
+					OR LOWER(COALESCE(a.provider_payment_id,'')) LIKE ? ESCAPE '\'
+					OR LOWER(COALESCE(pa.provider_order_id,'')) LIKE ? ESCAPE '\'
+					OR LOWER(COALESCE(pa.provider_payment_id,'')) LIKE ? ESCAPE '\')))`,
+			e+"%", "%"+e+"%", "%"+e+"%", "%"+e+"%", "%"+e+"%", "%"+e+"%", "%"+e+"%", "%"+e+"%")
 	}
 	if afterID != "" {
 		var created int64

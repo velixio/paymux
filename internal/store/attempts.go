@@ -121,6 +121,38 @@ func ListAttemptsForPayments(ctx context.Context, q Queryer, paymentIDs []string
 	return out, rows.Err()
 }
 
+// CountProviderPaymentAttemptsForPayments returns the number of distinct
+// provider-side payment tries attached to each Paymux payment. One Paymux
+// checkout attempt can contain several provider tries when a customer retries
+// a failed payment on the same provider order.
+func CountProviderPaymentAttemptsForPayments(ctx context.Context, q Queryer, paymentIDs []string) (map[string]int, error) {
+	out := make(map[string]int, len(paymentIDs))
+	if len(paymentIDs) == 0 {
+		return out, nil
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(paymentIDs)), ",")
+	args := make([]any, len(paymentIDs))
+	for i := range paymentIDs {
+		args[i] = paymentIDs[i]
+	}
+	rows, err := q.QueryContext(ctx, `SELECT a.payment_id, COUNT(*)
+		FROM provider_payment_attempts p JOIN payment_attempts a ON a.id = p.attempt_id
+		WHERE a.payment_id IN (`+marks+`) GROUP BY a.payment_id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var paymentID string
+		var count int
+		if err := rows.Scan(&paymentID, &count); err != nil {
+			return nil, err
+		}
+		out[paymentID] = count
+	}
+	return out, rows.Err()
+}
+
 // UpsertProviderPaymentAttempt records the latest known state of one provider
 // payment without changing the Paymux attempt or its ledger effects.
 func UpsertProviderPaymentAttempt(ctx context.Context, tx Tx, p ProviderPaymentAttempt) error {

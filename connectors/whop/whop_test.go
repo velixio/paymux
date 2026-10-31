@@ -90,6 +90,7 @@ func (f *fake) payment() map[string]any {
 	}
 	return map[string]any{"id": "pay_w1", "status": status, "substatus": f.substatus, "total": 4.99, "currency": "usd",
 		"checkout_configuration_id": "ch_1", "refunded_amount": json.Number(f.refunded), "payment_method_type": "card",
+		"card_brand": "mastercard", "card_last4": "4242",
 		"metadata": map[string]string{"ref": "pay_ref_01"}, "created_at": "2026-10-17T11:59:00Z"}
 }
 
@@ -360,7 +361,8 @@ func TestFetchPaymentByOrder(t *testing.T) {
 	}
 	f.substatus = "succeeded"
 	snap, err = c.FetchPayment(context.Background(), connector.PaymentRef{ProviderOrderID: "ch_1"})
-	if err != nil || snap.Status != connector.PaymentSucceeded || snap.ProviderPaymentID != "pay_w1" || snap.ProviderRef != "pay_ref_01" {
+	if err != nil || snap.Status != connector.PaymentSucceeded || snap.ProviderPaymentID != "pay_w1" || snap.ProviderRef != "pay_ref_01" ||
+		snap.MethodDetails.Card == nil || snap.MethodDetails.Card.Network != "mastercard" || snap.MethodDetails.Card.Last4 != "4242" {
 		t.Fatalf("snap=%+v err=%v", snap, err)
 	}
 	if _, err := c.FetchPayment(context.Background(), connector.PaymentRef{}); err == nil {

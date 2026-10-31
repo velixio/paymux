@@ -289,7 +289,21 @@ type paymentEntity struct {
 	Membership     *struct {
 		ID string `json:"id"`
 	} `json:"membership"`
-	PaymentMethod  string `json:"payment_method_type"`
+	PaymentMethod     string `json:"payment_method_type"`
+	CardBrand         string `json:"card_brand"`
+	CardLast4         string `json:"card_last4"`
+	PaymentInstrument *struct {
+		Card *struct {
+			Brand string `json:"brand"`
+			Last4 string `json:"last4"`
+		} `json:"card"`
+	} `json:"payment_instrument"`
+	PaymentMethodDetails *struct {
+		Card *struct {
+			Brand string `json:"brand"`
+			Last4 string `json:"last4"`
+		} `json:"card"`
+	} `json:"payment_method"`
 	CreatedAt      string `json:"created_at"`
 	FailureMessage string `json:"failure_message"`
 }
@@ -371,10 +385,23 @@ func (p paymentEntity) snapshot() (connector.PaymentSnapshot, error) {
 	if err != nil {
 		return connector.PaymentSnapshot{}, err
 	}
+	details := connector.PaymentMethodDetails{}
+	brand, last4 := p.CardBrand, p.CardLast4
+	if p.PaymentInstrument != nil && p.PaymentInstrument.Card != nil {
+		brand = firstNonEmpty(brand, p.PaymentInstrument.Card.Brand)
+		last4 = firstNonEmpty(last4, p.PaymentInstrument.Card.Last4)
+	}
+	if p.PaymentMethodDetails != nil && p.PaymentMethodDetails.Card != nil {
+		brand = firstNonEmpty(brand, p.PaymentMethodDetails.Card.Brand)
+		last4 = firstNonEmpty(last4, p.PaymentMethodDetails.Card.Last4)
+	}
+	if strings.EqualFold(p.PaymentMethod, "card") && (brand != "" || last4 != "") {
+		details.Card = &connector.CardDetails{Network: brand, Last4: last4}
+	}
 	return connector.PaymentSnapshot{
 		ProviderRef: p.Metadata["ref"], ProviderOrderID: p.CheckoutConfig, ProviderPaymentID: p.ID,
 		Status: mapPaymentStatus(p.Status, p.Substatus), RawStatus: firstNonEmpty(p.Substatus, p.Status),
-		Amount: amt, Currency: cur, Method: p.PaymentMethod, AmountRefunded: ref,
+		Amount: amt, Currency: cur, Method: p.PaymentMethod, MethodDetails: details, AmountRefunded: ref,
 		ErrorMessage: p.FailureMessage, CreatedAt: parseTime(p.CreatedAt),
 	}, nil
 }
