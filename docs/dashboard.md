@@ -79,7 +79,7 @@ Use **Alerts** to triage retained operational alerts. Acknowledgement records th
 
 **Overview** combines the native-currency revenue summary with a compact payment-health chart and the top customer countries. Use **Analytics** for the detailed view: created, paid, failed, waiting/review, and expired/canceled payment cohorts; country rankings and CSV export; provider and payment-method attempt performance; and the most frequent provider failure reasons.
 
-Analytics can be filtered by date range, app, native currency, customer country, and time bucket. Counts are grouped by the payment creation time, while each payment is classified by its current status. Provider and method tables are attempt-level, so a failed retry followed by a successful retry remains visible. Country uses the payment's country snapshot and falls back to the stored customer billing country for older records. **Payments** links in the country table open the matching transactions.
+Analytics can be filtered by date range, app, native currency, customer country, and time bucket. Counts are grouped by the payment creation time, while each payment is classified by its current status. Provider and method tables are attempt-level, so a failed retry followed by a successful retry remains visible. Country uses the payment routing country when present and otherwise the stored customer billing country. **Payments** links in the country table open the matching transactions.
 
 Live and test data are always isolated by the dashboard mode switch. Amounts are never combined across currencies with a static FX rate; choose one native currency at a time. Provider settlement data remains authoritative.
 

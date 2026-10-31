@@ -40,8 +40,15 @@ type FailureOutcome struct {
 	Count         int64
 }
 
+// analyticsCountryExpr returns a canonical ISO alpha-2 country or Unknown.
+// The arguments are trusted SQL column expressions supplied by this package.
+func analyticsCountryExpr(paymentCountry, billingCountry string) string {
+	value := `COALESCE(NULLIF(TRIM(` + paymentCountry + `),''), NULLIF(TRIM(` + billingCountry + `),''), '')`
+	return `CASE WHEN LENGTH(` + value + `) = 2 THEN UPPER(` + value + `) ELSE 'Unknown' END`
+}
+
 func analyticsWhere(f AnalyticsFilter, alias string) (string, []any) {
-	country := `COALESCE(NULLIF(` + alias + `.country,''), NULLIF(c.billing_country,''), 'Unknown')`
+	country := analyticsCountryExpr(alias+`.country`, `c.billing_country`)
 	where := alias + `.org_id = ? AND ` + alias + `.mode = ? AND ` + alias + `.created_at >= ? AND ` + alias + `.created_at < ?`
 	args := []any{f.OrgID, f.Mode, ms(f.From), ms(f.To)}
 	add := func(clause string, arg any) { where += " AND " + clause; args = append(args, arg) }
@@ -90,7 +97,7 @@ func PaymentOutcomeSeries(ctx context.Context, q Queryer, f AnalyticsFilter) ([]
 // CountryOutcomes ranks payment cohorts by paid count, then created count.
 func CountryOutcomes(ctx context.Context, q Queryer, f AnalyticsFilter, limit int) ([]CountryOutcome, error) {
 	where, args := analyticsWhere(f, "p")
-	country := `COALESCE(NULLIF(p.country,''), NULLIF(c.billing_country,''), 'Unknown')`
+	country := analyticsCountryExpr(`p.country`, `c.billing_country`)
 	args = append(args, limit)
 	rows, err := q.QueryContext(ctx, `SELECT `+country+`, COUNT(*),
 		COALESCE(SUM(CASE WHEN p.status = 'succeeded' THEN 1 ELSE 0 END),0),
@@ -213,7 +220,7 @@ func AnalyticsCurrencies(ctx context.Context, q Queryer, f AnalyticsFilter) ([]s
 func AnalyticsCountries(ctx context.Context, q Queryer, f AnalyticsFilter) ([]string, error) {
 	f.Country = ""
 	where, args := analyticsWhere(f, "p")
-	country := `COALESCE(NULLIF(p.country,''), NULLIF(c.billing_country,''), 'Unknown')`
+	country := analyticsCountryExpr(`p.country`, `c.billing_country`)
 	rows, err := q.QueryContext(ctx, `SELECT DISTINCT `+country+` FROM payments p LEFT JOIN customers c ON c.id = p.customer_id
 		WHERE `+where+` ORDER BY 1`, args...)
 	if err != nil {

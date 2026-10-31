@@ -103,14 +103,12 @@ func (d *Dashboard) overviewPage(w http.ResponseWriter, r *http.Request, s *sess
 		d.fail(w, analyticsErr)
 		return
 	}
-	if analyticsBad != "" {
-		badRequest(w, analyticsBad)
-		return
+	if analyticsBad == "" {
+		if len(analytics.CountryRows) > 5 {
+			analytics.CountryRows = analytics.CountryRows[:5]
+		}
+		v.Analytics = &analytics
 	}
-	if len(analytics.CountryRows) > 5 {
-		analytics.CountryRows = analytics.CountryRows[:5]
-	}
-	v.Analytics = &analytics
 	if ents, err := d.listEntities(ctx); err == nil {
 		v.Warnings = d.lutWarnings(ents)
 	}

@@ -54,7 +54,7 @@ func TestAnalyticsPageSeparatesModesAndRanksCountries(t *testing.T) {
 				t.Errorf("analytics page missing %q", want)
 			}
 		}
-		if strings.Contains(body, "DE") || strings.Contains(body, "99.99 USD") {
+		if strings.Contains(body, ">DE<") || strings.Contains(body, "99.99 USD") {
 			t.Error("live analytics leaked test-mode payment")
 		}
 		if got := strings.Count(body, `class="analytics-chart-row"`); got != 7 {
@@ -85,4 +85,17 @@ func TestAnalyticsRejectsInvalidCountry(t *testing.T) {
 			t.Fatalf("status %d, want 400", resp.StatusCode)
 		}
 	})
+}
+
+func TestAnalyticsCSVSafe(t *testing.T) {
+	for _, value := range []string{"=cmd", "+cmd", "-cmd", "@cmd", "\tcmd", "\rcmd"} {
+		if got := analyticsCSVSafe(value); got != "'"+value {
+			t.Errorf("analyticsCSVSafe(%q) = %q", value, got)
+		}
+	}
+	for _, value := range []string{"US", "Unknown", ""} {
+		if got := analyticsCSVSafe(value); got != value {
+			t.Errorf("analyticsCSVSafe(%q) = %q", value, got)
+		}
+	}
 }

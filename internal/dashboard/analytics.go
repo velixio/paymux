@@ -84,6 +84,13 @@ func analyticsPercent(n, max int64) int {
 	return p
 }
 
+func analyticsCSVSafe(s string) string {
+	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) {
+		return "'" + s
+	}
+	return s
+}
+
 func sumAnalyticsPoints(points []store.PaymentOutcomePoint) (created, paid, failed, waiting, incomplete int64) {
 	for _, p := range points {
 		created += p.Created
@@ -338,7 +345,7 @@ func (d *Dashboard) analyticsCountriesCSV(w http.ResponseWriter, r *http.Request
 	cw := csv.NewWriter(w)
 	_ = cw.Write([]string{"country", "created", "paid", "failed", "waiting", "expired_or_canceled", "success_rate", "paid_amount", "refunded_amount", "currency"})
 	for _, row := range v.CountryRows {
-		_ = cw.Write([]string{row.Code, strconv.FormatInt(row.Created, 10), strconv.FormatInt(row.Paid, 10), strconv.FormatInt(row.Failed, 10),
+		_ = cw.Write([]string{analyticsCSVSafe(row.Code), strconv.FormatInt(row.Created, 10), strconv.FormatInt(row.Paid, 10), strconv.FormatInt(row.Failed, 10),
 			strconv.FormatInt(row.Waiting, 10), strconv.FormatInt(row.Incomplete, 10), row.SuccessRate, row.PaidAmount, row.RefundedAmount, v.Currency})
 	}
 	cw.Flush()

@@ -257,7 +257,8 @@ func SearchPayments(ctx context.Context, q Queryer, f PaymentFilter, afterID str
 		add("currency = ?", f.Currency)
 	}
 	if f.Country != "" {
-		add(`COALESCE(NULLIF(country,''), NULLIF((SELECT billing_country FROM customers c WHERE c.id = payments.customer_id),''), 'Unknown') = ?`, f.Country)
+		country := analyticsCountryExpr(`country`, `(SELECT billing_country FROM customers c WHERE c.id = payments.customer_id)`)
+		add(country+` = ?`, f.Country)
 	}
 	if !f.From.IsZero() {
 		add("created_at >= ?", ms(f.From))
