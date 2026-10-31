@@ -1,5 +1,4 @@
-// Package ids generates public prefixed IDs (UUIDv7, Crockford base32) and
-// short provider references.
+// Package ids generates public resource IDs and short provider references.
 package ids
 
 import (
@@ -12,8 +11,10 @@ import (
 )
 
 const (
-	lowerAlphabet = "0123456789abcdefghjkmnpqrstvwxyz"
-	upperAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+	lowerAlphabet   = "0123456789abcdefghjkmnpqrstvwxyz"
+	upperAlphabet   = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+	paymentAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	paymentIDLen    = 14
 )
 
 var prefixRE = regexp.MustCompile(`^[a-z]{2,5}$`)
@@ -42,6 +43,9 @@ var defaultGen = NewGenerator(time.Now, rand.Reader)
 
 // New returns a public ID using the default generator.
 func New(prefix string) string { return defaultGen.New(prefix) }
+
+// Payment returns a short, prefix-free payment ID using the default generator.
+func Payment() string { return defaultGen.Payment() }
 
 // ProviderRef returns a 20-char reference using the default generator.
 func ProviderRef() string { return defaultGen.ProviderRef() }
@@ -84,6 +88,29 @@ func (g *Generator) New(prefix string) string {
 		acc &= 1<<nbits - 1
 	}
 	return string(out)
+}
+
+// Payment returns 14 cryptographically random base62 characters. Payment IDs
+// are deliberately shorter than the other public resource IDs because they
+// are the merchant-facing reference shown most often. Rejection sampling
+// avoids modulo bias (248 is the largest multiple of 62 below 256).
+func (g *Generator) Payment() string {
+	var out [paymentIDLen]byte
+	var buf [paymentIDLen]byte
+	for n := 0; n < len(out); {
+		g.read(buf[:])
+		for _, b := range buf {
+			if b >= 248 {
+				continue
+			}
+			out[n] = paymentAlphabet[int(b)%len(paymentAlphabet)]
+			n++
+			if n == len(out) {
+				break
+			}
+		}
+	}
+	return string(out[:])
 }
 
 // ProviderRef returns 20 uppercase Crockford chars: a 48-bit millisecond

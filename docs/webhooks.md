@@ -6,7 +6,7 @@ There are two directions of webhook traffic. A **provider webhook** arrives at P
 
 For a provider account, copy the webhook URL from that account's detail page: `https://your-hub.example/hooks/{provider_account_id}`. Register it with the provider and set the provider-specific signing secret where required. The account list intentionally does not display webhook URLs.
 
-For your application, open **Apps → your app → Webhooks**, add your receiver URL and event filters, and save the signing secret when it is shown. The secret starts with `whsec_`. Keep it on your backend. Your receiver must be reachable from the hub; localhost refers to the hub's own host or container network.
+For your application, open **Apps → your app → Webhooks**, add your receiver URL and event filters, and save the signing secret when it is shown. The secret starts with `whsec_`. Keep it on your backend. You can later update the URL and filters, generate a replacement secret, or delete (soft-disable) the endpoint without losing delivery history. Your receiver must be reachable from the hub; localhost refers to the hub's own host or container network.
 
 Private and loopback destinations are blocked by default. Use `PAYMUX_ALLOW_PRIVATE_WEBHOOKS=true` only for the local receiver walkthrough or an intentionally configured private deployment.
 
@@ -21,7 +21,7 @@ An app webhook is JSON with an event type, event timestamp, and object snapshot:
   "livemode": true,
   "data": {
     "object": {
-      "id": "pay_EXAMPLE",
+      "id": "TuSgrD0tRwOTok",
       "object": "payment",
       "status": "succeeded",
       "amount": 49900,
@@ -33,7 +33,7 @@ An app webhook is JSON with an event type, event timestamp, and object snapshot:
 }
 ```
 
-`livemode` is `false` for events of test-mode payments and `true` for live ones; the same flag is on every object (`livemode` next to `object`). **An endpoint belongs to one mode**: a test endpoint receives test events only, a live endpoint live events only, so a test payment never reaches a production receiver. Choose the mode when you add the endpoint (the dashboard form, or `paymux endpoint add --mode test|live`; the default is live). Endpoints that existed before modes were introduced became test endpoints if their app has never had a live API key or a live payment, and live endpoints otherwise; add a second endpoint if you want both.
+`livemode` is `false` for events of test-mode payments and `true` for live ones; the same flag is on every object (`livemode` next to `object`). **An endpoint belongs to one mode**: a test endpoint receives test events only, a live endpoint live events only, so a test payment never reaches a production receiver. Switch the dashboard to the intended mode before adding or editing an endpoint (or use `paymux endpoint add --mode test|live`; the CLI default is live). Add one endpoint in each mode if you want both.
 
 This is an abbreviated illustrative payload, not a complete schema. The event ID is in the **`webhook-id` header**, not a guaranteed top-level JSON `id`. Payment snapshots expose a version; use object versions or retrieve current state to avoid applying an older snapshot after a newer one.
 
@@ -68,7 +68,7 @@ Within your own database transaction, apply the order change and record processi
 
 The default retry delays before successive attempts are: immediately, 1 minute, 5 minutes, 30 minutes, 2 hours, 6 hours, 12 hours, 24 hours, and 24 hours. The effective `webhook_retry_schedule` setting can change this. Network failures and non-2xx responses are recorded; permanent transport/configuration failures may stop delivery earlier.
 
-The dashboard shows attempts and final failure. After fixing the receiver, replay a failed delivery from the app's Webhooks tab. Replay keeps the same event ID and restarts delivery attempts, so your deduplication logic still applies. A pending delivery cannot be replayed as if it had already finished.
+The dashboard shows every attempt, the exact JSON request body, bounded response body, HTTP status and transport error. Signing headers and secrets are not retained in this history. After fixing the receiver, replay a failed delivery from the app's Webhooks tab. Replay keeps the same event ID and restarts delivery attempts, so your deduplication logic still applies. A pending delivery cannot be replayed as if it had already finished.
 
 Payment success and delivery success are independent. Fixing delivery does not require charging the customer again.
 

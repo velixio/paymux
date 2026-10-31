@@ -258,7 +258,8 @@ func (e *env) detailFixture() detailFixture {
 		Status: "failed", Method: "card", MethodDetails: `{"card":{"last4":"5000","network":"American Express","funding":"credit","issuer":"AMEX","international":false,"emi":false,"sub_type":"consumer"}}`,
 		FailureCode: "card_declined", FailureMessage: "Your card was declined"})
 	e.seedAttempt(store.Attempt{ID: "att_ok", Mode: "live", PaymentID: p.ID, ProviderAccountID: "pa_rzp", ProviderRef: "pr_ok", ProviderOrderID: "order_OK",
-		ProviderPaymentID: "pay_RZP_OK", Status: "captured", Method: "upi", AmountReceived: 10000, CurrencyReceived: "INR"})
+		ProviderPaymentID: "pay_RZP_OK", Status: "captured", Method: "upi", MethodDetails: `{"upi":{"payer_account_type":"credit_card"}}`,
+		AmountReceived: 10000, CurrencyReceived: "INR"})
 	err = e.db.Write(ctx, func(tx store.Tx) error {
 		if err := store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: "pa_rzp", ProviderPaymentID: "pay_RZP_FAILED",
 			AttemptID: "att_ok", ProviderOrderID: "order_OK", Status: "failed", Method: "card", FailureCode: "BAD_REQUEST_ERROR",
@@ -334,6 +335,9 @@ func TestPaymentDetailShowsTimeline(t *testing.T) {
 		e := newEnv(t, db)
 		f := e.detailFixture()
 		c := e.roleClient("viewer")
+		list := e.pageOK(c, "/dashboard/payments")
+		has(t, list, "class=\"provider-logo provider-logo-razorpay\"", "aria-label=\"Razorpay\"", "title=\"Razorpay\"", ">RZ</span>", "UPI", "credit card", "ORD-D1", "<td class=\"num\">2</td>")
+		lacks(t, list, "Razorpay main", "Provider &amp; method")
 		body := e.pageOK(c, "/dashboard/payments/"+f.pay.ID)
 		has(t, body, "pay_d1", "ORD-D1", "100.00 INR", "succeeded",
 			// customer and billing details
@@ -363,6 +367,26 @@ func TestPaymentDetailShowsTimeline(t *testing.T) {
 		has(t, opt, "att_ok", "85.00 INR refundable")
 		lacks(t, opt, "att_fail")
 	})
+}
+
+func TestPaymentListMethodLabels(t *testing.T) {
+	for name, tc := range map[string]struct {
+		attempt          store.Attempt
+		method, metadata string
+	}{
+		"card": {store.Attempt{Method: "card", MethodDetails: `{"card":{"last4":"5000","network":"American Express","funding":"credit","international":false}}`},
+			"American Express 5000", "credit · domestic"},
+		"upi":         {store.Attempt{Method: "upi", MethodDetails: `{"upi":{"payer_account_type":"credit_card"}}`}, "UPI", "credit card"},
+		"net banking": {store.Attempt{Method: "netbanking", MethodDetails: `{"bank":"HDFC"}`}, "Net banking", "HDFC"},
+		"wallet":      {store.Attempt{Method: "wallet", MethodDetails: `{"wallet":"Paytm"}`}, "Wallet", "Paytm"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			method, metadata := paymentListMethod(tc.attempt)
+			if method != tc.method || metadata != tc.metadata {
+				t.Fatalf("paymentListMethod() = %q, %q, want %q, %q", method, metadata, tc.method, tc.metadata)
+			}
+		})
+	}
 }
 
 func TestPaymentDetailHidesRefundFormWhenFullyRefunded(t *testing.T) {

@@ -51,6 +51,16 @@ func SetAppReturnURL(ctx context.Context, tx Tx, id, url string, now time.Time) 
 	return updateApp(ctx, tx, id, now, "default_return_url = ?", nullIfEmpty(url))
 }
 
+// SetAppAcceptedCurrencies replaces the app-level currency allow-list. An
+// empty list means every currency supported by the selected provider route.
+func SetAppAcceptedCurrencies(ctx context.Context, tx Tx, id string, currencies []string, now time.Time) error {
+	b, err := json.Marshal(currencies)
+	if err != nil {
+		return err
+	}
+	return updateApp(ctx, tx, id, now, "accepted_currencies = ?", string(b))
+}
+
 // GetAppBranding returns the app's branding JSON document.
 func GetAppBranding(ctx context.Context, q Queryer, id string) (string, error) {
 	var b string
@@ -210,8 +220,8 @@ func SetAppProviderAccounts(ctx context.Context, tx Tx, appID string, accountIDs
 
 // PaymentFilter selects payments for the dashboard list. Empty fields match
 // anything. From is inclusive, To exclusive. Search matches the id prefix,
-// part of the order_ref or part of the customer's email (case-insensitive,
-// wildcards literal).
+// part of the order_ref, provider transaction identifiers or part of the
+// customer's email (case-insensitive, wildcards literal).
 type PaymentFilter struct {
 	OrgID                       string // required: an empty org matches nothing
 	AppID, Mode, Status, Search string
@@ -224,7 +234,8 @@ func likeEscape(s string) string {
 }
 
 // SearchPayments returns matching payments newest first. after is an exclusive
-// id cursor.
+// payment-ID cursor; the ID resolves its creation time because payment IDs are
+// random rather than chronologically sortable.
 func SearchPayments(ctx context.Context, q Queryer, f PaymentFilter, afterID string, limit int) ([]Payment, error) {
 	query := "SELECT " + paymentCols + " FROM payments WHERE org_id = ?"
 	args := []any{f.OrgID}
@@ -250,13 +261,27 @@ func SearchPayments(ctx context.Context, q Queryer, f PaymentFilter, afterID str
 	if s := strings.TrimSpace(f.Search); s != "" {
 		e := likeEscape(s)
 		add(`(LOWER(id) LIKE ? ESCAPE '\' OR LOWER(COALESCE(order_ref,'')) LIKE ? ESCAPE '\'
-			OR customer_id IN (SELECT id FROM customers WHERE LOWER(COALESCE(email,'')) LIKE ? ESCAPE '\'))`,
-			e+"%", "%"+e+"%", "%"+e+"%")
+			OR customer_id IN (SELECT id FROM customers WHERE LOWER(COALESCE(email,'')) LIKE ? ESCAPE '\')
+			OR EXISTS (SELECT 1 FROM payment_attempts a LEFT JOIN provider_payment_attempts pa ON pa.attempt_id = a.id
+				WHERE a.payment_id = payments.id AND (LOWER(COALESCE(a.provider_ref,'')) LIKE ? ESCAPE '\'
+					OR LOWER(COALESCE(a.provider_order_id,'')) LIKE ? ESCAPE '\'
+					OR LOWER(COALESCE(a.provider_payment_id,'')) LIKE ? ESCAPE '\'
+					OR LOWER(COALESCE(pa.provider_order_id,'')) LIKE ? ESCAPE '\'
+					OR LOWER(COALESCE(pa.provider_payment_id,'')) LIKE ? ESCAPE '\')))`,
+			e+"%", "%"+e+"%", "%"+e+"%", "%"+e+"%", "%"+e+"%", "%"+e+"%", "%"+e+"%", "%"+e+"%")
 	}
 	if afterID != "" {
-		add("id < ?", afterID)
+		var created int64
+		err := q.QueryRowContext(ctx, "SELECT created_at FROM payments WHERE id = ? AND org_id = ?", afterID, f.OrgID).Scan(&created)
+		if err == sql.ErrNoRows {
+			return []Payment{}, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		add("(created_at < ? OR (created_at = ? AND id < ?))", created, created, afterID)
 	}
-	query += " ORDER BY id DESC LIMIT ?"
+	query += " ORDER BY created_at DESC, id DESC LIMIT ?"
 	args = append(args, limit)
 	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {

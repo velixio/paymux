@@ -12,11 +12,13 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/velixio/paymux/internal/events"
 	"github.com/velixio/paymux/internal/ids"
 	"github.com/velixio/paymux/internal/jobs"
+	"github.com/velixio/paymux/internal/notify"
 	"github.com/velixio/paymux/internal/outbound/stdwebhooks"
 	"github.com/velixio/paymux/internal/secrets"
 	"github.com/velixio/paymux/internal/store"
@@ -25,6 +27,9 @@ import (
 // JobDeliver is the job kind that performs one delivery attempt.
 const JobDeliver = "webhook.deliver"
 
+// JobNotify sends configured operator email and Telegram notifications.
+const JobNotify = "notification.deliver"
+
 // DefaultRetrySchedule is the spec §6.5 / §8a webhook_retry_schedule: the
 // delay before attempt 1, 2, ... (about 3 days in total).
 var DefaultRetrySchedule = []time.Duration{0, time.Minute, 5 * time.Minute, 30 * time.Minute,
@@ -32,24 +37,28 @@ var DefaultRetrySchedule = []time.Duration{0, time.Minute, 5 * time.Minute, 30 *
 
 // Options configures a Service.
 type Options struct {
-	DB           *store.DB
-	Queue        *jobs.Queue
-	Box          *secrets.Box
-	AllowPrivate bool         // PAYMUX_ALLOW_PRIVATE_WEBHOOKS
-	Client       *http.Client // default: SSRF-guarded client
-	Logger       *slog.Logger
-	Now          func() time.Time
+	DB                 *store.DB
+	Queue              *jobs.Queue
+	Box                *secrets.Box
+	AllowPrivate       bool         // PAYMUX_ALLOW_PRIVATE_WEBHOOKS
+	Client             *http.Client // default: SSRF-guarded client
+	Logger             *slog.Logger
+	Now                func() time.Time
+	Mailer             notify.Mailer
+	NotificationClient *http.Client
 }
 
 // Service is the outbound webhook emitter and deliverer. It implements
 // events.Emitter.
 type Service struct {
-	db     *store.DB
-	q      *jobs.Queue
-	box    *secrets.Box
-	client *http.Client
-	log    *slog.Logger
-	now    func() time.Time
+	db           *store.DB
+	q            *jobs.Queue
+	box          *secrets.Box
+	client       *http.Client
+	log          *slog.Logger
+	now          func() time.Time
+	mailer       notify.Mailer
+	notifyClient *http.Client
 
 	// RetrySchedule returns the delay before each attempt; the settings lane
 	// can point it at the webhook_retry_schedule setting. Nil or empty means
@@ -61,7 +70,8 @@ var _ events.Emitter = (*Service)(nil)
 
 // New builds a Service.
 func New(o Options) *Service {
-	s := &Service{db: o.DB, q: o.Queue, box: o.Box, client: o.Client, log: o.Logger, now: o.Now}
+	s := &Service{db: o.DB, q: o.Queue, box: o.Box, client: o.Client, log: o.Logger, now: o.Now,
+		mailer: o.Mailer, notifyClient: o.NotificationClient}
 	if s.client == nil {
 		s.client = newHTTPClient(o.AllowPrivate, nil)
 	}
@@ -71,11 +81,20 @@ func New(o Options) *Service {
 	if s.now == nil {
 		s.now = time.Now
 	}
+	if s.mailer == nil {
+		s.mailer = notify.NoopMailer{}
+	}
+	if s.notifyClient == nil {
+		s.notifyClient = &http.Client{Timeout: 10 * time.Second}
+	}
 	return s
 }
 
 // Register installs the delivery job handler on the queue.
-func (s *Service) Register() { s.q.Register(JobDeliver, s.handleDeliver) }
+func (s *Service) Register() {
+	s.q.Register(JobDeliver, s.handleDeliver)
+	s.q.Register(JobNotify, s.handleNotification)
+}
 
 func (s *Service) schedule() []time.Duration {
 	if s.RetrySchedule != nil {
@@ -88,6 +107,14 @@ func (s *Service) schedule() []time.Duration {
 
 type deliverPayload struct {
 	DeliveryID string `json:"delivery_id"`
+}
+
+func safeText(s string, limit int) string {
+	s = strings.ReplaceAll(strings.ToValidUTF8(s, "\uFFFD"), "\x00", "")
+	if len(s) > limit {
+		s = strings.ToValidUTF8(s[:limit], "")
+	}
+	return s
 }
 
 func (s *Service) enqueue(ctx context.Context, tx store.Tx, deliveryID string, attempt int, runAt time.Time) error {
@@ -132,6 +159,16 @@ func (s *Service) Emit(ctx context.Context, tx store.Tx, e events.Event) error {
 			return err
 		}
 	}
+	config, err := store.GetNotificationConfig(ctx, tx, e.OrgID, e.Mode)
+	if err != nil {
+		return err
+	}
+	if (config.EmailEnabled || config.TelegramEnabled) && matches(config.EventTypes, e.Type) {
+		if err := s.q.Enqueue(ctx, tx, jobs.Job{Kind: JobNotify, Payload: notificationPayload{EventID: row.ID},
+			RunAt: now, DedupeKey: JobNotify + ":" + row.ID}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -172,19 +209,28 @@ func (s *Service) handleDeliver(ctx context.Context, payload json.RawMessage) er
 	}
 	attempt := d.Delivery.AttemptCount + 1
 
-	status, derr := s.attempt(ctx, d)
+	result := s.attempt(ctx, d)
+	status, derr := result.status, result.err
 	now := s.now()
+	record := func(tx store.Tx) error {
+		msg := ""
+		if result.err != nil {
+			msg = safeText(result.err.Error(), 500)
+		}
+		return store.InsertDeliveryAttempt(ctx, tx, store.DeliveryAttemptRow{ID: ids.New("wha"), DeliveryID: d.Delivery.ID,
+			AttemptNo: attempt, RequestBody: result.request, ResponseStatus: result.status, ResponseBody: safeText(result.response, 64<<10), Error: msg, CreatedAt: now})
+	}
 	if derr == nil {
 		return s.db.Write(ctx, func(tx store.Tx) error {
+			if err := record(tx); err != nil {
+				return err
+			}
 			return s.db.UpdateDelivery(ctx, tx, d.Delivery.ID, store.DeliveryUpdate{
 				Status: "delivered", AttemptCount: attempt, LastStatus: status, DeliveredAt: now}, now)
 		})
 	}
 
-	msg := derr.Error()
-	if len(msg) > 500 {
-		msg = msg[:500]
-	}
+	msg := safeText(derr.Error(), 500)
 	u := store.DeliveryUpdate{Status: "pending", AttemptCount: attempt, LastStatus: status, LastError: msg}
 	sched := s.schedule()
 	var terminal bool
@@ -196,12 +242,18 @@ func (s *Service) handleDeliver(ctx context.Context, payload json.RawMessage) er
 		u.Status = "failed"
 		s.log.Warn("webhook delivery failed", "delivery_id", d.Delivery.ID, "endpoint_id", d.Endpoint.ID, "attempts", attempt, "err", msg)
 		return s.db.Write(ctx, func(tx store.Tx) error {
+			if err := record(tx); err != nil {
+				return err
+			}
 			return s.db.UpdateDelivery(ctx, tx, d.Delivery.ID, u, now)
 		})
 	}
 	next := now.Add(sched[attempt])
 	u.NextAttemptAt = next
 	return s.db.Write(ctx, func(tx store.Tx) error {
+		if err := record(tx); err != nil {
+			return err
+		}
 		if err := s.db.UpdateDelivery(ctx, tx, d.Delivery.ID, u, now); err != nil {
 			return err
 		}
@@ -214,44 +266,63 @@ type permanent struct{ error }
 
 func (p permanent) Unwrap() error { return p.error }
 
-// attempt performs one POST. It returns the HTTP status (0 if none) and nil
-// only for a 2xx response.
-func (s *Service) attempt(ctx context.Context, d store.DeliveryDetail) (int, error) {
+type attemptResult struct {
+	status            int
+	request, response string
+	err               error
+}
+
+// attempt performs one POST and retains the bounded request/response bodies
+// needed to diagnose every delivery from the dashboard.
+func (s *Service) attempt(ctx context.Context, d store.DeliveryDetail) (out attemptResult) {
+	b, err := buildBody(d.Event)
+	if err != nil {
+		out.err = permanent{err}
+		return
+	}
+	out.request = string(b)
 	if !d.Endpoint.Enabled {
-		return 0, permanent{errors.New("endpoint disabled")}
+		out.err = permanent{errors.New("endpoint disabled")}
+		return
 	}
 	secret, err := s.box.Open(d.Endpoint.SigningSecretEnc, secretAAD(d.Endpoint.ID))
 	if err != nil {
-		return 0, permanent{fmt.Errorf("signing secret: %w", err)}
+		out.err = permanent{fmt.Errorf("signing secret: %w", err)}
+		return
 	}
 	signer, err := stdwebhooks.NewSigner(string(secret))
 	if err != nil {
-		return 0, permanent{err}
-	}
-	b, err := buildBody(d.Event)
-	if err != nil {
-		return 0, permanent{err}
+		out.err = permanent{err}
+		return
 	}
 	// webhook-id is the event id, so retries and replays reuse it and
 	// receivers can deduplicate.
 	hdr := signer.Headers(d.Event.ID, s.now(), b)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.Endpoint.URL, bytes.NewReader(b))
 	if err != nil {
-		return 0, permanent{err}
+		out.err = permanent{err}
+		return
 	}
 	req.Header = hdr
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Paymux-Webhooks/1")
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return 0, err
+		out.err = err
+		return
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
-	if resp.StatusCode/100 != 2 {
-		return resp.StatusCode, fmt.Errorf("http %d", resp.StatusCode)
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	out.status, out.response = resp.StatusCode, string(raw)
+	if readErr != nil {
+		out.err = readErr
+		return
 	}
-	return resp.StatusCode, nil
+	if resp.StatusCode/100 != 2 {
+		out.err = fmt.Errorf("http %d", resp.StatusCode)
+		return
+	}
+	return
 }
 
 // ReplayDelivery resends a delivered or failed delivery with the same

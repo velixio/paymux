@@ -55,6 +55,9 @@ The payment `return_url` must share the storefront's origin. The API key always
 stays on the backend.
 
 Confirm fulfillment from a verified `payment.succeeded` event or the authoritative `GET /v1/payments/{id}` response. Match the app's order, expected amount/currency, and payment state before fulfillment. Treat `needs_review` as a reason for investigation.
+The single-payment response also includes `checkout_mode`, so a backend can
+validate `provider_action` before recovering a failed checkout with
+`POST /v1/payments/{id}/checkout-action`.
 
 Payment details include provider attempts. When the provider supplies safe
 instrument metadata, an attempt's `method_details` contains display fields such

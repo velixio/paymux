@@ -133,6 +133,7 @@ func TestAPIKeysShownOnceAndRevocable(t *testing.T) {
 		e := newEnv(t, db)
 		app := e.seedApp("alpha")
 		admin := e.roleClient("admin")
+		e.setMode(admin, "test")
 		page := "/dashboard/apps/" + app.ID
 		tok := csrfOf(t, e.pageOK(admin, page))
 
@@ -393,7 +394,8 @@ func TestAllowedProviderAccounts(t *testing.T) {
 		admin := e.roleClient("admin")
 		page := "/dashboard/apps/" + app.ID
 		body := e.pageOK(admin, page+"?tab=providers")
-		has(t, body, "Razorpay A", "Whop T", `value="pa_1"`, `value="pa_2"`)
+		has(t, body, "Razorpay A", `value="pa_1"`)
+		lacks(t, body, "Whop T", `value="pa_2"`)
 		tok := csrfOf(t, body)
 		if r, _ := e.post(admin, page+"/providers", url.Values{"account": {"pa_1"}, "csrf": {tok}}); r.StatusCode != 303 {
 			t.Fatalf("save: %d", r.StatusCode)
@@ -404,6 +406,11 @@ func TestAllowedProviderAccounts(t *testing.T) {
 			t.Fatalf("allowed %v", ids)
 		}
 		has(t, e.pageOK(admin, page+"?tab=providers"), `value="pa_1" checked`)
+		e.setMode(admin, "test")
+		testBody := e.pageOK(admin, page+"?tab=providers")
+		has(t, testBody, "Whop T", `value="pa_2"`)
+		lacks(t, testBody, "Razorpay A", `value="pa_1"`)
+		e.setMode(admin, "live")
 		if r, _ := e.post(admin, page+"/providers", url.Values{"account": {"pa_1", "pa_ghost"}, "csrf": {tok}}); r.StatusCode != 400 {
 			t.Errorf("unknown account accepted: %d", r.StatusCode)
 		}

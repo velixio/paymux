@@ -264,7 +264,7 @@ func (d *Dashboard) renderSubscription(w http.ResponseWriter, r *http.Request, s
 		account, _ = store.GetProviderAccount(ctx, q, sub.ProviderAccountID)
 		return nil
 	})
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, sub.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, sub.OrgID) || sub.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -332,7 +332,7 @@ func (d *Dashboard) subscriptionCancel(w http.ResponseWriter, r *http.Request, s
 	ctx := r.Context()
 	var sub store.Subscription
 	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) { sub, err = store.GetSubscription(ctx, q, r.PathValue("id")); return })
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, sub.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, sub.OrgID) || sub.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -367,7 +367,7 @@ func (d *Dashboard) subscriptionAmount(w http.ResponseWriter, r *http.Request, s
 	ctx := r.Context()
 	var sub store.Subscription
 	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) { sub, err = store.GetSubscription(ctx, q, r.PathValue("id")); return })
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, sub.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, sub.OrgID) || sub.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -431,7 +431,7 @@ func (d *Dashboard) subscriptionLink(w http.ResponseWriter, r *http.Request, s *
 	ctx := r.Context()
 	var sub store.Subscription
 	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) { sub, err = store.GetSubscription(ctx, q, r.PathValue("id")); return })
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, sub.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, sub.OrgID) || sub.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -479,7 +479,7 @@ func (d *Dashboard) simulateRenewal(w http.ResponseWriter, r *http.Request, s *s
 		account, _ = store.GetProviderAccount(ctx, q, sub.ProviderAccountID)
 		return nil
 	})
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, sub.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, sub.OrgID) || sub.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}

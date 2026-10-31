@@ -7,7 +7,25 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 )
+
+// PeriodStart returns the UTC boundary used by routing quota periods.
+func PeriodStart(period string, now time.Time) (time.Time, error) {
+	now = now.UTC()
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	switch period {
+	case "daily":
+		return day, nil
+	case "weekly":
+		offset := (int(day.Weekday()) + 6) % 7
+		return day.AddDate(0, 0, -offset), nil
+	case "monthly":
+		return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC), nil
+	default:
+		return time.Time{}, fmt.Errorf("routing: unknown quota period %q", period)
+	}
+}
 
 // Purposes a request can have.
 const (
@@ -38,6 +56,15 @@ type Action struct {
 	Message string   `json:"message,omitempty"`
 }
 
+// Limit makes a routing rule stop matching after its target accounts have
+// processed the configured number or value of successful sales in the current
+// UTC day, week or month. Nil limits are unlimited.
+type Limit struct {
+	Period    string `json:"period,omitempty"` // daily | weekly | monthly
+	MaxSales  *int64 `json:"max_sales,omitempty"`
+	MaxAmount *int64 `json:"max_amount,omitempty"`
+}
+
 // Route builds a route action over connector names.
 func Route(connectors ...string) Action {
 	a := Action{Kind: "route"}
@@ -64,6 +91,7 @@ type Rule struct {
 	Name   string `json:"name"`
 	When   When   `json:"when"`
 	Action Action `json:"action"`
+	Limit  *Limit `json:"limit,omitempty"`
 }
 
 // Config is the full rule hierarchy for one app.
@@ -93,6 +121,9 @@ type Request struct {
 	Purpose           string
 	Metadata          map[string]string
 	AllowedConnectors []string
+	// Usage returns successful sales and amount for the supplied provider
+	// accounts since the current period began. Nil means limits cannot be used.
+	Usage func(accountIDs []string, period string) (sales, amount int64, err error)
 }
 
 // Result is the chosen account order and the rule that produced it.
@@ -167,6 +198,21 @@ func Choose(cfg Config, r Request, accounts []Account, isOpen func(accountID str
 		ids := resolve(rule.Action.Targets, r, accounts)
 		if len(ids) == 0 {
 			continue
+		}
+		if rule.Limit != nil && (rule.Limit.MaxSales != nil || rule.Limit.MaxAmount != nil) {
+			if r.Usage == nil {
+				continue
+			}
+			sales, amount, err := r.Usage(ids, rule.Limit.Period)
+			if err != nil {
+				return Result{}, err
+			}
+			// Include the payment currently being routed, so a max of one sale
+			// really admits only the first sale in the period.
+			if rule.Limit.MaxSales != nil && sales+1 > *rule.Limit.MaxSales ||
+				rule.Limit.MaxAmount != nil && amount+r.Amount > *rule.Limit.MaxAmount {
+				continue
+			}
 		}
 		if isOpen != nil {
 			slices.SortStableFunc(ids, func(a, b string) int {

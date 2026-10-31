@@ -133,3 +133,20 @@ func (s *Service) DisableEndpoint(ctx context.Context, id string) error {
 	off := false
 	return s.UpdateEndpoint(ctx, id, EndpointUpdate{Enabled: &off})
 }
+
+// RotateEndpointSecret replaces an endpoint's signing secret and returns the
+// new value exactly once. Existing delivery history remains attached.
+func (s *Service) RotateEndpointSecret(ctx context.Context, id string) (string, error) {
+	secret, err := stdwebhooks.GenerateSecret()
+	if err != nil {
+		return "", err
+	}
+	enc, err := s.box.Seal([]byte(secret), secretAAD(id))
+	if err != nil {
+		return "", err
+	}
+	if err := s.UpdateEndpoint(ctx, id, EndpointUpdate{SigningSecretEnc: &enc}); err != nil {
+		return "", err
+	}
+	return secret, nil
+}

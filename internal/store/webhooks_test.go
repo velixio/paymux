@@ -180,5 +180,20 @@ func TestInsertProviderEvent(t *testing.T) {
 			string(got.Headers) != `{"X-A":["b"]}` || !got.ReceivedAt.Equal(now) {
 			t.Fatalf("get: %+v %v", got, err)
 		}
+		err = db.Write(ctx, func(tx store.Tx) error {
+			return store.InsertProviderEventMatch(ctx, tx, store.ProviderEventMatch{ProviderEventID: row.ID, ObjectType: "payment",
+				ObjectID: "p123", PaymentID: "p123", ProviderID: "pay_remote", CreatedAt: now})
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var matches []store.ProviderEventMatch
+		err = db.Read(ctx, func(q store.Querier) (err error) {
+			matches, err = store.ListProviderEventMatches(ctx, q, row.ID)
+			return err
+		})
+		if err != nil || len(matches) != 1 || matches[0].PaymentID != "p123" || matches[0].ProviderID != "pay_remote" {
+			t.Fatalf("matches: %+v %v", matches, err)
+		}
 	})
 }

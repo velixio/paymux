@@ -269,6 +269,16 @@ func TestDeliverSignedStandardWebhook(t *testing.T) {
 		if e.count(`SELECT COUNT(*) FROM jobs WHERE kind = 'webhook.deliver' AND state = 'pending'`) != 0 {
 			t.Fatal("job left pending")
 		}
+		var attempts []store.DeliveryAttemptRow
+		endpointID := e.str(`SELECT endpoint_id FROM webhook_deliveries`)
+		err = db.Read(ctx, func(q store.Querier) (err error) {
+			attempts, err = store.ListDeliveryAttempts(ctx, q, endpointID, 10)
+			return err
+		})
+		if err != nil || len(attempts) != 1 || attempts[0].AttemptNo != 1 || attempts[0].ResponseStatus != 204 ||
+			!json.Valid([]byte(attempts[0].RequestBody)) || len(attempts[0].ResponseBody) != 0 {
+			t.Fatalf("delivery history: %+v %v", attempts, err)
+		}
 	})
 }
 

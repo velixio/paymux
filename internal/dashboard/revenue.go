@@ -8,10 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"sort"
 	"time"
 
-	"github.com/velixio/paymux/internal/invoice"
 	"github.com/velixio/paymux/internal/store"
 	"github.com/velixio/paymux/pkg/connector/money"
 )
@@ -159,19 +157,23 @@ type revenuePreset struct {
 	Current         bool
 }
 
+type revenueCurrencyTotal struct {
+	Currency, GrossS, RefundsS, NetS string
+}
+
 type revenueView struct {
 	Query                                 revenueQuery
 	Bucket                                string // the bucket in use (auto resolved)
 	Currency                              string // currency of the amounts shown
 	Exp                                   int    // its minor-unit exponent
-	Converted                             bool   // INR conversion applied
-	Estimated                             bool   // some conversion used a non-same-day rate
-	Excluded                              []string
+	Converted                             bool   // retained in chart metadata; native views are always false
+	Estimated                             bool   // retained in chart metadata; native views are always false
 	Points                                []revenuePoint
 	Gross, Refunds, Net                   int64
 	GrossS, RefundsS, NetS                string
 	GrossChange, NetChange, RefundsChange string
 	Currencies                            []string
+	CurrencyTotals                        []revenueCurrencyTotal
 	Presets                               []revenuePreset
 	Apps                                  []appOpt
 	CSVHref                               string
@@ -208,65 +210,30 @@ func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode stri
 		}
 	}
 
-	// Rates, for every foreign currency in either window.
+	// Revenue is kept in its native currency. Adding amounts denominated in
+	// different currencies would make the headline totals depend on a stored
+	// (and potentially stale) FX rate rather than the provider's settlement.
 	present := map[string]bool{}
 	for _, r := range rows {
 		present[r.Currency] = true
 	}
-	rc := rateCtx{loc: loc, off: off, hourly: hourly, rates: map[string][]store.FXRate{}}
-	for _, r := range slices.Concat(rows, prevRows) {
-		if _, ok := rc.rates[r.Currency]; !ok && r.Currency != "INR" {
-			rates, err := store.ListFXRatesFor(ctx, q, org, r.Currency)
-			if err != nil {
-				return v, err
+	shown := rq.Currency
+	if shown == "" {
+		if present["USD"] {
+			shown = "USD"
+		} else {
+			activity := map[string]int64{}
+			for _, r := range rows {
+				activity[r.Currency] += abs64(r.Gross) + abs64(r.Refunds)
 			}
-			rc.rates[r.Currency] = rates
-		}
-	}
-	rc.date = rq.From.Format("2006-01-02")
-	conv, estCur, excluded, err := rc.convert(rows)
-	if err != nil {
-		return v, err
-	}
-	rc.date = prevFrom.Format("2006-01-02")
-	convPrev, estPrev, _, err := rc.convert(prevRows)
-	if err != nil {
-		return v, err
-	}
-
-	// Which currency to show.
-	shown, converted := rq.Currency, false
-	switch {
-	case shown == "INR":
-		converted = true
-	case shown == "":
-		shown, converted = "INR", true
-		var total, inr int64
-		per := map[string]int64{}
-		for _, r := range conv {
-			total += r.Gross
-			per[r.origin] += r.Gross
-		}
-		inr = per["INR"]
-		if total > 0 && inr*2 < total {
-			shown, converted = "", false
-			for c, g := range per {
-				if shown == "" || g > per[shown] || g == per[shown] && c < shown {
-					shown = c
+			for currency, amount := range activity {
+				if shown == "" || amount > activity[shown] || amount == activity[shown] && currency < shown {
+					shown = currency
 				}
 			}
 		}
-	}
-	if converted {
-		// Conversion only matters when there is foreign money in the window.
-		foreign := false
-		for c := range present {
-			foreign = foreign || c != "INR"
-		}
-		v.Converted = foreign
-		v.Estimated = foreign && (estCur || estPrev)
-		for _, c := range sortedKeys(excluded) {
-			v.Excluded = append(v.Excluded, fmtMoney(excluded[c], c))
+		if shown == "" {
+			shown = "USD"
 		}
 	}
 	v.Currency = shown
@@ -274,10 +241,7 @@ func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode stri
 	if e, err := money.Exponent(shown); err == nil {
 		v.Exp = e
 	}
-	cur, prev := conv, convPrev
-	if !converted {
-		cur, prev = native(rows, shown), native(prevRows, shown)
-	}
+	cur, prev := native(rows, shown), native(prevRows, shown)
 
 	// Points.
 	if rq.To.After(rq.From) {
@@ -324,8 +288,24 @@ func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode stri
 	}
 
 	// Pickers and links.
-	present["INR"], present[shown] = true, shown != ""
+	present[shown] = shown != ""
 	v.Currencies = sortedKeys(present)
+	totals := map[string][2]int64{}
+	for _, r := range rows {
+		t := totals[r.Currency]
+		t[0] += r.Gross
+		t[1] += r.Refunds
+		totals[r.Currency] = t
+	}
+	for _, currency := range sortedKeys(totals) {
+		t := totals[currency]
+		v.CurrencyTotals = append(v.CurrencyTotals, revenueCurrencyTotal{
+			Currency: currency,
+			GrossS:   fmtSigned(t[0], currency),
+			RefundsS: fmtSigned(t[1], currency),
+			NetS:     fmtSigned(t[0]-t[1], currency),
+		})
+	}
 	v.FromS, v.ToS = rq.From.Format("2006-01-02"), rq.To.AddDate(0, 0, -1).Format("2006-01-02")
 	for _, p := range revenueRanges {
 		qv := url.Values{"range": {p.ID}}
@@ -355,72 +335,28 @@ func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode stri
 	return v, nil
 }
 
+func abs64(n int64) int64 {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
 // native is the rows of one currency, unconverted.
 func native(rows []store.SeriesRow, currency string) []convRow {
 	var out []convRow
 	for _, r := range rows {
 		if r.Currency == currency {
-			out = append(out, convRow{r.Slot, currency, r.Gross, r.Refunds})
+			out = append(out, convRow{Slot: r.Slot, Gross: r.Gross, Refunds: r.Refunds})
 		}
 	}
 	return out
 }
 
-// convRow is a series row after conversion; origin is the original currency.
+// convRow is a normalized series row in one native currency.
 type convRow struct {
 	Slot           int64
-	origin         string
 	Gross, Refunds int64
-}
-
-type rateCtx struct {
-	loc    *time.Location
-	off    int
-	hourly bool
-	date   string // the rate date for hourly slots (the window's first day)
-	rates  map[string][]store.FXRate
-}
-
-// convert turns rows into INR (paise). Currencies without any stored rate are
-// left out and reported in excluded (their gross). estimated is true when a
-// non-same-day rate was used.
-func (rc rateCtx) convert(rows []store.SeriesRow) (out []convRow, estimated bool, excluded map[string]int64, err error) {
-	excluded = map[string]int64{}
-	for _, r := range rows {
-		if r.Currency == "INR" {
-			out = append(out, convRow{r.Slot, "INR", r.Gross, r.Refunds})
-			continue
-		}
-		rates := rc.rates[r.Currency]
-		if len(rates) == 0 {
-			excluded[r.Currency] += r.Gross
-			continue
-		}
-		date := rc.date
-		if !rc.hourly {
-			date = slotTime(r.Slot, false, rc.off, rc.loc).Format("2006-01-02")
-		}
-		i := sort.Search(len(rates), func(i int) bool { return rates[i].Date >= date })
-		rate := rates[0]
-		switch {
-		case i < len(rates) && rates[i].Date == date:
-			rate = rates[i]
-		case i > 0:
-			rate, estimated = rates[i-1], true
-		default:
-			estimated = true
-		}
-		g, err := invoice.ToINR(r.Gross, r.Currency, rate.Rate)
-		if err != nil {
-			return nil, false, nil, err
-		}
-		f, err := invoice.ToINR(r.Refunds, r.Currency, rate.Rate)
-		if err != nil {
-			return nil, false, nil, err
-		}
-		out = append(out, convRow{r.Slot, r.Currency, g, f})
-	}
-	return out, estimated, excluded, nil
 }
 
 // slotTime is the local start of a LedgerSeries slot.

@@ -53,9 +53,18 @@ func GetReconRun(ctx context.Context, q Queryer, id string) (ReconRun, error) {
 	return r, nil
 }
 
-// ListReconRuns returns an org's runs, newest first.
-func ListReconRuns(ctx context.Context, q Queryer, orgID string, limit int) ([]ReconRun, error) {
-	rows, err := q.QueryContext(ctx, `SELECT id FROM recon_runs WHERE org_id = ? ORDER BY started_at DESC, id DESC LIMIT ?`, orgID, limit)
+// ListReconRuns returns an org's runs for a mode, newest first. An empty mode
+// includes both modes.
+func ListReconRuns(ctx context.Context, q Queryer, orgID, mode string, limit int) ([]ReconRun, error) {
+	query := `SELECT r.id FROM recon_runs r JOIN provider_accounts p ON p.id = r.provider_account_id WHERE r.org_id = ?`
+	args := []any{orgID}
+	if mode != "" {
+		query += ` AND p.mode = ?`
+		args = append(args, mode)
+	}
+	query += ` ORDER BY r.started_at DESC, r.id DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

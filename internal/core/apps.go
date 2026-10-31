@@ -18,6 +18,7 @@ import (
 	"github.com/velixio/paymux/internal/ids"
 	"github.com/velixio/paymux/internal/settings"
 	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // ErrConflict means the request collides with existing data (a duplicate slug).
@@ -70,6 +71,7 @@ var slugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 // CreateAppInput is the input of CreateApp.
 type CreateAppInput struct {
 	Name, Slug, DefaultReturnURL string
+	AcceptedCurrencies           []string
 }
 
 // CreateApp creates an app in the org and audits it.
@@ -87,11 +89,25 @@ func (s *Service) CreateApp(ctx context.Context, actor audit.Actor, sc OrgScope,
 	if in.DefaultReturnURL != "" && !validURL(in.DefaultReturnURL) {
 		return store.App{}, newErr(ErrInvalid, "default_return_url must be an absolute http(s) URL")
 	}
+	seenCurrencies := map[string]bool{}
+	currencies := make([]string, 0, len(in.AcceptedCurrencies))
+	for _, currency := range in.AcceptedCurrencies {
+		currency = strings.ToUpper(strings.TrimSpace(currency))
+		if _, err := money.Exponent(currency); err != nil {
+			return store.App{}, newErr(ErrInvalid, "accepted currency %q is not a supported ISO-4217 code", currency)
+		}
+		if !seenCurrencies[currency] {
+			seenCurrencies[currency] = true
+			currencies = append(currencies, currency)
+		}
+	}
+	in.AcceptedCurrencies = currencies
 	var app store.App
 	err := s.db.Write(ctx, func(tx store.Tx) error {
 		org := sc.OrgID
 		app = store.App{ID: ids.New("app"), OrgID: org, Name: in.Name, Slug: in.Slug, DefaultReturnURL: in.DefaultReturnURL,
-			CreatedAt: s.nowUTC()}
+			AcceptedCurrencies: in.AcceptedCurrencies,
+			CreatedAt:          s.nowUTC()}
 		if err := store.InsertApp(ctx, tx, app); err != nil {
 			if errors.Is(err, store.ErrConflict) {
 				return newErr(ErrConflict, "an app with slug %q already exists", in.Slug)

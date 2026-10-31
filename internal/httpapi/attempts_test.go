@@ -13,7 +13,11 @@ func TestGetPaymentListsItsAttempts(t *testing.T) {
 		id := m["id"].(string)
 
 		r := f.do("GET", "/v1/payments/"+id, f.testKey, nil)
-		first := r.json(t)["attempts"]
+		read := r.json(t)
+		if read["checkout_mode"] != "hosted" {
+			t.Fatalf("GET checkout_mode = %v, want hosted: %s", read["checkout_mode"], r.raw)
+		}
+		first := read["attempts"]
 		if list, ok := first.([]any); !ok || len(list) != 0 {
 			t.Fatalf("a payment with no attempts must show attempts: [] , got %v (%s)", first, r.raw)
 		}

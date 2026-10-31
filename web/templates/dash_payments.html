@@ -3,21 +3,21 @@
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
 <h1>Payments <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h1><p class="muted">Track each payment across your apps, providers and ledger.</p>
-<form class="filters" method="get" action="/dashboard/payments">
+<form class="filters" method="get" action="/dashboard/payments" data-auto-search="true">
 <select name="app" aria-label="App"><option value="">All apps</option>{{range .AppOpts}}<option value="{{.ID}}"{{if eq .ID $.Filter.App}} selected{{end}}>{{.Name}}</option>{{end}}</select>
 <select name="status" aria-label="Status"><option value="">Any status</option>{{range .Statuses}}<option value="{{.}}"{{if eq . $.Filter.Status}} selected{{end}}>{{.}}</option>{{end}}</select>
 <input name="from" type="date" value="{{.Filter.From}}" aria-label="From date">
 <input name="to" type="date" value="{{.Filter.To}}" aria-label="To date">
-<input name="q" type="search" value="{{.Filter.Q}}" placeholder="Payment id, order ref or customer email" aria-label="Search" size="34">
+<input name="q" type="search" value="{{.Filter.Q}}" placeholder="Payment, order, transaction or customer" aria-label="Search payments" size="34" autocomplete="off">
 <button class="btn small" type="submit">Filter</button>
 </form>
-<div class="table-scroll"><table class="grid">
-<thead><tr><th>Payment</th><th>App</th><th>Status</th><th class="money">Amount</th><th>Order ref</th><th>Customer</th><th>Created</th></tr></thead>
+<div class="table-scroll"><table class="grid payments-grid">
+<thead><tr><th>Payment</th><th>App</th><th>Status</th><th class="money">Amount</th><th>Method</th><th class="num">Attempts</th><th>Customer</th><th>Created</th></tr></thead>
 <tbody>
 {{range .Rows}}<tr>
-<td><a href="/dashboard/payments/{{.ID}}">{{.ID}}</a></td><td>{{.App}}</td><td><span class="status status-{{.StatusClass}}">{{.Status}}</span></td>
-<td class="money">{{.Amount}}</td><td>{{.OrderRef}}</td><td>{{.Customer}}</td><td>{{.Created}}</td>
-</tr>{{else}}<tr><td colspan="7" class="muted">No payments match. Adjust your filters or create a test payment using the API. <a href="/docs">Open API reference</a></td></tr>{{end}}
+<td><a href="/dashboard/payments/{{.ID}}">{{.ID}}</a>{{if .OrderRef}}<br><small class="muted">{{.OrderRef}}</small>{{end}}</td><td>{{.App}}</td><td><span class="status status-{{.StatusClass}}">{{.Status}}</span></td>
+<td class="money">{{.Amount}}</td><td>{{if .Provider}}<span class="payment-method"><span class="provider-logo provider-logo-{{.ProviderKey}}" role="img" tabindex="0" aria-label="{{.Provider}}" title="{{.Provider}}">{{.ProviderMark}}</span>{{if .Method}}<span class="payment-method-copy"><span>{{.Method}}</span>{{if .MethodMeta}}<small class="muted">{{.MethodMeta}}</small>{{end}}</span>{{end}}</span>{{else}}<span class="muted">Not routed</span>{{end}}</td><td class="num">{{.Attempts}}</td><td>{{.Customer}}</td><td>{{.Created}}</td>
+</tr>{{else}}<tr><td colspan="8" class="muted">No payments match. Adjust your filters or create a test payment using the API. <a href="/docs">Open API reference</a></td></tr>{{end}}
 </tbody>
 </table></div>
 {{with .NextURL}}<p><a class="next" href="{{.}}">Older payments &rarr;</a></p>{{end}}

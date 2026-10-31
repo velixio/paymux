@@ -205,7 +205,7 @@ func tableAttr(t *testing.T, body, attr string) string {
 	return regexpFind(t, `<table id="revenue-data"[^>]*\b`+attr+`="([^"]*)"`, body)
 }
 
-func TestRevenueINRConversionAndEstimates(t *testing.T) {
+func TestRevenueKeepsNativeCurrenciesSeparate(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		vw := e.roleClient("viewer")
@@ -213,15 +213,17 @@ func TestRevenueINRConversionAndEstimates(t *testing.T) {
 		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
 		e.seedLedger(
 			ledRow{"pay_1", "charge", "INR", 1000000, e.d15(15)},
-			ledRow{"pay_1", "charge", "USD", 1000, e.d15(13)}, // same-day rate: 10.00 x 80
-			ledRow{"pay_1", "charge", "USD", 500, e.d15(14)},  // no rate that day: earlier rate, estimated
-			ledRow{"pay_1", "charge", "USD", 100, e.d15(10)},  // before the first rate: later rate, estimated
-			ledRow{"pay_1", "refund", "USD", -200, e.d15(13)}, // refund converts the same way
-			ledRow{"pay_1", "charge", "EUR", 2000, e.d15(12)}, // no rate at all
+			ledRow{"pay_1", "charge", "USD", 1000, e.d15(13)},
+			ledRow{"pay_1", "charge", "USD", 500, e.d15(14)},
+			ledRow{"pay_1", "charge", "USD", 100, e.d15(10)},
+			ledRow{"pay_1", "refund", "USD", -200, e.d15(13)},
+			ledRow{"pay_1", "charge", "EUR", 2000, e.d15(12)},
 		)
+		// A manual rate may exist for invoices, but Overview must not silently
+		// use it to combine unlike currencies.
 		e.seedRates(store.FXRate{Currency: "USD", Date: "2027-01-13", Rate: "80"})
 		body := e.pageOK(vw, "/dashboard/overview?range=7d")
-		if c, conv, est := tableAttr(t, body, "data-currency"), tableAttr(t, body, "data-converted"), tableAttr(t, body, "data-estimated"); c != "INR" || conv != "true" || est != "true" {
+		if c, conv, est := tableAttr(t, body, "data-currency"), tableAttr(t, body, "data-converted"), tableAttr(t, body, "data-estimated"); c != "USD" || conv != "false" || est != "false" {
 			t.Fatalf("currency %s converted %s estimated %s", c, conv, est)
 		}
 		if tableAttr(t, body, "data-exp") != "2" || tableAttr(t, body, "data-bucket") != "day" {
@@ -231,21 +233,17 @@ func TestRevenueINRConversionAndEstimates(t *testing.T) {
 		if len(pts) != 7 {
 			t.Fatalf("want 7 daily points, got %d", len(pts))
 		}
-		for day, want := range map[string][2]int64{"2027-01-13": {80000, 16000}, "2027-01-14": {40000, 0}, "2027-01-10": {8000, 0}, "2027-01-15": {1000000, 0}, "2027-01-12": {0, 0}} {
+		for day, want := range map[string][2]int64{"2027-01-13": {1000, 200}, "2027-01-14": {500, 0}, "2027-01-10": {100, 0}, "2027-01-15": {0, 0}, "2027-01-12": {0, 0}} {
 			if got := pts[day]; got.gross != want[0] || got.refunds != want[1] {
 				t.Errorf("%s: %+v want %v", day, got, want)
 			}
 		}
-		has(t, body, "20.00 EUR", "/dashboard/fx", "estimated")
-		// a window with only exact rates is not estimated
-		body = e.pageOK(vw, "/dashboard/overview?range=custom&from=2027-01-13&to=2027-01-13")
-		if tableAttr(t, body, "data-estimated") != "false" {
-			t.Error("same-day conversion marked estimated")
-		}
-		// the picker view is unconverted
-		body = e.pageOK(vw, "/dashboard/overview?range=7d&currency=USD")
-		if tableAttr(t, body, "data-currency") != "USD" || tableAttr(t, body, "data-converted") != "false" || revByDay(body)["2027-01-14"].gross != 500 {
-			t.Errorf("USD view: %s", body)
+		has(t, body, "Currency details", "20.00 EUR", "10000.00 INR", "16.00 USD", "2.00 USD", "14.00 USD", "Native totals")
+		lacks(t, body, "stored daily rate", "estimated conversions")
+		// Choosing INR shows only its exact native ledger values.
+		body = e.pageOK(vw, "/dashboard/overview?range=7d&currency=INR")
+		if tableAttr(t, body, "data-currency") != "INR" || revByDay(body)["2027-01-15"].gross != 1000000 {
+			t.Errorf("INR view: %s", body)
 		}
 	})
 }
@@ -267,9 +265,10 @@ func TestRevenueDefaultCurrencyMajority(t *testing.T) {
 		if tableAttr(t, body, "data-currency") != "USD" || tableAttr(t, body, "data-converted") != "false" || revByDay(body)["2027-01-14"].gross != 100000 {
 			t.Errorf("mostly USD should open on USD unconverted: %s", tableOnly(body))
 		}
-		// asking for INR gives the converted view
+		// Asking for INR still shows only native INR; the stored FX rate is not
+		// used to inflate the total.
 		body = e.pageOK(v, "/dashboard/overview?range=7d&currency=INR")
-		if tableAttr(t, body, "data-currency") != "INR" || tableAttr(t, body, "data-converted") != "true" || revByDay(body)["2027-01-14"].gross != 8010000 {
+		if tableAttr(t, body, "data-currency") != "INR" || tableAttr(t, body, "data-converted") != "false" || revByDay(body)["2027-01-14"].gross != 10000 {
 			t.Errorf("INR view: %s", tableOnly(body))
 		}
 	})
@@ -330,7 +329,8 @@ func TestOverviewRendersRevenueTable(t *testing.T) {
 		e.seedLedger(ledRow{"pay_1", "charge", "INR", 12345, e.d15(14)})
 		body := e.pageOK(vw, "/dashboard/overview")
 		has(t, body, `<nav class="range-presets"`, `href="/dashboard/overview?range=7d"`, `aria-current="page"`, `class="revenue-summary"`,
-			`id="revenue-data"`, `data-gross="12345"`, "123.45 INR", "/dashboard/overview/revenue.csv?", `id="period-today"`)
+			`id="revenue-data"`, `data-gross="12345"`, "123.45 INR", "/dashboard/overview/revenue.csv?", "USD preferred", "Currency details")
+		lacks(t, body, `id="period-today"`)
 		if tableAttr(t, body, "data-bucket") != "day" {
 			t.Error("30d is daily")
 		}

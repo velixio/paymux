@@ -23,6 +23,8 @@ import (
 
 type payRow struct {
 	ID, App, Status, StatusClass, Amount, Customer, OrderRef, Created string
+	Provider, ProviderKey, ProviderMark, Method, MethodMeta           string
+	Attempts                                                          int
 }
 
 type payFilter struct{ App, Status, Q, From, To string }
@@ -77,8 +79,9 @@ type payDetail struct {
 	RefundNonce string
 	// SimAttempts are the captured attempts on a test-mode simulator account,
 	// the ones a dispute can be simulated on.
-	SimAttempts []attemptOpt
-	CanSimulate bool
+	SimAttempts  []attemptOpt
+	CanSimulate  bool
+	AttemptCount int
 }
 
 // parseDay parses YYYY-MM-DD in the dashboard's time zone.
@@ -125,11 +128,31 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 
 	var rows []store.Payment
 	var apps []store.App
+	var accounts []store.ProviderAccountInfo
+	var attempts []store.Attempt
+	var providerAttemptCounts map[string]int
 	err = d.o.DB.Read(r.Context(), func(q store.Querier) (err error) {
 		if apps, err = store.ListApps(r.Context(), q, org); err != nil {
 			return err
 		}
-		rows, err = store.SearchPayments(r.Context(), q, sf, after, d.o.PageSize+1)
+		if rows, err = store.SearchPayments(r.Context(), q, sf, after, d.o.PageSize+1); err != nil {
+			return err
+		}
+		visible := rows
+		if len(visible) > d.o.PageSize {
+			visible = visible[:d.o.PageSize]
+		}
+		ids := make([]string, len(visible))
+		for i := range visible {
+			ids[i] = visible[i].ID
+		}
+		if attempts, err = store.ListAttemptsForPayments(r.Context(), q, ids); err != nil {
+			return err
+		}
+		if providerAttemptCounts, err = store.CountProviderPaymentAttemptsForPayments(r.Context(), q, ids); err != nil {
+			return err
+		}
+		accounts, err = store.ListProviderAccounts(r.Context(), q, org, d.mode(r, s))
 		return err
 	})
 	if err != nil {
@@ -137,10 +160,18 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 		return
 	}
 	names := map[string]string{}
+	accountConnectors := map[string]string{}
+	attemptsByPayment := map[string][]store.Attempt{}
 	v := d.shell(r, s, "payments", "Payments")
 	for _, a := range apps {
 		names[a.ID] = a.Name
 		v.AppOpts = append(v.AppOpts, appOpt{ID: a.ID, Name: a.Name})
+	}
+	for _, account := range accounts {
+		accountConnectors[account.ID] = account.Connector
+	}
+	for _, attempt := range attempts {
+		attemptsByPayment[attempt.PaymentID] = append(attemptsByPayment[attempt.PaymentID], attempt)
 	}
 	hasMore := len(rows) > d.o.PageSize
 	if hasMore {
@@ -150,6 +181,22 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 		status, statusClass := paymentDisplayStatus(p)
 		row := payRow{ID: p.ID, App: names[p.AppID], Status: status, StatusClass: statusClass, Amount: fmtMoney(p.Amount, p.Currency), OrderRef: p.OrderRef,
 			Created: d.fmtTime(p.CreatedAt)}
+		paymentAttempts := attemptsByPayment[p.ID]
+		row.Attempts = providerAttemptCounts[p.ID]
+		if row.Attempts == 0 {
+			row.Attempts = len(paymentAttempts)
+		}
+		if selected, ok := paymentListAttempt(p, paymentAttempts); ok {
+			connectorName := accountConnectors[selected.ProviderAccountID]
+			row.ProviderKey = connectorName
+			row.ProviderMark = paymentProviderMark(connectorName)
+			if _, info, found := connector.Lookup(connectorName); found {
+				row.Provider = info.DisplayName
+			} else {
+				row.Provider = connectorName
+			}
+			row.Method, row.MethodMeta = paymentListMethod(selected)
+		}
 		if p.CustomerID != "" {
 			_ = d.o.DB.Read(r.Context(), func(q store.Querier) error {
 				if c, err := store.GetCustomer(r.Context(), q, p.CustomerID); err == nil {
@@ -175,6 +222,73 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 		v.NextURL = prefix + "/payments?" + next.Encode()
 	}
 	d.render(w, http.StatusOK, "dash_payments", v)
+}
+
+func paymentProviderMark(name string) string {
+	marks := map[string]string{
+		"cashfree":  "CF",
+		"payu":      "PU",
+		"razorpay":  "RZ",
+		"remote":    "RM",
+		"simulator": "SM",
+		"stripe":    "ST",
+		"whop":      "WH",
+		"zoho":      "ZH",
+	}
+	if mark := marks[name]; mark != "" {
+		return mark
+	}
+	name = strings.ToUpper(name)
+	if len(name) > 2 {
+		return name[:2]
+	}
+	return name
+}
+
+// paymentListAttempt chooses the attempt that best explains the payment. A
+// captured non-duplicate attempt is authoritative for succeeded payments;
+// otherwise the newest attempt describes what the customer sees now.
+func paymentListAttempt(p store.Payment, attempts []store.Attempt) (store.Attempt, bool) {
+	if p.Status == string(state.PaymentSucceeded) {
+		for i := len(attempts) - 1; i >= 0; i-- {
+			if attempts[i].Status == string(state.AttemptCaptured) && !attempts[i].Duplicate {
+				return attempts[i], true
+			}
+		}
+	}
+	if len(attempts) == 0 {
+		return store.Attempt{}, false
+	}
+	return attempts[len(attempts)-1], true
+}
+
+func paymentListMethod(a store.Attempt) (string, string) {
+	summary, meta := paymentMethodSummary(a)
+	method := map[string]string{
+		"card": "Card", "upi": "UPI", "netbanking": "Net banking", "wallet": "Wallet",
+		"bank_transfer": "Bank transfer", "emi": "EMI", "paylater": "Pay later",
+	}[strings.ToLower(a.Method)]
+	if method == "" {
+		method = a.Method
+	}
+	switch strings.ToLower(a.Method) {
+	case "card":
+		if summary != "" {
+			method = strings.ReplaceAll(summary, "•••• ", "")
+		}
+	case "upi", "netbanking", "wallet", "bank_transfer":
+		if summary != "" {
+			if meta != "" {
+				meta += " · "
+			}
+			meta += strings.ReplaceAll(summary, "_", " ")
+		}
+	default:
+		if method == "" {
+			method = summary
+		}
+	}
+	return method, meta
 }
 
 func (d *Dashboard) paymentPage(w http.ResponseWriter, r *http.Request, s *session) {
@@ -222,7 +336,7 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 		if dels, err = store.ListPaymentDeliveries(ctx, q, id); err != nil {
 			return err
 		}
-		if accounts, err = store.ListProviderAccounts(ctx, q, p.OrgID, ""); err != nil {
+		if accounts, err = store.ListProviderAccounts(ctx, q, p.OrgID, p.Mode); err != nil {
 			return err
 		}
 		if p.CustomerID != "" {
@@ -232,7 +346,7 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 		}
 		return nil
 	})
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, p.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, p.OrgID) || p.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -251,7 +365,7 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	det := &payDetail{ID: p.ID, App: app.Name, AppID: app.ID, Mode: p.Mode, Status: displayStatus, StatusClass: statusClass, Currency: p.Currency,
 		Amount: fmtMoney(p.Amount, p.Currency), Received: fmtMoney(p.AmountReceived, p.Currency), Refunded: fmtMoney(p.AmountRefunded, p.Currency),
 		OrderRef: p.OrderRef, Description: p.Description, Created: d.fmtTime(p.CreatedAt), Flags: p.Flags,
-		CanReplay: s.can(authz.WebhookReplay)}
+		CanReplay: s.can(authz.WebhookReplay), AttemptCount: len(providerAttempts)}
 	if cust.ID != "" {
 		det.Customer = &customerDetail{ExternalRef: cust.ExternalRef, Name: cust.Name, Email: cust.Email, Phone: cust.Phone,
 			LegalName: cust.Billing.LegalName, GSTIN: cust.Billing.GSTIN, Line1: cust.Billing.Line1, Line2: cust.Billing.Line2,
@@ -356,7 +470,7 @@ func (d *Dashboard) paymentSyncSubmit(w http.ResponseWriter, r *http.Request, s 
 		attempts, err = store.ListAttempts(ctx, q, id)
 		return err
 	})
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, p.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, p.OrgID) || p.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -393,6 +507,12 @@ func paymentDisplayStatus(p store.Payment) (label, class string) {
 		return "refunded", "refunded"
 	case p.HasFlag(core.FlagRefundedPartial):
 		return "partially refunded", "partially-refunded"
+	case p.Status == string(state.PaymentRequiresAction):
+		return "Waiting for customer", p.Status
+	case p.Status == string(state.PaymentCreated):
+		return "Created", p.Status
+	case p.Status == string(state.PaymentFailed):
+		return "Ready to retry", p.Status
 	default:
 		return p.Status, p.Status
 	}
@@ -445,7 +565,7 @@ func (d *Dashboard) refundSubmit(w http.ResponseWriter, r *http.Request, s *sess
 	ctx := r.Context()
 	var p store.Payment
 	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) { p, err = store.GetPayment(ctx, q, r.PathValue("id")); return })
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, p.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, p.OrgID) || p.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -522,7 +642,7 @@ func (d *Dashboard) simulatorTarget(w http.ResponseWriter, r *http.Request, s *s
 		attempts, err = store.ListAttempts(ctx, q, p.ID)
 		return err
 	})
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, p.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, p.OrgID) || p.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return p, store.Attempt{}, nil, false
 	}

@@ -2,109 +2,82 @@
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
-<h1>Organization settings</h1>
-<p class="muted">Control how your payment hub routes, bills and delivers.</p><div class="setting-scope"><strong>Organization scope</strong><br>Defaults for every app. App overrides take priority where supported. These policies are shared across payment modes.</div><nav class="setting-nav" aria-label="Settings sections"><a href="#routing">Routing rules</a><a href="#route-test">Test a route</a><a href="#policies">Payment and billing policies</a><a href="/dashboard/users">Users</a><a href="/dashboard/roles">Roles</a><a href="/dashboard/appearance">Appearance</a></nav>
-{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<header class="settings-header">
+  <div><p class="eyebrow">Workspace</p><h1>Organization settings</h1><p class="muted">Control payment behavior for every app in this organization.</p></div>
+  <div class="setting-scope"><strong>{{.Mode}} mode</strong><span>Notifications use this mode. Routing applies organization-wide.</span></div>
+</header>
+<nav class="setting-nav" aria-label="Organization settings">
+  <a href="/dashboard/settings"{{if eq .SettingsSection "general"}} class="active" aria-current="page"{{end}}>General</a>
+  <a href="/dashboard/settings/routing"{{if eq .SettingsSection "routing"}} class="active" aria-current="page"{{end}}>Routing</a>
+  <a href="/dashboard/settings/notifications"{{if eq .SettingsSection "notifications"}} class="active" aria-current="page"{{end}}>Notifications</a>
+  <a href="/dashboard/users">Team</a><a href="/dashboard/roles">Roles</a><a href="/dashboard/appearance">Appearance</a>
+</nav>
+{{with .Error}}<p class="error settings-error" role="alert" tabindex="-1">{{.}}</p>{{end}}
 
-<h3 id="policies">Payment and billing policies</h3><p class="muted">Choose a category. Each setting shows its effective value, source and built-in default.</p>
+{{if eq .SettingsSection "general"}}
+<section class="settings-section-heading"><div><p class="eyebrow">General</p><h2>Payment and billing policies</h2><p class="muted">Review effective organization values and change only the policy you need.</p></div></section>
 {{template "dash_settings_table" .}}
-<details class="routing-disclosure" id="routing"><summary>Routing rules and route tester</summary>
+{{end}}
+
+{{if eq .SettingsSection "notifications"}}
+{{with .Notifications}}<section class="settings-section-heading"><div><p class="eyebrow">Notifications</p><h2>Important payment updates</h2><p class="muted">Choose how your team hears about payment, refund and dispute events in <strong>{{$.Mode}}</strong> mode.</p></div></section>
+<section id="notifications" class="settings-panel notification-panel">
+{{if .CanWrite}}<form method="post" action="/dashboard/settings/notifications" class="notification-form">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<fieldset><legend>Delivery channels</legend>
+<label class="option-row"><input type="checkbox" name="email_enabled" value="1"{{if .EmailEnabled}} checked{{end}}><span><strong>Email</strong><small>Send updates to a shared operations inbox.</small></span></label>
+<label>Notification email<input class="field" type="email" name="email" value="{{.Email}}" autocomplete="email" placeholder="payments@example.com"></label>
+<label class="option-row"><input type="checkbox" name="telegram_enabled" value="1"{{if .TelegramEnabled}} checked{{end}}><span><strong>Telegram</strong><small>Send immediate messages to a chat or channel.</small></span></label>
+<div class="settings-field-grid"><label>Bot token<input class="field" type="password" name="telegram_token" autocomplete="new-password" placeholder="{{if .HasTelegramToken}}Set — leave blank to keep{{else}}123456:ABC…{{end}}"><small class="muted">Encrypted and never displayed again.</small></label>
+<label>Chat ID<input class="field" name="telegram_chat_id" value="{{.TelegramChatID}}" autocomplete="off" placeholder="-100123456789"></label></div>
+</fieldset>
+<fieldset><legend>Events</legend><label>Event names<input class="field" name="events" value="{{.Events}}" placeholder="payment.succeeded, payment.failed"><small class="muted">Comma-separated. Leave blank for the recommended payment, refund and dispute events.</small></label></fieldset>
+<div class="settings-actions"><button class="btn" type="submit">Save notifications</button></div>
+</form>
+{{else}}<dl class="facts"><dt>Email</dt><dd>{{if .EmailEnabled}}{{.Email}}{{else}}Off{{end}}</dd><dt>Telegram</dt><dd>{{if .TelegramEnabled}}{{.TelegramChatID}}{{else}}Off{{end}}</dd><dt>Events</dt><dd>{{.Events}}</dd></dl>{{end}}
+</section>{{end}}
+{{end}}
+
+{{if eq .SettingsSection "routing"}}
 {{with .Routing}}
-<p class="muted">Rules are tried in order. The first rule whose conditions match and that has an eligible account decides; otherwise the catch-all applies.
-Targets are connector names (any eligible account) or pinned accounts written <code>account:pa_xxx</code>, tried in the order listed.
-Conditions are comma separated lists; leave a condition empty to match anything. Amounts are in minor units (paise, cents).</p>
+<section class="settings-section-heading routing-heading"><div><p class="eyebrow">Routing</p><h2>Payment routing</h2><p class="muted">Rules run from top to bottom. The first matching rule with an eligible provider wins.</p></div><div class="routing-stats"><strong>{{len .Rules}}</strong><span>active rules</span><strong>{{.CatchAll.Action}}</strong><span>fallback</span></div></section>
+<div class="settings-routing-layout">
+<section aria-labelledby="routing-rules-title">
+<div class="routing-guide"><div><strong id="routing-rules-title">Rules</strong><span>Expand a rule only when you need to edit it.</span></div><p>Targets can be connector names such as <code>razorpay</code>, or pinned accounts such as <code>account:pa_xxx</code>. Amounts use minor units.</p></div>
 {{if .CanWrite}}
 <form method="post" action="/dashboard/settings/routing" class="routing-editor">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
-{{range .Rules}}<fieldset class="rule-card">
-<legend>Rule {{.Order}}</legend>
-<div class="rc-row">
-<label class="rc-order">Order<input class="field" type="number" min="0" name="r_order" value="{{.Order}}"></label>
-<label class="rc-grow">Name<input class="field" name="r_name" value="{{.Name}}"></label>
-<label>Action<select class="field" name="r_action"><option value="route"{{if ne .Action "reject"}} selected{{end}}>route</option><option value="reject"{{if eq .Action "reject"}} selected{{end}}>reject</option></select></label>
-</div>
-<div class="rc-row">
-<label>Currencies<input class="field" name="r_currency" value="{{.Currency}}" placeholder="INR, BDT"></label>
-<label>Countries<input class="field" name="r_country" value="{{.Country}}" placeholder="IN"></label>
-<label>Purposes<input class="field" name="r_purpose" value="{{.Purpose}}" placeholder="one_time"></label>
-</div>
-<div class="rc-row">
-<label>Minimum amount<input class="field" name="r_amin" value="{{.AmountMin}}" inputmode="numeric"></label>
-<label>Maximum amount<input class="field" name="r_amax" value="{{.AmountMax}}" inputmode="numeric"></label>
-<label>Metadata<input class="field" name="r_meta" value="{{.Metadata}}" placeholder="plan=pro"></label>
-</div>
-<div class="rc-row">
-<label class="rc-wide">Targets<input class="field" name="r_targets" value="{{.Targets}}" placeholder="razorpay, account:pa_123"></label>
-</div>
-<div class="rc-row">
-<label class="rc-wide">Message when rejecting<input class="field" name="r_message" value="{{.Message}}"></label>
-</div>
-</fieldset>
-{{end}}
-{{range .BlankRows}}<fieldset class="rule-card">
-<legend>New rule</legend>
-<div class="rc-row">
-<label class="rc-order">Order<input class="field" type="number" min="0" name="r_order" placeholder="last"></label>
-<label class="rc-grow">Name<input class="field" name="r_name" placeholder="new rule"></label>
-<label>Action<select class="field" name="r_action"><option value="route">route</option><option value="reject">reject</option></select></label>
-</div>
-<div class="rc-row">
-<label>Currencies<input class="field" name="r_currency" placeholder="USD"></label>
-<label>Countries<input class="field" name="r_country"></label>
-<label>Purposes<input class="field" name="r_purpose"></label>
-</div>
-<div class="rc-row">
-<label>Minimum amount<input class="field" name="r_amin" inputmode="numeric"></label>
-<label>Maximum amount<input class="field" name="r_amax" inputmode="numeric"></label>
-<label>Metadata<input class="field" name="r_meta"></label>
-</div>
-<div class="rc-row">
-<label class="rc-wide">Targets<input class="field" name="r_targets" placeholder="razorpay, whop"></label>
-</div>
-<div class="rc-row">
-<label class="rc-wide">Message when rejecting<input class="field" name="r_message"></label>
-</div>
-</fieldset>
-{{end}}
-<fieldset class="rule-card catch-all">
-<legend>Catch-all</legend>
-<p class="muted">Used when no rule above gives an eligible account.</p>
-<div class="rc-row">
-<label>Action<select class="field" name="ca_action"><option value="route"{{if eq .CatchAll.Action "route"}} selected{{end}}>route</option><option value="reject"{{if eq .CatchAll.Action "reject"}} selected{{end}}>reject</option><option value="none"{{if eq .CatchAll.Action "none"}} selected{{end}}>none</option></select></label>
-<label class="rc-grow">Targets<input class="field" name="ca_targets" value="{{.CatchAll.Targets}}" placeholder="razorpay, whop"></label>
-</div>
-<div class="rc-row">
-<label class="rc-wide">Message when rejecting<input class="field" name="ca_message" value="{{.CatchAll.Message}}"></label>
-</div>
-</fieldset>
-<button class="btn" type="submit">Save routing</button>
+{{range $i, $rule := .Rules}}<details class="routing-rule">
+<summary><span class="routing-rule-title"><span class="rule-index">{{.Order}}</span><span><strong>{{.Name}}</strong><small>{{if .Currency}}{{.Currency}}{{else}}Any currency{{end}} · {{if .Purpose}}{{.Purpose}}{{else}}Any purpose{{end}}</small></span></span><span class="routing-rule-outcome">{{.Action}}{{if .Targets}} → {{.Targets}}{{end}}</span></summary>
+<div class="routing-rule-body">
+<fieldset><legend>Rule identity</legend><div class="settings-field-grid compact"><label>Order<input class="field" type="number" min="0" name="r_order" value="{{.Order}}"></label><label>Name<input class="field" name="r_name" value="{{.Name}}" required></label><label>Action<select class="field" name="r_action"><option value="route"{{if ne .Action "reject"}} selected{{end}}>Route</option><option value="reject"{{if eq .Action "reject"}} selected{{end}}>Reject</option></select></label></div></fieldset>
+<fieldset><legend>Match when</legend><div class="settings-field-grid"><label>Currencies<input class="field" name="r_currency" value="{{.Currency}}" placeholder="INR, USD"></label><label>Countries<input class="field" name="r_country" value="{{.Country}}" placeholder="IN, US"></label><label>Purposes<input class="field" name="r_purpose" value="{{.Purpose}}" placeholder="one_time, subscription"></label><label>Minimum amount<input class="field" name="r_amin" value="{{.AmountMin}}" inputmode="numeric" placeholder="No minimum"></label><label>Maximum amount<input class="field" name="r_amax" value="{{.AmountMax}}" inputmode="numeric" placeholder="No maximum"></label><label>Metadata<input class="field" name="r_meta" value="{{.Metadata}}" placeholder="plan=pro"></label></div></fieldset>
+<fieldset><legend>Volume limit <span>optional</span></legend><div class="settings-field-grid"><label>Period<select class="field" name="r_limit_period"><option value="">No limit</option><option value="daily"{{if eq .LimitPeriod "daily"}} selected{{end}}>Daily</option><option value="weekly"{{if eq .LimitPeriod "weekly"}} selected{{end}}>Weekly</option><option value="monthly"{{if eq .LimitPeriod "monthly"}} selected{{end}}>Monthly</option></select></label><label>Sales count<input class="field" name="r_limit_sales" value="{{.LimitSales}}" inputmode="numeric" placeholder="Unlimited"></label><label>Captured amount<input class="field" name="r_limit_amount" value="{{.LimitAmount}}" inputmode="numeric" placeholder="Unlimited"></label></div></fieldset>
+<fieldset><legend>Outcome</legend><label>Targets, in priority order<input class="field" name="r_targets" value="{{.Targets}}" placeholder="razorpay, account:pa_123"></label><label>Customer message when rejected<input class="field" name="r_message" value="{{.Message}}" placeholder="This payment method is not available."></label><label class="remove-rule"><input type="checkbox" name="r_delete_{{$i}}" value="1"> <span>Remove this rule when routing is saved</span></label></fieldset>
+</div></details>{{end}}
+{{range .BlankRows}}<details class="routing-rule routing-rule-new">
+<summary><span class="routing-rule-title"><span class="rule-index">+</span><span><strong>Add routing rule</strong><small>Create one focused condition and outcome.</small></span></span></summary>
+<div class="routing-rule-body">
+<fieldset><legend>Rule identity</legend><div class="settings-field-grid compact"><label>Order<input class="field" type="number" min="0" name="r_order" placeholder="Last"></label><label>Name<input class="field" name="r_name" placeholder="e.g. high-value INR"></label><label>Action<select class="field" name="r_action"><option value="route">Route</option><option value="reject">Reject</option></select></label></div></fieldset>
+<fieldset><legend>Match when</legend><div class="settings-field-grid"><label>Currencies<input class="field" name="r_currency" placeholder="INR, USD"></label><label>Countries<input class="field" name="r_country" placeholder="IN, US"></label><label>Purposes<input class="field" name="r_purpose" placeholder="one_time"></label><label>Minimum amount<input class="field" name="r_amin" inputmode="numeric" placeholder="No minimum"></label><label>Maximum amount<input class="field" name="r_amax" inputmode="numeric" placeholder="No maximum"></label><label>Metadata<input class="field" name="r_meta" placeholder="plan=pro"></label></div></fieldset>
+<fieldset><legend>Volume limit <span>optional</span></legend><div class="settings-field-grid"><label>Period<select class="field" name="r_limit_period"><option value="">No limit</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label><label>Sales count<input class="field" name="r_limit_sales" inputmode="numeric" placeholder="Unlimited"></label><label>Captured amount<input class="field" name="r_limit_amount" inputmode="numeric" placeholder="Unlimited"></label></div></fieldset>
+<fieldset><legend>Outcome</legend><label>Targets, in priority order<input class="field" name="r_targets" placeholder="razorpay, whop"></label><label>Customer message when rejected<input class="field" name="r_message" placeholder="This payment method is not available."></label></fieldset>
+</div></details>{{end}}
+<details class="routing-rule catch-all"><summary><span class="routing-rule-title"><span class="rule-index">∞</span><span><strong>Catch-all</strong><small>Used only when no rule above selects a provider.</small></span></span><span class="routing-rule-outcome">{{.CatchAll.Action}}{{if .CatchAll.Targets}} → {{.CatchAll.Targets}}{{end}}</span></summary>
+<div class="routing-rule-body"><fieldset><legend>Fallback outcome</legend><div class="settings-field-grid"><label>Action<select class="field" name="ca_action"><option value="route"{{if eq .CatchAll.Action "route"}} selected{{end}}>Route</option><option value="reject"{{if eq .CatchAll.Action "reject"}} selected{{end}}>Reject</option><option value="none"{{if eq .CatchAll.Action "none"}} selected{{end}}>No fallback</option></select></label><label>Targets<input class="field" name="ca_targets" value="{{.CatchAll.Targets}}" placeholder="razorpay, whop"></label><label>Customer message when rejected<input class="field" name="ca_message" value="{{.CatchAll.Message}}"></label></div></fieldset></div></details>
+<div class="settings-actions routing-save"><span>Changes affect new payment attempts after saving.</span><button class="btn" type="submit">Save routing</button></div>
 </form>
-{{else}}
-<div class="table-scroll"><table class="grid">
-<thead><tr><th>Rule</th><th>When</th><th>Action</th><th>Targets</th></tr></thead>
-<tbody>
-{{range .Rules}}<tr><td>{{.Name}}</td><td>{{if .Currency}}currency {{.Currency}} {{end}}{{if .Country}}country {{.Country}} {{end}}{{if .Purpose}}purpose {{.Purpose}} {{end}}{{if .AmountMin}}min {{.AmountMin}} {{end}}{{if .AmountMax}}max {{.AmountMax}} {{end}}{{if .Metadata}}metadata {{.Metadata}}{{end}}</td><td>{{.Action}}{{if .Message}}: {{.Message}}{{end}}</td><td>{{.Targets}}</td></tr>{{end}}
-<tr><th>Catch-all</th><td></td><td>{{.CatchAll.Action}}{{if .CatchAll.Message}}: {{.CatchAll.Message}}{{end}}</td><td>{{.CatchAll.Targets}}</td></tr>
-</tbody>
-</table></div>
+{{else}}<div class="routing-readonly">{{range .Rules}}<article><div><strong>{{.Order}}. {{.Name}}</strong><span>{{if .Currency}}{{.Currency}}{{else}}Any currency{{end}} · {{if .Purpose}}{{.Purpose}}{{else}}Any purpose{{end}}{{if .LimitPeriod}} · {{.LimitPeriod}}{{if .LimitSales}} / {{.LimitSales}} sales{{end}}{{if .LimitAmount}} / {{.LimitAmount}} captured{{end}}{{end}}</span></div><span>{{.Action}}{{if .Targets}} → {{.Targets}}{{end}}</span></article>{{end}}<article><div><strong>Catch-all</strong><span>When nothing else matches</span></div><span>{{.CatchAll.Action}}{{if .CatchAll.Targets}} → {{.CatchAll.Targets}}{{end}}</span></article></div>{{end}}
+</section>
+<aside class="route-tester" aria-labelledby="route-test-title"><div><p class="eyebrow">Preview</p><h3 id="route-test-title">Test a route</h3><p class="muted">See which rule and providers a payment would use. This does not create a payment.</p></div>
+<form method="get" action="/dashboard/settings/routing" class="stack"><input type="hidden" name="test" value="1">
+<label>App<select class="field" name="app"><option value="">Organization defaults</option>{{range $.AppOpts}}<option value="{{.ID}}"{{if eq .ID $.TestForm.App}} selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+<div class="settings-field-grid"><label>Mode<select class="field" name="mode"><option value="live"{{if eq $.TestForm.Mode "live"}} selected{{end}}>Live</option><option value="test"{{if eq $.TestForm.Mode "test"}} selected{{end}}>Test</option></select></label><label>Purpose<select class="field" name="purpose"><option value="one_time"{{if eq $.TestForm.Purpose "one_time"}} selected{{end}}>One-time</option><option value="subscription"{{if eq $.TestForm.Purpose "subscription"}} selected{{end}}>Subscription</option></select></label></div>
+<div class="settings-field-grid"><label>Currency<input class="field" name="currency" value="{{$.TestForm.Currency}}" maxlength="3" placeholder="INR"></label><label>Country<input class="field" name="country" value="{{$.TestForm.Country}}" maxlength="2" placeholder="IN"></label></div>
+<label>Amount in minor units<input class="field" name="amount" value="{{$.TestForm.Amount}}" inputmode="numeric" placeholder="10000"></label><button class="btn" type="submit">Test routing</button></form>
+{{with $.Route}}<div class="route-result" aria-live="polite">{{if .Matched}}<p><strong>Matched rule: {{.Rule}}</strong></p><p class="muted">Eligible providers, in order:</p><ol>{{range .Accounts}}<li>{{.}}</li>{{end}}</ol>{{else if .Rejected}}<p class="error"><strong>Rejected by {{.Rule}}</strong><br>{{.Message}}</p>{{else}}<p class="error"><strong>No route</strong><br>{{.Message}}</p>{{end}}</div>{{end}}
+</aside>
+</div>
 {{end}}
 {{end}}
-
-<h3 id="route-test">Test a route</h3>
-<form method="get" action="/dashboard/settings" class="filters">
-<input type="hidden" name="test" value="1">
-<select name="app" aria-label="App"><option value="">Org rules, all accounts</option>{{range .AppOpts}}<option value="{{.ID}}"{{if eq .ID $.TestForm.App}} selected{{end}}>{{.Name}}</option>{{end}}</select>
-<select name="mode" aria-label="Mode"><option value="live"{{if eq .TestForm.Mode "live"}} selected{{end}}>live</option><option value="test"{{if eq .TestForm.Mode "test"}} selected{{end}}>test</option></select>
-<input name="currency" value="{{.TestForm.Currency}}" maxlength="3" size="4" aria-label="Currency" placeholder="INR">
-<input name="country" value="{{.TestForm.Country}}" maxlength="2" size="3" aria-label="Country" placeholder="IN">
-<input name="amount" value="{{.TestForm.Amount}}" size="10" aria-label="Amount in minor units" placeholder="amount (paise)">
-<select name="purpose" aria-label="Purpose"><option value="one_time"{{if eq .TestForm.Purpose "one_time"}} selected{{end}}>one_time</option><option value="subscription"{{if eq .TestForm.Purpose "subscription"}} selected{{end}}>subscription</option></select>
-<button class="btn small" type="submit">Test routing</button>
-</form>
-{{with .Route}}<div class="route-result">
-{{if .Matched}}<p><strong>Matched rule:</strong> <code>{{.Rule}}</code></p>
-<p>Accounts, in order:</p><ol>{{range .Accounts}}<li>{{.}}</li>{{end}}</ol>
-{{else if .Rejected}}<p class="error"><strong>Rejected</strong> by rule <code>{{.Rule}}</code>: {{.Message}}</p>
-{{else}}<p class="error"><strong>No route</strong>: {{.Message}}</p>{{end}}
-</div>{{end}}</details>
 {{template "dash_close" .}}{{end}}

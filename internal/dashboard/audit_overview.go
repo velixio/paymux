@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/velixio/paymux/internal/authz"
 	"github.com/velixio/paymux/internal/store"
@@ -15,13 +14,6 @@ type auditFilter struct{ Actor, Action, From, To string }
 type auditRow struct {
 	ID, At, Actor, Action, Target, IP, Before, After string
 }
-
-type periodView struct {
-	ID, Label string
-	Rows      []totalRow
-}
-
-type totalRow struct{ App, Currency, Gross, Refunds, Net string }
 
 func (d *Dashboard) routesAuditOverview() {
 	d.mux.HandleFunc("GET "+prefix+"/audit", d.authed(authz.AuditRead, d.auditPage))
@@ -90,16 +82,6 @@ func (d *Dashboard) auditPage(w http.ResponseWriter, r *http.Request, s *session
 func (d *Dashboard) overviewPage(w http.ResponseWriter, r *http.Request, s *session) {
 	ctx := r.Context()
 	mode := d.mode(r, s)
-	now := d.o.Now().In(d.o.Location)
-	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, d.o.Location)
-	periods := []struct {
-		id, label string
-		since     time.Time
-	}{
-		{"today", "Today", midnight},
-		{"7d", "Last 7 days", now.Add(-7 * 24 * time.Hour)},
-		{"30d", "Last 30 days", now.Add(-30 * 24 * time.Hour)},
-	}
 	org, err := d.orgID(ctx)
 	if err != nil {
 		d.fail(w, err)
@@ -114,43 +96,10 @@ func (d *Dashboard) overviewPage(w http.ResponseWriter, r *http.Request, s *sess
 		badRequest(w, bad)
 		return
 	}
-	names := map[string]string{}
-	totals := make([][]store.LedgerTotal, len(periods))
-	err = d.o.DB.Read(ctx, func(q store.Querier) error {
-		apps, err := store.ListApps(ctx, q, org)
-		if err != nil {
-			return err
-		}
-		for _, a := range apps {
-			names[a.ID] = a.Name
-		}
-		for i, p := range periods {
-			if totals[i], err = store.LedgerTotals(ctx, q, org, mode, p.since); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		d.fail(w, err)
-		return
-	}
 	v := d.shell(r, s, "overview", "Overview")
 	v.Revenue = rev
 	if ents, err := d.listEntities(ctx); err == nil {
 		v.Warnings = d.lutWarnings(ents)
-	}
-	for i, p := range periods {
-		pv := periodView{ID: p.id, Label: p.label}
-		for _, t := range totals[i] {
-			name, known := names[t.AppID]
-			if !known {
-				continue // defence in depth: only this org's apps are shown
-			}
-			pv.Rows = append(pv.Rows, totalRow{App: name, Currency: t.Currency, Gross: fmtMoney(t.Gross, t.Currency),
-				Refunds: fmtMoney(t.Refunds, t.Currency), Net: fmtMoney(t.Gross-t.Refunds, t.Currency)})
-		}
-		v.Periods = append(v.Periods, pv)
 	}
 	d.render(w, http.StatusOK, "dash_overview", v)
 }

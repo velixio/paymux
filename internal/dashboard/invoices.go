@@ -290,7 +290,7 @@ func (d *Dashboard) renderInvoice(w http.ResponseWriter, r *http.Request, s *ses
 		app, err = store.GetApp(ctx, q, inv.AppID)
 		return err
 	})
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, inv.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, inv.OrgID) || inv.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -362,7 +362,7 @@ func (d *Dashboard) invoicePDF(w http.ResponseWriter, r *http.Request, s *sessio
 		inv, err = store.GetInvoice(r.Context(), q, r.PathValue("id"))
 		return
 	})
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(r.Context(), inv.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(r.Context(), inv.OrgID) || inv.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -400,7 +400,7 @@ func (d *Dashboard) renderCreditNote(w http.ResponseWriter, r *http.Request, s *
 		app, err = store.GetApp(ctx, q, cn.AppID)
 		return err
 	})
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, cn.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, cn.OrgID) || cn.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -430,7 +430,7 @@ func (d *Dashboard) creditNotePDF(w http.ResponseWriter, r *http.Request, s *ses
 		cn, err = store.GetCreditNote(r.Context(), q, r.PathValue("id"))
 		return
 	})
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(r.Context(), cn.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(r.Context(), cn.OrgID) || cn.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}

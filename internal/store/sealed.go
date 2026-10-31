@@ -48,6 +48,7 @@ var sealedSpecs = []sealedSpec{
 	{"tax_entities.dsc_enc", "tax_entities", "dsc_enc", []string{"id"}, func(k []string) []byte { return secrets.AADTaxEntityDSC(k[0]) }},
 	{"connector_kv.value_enc", "connector_kv", "value_enc", []string{"provider_account_id", "key"}, func(k []string) []byte { return secrets.AADConnectorKV(k[0], k[1]) }},
 	{"idempotency_keys.response_enc", "idempotency_keys", "response_enc", []string{"app_id", "mode", "key"}, func(k []string) []byte { return secrets.AADIdempotency(k[0], k[1], k[2]) }},
+	{"notification_channels.telegram_token_enc", "notification_channels", "telegram_token_enc", []string{"org_id", "mode"}, func(k []string) []byte { return secrets.AADNotificationTelegram(k[0], k[1]) }},
 }
 
 // SealedItems returns every sealed value in the database.

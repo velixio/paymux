@@ -8,8 +8,8 @@ import (
 	"github.com/velixio/paymux/internal/store/storetest"
 )
 
-// An endpoint is added for one mode (live unless the form says test), and the
-// page says which.
+// An endpoint is added only for the dashboard's active mode. A stale or
+// tampered form cannot create an endpoint in another mode.
 func TestWebhookEndpointModeFromDashboard(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
@@ -20,7 +20,7 @@ func TestWebhookEndpointModeFromDashboard(t *testing.T) {
 		for _, c := range []struct {
 			url, mode string
 			want      int
-		}{{"https://hooks.example.com/t", "test", 200}, {"https://hooks.example.com/l", "live", 200}, {"https://hooks.example.com/d", "", 200}, {"https://hooks.example.com/x", "staging", 400}} {
+		}{{"https://hooks.example.com/t", "test", 400}, {"https://hooks.example.com/l", "live", 200}, {"https://hooks.example.com/d", "", 200}, {"https://hooks.example.com/x", "staging", 400}} {
 			f := url.Values{"url": {c.url}, "csrf": {tok}}
 			if c.mode != "" {
 				f.Set("mode", c.mode)
@@ -28,6 +28,10 @@ func TestWebhookEndpointModeFromDashboard(t *testing.T) {
 			if r, _ := e.post(admin, page+"/endpoints", f); r.StatusCode != c.want {
 				t.Errorf("mode %q: %d", c.mode, r.StatusCode)
 			}
+		}
+		e.setMode(admin, "test")
+		if r, _ := e.post(admin, page+"/endpoints", url.Values{"url": {"https://hooks.example.com/t"}, "mode": {"test"}, "csrf": {tok}}); r.StatusCode != 200 {
+			t.Fatalf("test endpoint: %d", r.StatusCode)
 		}
 		got := map[string]string{}
 		eps, _ := e.out.ListEndpoints(ctx, app.ID)
@@ -44,6 +48,7 @@ func TestWebhookEndpointModeFromDashboard(t *testing.T) {
 			}
 		}
 		body := e.pageOK(admin, page+"?tab=webhooks")
-		has(t, body, "<th>Mode</th>", ">test<", ">live<", `name="mode"`)
+		has(t, body, "<th>Mode</th>", ">test<", `name="mode"`)
+		lacks(t, body, ">live<")
 	})
 }

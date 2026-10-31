@@ -11,7 +11,7 @@
 <form method="post" action="/dashboard/providers" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="connector" value="{{.Connector}}">
 <label>Name<input class="field" name="name" value="{{.Name}}" required maxlength="200"></label>
-<label>Mode<select class="field" name="mode"><option value="test"{{if eq .Mode "test"}} selected{{end}}>test</option><option value="live"{{if eq .Mode "live"}} selected{{end}}>live</option></select></label>
+<label>Mode<input class="field" value="{{.Mode}}" readonly><input type="hidden" name="mode" value="{{.Mode}}"><small class="muted">Accounts are isolated to the dashboard's current mode.</small></label>
 {{template "dash_provider_fields" $}}
 <label>Statement descriptor<input class="field" name="statement_descriptor" value="{{.StatementDescriptor}}"></label>
 <label>Provider GSTIN (for the fee input-tax-credit register)<input class="field" name="provider_gstin" value="{{.ProviderGSTIN}}"></label>
@@ -63,6 +63,13 @@
 </details>{{end}}
 {{end}}
 </section>
+<h3>Inbound webhook history</h3>
+<p class="muted">Raw provider payloads are retained according to the provider event retention policy. Use the event ID to trace matching logs and transactions.</p>
+{{range .Inbound}}<details class="delivery-attempt"><summary>{{.Received}} · {{.ProviderID}} · {{if .Verified}}verified{{else}}unverified{{end}}</summary>
+<p><code>{{.ID}}</code> · <a href="/dashboard/logs?q={{.ID}}">trace logs</a>{{if .Processed}} · processed {{.Processed}}{{end}}</p>{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+{{if .Matches}}<h4>Matched transactions</h4><ul>{{range .Matches}}<li>{{.Kind}} <code>{{.ID}}</code>{{if .ProviderID}} · provider <code>{{.ProviderID}}</code>{{end}}{{if .PaymentID}} · <a href="/dashboard/payments/{{.PaymentID}}">payment {{.PaymentID}}</a>{{end}}</li>{{end}}</ul>{{end}}
+{{if $.Prov.CanManage}}<h4>Payload</h4><pre class="payload"><code>{{.Payload}}</code></pre><h4>Headers</h4><pre class="payload"><code>{{.Headers}}</code></pre>{{end}}</details>
+{{else}}<p class="muted">No provider webhooks received in this mode.</p>{{end}}
 {{if and .CanManage (not .Unavailable)}}
 <h3>Settings</h3>
 <form method="post" action="/dashboard/providers/{{.ID}}" class="stack">

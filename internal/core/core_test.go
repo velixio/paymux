@@ -266,6 +266,22 @@ func TestCreatePaymentValidation(t *testing.T) {
 	})
 }
 
+func TestCreatePaymentHonoursAppCurrencies(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		if err := e.db.Write(ctx, func(tx store.Tx) error {
+			return store.SetAppAcceptedCurrencies(ctx, tx, "app_1", []string{"INR", "EUR"}, time.Now())
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.svc.CreatePayment(ctx, core.CreatePaymentInput{Scope: e.scope, Amount: 100, Currency: "USD"}); !errors.Is(err, core.ErrCurrencyNotAccepted) {
+			t.Fatalf("USD should be refused: %v", err)
+		}
+		if _, err := e.svc.CreatePayment(ctx, core.CreatePaymentInput{Scope: e.scope, Amount: 100, Currency: "EUR"}); err != nil {
+			t.Fatalf("EUR should be accepted: %v", err)
+		}
+	})
+}
+
 func TestGetPaymentIsScoped(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
 		p := e.payment(100)

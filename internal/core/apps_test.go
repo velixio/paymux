@@ -3,6 +3,7 @@ package core_test
 import (
 	"errors"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -40,6 +41,17 @@ func TestCreateAppAndKeys(t *testing.T) {
 		if err != nil || !strings.HasPrefix(app.ID, "app_") || app.OrgID != store.DefaultOrgID || app.Slug != "yupcha" {
 			t.Fatalf("app %+v %v", app, err)
 		}
+		currencies, err := e.svc.CreateApp(ctx, actor, core.OrgScope{OrgID: store.DefaultOrgID}, core.CreateAppInput{
+			Name: "Currencies", Slug: "currencies", AcceptedCurrencies: []string{" usd ", "INR", "USD"},
+		})
+		if err != nil || !slices.Equal(currencies.AcceptedCurrencies, []string{"USD", "INR"}) {
+			t.Fatalf("currencies %+v: %v", currencies.AcceptedCurrencies, err)
+		}
+		if _, err := e.svc.CreateApp(ctx, actor, core.OrgScope{OrgID: store.DefaultOrgID}, core.CreateAppInput{
+			Name: "Bad currency", Slug: "bad-currency", AcceptedCurrencies: []string{"ZZZ"},
+		}); !errors.Is(err, core.ErrInvalid) {
+			t.Fatalf("unsupported currency: %v", err)
+		}
 		if _, err := e.svc.CreateApp(ctx, actor, core.OrgScope{OrgID: store.DefaultOrgID}, core.CreateAppInput{Name: "Dup", Slug: "yupcha"}); !errors.Is(err, core.ErrConflict) {
 			t.Errorf("duplicate slug: %v", err)
 		}
@@ -67,7 +79,7 @@ func TestCreateAppAndKeys(t *testing.T) {
 		if _, _, err := e.svc.CreateAPIKey(ctx, actor, core.OrgScope{OrgID: store.DefaultOrgID}, "app_nope", "test"); !errors.Is(err, core.ErrNotFound) {
 			t.Errorf("missing app: %v", err)
 		}
-		if e.count("SELECT COUNT(*) FROM audit_log WHERE action IN ('app.create','api_key.create')") != 2 {
+		if e.count("SELECT COUNT(*) FROM audit_log WHERE action IN ('app.create','api_key.create')") != 3 {
 			t.Error("app and key creation must be audited")
 		}
 		if e.count("SELECT COUNT(*) FROM audit_log WHERE after LIKE ?", "%"+tok+"%") != 0 {

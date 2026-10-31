@@ -11,6 +11,12 @@ func AADEndpointSecret(endpointID string) []byte {
 	return []byte("webhook_endpoints.signing_secret:" + endpointID)
 }
 
+// AADNotificationTelegram binds an encrypted Telegram bot token to one
+// organization's mode-specific notification configuration.
+func AADNotificationTelegram(orgID, mode string) []byte {
+	return []byte("notification_channels.telegram_token:" + orgID + ":" + mode)
+}
+
 // AADProviderConfig is the additional data of a provider account's sealed config.
 func AADProviderConfig(accountID string) []byte {
 	return []byte("provider_accounts.config_enc:" + accountID)

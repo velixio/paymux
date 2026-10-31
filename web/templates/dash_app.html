@@ -22,7 +22,7 @@
 </table></div>
 {{if .CanKeys}}<form method="post" action="/dashboard/apps/{{.ID}}/keys" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
-<select name="mode" class="field" aria-label="Key mode"><option value="test">test</option><option value="live">live</option></select>
+<input type="hidden" name="mode" value="{{$.Mode}}"><p class="muted">Creates a key for <strong>{{$.Mode}}</strong> mode.</p>
 <fieldset><legend>Scopes (none ticked: full access, except payouts, which must be ticked)</legend>
 {{range .ScopeChoices}}<label><input type="checkbox" name="scope" value="{{.}}"> {{.}}</label>
 {{end}}</fieldset>
@@ -32,7 +32,7 @@
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <h4>Rotate</h4>
 <p class="muted">Creates a new key (same scopes unless you tick some) and makes the current keys of that mode stop working after the grace period. Both work meanwhile.</p>
-<select name="mode" class="field" aria-label="Mode to rotate"><option value="test">test</option><option value="live">live</option></select>
+<input type="hidden" name="mode" value="{{$.Mode}}"><p class="muted">Rotates keys for <strong>{{$.Mode}}</strong> mode.</p>
 <input class="field" name="grace_hours" type="number" min="1" max="2160" value="24" aria-label="Grace period in hours">
 <button class="btn" type="submit">Rotate API key</button>
 </form>{{end}}
@@ -43,17 +43,28 @@
 <thead><tr><th>Endpoint</th><th>Mode</th><th>Events</th><th>Status</th><th></th></tr></thead>
 <tbody>{{range .Endpoints}}<tr><td>{{.URL}}</td><td><span class="mode mode-{{.Mode}}">{{.Mode}}</span></td><td>{{if .Events}}{{.Events}}{{else}}all{{end}}</td><td>{{if .Enabled}}enabled{{else}}disabled{{end}}</td>
 <td><a href="/dashboard/apps/{{$.App.ID}}?tab=webhooks&amp;endpoint={{.ID}}">Deliveries</a>
-{{if and .Enabled $.App.CanEndpoints}}<form class="inline" method="post" action="/dashboard/apps/{{$.App.ID}}/endpoints/{{.ID}}/disable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="linkbtn" type="submit">Disable</button></form>{{end}}</td></tr>
+{{if and .Enabled $.App.CanEndpoints}}<form class="inline" method="post" action="/dashboard/apps/{{$.App.ID}}/endpoints/{{.ID}}/disable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="linkbtn danger" type="submit">Delete</button></form>{{end}}</td></tr>
 {{else}}<tr><td colspan="5" class="muted">No webhook endpoints.</td></tr>{{end}}</tbody>
 </table></div>
 {{if .CanEndpoints}}<form method="post" action="/dashboard/apps/{{.ID}}/endpoints" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <input class="field" name="url" type="url" placeholder="https://example.com/webhooks" required aria-label="https://example.com/webhooks">
-<select class="field" name="mode" aria-label="Mode: the endpoint receives the events of this mode only"><option value="live">Live events</option><option value="test">Test events</option></select>
+<input type="hidden" name="mode" value="{{$.Mode}}"><p class="muted">Receives <strong>{{$.Mode}}</strong> events only.</p>
 <input class="field" name="events" placeholder="Event types, comma separated (blank = all)" aria-label="Event types, comma separated (blank = all)">
 <button class="btn" type="submit">Add endpoint</button>
 </form>{{end}}
 {{if .EndpointID}}
+{{with .EndpointEdit}}<h3>Configure endpoint</h3>
+<form method="post" action="/dashboard/apps/{{$.App.ID}}/endpoints/{{.ID}}" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Endpoint URL<input class="field" name="url" type="url" value="{{.URL}}" required></label>
+<label>Events<input class="field" name="events" value="{{.Events}}" placeholder="Blank sends all events"><small class="muted">Comma-separated event types.</small></label>
+<label><input type="checkbox" name="enabled" value="1"{{if .Enabled}} checked{{end}}> Enabled</label>
+<button class="btn" type="submit">Save endpoint</button>
+</form>
+<form method="post" action="/dashboard/apps/{{$.App.ID}}/endpoints/{{.ID}}/secret" class="inline">
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn secondary" type="submit">Generate new signing secret</button>
+</form>{{end}}
 <h3>Deliveries</h3>
 <div class="table-scroll"><table class="grid">
 <thead><tr><th>Event</th><th>Status</th><th>Attempts</th><th>Last result</th><th>Updated</th>{{if .CanReplay}}<th></th>{{end}}</tr></thead>
@@ -61,6 +72,11 @@
 {{if $.App.CanReplay}}<td><form class="inline" method="post" action="/dashboard/deliveries/{{.ID}}/replay"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Path}}"><button class="linkbtn" type="submit">Replay</button></form></td>{{end}}</tr>
 {{else}}<tr><td colspan="6" class="muted">No deliveries yet.</td></tr>{{end}}</tbody>
 </table></div>
+{{if .DeliveryAttempts}}<h3>Delivery attempt history</h3>
+<p class="muted">Exact JSON sent and the bounded response returned for each attempt. Signing headers and secrets are never stored here.</p>
+{{range .DeliveryAttempts}}<details class="delivery-attempt"><summary>{{.Created}} · delivery {{.DeliveryID}} · attempt {{.Attempt}} · {{if .Status}}HTTP {{.Status}}{{else}}no response{{end}}</summary>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}<h4>Request payload</h4><pre class="payload"><code>{{.Request}}</code></pre><h4>Response</h4><pre class="payload"><code>{{if .Response}}{{.Response}}{{else}}(empty){{end}}</code></pre>
+</details>{{end}}{{end}}
 {{end}}
 {{end}}
 
@@ -70,6 +86,7 @@
 <label>Display name<input class="field" name="display_name" value="{{.Brand.Name}}" maxlength="100"></label>
 <label>Accent colour<input class="field" name="accent" value="{{.Brand.Accent}}" placeholder="#2563eb"></label>
 <label>Default return URL<input class="field" name="return_url" type="url" value="{{.Brand.ReturnURL}}"></label>
+<label>Accepted currencies<input class="field" name="accepted_currencies" value="{{.Brand.Currencies}}" placeholder="INR, USD, EUR" autocomplete="off"><small class="muted">Comma-separated ISO currency codes. Leave blank to accept any currency supported by the selected provider route.</small></label>
 {{if .Brand.HasLogo}}<p>Current logo:<br><img src="/dashboard/apps/{{.ID}}/logo" alt="Logo" class="logo-preview"></p>
 <label><input type="checkbox" name="remove_logo" value="1"> Remove the logo</label>{{end}}
 <label>Logo (PNG or JPEG, up to 512 KB)<input class="field" type="file" name="logo" accept="image/png,image/jpeg"></label>

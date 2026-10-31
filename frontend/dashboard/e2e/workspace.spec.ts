@@ -21,7 +21,7 @@ test("login, overview shows revenue table, switch to 12M shows monthly rows, CSV
 
   const table = page.locator("#revenue-data");
   await expect(table).toBeAttached();
-  await expect(table).toHaveAttribute("data-currency", "INR");
+  await expect(table).toHaveAttribute("data-currency", "USD");
   await expect(table).toHaveAttribute("data-bucket", "day"); // 30D is daily
   expect(await table.locator("tr[data-start]").count()).toBeGreaterThanOrEqual(
     30,
@@ -34,14 +34,27 @@ test("login, overview shows revenue table, switch to 12M shows monthly rows, CSV
   );
   const rows = page.locator("#revenue-data tr[data-start]");
   expect(await rows.count()).toBeGreaterThanOrEqual(12);
-  // the seeded mid-month payments land in their own month, and USD is converted
+  // USD is the default headline, and the native-currency breakdown remains
+  // visible below it instead of combining currencies through FX.
+  await expect(
+    page.getByRole("heading", { name: "Currency details" }),
+  ).toBeVisible();
+  await expect(page.locator(".currency-breakdown")).toContainText("INR");
+  await expect(page.locator(".currency-breakdown")).toContainText("USD");
+
+  // Select INR to inspect the denser seeded INR history.
+  await page.goto("/dashboard/overview?range=12m&currency=INR");
+  await expect(page.locator("#revenue-data")).toHaveAttribute(
+    "data-currency",
+    "INR",
+  );
   const gross = await rows.evaluateAll((trs) =>
     trs.map((tr) => Number(tr.getAttribute("data-gross"))),
   );
   expect(gross.filter((g) => g > 0).length).toBeGreaterThanOrEqual(11);
   await expect(page.locator("#revenue-data")).toHaveAttribute(
     "data-converted",
-    "true",
+    "false",
   );
 
   // The CSV link carries the current query (12M); fetch it with the session.
@@ -149,4 +162,45 @@ test("navigating the workspace reports no Content Security Policy violation", as
     }
   }
   expect(violations).toEqual([]);
+});
+
+test("organization settings stay usable at phone width", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await login(page);
+  await page.goto("/dashboard/settings");
+  const content = visible(page);
+  await expect(
+    content.getByRole("heading", { name: "Organization settings" }),
+  ).toBeVisible();
+  await content
+    .getByRole("link", { name: "Notifications", exact: true })
+    .click();
+  await expect(content.locator("#notifications")).toBeVisible();
+  await expect(
+    content.getByRole("textbox", { name: "Notification email" }),
+  ).toBeVisible();
+
+  await content.getByRole("link", { name: "Routing", exact: true }).click();
+  await expect(
+    content.getByRole("heading", { name: "Payment routing" }),
+  ).toBeVisible();
+  await expect(
+    content.locator(".setting-nav a[aria-current='page']"),
+  ).toHaveCount(1);
+  const rules = content.locator("details.routing-rule");
+  await expect(rules).toHaveCount(4);
+  await expect(rules.first()).not.toHaveAttribute("open", "");
+
+  const collapsedHeight = await content.evaluate((node) => node.scrollHeight);
+  expect(collapsedHeight).toBeLessThan(2000);
+
+  await rules.first().locator("summary").click();
+  await expect(rules.first().getByLabel("Period")).toBeVisible();
+  await expect(rules.first().getByLabel("Sales count")).toBeVisible();
+  await expect(rules.first().getByLabel("Captured amount")).toBeVisible();
+
+  const overflow = await content.evaluate(
+    (node) => node.scrollWidth - node.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
 });

@@ -1382,6 +1382,58 @@ table.grid .num {
   font-feature-settings: "tnum";
 }
 
+table.payments-grid th,
+table.payments-grid td {
+  padding: 6px 10px;
+  vertical-align: middle;
+  line-height: 1.2;
+}
+.payments-grid .num {
+  text-align: center;
+  white-space: nowrap;
+}
+.payment-method {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.payment-method-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+.payment-method-copy > span,
+.payment-method-copy > small {
+  white-space: nowrap;
+}
+.provider-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  background: var(--color-nav);
+  color: inherit;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  cursor: help;
+}
+.provider-logo:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.provider-logo-razorpay { background: #2b6ef3; border-color: #2b6ef3; color: #fff; }
+.provider-logo-whop { background: #ff6243; border-color: #ff6243; color: #171717; }
+.provider-logo-stripe { background: #635bff; border-color: #635bff; color: #fff; }
+.provider-logo-payu { background: #98c33a; border-color: #98c33a; color: #10210b; }
+.provider-logo-cashfree { background: #6938ef; border-color: #6938ef; color: #fff; }
+.provider-logo-zoho { background: #e74235; border-color: #e74235; color: #fff; }
+
 .theme-cards {
   list-style: none;
   margin: 0 0 var(--space-4, 24px);
@@ -1464,4 +1516,492 @@ table.grid .num {
 }
 .theme-form .seed .check {
   white-space: nowrap;
+}
+
+/* Settings, webhook history and provider event inspection. */
+.settings-panel,
+.routing-disclosure,
+.delivery-attempt {
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.settings-panel,
+.routing-disclosure {
+  margin: 24px 0;
+  padding: 20px;
+}
+.settings-panel > :first-child,
+.routing-disclosure > :first-child {
+  margin-top: 0;
+}
+.routing-disclosure > summary,
+.delivery-attempt > summary {
+  cursor: pointer;
+  font-weight: 650;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.delivery-attempt {
+  margin: 12px 0;
+  padding: 0 16px 16px;
+  overflow: hidden;
+}
+.payload {
+  max-height: 28rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  background: var(--color-bg);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.linkbtn.danger {
+  color: #b42318;
+}
+@media (max-width: 640px) {
+  .settings-panel,
+  .routing-disclosure {
+    padding: 16px;
+  }
+}
+
+/* Organization settings: sectioned navigation and compact routing editor. */
+.settings-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+.settings-header h1,
+.settings-section-heading h2,
+.route-tester h3 {
+  margin: 0;
+}
+.settings-header .muted,
+.settings-section-heading .muted {
+  margin: 6px 0 0;
+}
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.settings-header .setting-scope {
+  display: grid;
+  gap: 2px;
+  max-width: 300px;
+  margin: 0;
+  border: 1px solid var(--color-line);
+  border-left: 3px solid var(--color-accent);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--surface);
+  font-size: 13px;
+}
+.settings-header .setting-scope strong {
+  color: var(--color-fg);
+  text-transform: capitalize;
+}
+.setting-nav {
+  border-bottom: 1px solid var(--color-line);
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin: 24px 0 32px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.setting-nav a {
+  position: relative;
+  flex: none;
+  border: 0;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  padding: 12px 14px;
+  color: var(--color-muted);
+  font-weight: 600;
+}
+.setting-nav a:hover,
+.setting-nav a:focus-visible {
+  background: var(--surface);
+  color: var(--color-fg);
+  box-shadow: none;
+}
+.setting-nav a.active {
+  color: var(--color-fg);
+}
+.setting-nav a.active::after {
+  position: absolute;
+  right: 10px;
+  bottom: -1px;
+  left: 10px;
+  height: 2px;
+  background: var(--color-accent);
+  content: "";
+}
+.settings-error {
+  margin: -16px 0 24px;
+}
+.settings-section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+.settings-section-heading h2 {
+  font-size: 24px;
+}
+.routing-stats {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 150px;
+  border-left: 1px solid var(--color-line);
+  padding-left: 20px;
+}
+.routing-stats strong {
+  text-align: right;
+  text-transform: capitalize;
+}
+.routing-stats span {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.settings-routing-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  align-items: start;
+  gap: 24px;
+}
+.routing-guide,
+.route-tester,
+.notification-panel {
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.routing-guide {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(240px, 1.2fr);
+  gap: 24px;
+  margin-bottom: 12px;
+  padding: 16px 18px;
+}
+.routing-guide div {
+  display: grid;
+  gap: 3px;
+}
+.routing-guide span,
+.routing-guide p {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.routing-guide p {
+  margin: 0;
+}
+.routing-rule {
+  margin-bottom: 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: clip;
+}
+.routing-rule > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, auto);
+  align-items: center;
+  gap: 16px;
+  min-height: 64px;
+  padding: 10px 16px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+.routing-rule > summary:hover {
+  background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+}
+.routing-rule > summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+.routing-rule[open] > summary {
+  border-bottom: 1px solid var(--color-line);
+  background: color-mix(in srgb, var(--color-accent) 4%, transparent);
+}
+.routing-rule-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.routing-rule-title > span:last-child {
+  display: grid;
+  min-width: 0;
+}
+.routing-rule-title strong,
+.routing-rule-title small,
+.routing-rule-outcome {
+  overflow-wrap: anywhere;
+}
+.routing-rule-title small {
+  margin-top: 2px;
+  color: var(--color-muted);
+}
+.rule-index {
+  display: inline-grid;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--color-line);
+  border-radius: 50%;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.routing-rule-outcome {
+  justify-self: end;
+  color: var(--color-muted);
+  font-size: 12px;
+  text-align: right;
+}
+.routing-rule-new {
+  border-style: dashed;
+}
+.routing-rule-new .rule-index {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  font-size: 18px;
+}
+.routing-rule-body {
+  padding: 8px 20px 20px;
+}
+.routing-rule-body fieldset,
+.notification-form fieldset {
+  margin: 14px 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-line);
+  padding: 16px 0 0;
+}
+.routing-rule-body legend,
+.notification-form legend {
+  padding-right: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.routing-rule-body legend span {
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.routing-rule-body label,
+.notification-form label,
+.route-tester label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.routing-rule-body fieldset > label + label {
+  margin-top: 12px;
+}
+.routing-rule-body .remove-rule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--color-muted);
+  font-weight: 500;
+}
+.routing-rule-body .remove-rule input {
+  flex: none;
+}
+.settings-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.settings-field-grid.compact {
+  grid-template-columns: minmax(80px, 0.45fr) minmax(180px, 1.5fr) minmax(120px, 0.7fr);
+}
+.routing-rule-body .field,
+.notification-form .field,
+.route-tester .field {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  color: var(--color-fg);
+}
+.settings-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 18px;
+}
+.routing-save {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.route-tester {
+  position: sticky;
+  top: 20px;
+  padding: 20px;
+}
+.route-tester > div:first-child {
+  margin-bottom: 18px;
+}
+.route-tester h3 {
+  font-size: 18px;
+}
+.route-tester .muted {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+.route-tester .stack {
+  gap: 14px;
+}
+.route-tester .btn {
+  width: 100%;
+}
+.route-result {
+  margin-top: 18px;
+  border-top: 1px solid var(--color-line);
+  padding-top: 16px;
+}
+.route-result p {
+  margin: 0 0 8px;
+}
+.routing-readonly {
+  display: grid;
+  gap: 8px;
+}
+.routing-readonly article {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--surface);
+  font-size: 13px;
+}
+.routing-readonly article div {
+  display: grid;
+  gap: 2px;
+}
+.routing-readonly article span {
+  color: var(--color-muted);
+}
+.notification-panel {
+  max-width: 760px;
+  padding: 24px;
+}
+.notification-form fieldset:first-of-type {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}
+.option-row {
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  margin: 14px 0 10px;
+  color: var(--color-fg) !important;
+}
+.option-row input {
+  margin-top: 3px;
+}
+.option-row span {
+  display: grid;
+  gap: 2px;
+}
+.option-row small {
+  color: var(--color-muted);
+  font-weight: 400;
+}
+
+@media (max-width: 980px) {
+  .settings-routing-layout {
+    grid-template-columns: 1fr;
+  }
+  .route-tester {
+    position: static;
+  }
+}
+@media (max-width: 640px) {
+  .settings-header,
+  .settings-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .settings-header .setting-scope {
+    max-width: none;
+  }
+  .setting-nav {
+    margin: 18px -12px 24px;
+    padding: 0 12px;
+  }
+  .setting-nav a {
+    min-height: 44px;
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+  .routing-stats {
+    grid-template-columns: auto 1fr auto 1fr;
+    border-top: 1px solid var(--color-line);
+    border-left: 0;
+    padding-top: 12px;
+    padding-left: 0;
+  }
+  .routing-stats strong {
+    text-align: left;
+  }
+  .routing-guide {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .routing-rule > summary {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    min-height: 72px;
+  }
+  .routing-rule-outcome {
+    justify-self: start;
+    padding-left: 42px;
+    text-align: left;
+  }
+  .routing-rule-body {
+    padding: 6px 16px 18px;
+  }
+  .settings-field-grid,
+  .settings-field-grid.compact {
+    grid-template-columns: 1fr;
+  }
+  .settings-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .settings-actions .btn {
+    width: 100%;
+  }
+  .routing-readonly article {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .notification-panel,
+  .route-tester {
+    padding: 16px;
+  }
 }

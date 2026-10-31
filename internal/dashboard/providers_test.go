@@ -64,6 +64,7 @@ func TestProviderCreateRendersTheSchemaForm(t *testing.T) {
 			}
 		}
 		admin := e.roleClient("admin")
+		e.setMode(admin, "test")
 		list := e.pageOK(admin, "/dashboard/providers")
 		has(t, list, st.Name, `/dashboard/providers/new?connector=`+st.Name)
 		body := e.pageOK(admin, "/dashboard/providers/new?connector="+st.Name)
@@ -164,6 +165,7 @@ func TestProviderSecretsAreWriteOnly(t *testing.T) {
 			t.Fatal(err)
 		}
 		admin := e.roleClient("admin")
+		e.setMode(admin, "test")
 		page := "/dashboard/providers/" + pa.ID
 		body := e.pageOK(admin, page)
 		has(t, body, `value="key_123"`, `name="cfg_key_secret"`, `placeholder="`, "leave blank to keep", `<option value="in" selected`, `name="cfg_test_mode" value="1" checked`, `value="2"`)
@@ -250,6 +252,7 @@ func TestProviderSecretsAreWriteOnly(t *testing.T) {
 		// read-only users see no form and no secrets
 		for _, role := range []string{"viewer", "operator"} {
 			c := e.roleClient(role)
+			e.setMode(c, "test")
 			vb := e.pageOK(c, page)
 			lacks(t, vb, `action="`+page+`"`, "n3w-secret", `name="cfg_key_secret"`)
 			has(t, vb, "Renamed")
@@ -386,7 +389,7 @@ func TestProviderObjectPropertyIsEditedAsJSON(t *testing.T) {
 		body := e.pageOK(admin, "/dashboard/providers/new?connector="+st.Name)
 		has(t, body, `<textarea`, `name="cfg_hosts"`)
 		form := func(hosts string) url.Values {
-			return url.Values{"connector": {st.Name}, "name": {"Remote"}, "mode": {"test"}, "cfg_key_id": {"k"}, "cfg_hosts": {hosts},
+			return url.Values{"connector": {st.Name}, "name": {"Remote"}, "mode": {"live"}, "cfg_key_id": {"k"}, "cfg_hosts": {hosts},
 				"currency": {"INR"}, "purpose": {"one_time"}, "csrf": {csrfOf(t, body)}}
 		}
 		for name, bad := range map[string]string{"not json": `{`, "array": `["https://a.example.com"]`, "string": `"x"`} {

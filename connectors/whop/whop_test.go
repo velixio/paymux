@@ -65,6 +65,13 @@ func TestGoldenSignature(t *testing.T) {
 	}
 }
 
+func TestSnapshotKeepsCardFactsWithoutPaymentMethod(t *testing.T) {
+	snapshot, err := (paymentEntity{Currency: "USD", Total: "4.99", CardBrand: "visa", CardLast4: "5155"}).snapshot()
+	if err != nil || snapshot.MethodDetails.Card == nil || snapshot.MethodDetails.Card.Network != "visa" || snapshot.MethodDetails.Card.Last4 != "5155" {
+		t.Fatalf("snapshot %+v: %v", snapshot, err)
+	}
+}
+
 // fake is a Whop v1 API.
 type fake struct {
 	mu           sync.Mutex
@@ -90,6 +97,7 @@ func (f *fake) payment() map[string]any {
 	}
 	return map[string]any{"id": "pay_w1", "status": status, "substatus": f.substatus, "total": 4.99, "currency": "usd",
 		"checkout_configuration_id": "ch_1", "refunded_amount": json.Number(f.refunded), "payment_method_type": "card",
+		"card_brand": "mastercard", "card_last4": "4242",
 		"metadata": map[string]string{"ref": "pay_ref_01"}, "created_at": "2026-10-17T11:59:00Z"}
 }
 
@@ -112,7 +120,13 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch key {
 	case "POST /api/v1/checkout_configurations":
-		write(w, 200, map[string]any{"id": "ch_1", "purchase_url": "https://whop.com/checkout/ch_1", "plan": map[string]any{"id": "plan_1"}})
+		var in map[string]any
+		_ = json.Unmarshal(b, &in)
+		if in["variant"] == nil && in["variant_id"] == nil {
+			write(w, 400, map[string]any{"error": map[string]any{"message": "variant_id is required for payment mode"}})
+			return
+		}
+		write(w, 200, map[string]any{"id": "ch_1", "purchase_url": "https://whop.com/checkout/ch_1", "variant": map[string]any{"id": "plan_1"}})
 	case "GET /api/v1/payments":
 		if r.URL.Query().Get("checkout_configuration_id") != "ch_1" {
 			write(w, 200, map[string]any{"data": []any{}})
@@ -124,7 +138,7 @@ func (f *fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		write(w, 200, map[string]any{"data": d})
 	case "GET /api/v1/checkout_configurations/ch_1":
-		write(w, 200, map[string]any{"id": "ch_1", "plan": map[string]any{"initial_price": 4.99, "currency": "usd"}})
+		write(w, 200, map[string]any{"id": "ch_1", "variant": map[string]any{"initial_price": 4.99, "currency": "usd"}})
 	case "GET /api/v1/payments/pay_w1":
 		write(w, 200, f.payment())
 	case "POST /api/v1/payments/pay_w1/refund":
@@ -237,20 +251,26 @@ func TestCreateCheckoutBodyAndRedirect(t *testing.T) {
 		t.Fatalf("res = %+v", res)
 	}
 	var body struct {
-		Plan struct {
-			CompanyID    string      `json:"company_id"`
-			PlanType     string      `json:"plan_type"`
+		AccountID string `json:"account_id"`
+		Variant   struct {
+			AccountID    string      `json:"account_id"`
+			BillingType  string      `json:"billing_type"`
 			Currency     string      `json:"currency"`
 			InitialPrice json.Number `json:"initial_price"`
-		} `json:"plan"`
+			Title        string      `json:"title"`
+		} `json:"variant"`
 		Metadata    map[string]string `json:"metadata"`
 		RedirectURL string            `json:"redirect_url"`
 	}
 	_ = json.Unmarshal(f.bodies["POST /api/v1/checkout_configurations"], &body)
-	if body.Plan.CompanyID != "biz_1" || body.Plan.PlanType != "one_time" || body.Plan.Currency != "bdt" || body.Plan.InitialPrice.String() != "123.45" ||
+	if body.AccountID != "biz_1" || body.Variant.AccountID != "biz_1" || body.Variant.BillingType != "one_time" || body.Variant.Currency != "bdt" || body.Variant.InitialPrice.String() != "123.45" || body.Variant.Title != "Payment" ||
 		body.Metadata["pay"] != "pay_01" || body.Metadata["att"] != "att_01" || body.Metadata["app"] != "app_01" || body.Metadata["ref"] != "pay_ref_01" ||
 		body.RedirectURL != "https://pay.example.com/return/acc/pay_ref_01" {
 		t.Errorf("body = %s", f.bodies["POST /api/v1/checkout_configurations"])
+	}
+	h := f.hdr["POST /api/v1/checkout_configurations"]
+	if h.Get("Api-Version-Date") != apiVersionDate || h.Get("Idempotency-Key") != "pay_ref_01" {
+		t.Errorf("checkout headers = %v", h)
 	}
 	for _, r := range []connector.CheckoutRequest{{ProviderRef: "r", Amount: 1, Currency: "ZZZ"}, {ProviderRef: "", Amount: 1, Currency: "USD"}, {ProviderRef: "r", Currency: "USD"}} {
 		if _, err := c.CreateCheckout(context.Background(), r); err == nil {
@@ -348,7 +368,8 @@ func TestFetchPaymentByOrder(t *testing.T) {
 	}
 	f.substatus = "succeeded"
 	snap, err = c.FetchPayment(context.Background(), connector.PaymentRef{ProviderOrderID: "ch_1"})
-	if err != nil || snap.Status != connector.PaymentSucceeded || snap.ProviderPaymentID != "pay_w1" || snap.ProviderRef != "pay_ref_01" {
+	if err != nil || snap.Status != connector.PaymentSucceeded || snap.ProviderPaymentID != "pay_w1" || snap.ProviderRef != "pay_ref_01" ||
+		snap.MethodDetails.Card == nil || snap.MethodDetails.Card.Network != "mastercard" || snap.MethodDetails.Card.Last4 != "4242" {
 		t.Fatalf("snap=%+v err=%v", snap, err)
 	}
 	if _, err := c.FetchPayment(context.Background(), connector.PaymentRef{}); err == nil {

@@ -1,6 +1,7 @@
 package subscriptions_test
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -27,7 +28,7 @@ func TestRenewalCallsCarryTheirIDsForTheErrorLog(t *testing.T) {
 			if ci.IDs["subscription_id"] != sub.ID || ci.IDs["mandate_id"] == "" || ci.IDs["provider_account_id"] == "" || !strings.HasPrefix(ci.IDs["job_id"], "job_") {
 				t.Errorf("%s ran under %v", ci.Call, ci.IDs)
 			}
-			if ci.Call == "charge" && (!strings.HasPrefix(ci.IDs["attempt_id"], "att_") || !strings.HasPrefix(ci.IDs["payment_id"], "pay_")) {
+			if ci.Call == "charge" && (!strings.HasPrefix(ci.IDs["attempt_id"], "att_") || !regexp.MustCompile(`^[0-9A-Za-z]{14}$`).MatchString(ci.IDs["payment_id"])) {
 				t.Errorf("the charge lacks its attempt and payment: %v", ci.IDs)
 			}
 		}

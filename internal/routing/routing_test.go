@@ -204,3 +204,46 @@ func TestSubscriptionCurrenciesLimitTheSubscriptionPurposeOnly(t *testing.T) {
 		t.Errorf("a USD subscription restricted to Razorpay must find no route, got %v", err)
 	}
 }
+
+func TestRulePeriodLimitsFallThrough(t *testing.T) {
+	maxSales, maxAmount := int64(2), int64(5_000)
+	cfg := Config{
+		Org: []Rule{
+			{Name: "limited", When: When{Currency: []string{"INR"}}, Action: Route("razorpay"), Limit: &Limit{Period: "daily", MaxSales: &maxSales, MaxAmount: &maxAmount}},
+			{Name: "overflow", When: When{Currency: []string{"INR"}}, Action: Route("payu")},
+		},
+	}
+	base := Request{Currency: "INR", Amount: 1_000, Purpose: PurposeOneTime}
+	base.Usage = func(accounts []string, period string) (int64, int64, error) {
+		if !reflect.DeepEqual(accounts, []string{"pa_rzp"}) || period != "daily" {
+			t.Fatalf("usage called for %v/%q", accounts, period)
+		}
+		return 1, 3_000, nil
+	}
+	if got, err := Choose(cfg, base, accts(), nil); err != nil || got.Rule != "limited" {
+		t.Fatalf("under limit: %+v %v", got, err)
+	}
+	base.Amount = 2_001
+	if got, err := Choose(cfg, base, accts(), nil); err != nil || got.Rule != "overflow" || !reflect.DeepEqual(got.Accounts, []string{"pa_payu"}) {
+		t.Fatalf("amount overflow: %+v %v", got, err)
+	}
+	base.Amount = 1_000
+	base.Usage = func([]string, string) (int64, int64, error) { return 2, 3_000, nil }
+	if got, err := Choose(cfg, base, accts(), nil); err != nil || got.Rule != "overflow" {
+		t.Fatalf("sales overflow: %+v %v", got, err)
+	}
+}
+
+func TestPeriodStartUTC(t *testing.T) {
+	now := time.Date(2026, 10, 31, 18, 30, 0, 0, time.FixedZone("IST", 5*60*60+30*60))
+	for period, want := range map[string]time.Time{
+		"daily":   time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC),
+		"weekly":  time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC),
+		"monthly": time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+	} {
+		got, err := PeriodStart(period, now)
+		if err != nil || !got.Equal(want) {
+			t.Errorf("%s: %v, want %v", period, got, want)
+		}
+	}
+}

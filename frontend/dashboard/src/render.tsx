@@ -38,6 +38,11 @@ import { useRuntime, WorkspaceLink } from "./runtime";
 const ThemePreview = lazy(() => import("./theme-preview"));
 const ThemeEditor = lazy(() => import("./theme-editor"));
 
+// Filter results replace the server-rendered form. Remember that an automatic
+// search initiated the navigation so the replacement input can retain the
+// user's keyboard focus and caret instead of interrupting their typing.
+let pendingAutoSearchFocus: { action: string; restore: boolean } | null = null;
+
 // The theme form is plain and complete on its own. This keeps its DOM in place
 // (so nothing typed is lost when the editor chunk arrives) and adds the live
 // preview and contrast table beside it once the chunk has loaded.
@@ -95,6 +100,7 @@ function Form({ node }: { node: ViewNode }) {
   const { submit, pending, markDirty } = useRuntime();
   const form = useRef<HTMLFormElement>(null);
   const baseline = useRef<string | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [dirty, setDirty] = useState(false);
   const fingerprint = (el: HTMLFormElement) =>
     JSON.stringify(
@@ -108,12 +114,28 @@ function Form({ node }: { node: ViewNode }) {
   useEffect(() => {
     const el = form.current;
     return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
       if (el) markDirty(el, false);
     };
   }, [markDirty]);
   const filterForm =
     (node.attrs.class ?? "").split(/\s+/).includes("filters") &&
     (node.attrs.method ?? "get").toLowerCase() === "get";
+  const autoSearch = filterForm && node.attrs["data-auto-search"] === "true";
+  useEffect(() => {
+    const el = form.current;
+    if (!autoSearch || !el || pendingAutoSearchFocus?.action !== el.action)
+      return;
+    const restore = pendingAutoSearchFocus.restore;
+    pendingAutoSearchFocus = null;
+    if (!restore) return;
+    const input = el.querySelector<HTMLInputElement>(
+      'input[type="search"][name="q"]',
+    );
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(input.value.length, input.value.length);
+  }, [autoSearch, node]);
   return (
     <form
       {...attributes(node)}
@@ -123,10 +145,48 @@ function Form({ node }: { node: ViewNode }) {
       }}
       aria-busy={pending}
       data-dirty={dirty || undefined}
+      onBlurCapture={(event) => {
+        if (
+          pendingAutoSearchFocus?.action === event.currentTarget.action &&
+          event.target instanceof HTMLInputElement &&
+          event.target.type === "search" &&
+          event.relatedTarget
+        ) {
+          pendingAutoSearchFocus.restore = false;
+        }
+      }}
       onInput={(event) => {
         const changed = fingerprint(event.currentTarget) !== baseline.current;
         setDirty(changed);
         markDirty(event.currentTarget, changed);
+        const target = event.target;
+        if (
+          autoSearch &&
+          target instanceof HTMLInputElement &&
+          target.type === "search" &&
+          target.name === "q"
+        ) {
+          if (searchTimer.current) clearTimeout(searchTimer.current);
+          searchTimer.current = setTimeout(() => {
+            searchTimer.current = null;
+            const current = form.current;
+            if (
+              current &&
+              !current.closest<HTMLElement>(".react-content")?.hidden
+            ) {
+              const search = current.querySelector<HTMLInputElement>(
+                'input[type="search"][name="q"]',
+              );
+              pendingAutoSearchFocus = {
+                action: current.action,
+                restore:
+                  document.activeElement === search ||
+                  document.activeElement === document.body,
+              };
+              submit(current, null);
+            }
+          }, 250);
+        }
       }}
       onSubmit={(event) => {
         event.preventDefault();

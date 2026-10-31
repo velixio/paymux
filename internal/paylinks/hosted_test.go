@@ -231,7 +231,7 @@ func TestSubmittingTheFormCreatesAPaymentAndSendsTheCustomerToPay(t *testing.T) 
 		l := h.create(func(in *paylinks.CreateInput) { in.Metadata = map[string]string{"sku": "c1"} })
 		r := h.submit(h.browser(), l.Slug, "", asha)
 		loc, _ := url.Parse(r.header.Get("Location"))
-		if r.status != 303 || loc == nil || !strings.HasPrefix(loc.Path, "/pay/pay_") || loc.Query().Get("t") == "" || loc.Host != "" {
+		if r.status != 303 || loc == nil || !regexp.MustCompile(`^/pay/[0-9A-Za-z]{14}$`).MatchString(loc.Path) || loc.Query().Get("t") == "" || loc.Host != "" {
 			t.Fatalf("submit: %d %q\n%s", r.status, r.header.Get("Location"), r.body)
 		}
 		id := strings.TrimPrefix(loc.Path, "/pay/")

@@ -25,6 +25,7 @@ import (
 	"github.com/velixio/paymux/internal/outbound"
 	"github.com/velixio/paymux/internal/settings"
 	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 const (
@@ -48,9 +49,14 @@ type endpointRow struct {
 	Created               string
 }
 
+type deliveryAttemptView struct {
+	ID, DeliveryID, Request, Response, Error, Created string
+	Attempt, Status                                   int
+}
+
 type brandView struct {
-	Name, Accent, ReturnURL string
-	HasLogo                 bool
+	Name, Accent, ReturnURL, Currencies string
+	HasLogo                             bool
 }
 
 type accountRow struct {
@@ -87,7 +93,9 @@ type appView struct {
 	ScopeChoices       []string
 	Endpoints          []endpointRow
 	EndpointID         string
+	EndpointEdit       *endpointRow
 	EndpointDeliveries []deliveryRow
+	DeliveryAttempts   []deliveryAttemptView
 	Brand              brandView
 	Accounts           []accountRow
 	Tax                *taxProfileView
@@ -110,6 +118,8 @@ func (d *Dashboard) routesApps() {
 	m.HandleFunc("POST "+prefix+"/apps/{id}/keys/rotate", d.authed(authz.APIKeyCreate, d.recent(d.keyRotate)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/keys/{kid}/revoke", d.authed(authz.APIKeyCreate, d.recent(d.keyRevoke)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints", d.authed(authz.SettingsWrite, d.recent(d.endpointCreate)))
+	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints/{eid}", d.authed(authz.SettingsWrite, d.recent(d.endpointUpdate)))
+	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints/{eid}/secret", d.authed(authz.SettingsWrite, d.recent(d.endpointSecretRotate)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints/{eid}/disable", d.authed(authz.SettingsWrite, d.recent(d.endpointDisable)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/branding", d.authed(authz.SettingsWrite, d.recent(d.brandingSave)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/providers", d.authed(authz.ProviderAccountManage, d.recent(d.providersSave)))
@@ -226,6 +236,9 @@ func (d *Dashboard) renderApp(w http.ResponseWriter, r *http.Request, s *session
 		err = d.o.DB.Read(ctx, func(q store.Querier) (err error) { keys, err = store.ListAPIKeys(ctx, q, app.ID); return })
 		av.ScopeChoices = authz.AllScopes
 		for _, k := range keys {
+			if k.Mode != d.mode(r, s) {
+				continue
+			}
 			row := keyRow{ID: k.ID, Mode: k.Mode, Prefix: k.Prefix, Created: d.fmtTime(k.CreatedAt),
 				LastUsed: d.fmtTime(k.LastUsedAt), Revoked: !k.RevokedAt.IsZero(), Scopes: "all", Expires: d.fmtTime(k.ExpiresAt),
 				Expired: !k.ExpiresAt.IsZero() && !d.o.Now().Before(k.ExpiresAt)}
@@ -238,32 +251,47 @@ func (d *Dashboard) renderApp(w http.ResponseWriter, r *http.Request, s *session
 		var eps []outbound.Endpoint
 		eps, err = d.o.Outbound.ListEndpoints(ctx, app.ID)
 		for _, ep := range eps {
+			if ep.Mode != d.mode(r, s) {
+				continue
+			}
 			av.Endpoints = append(av.Endpoints, endpointRow{ID: ep.ID, URL: ep.URL, Events: strings.Join(ep.EventTypes, ", "), Enabled: ep.Enabled, Mode: ep.Mode})
 			if ep.ID == r.URL.Query().Get("endpoint") {
 				av.EndpointID = ep.ID
+				copy := av.Endpoints[len(av.Endpoints)-1]
+				av.EndpointEdit = &copy
 			}
 		}
 		if err == nil && av.EndpointID != "" {
 			var dels []store.DeliveryListRow
+			var attempts []store.DeliveryAttemptRow
 			err = d.o.DB.Read(ctx, func(q store.Querier) (err error) {
-				dels, err = store.ListEndpointDeliveries(ctx, q, av.EndpointID, 50)
-				return
+				if dels, err = store.ListEndpointDeliveries(ctx, q, av.EndpointID, 50); err != nil {
+					return err
+				}
+				attempts, err = store.ListDeliveryAttempts(ctx, q, av.EndpointID, 20)
+				return err
 			})
 			for _, dl := range dels {
 				av.EndpointDeliveries = append(av.EndpointDeliveries, deliveryRow{ID: dl.DeliveryID, EventType: dl.EventType, Endpoint: dl.EndpointURL,
 					Status: dl.Status, Attempts: dl.AttemptCount, LastStatus: dl.LastStatus, LastError: dl.LastError, At: d.fmtTime(dl.UpdatedAt)})
+			}
+			for _, a := range attempts {
+				av.DeliveryAttempts = append(av.DeliveryAttempts, deliveryAttemptView{ID: a.ID, DeliveryID: a.DeliveryID,
+					Attempt: a.AttemptNo, Status: a.ResponseStatus, Request: a.RequestBody, Response: a.ResponseBody,
+					Error: a.Error, Created: d.fmtTime(a.CreatedAt)})
 			}
 		}
 	case "branding":
 		var raw string
 		err = d.o.DB.Read(ctx, func(q store.Querier) (err error) { raw, err = store.GetAppBranding(ctx, q, app.ID); return })
 		b := parseBranding(raw)
-		av.Brand = brandView{Name: b.Name, Accent: b.Accent, ReturnURL: app.DefaultReturnURL, HasLogo: b.LogoBlobID != ""}
+		av.Brand = brandView{Name: b.Name, Accent: b.Accent, ReturnURL: app.DefaultReturnURL,
+			Currencies: strings.Join(app.AcceptedCurrencies, ", "), HasLogo: b.LogoBlobID != ""}
 	case "providers":
 		var accts []store.ProviderAccountInfo
 		var allowed []string
 		err = d.o.DB.Read(ctx, func(q store.Querier) (err error) {
-			if accts, err = store.ListProviderAccounts(ctx, q, app.OrgID, ""); err != nil {
+			if accts, err = store.ListProviderAccounts(ctx, q, app.OrgID, d.mode(r, s)); err != nil {
 				return
 			}
 			allowed, err = store.ListAppProviderAccountIDs(ctx, q, app.ID)
@@ -300,12 +328,17 @@ func (d *Dashboard) keyCreate(w http.ResponseWriter, r *http.Request, s *session
 	if !ok {
 		return
 	}
+	mode := d.mode(r, s)
+	if !postedModeMatches(r, mode) {
+		d.renderApp(w, r, s, app, http.StatusBadRequest, "keys", "The requested mode does not match the dashboard mode. Switch modes before making this change.", nil)
+		return
+	}
 	// No scope ticked means a full-access key.
 	opts := core.KeyOptions{Scopes: r.PostForm["scope"], Authorize: keyAuthorizer(s)}
-	token, _, err := d.o.Core.CreateAPIKeyWith(r.Context(), s.auditActor(), core.OrgScope{OrgID: app.OrgID}, app.ID, r.PostForm.Get("mode"), opts)
+	token, _, err := d.o.Core.CreateAPIKeyWith(r.Context(), s.auditActor(), core.OrgScope{OrgID: app.OrgID}, app.ID, mode, opts)
 	switch {
 	case err == nil:
-		d.renderApp(w, r, s, app, http.StatusOK, "keys", "", &secretReveal{Kind: "key", Label: "API key (" + r.PostForm.Get("mode") + ")", Value: token})
+		d.renderApp(w, r, s, app, http.StatusOK, "keys", "", &secretReveal{Kind: "key", Label: "API key (" + mode + ")", Value: token})
 	case errors.Is(err, errKeyPower):
 		d.renderApp(w, r, s, app, http.StatusForbidden, "keys", err.Error(), nil)
 	case errors.Is(err, core.ErrInvalid):
@@ -339,6 +372,11 @@ func (d *Dashboard) keyRotate(w http.ResponseWriter, r *http.Request, s *session
 	if !ok {
 		return
 	}
+	mode := d.mode(r, s)
+	if !postedModeMatches(r, mode) {
+		d.renderApp(w, r, s, app, http.StatusBadRequest, "keys", "The requested mode does not match the dashboard mode. Switch modes before making this change.", nil)
+		return
+	}
 	hours := 24
 	if v := strings.TrimSpace(r.PostForm.Get("grace_hours")); v != "" {
 		n, err := strconv.Atoi(v)
@@ -350,12 +388,12 @@ func (d *Dashboard) keyRotate(w http.ResponseWriter, r *http.Request, s *session
 	}
 	// With no scope ticked the new key takes the scopes of the one it replaces.
 	token, _, expiring, err := d.o.Core.RotateAPIKey(r.Context(), s.auditActor(), core.OrgScope{OrgID: app.OrgID}, app.ID,
-		r.PostForm.Get("mode"), time.Duration(hours)*time.Hour, core.KeyOptions{Scopes: r.PostForm["scope"], Authorize: keyAuthorizer(s)})
+		mode, time.Duration(hours)*time.Hour, core.KeyOptions{Scopes: r.PostForm["scope"], Authorize: keyAuthorizer(s)})
 	switch {
 	case errors.Is(err, errKeyPower):
 		d.renderApp(w, r, s, app, http.StatusForbidden, "keys", err.Error(), nil)
 	case err == nil:
-		label := "New API key (" + r.PostForm.Get("mode") + "); " + strconv.Itoa(len(expiring)) + " previous key(s) stop working in " + strconv.Itoa(hours) + " h"
+		label := "New API key (" + mode + "); " + strconv.Itoa(len(expiring)) + " previous key(s) stop working in " + strconv.Itoa(hours) + " h"
 		d.renderApp(w, r, s, app, http.StatusOK, "keys", "", &secretReveal{Kind: "key", Label: label, Value: token})
 	case errors.Is(err, core.ErrInvalid):
 		d.renderApp(w, r, s, app, http.StatusBadRequest, "keys", err.Error(), nil)
@@ -400,6 +438,11 @@ func (d *Dashboard) endpointCreate(w http.ResponseWriter, r *http.Request, s *se
 	if !ok {
 		return
 	}
+	mode := d.mode(r, s)
+	if !postedModeMatches(r, mode) {
+		d.renderApp(w, r, s, app, http.StatusBadRequest, "webhooks", "The requested mode does not match the dashboard mode. Switch modes before making this change.", nil)
+		return
+	}
 	raw := strings.TrimSpace(r.PostForm.Get("url"))
 	if !validHTTPURL(raw) {
 		d.renderApp(w, r, s, app, http.StatusBadRequest, "webhooks", "The endpoint URL must be an absolute http(s) URL.", nil)
@@ -410,11 +453,6 @@ func (d *Dashboard) endpointCreate(w http.ResponseWriter, r *http.Request, s *se
 		if t = strings.TrimSpace(t); t != "" {
 			types = append(types, t)
 		}
-	}
-	mode := strings.TrimSpace(r.PostForm.Get("mode"))
-	if mode != "" && mode != "test" && mode != "live" {
-		d.renderApp(w, r, s, app, http.StatusBadRequest, "webhooks", "The endpoint mode must be test or live.", nil)
-		return
 	}
 	ep, secret, err := d.o.Outbound.CreateEndpoint(r.Context(), outbound.CreateEndpointInput{OrgID: app.OrgID, AppID: app.ID, URL: raw, EventTypes: types, Mode: mode})
 	if err != nil {
@@ -428,6 +466,11 @@ func (d *Dashboard) endpointCreate(w http.ResponseWriter, r *http.Request, s *se
 	d.renderApp(w, r, s, app, http.StatusOK, "webhooks", "", &secretReveal{Kind: "webhook", Label: "Signing secret for " + ep.URL, Value: secret})
 }
 
+func postedModeMatches(r *http.Request, current string) bool {
+	posted := strings.TrimSpace(r.PostForm.Get("mode"))
+	return posted == "" || posted == current
+}
+
 func (d *Dashboard) endpointDisable(w http.ResponseWriter, r *http.Request, s *session) {
 	app, ok := d.loadApp(w, r)
 	if !ok {
@@ -435,7 +478,7 @@ func (d *Dashboard) endpointDisable(w http.ResponseWriter, r *http.Request, s *s
 	}
 	eid := r.PathValue("eid")
 	ep, err := d.o.DB.GetEndpoint(r.Context(), eid)
-	if errors.Is(err, store.ErrNotFound) || err == nil && ep.AppID != app.ID {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (ep.AppID != app.ID || ep.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -450,6 +493,77 @@ func (d *Dashboard) endpointDisable(w http.ResponseWriter, r *http.Request, s *s
 		return
 	}
 	d.appRedirect(w, r, app, "webhooks")
+}
+
+func endpointEventTypes(raw string) []string {
+	var types []string
+	for _, typ := range strings.Split(raw, ",") {
+		if typ = strings.TrimSpace(typ); typ != "" && !slices.Contains(types, typ) {
+			types = append(types, typ)
+		}
+	}
+	return types
+}
+
+func (d *Dashboard) endpointUpdate(w http.ResponseWriter, r *http.Request, s *session) {
+	app, ok := d.loadApp(w, r)
+	if !ok {
+		return
+	}
+	eid := r.PathValue("eid")
+	ep, err := d.o.DB.GetEndpoint(r.Context(), eid)
+	if errors.Is(err, store.ErrNotFound) || err == nil && (ep.AppID != app.ID || ep.Mode != d.mode(r, s)) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	raw := strings.TrimSpace(r.PostForm.Get("url"))
+	if !validHTTPURL(raw) {
+		d.renderApp(w, r, s, app, http.StatusBadRequest, "webhooks", "The endpoint URL must be an absolute http(s) URL.", nil)
+		return
+	}
+	types, enabled := endpointEventTypes(r.PostForm.Get("events")), r.PostForm.Get("enabled") != ""
+	if err := d.o.Outbound.UpdateEndpoint(r.Context(), eid, outbound.EndpointUpdate{URL: &raw, EventTypes: &types, Enabled: &enabled}); err != nil {
+		d.fail(w, err)
+		return
+	}
+	if err := d.record(r.Context(), r, s, "webhook_endpoint.update", eid,
+		map[string]any{"url": ep.URL, "event_types": ep.EventTypes, "enabled": ep.Enabled},
+		map[string]any{"url": raw, "event_types": types, "enabled": enabled}); err != nil {
+		d.fail(w, err)
+		return
+	}
+	d.appRedirect(w, r, app, "webhooks&endpoint="+eid)
+}
+
+func (d *Dashboard) endpointSecretRotate(w http.ResponseWriter, r *http.Request, s *session) {
+	app, ok := d.loadApp(w, r)
+	if !ok {
+		return
+	}
+	eid := r.PathValue("eid")
+	ep, err := d.o.DB.GetEndpoint(r.Context(), eid)
+	if errors.Is(err, store.ErrNotFound) || err == nil && (ep.AppID != app.ID || ep.Mode != d.mode(r, s)) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	secret, err := d.o.Outbound.RotateEndpointSecret(r.Context(), eid)
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	if err := d.record(r.Context(), r, s, "webhook_endpoint.secret_rotate", eid, nil, map[string]any{"rotated": true}); err != nil {
+		d.fail(w, err)
+		return
+	}
+	d.renderApp(w, r, s, app, http.StatusOK, "webhooks", "", &secretReveal{Kind: "webhook", Label: "New signing secret for " + ep.URL, Value: secret})
 }
 
 var accentRE = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
@@ -478,6 +592,17 @@ func (d *Dashboard) brandingSave(w http.ResponseWriter, r *http.Request, s *sess
 	name := strings.TrimSpace(r.PostForm.Get("display_name"))
 	accent := strings.TrimSpace(r.PostForm.Get("accent"))
 	ret := strings.TrimSpace(r.PostForm.Get("return_url"))
+	currencies := upperList(r.PostForm.Get("accepted_currencies"))
+	for _, currency := range currencies {
+		if !currencyRE.MatchString(currency) {
+			reject("Accepted currencies must be 3-letter ISO codes such as INR, USD or EUR.")
+			return
+		}
+		if _, err := money.Exponent(currency); err != nil {
+			reject(currency + " is not a supported ISO-4217 currency code.")
+			return
+		}
+	}
 	switch {
 	case len([]rune(name)) > 100:
 		reject("The display name can be at most 100 characters.")
@@ -545,9 +670,12 @@ func (d *Dashboard) brandingSave(w http.ResponseWriter, r *http.Request, s *sess
 		if err := store.SetAppReturnURL(ctx, tx, app.ID, ret, d.o.Now()); err != nil {
 			return err
 		}
+		if err := store.SetAppAcceptedCurrencies(ctx, tx, app.ID, currencies, d.o.Now()); err != nil {
+			return err
+		}
 		return audit.Record(ctx, tx, audit.Entry{OrgID: app.OrgID, Actor: s.auditActor(), Action: "app.update", Target: app.ID,
-			Before: map[string]any{"branding": before, "default_return_url": app.DefaultReturnURL},
-			After:  map[string]any{"branding": after, "default_return_url": ret}, IP: d.clientIP(r)})
+			Before: map[string]any{"branding": before, "default_return_url": app.DefaultReturnURL, "accepted_currencies": app.AcceptedCurrencies},
+			After:  map[string]any{"branding": after, "default_return_url": ret, "accepted_currencies": currencies}, IP: d.clientIP(r)})
 	})
 	if err != nil {
 		d.fail(w, err)
@@ -607,14 +735,25 @@ func (d *Dashboard) providersSave(w http.ResponseWriter, r *http.Request, s *ses
 		d.fail(w, err)
 		return
 	}
-	known := map[string]bool{}
+	mode := d.mode(r, s)
+	known, accountMode := map[string]bool{}, map[string]string{}
 	for _, a := range accts {
-		known[a.ID] = true
+		accountMode[a.ID] = a.Mode
+		if a.Mode == mode {
+			known[a.ID] = true
+		}
 	}
 	for _, id := range want {
 		if !known[id] {
 			d.renderApp(w, r, s, app, http.StatusBadRequest, "providers", "Unknown provider account "+id+".", nil)
 			return
+		}
+	}
+	// The form only shows the current mode. Keep links for the other mode so
+	// editing test accounts cannot silently change live routing, or vice versa.
+	for _, id := range before {
+		if accountMode[id] != "" && accountMode[id] != mode {
+			want = append(want, id)
 		}
 	}
 	slices.Sort(want)

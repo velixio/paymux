@@ -26,7 +26,7 @@ func TestFetchPaymentNeverMatchesAnotherCheckout(t *testing.T) {
 			case "/api/v1/payments":
 				_ = json.NewEncoder(w).Encode(map[string]any{"data": payments, "page_info": map[string]any{"has_next_page": false}})
 			case "/api/v1/checkout_configurations/ch_MINE":
-				_ = json.NewEncoder(w).Encode(map[string]any{"id": "ch_MINE", "plan": map[string]any{"initial_price": "5.00", "currency": "usd"}})
+				_ = json.NewEncoder(w).Encode(map[string]any{"id": "ch_MINE", "variant": map[string]any{"initial_price": "5.00", "currency": "usd"}})
 			default:
 				http.NotFound(w, r)
 			}

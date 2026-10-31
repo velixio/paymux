@@ -260,9 +260,11 @@ func TestLogLinksOnPaymentPage(t *testing.T) {
 		e.seedPayment("pay_a1", a.ID, "test", "succeeded", "ORD-1", 1000, logT0)
 		e.seedAttempt(store.Attempt{ID: "att_a1", Mode: "test", PaymentID: "pay_a1", ProviderAccountID: "pa_x", ProviderRef: "ref1", Status: "captured", Method: "upi"})
 		admin := e.roleClient("admin")
+		e.setMode(admin, "test")
 		body := e.pageOK(admin, "/dashboard/payments/pay_a1")
 		has(t, body, "/dashboard/logs?payment_id=pay_a1", "/dashboard/logs?id=att_a1")
 		viewer := e.roleClient("viewer")
+		e.setMode(viewer, "test")
 		lacks(t, e.pageOK(viewer, "/dashboard/payments/pay_a1"), "/dashboard/logs")
 	})
 }

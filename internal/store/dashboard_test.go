@@ -205,7 +205,15 @@ func TestSearchPayments(t *testing.T) {
 					return err
 				}
 			}
-			return nil
+			if err := store.InsertAttempt(ctx, tx, store.Attempt{ID: "att_search", OrgID: store.DefaultOrgID, Mode: "test",
+				PaymentID: "pay_02", ProviderAccountID: "pa_search", ProviderRef: "MERCHANT-TXN-77",
+				ProviderOrderID: "order_PROVIDER_88", ProviderPaymentID: "txn_PROVIDER_99", Status: "failed",
+				CreatedAt: t0.Add(24 * time.Hour), UpdatedAt: t0.Add(24 * time.Hour)}); err != nil {
+				return err
+			}
+			return store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: "pa_search",
+				ProviderPaymentID: "retry_PROVIDER_100", AttemptID: "att_search", ProviderOrderID: "order_PROVIDER_88",
+				Status: "failed", CreatedAt: t0.Add(24 * time.Hour), UpdatedAt: t0.Add(24 * time.Hour)})
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -237,6 +245,9 @@ func TestSearchPayments(t *testing.T) {
 			{"search id prefix", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "pay_02"}, []string{"pay_02"}},
 			{"search order ref", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "ord-100"}, []string{"pay_01"}},
 			{"search email", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "pri.ya@example"}, []string{"pay_01"}},
+			{"search provider order", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "provider_88"}, []string{"pay_02"}},
+			{"search provider payment", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "provider_99"}, []string{"pay_02"}},
+			{"search provider retry", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "provider_100"}, []string{"pay_02"}},
 			{"like wildcard is literal", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "ORD_300"}, []string{"pay_03"}},
 			{"percent is literal", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "%"}, nil},
 			{"underscore is literal", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "ORD_"}, []string{"pay_03"}},

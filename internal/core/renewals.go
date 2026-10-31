@@ -71,7 +71,7 @@ func (s *Service) CreateRenewalPayment(ctx context.Context, tx store.Tx, in Rene
 		}
 	}
 	now := s.nowUTC()
-	p := store.Payment{ID: ids.New("pay"), OrgID: in.OrgID, AppID: in.AppID, Mode: in.Mode, Kind: in.Kind,
+	p := store.Payment{ID: ids.Payment(), OrgID: in.OrgID, AppID: in.AppID, Mode: in.Mode, Kind: in.Kind,
 		SubscriptionID: in.SubscriptionID, Amount: in.Amount, Currency: in.Currency, Status: string(state.PaymentCreated),
 		Description: in.Description, CustomerID: in.CustomerID, Metadata: in.Metadata, ReturnURL: in.ReturnURL,
 		ClientSecretHash: hashSecret(newClientSecret()), ExpiresAt: now.Add(time.Duration(minutes) * time.Minute),

@@ -176,6 +176,9 @@ func (s *Service) chooseRoute(ctx context.Context, q store.Queryer, appID, mode 
 	if err != nil {
 		return route{}, mapNotFound(err, "app")
 	}
+	if len(app.AcceptedCurrencies) > 0 && !slices.Contains(app.AcceptedCurrencies, strings.ToUpper(in.Currency)) {
+		return route{}, newErr(ErrNoRoute, "this app does not accept %s subscriptions", in.Currency)
+	}
 	cfg, err := checkout.AppRoutingConfig(ctx, q, app)
 	if err != nil {
 		return route{}, err
@@ -206,7 +209,14 @@ func (s *Service) chooseRoute(ctx context.Context, q store.Queryer, appID, mode 
 		accounts[i].SubscriptionCurrencies = conns[accounts[i].ID].Info().SubscriptionCurrencies
 	}
 	res, err := routing.Choose(cfg, routing.Request{Currency: in.Currency, Country: in.Country, Amount: in.Amount, Purpose: routing.PurposeSubscription,
-		Metadata: in.Metadata, AllowedConnectors: in.AllowedConnectors}, accounts, nil)
+		Metadata: in.Metadata, AllowedConnectors: in.AllowedConnectors,
+		Usage: func(ids []string, period string) (int64, int64, error) {
+			since, err := routing.PeriodStart(period, s.nowUTC())
+			if err != nil {
+				return 0, 0, err
+			}
+			return store.RoutingUsage(ctx, q, ids, in.Currency, since)
+		}}, accounts, nil)
 	var rej *routing.RejectedError
 	switch {
 	case errors.As(err, &rej):

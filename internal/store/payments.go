@@ -2,10 +2,41 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
+
+// RoutingUsage returns captured, non-duplicate sales and their immutable
+// ledger amount in one currency since the start of a quota period. A legacy
+// charge without an attempt ID counts only when exactly one captured attempt
+// establishes its account; ambiguous charges are excluded.
+func RoutingUsage(ctx context.Context, q Queryer, accountIDs []string, currency string, since time.Time) (sales, amount int64, err error) {
+	if len(accountIDs) == 0 {
+		return 0, 0, nil
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(accountIDs)), ",")
+	args := make([]any, 0, len(accountIDs)*2+2)
+	for _, id := range accountIDs {
+		args = append(args, id)
+	}
+	accountArgs := append([]any(nil), args...)
+	args = append(accountArgs, accountArgs...)
+	args = append(args, currency, ms(since))
+	err = q.QueryRowContext(ctx, `SELECT COUNT(DISTINCT l.payment_id), COALESCE(SUM(l.amount), 0)
+		FROM ledger_entries l WHERE l.kind = 'charge' AND (
+			EXISTS (SELECT 1 FROM payment_attempts a WHERE a.id = l.attempt_id
+				AND a.provider_account_id IN (`+marks+`) AND a.status = 'captured' AND a.duplicate = 0)
+			OR (l.attempt_id IS NULL
+				AND (SELECT COUNT(*) FROM payment_attempts captured
+					WHERE captured.payment_id = l.payment_id AND captured.status = 'captured') = 1
+				AND EXISTS (SELECT 1 FROM payment_attempts a WHERE a.payment_id = l.payment_id
+					AND a.provider_account_id IN (`+marks+`) AND a.status = 'captured' AND a.duplicate = 0))
+		) AND l.currency = ? AND l.occurred_at >= ?`, args...).Scan(&sales, &amount)
+	return
+}
 
 // Payment is a row of payments.
 type Payment struct {
@@ -111,8 +142,10 @@ func UpdatePayment(ctx context.Context, tx Tx, p *Payment, now time.Time) error 
 	return nil
 }
 
-// ListPayments returns an app's payments in one mode, newest first (ids are
-// time-ordered). afterID is an exclusive cursor; status filters when set.
+// ListPayments returns an app's payments in one mode, newest first. afterID is
+// an exclusive cursor; status filters when set. Payment IDs are random, so the
+// cursor resolves the row's creation time and uses the ID only as a stable
+// tie-breaker.
 func ListPayments(ctx context.Context, q Queryer, appID, mode, status, afterID string, limit int) ([]Payment, error) {
 	query := "SELECT " + paymentCols + " FROM payments WHERE app_id = ? AND mode = ?"
 	args := []any{appID, mode}
@@ -121,10 +154,18 @@ func ListPayments(ctx context.Context, q Queryer, appID, mode, status, afterID s
 		args = append(args, status)
 	}
 	if afterID != "" {
-		query += " AND id < ?"
-		args = append(args, afterID)
+		var created int64
+		err := q.QueryRowContext(ctx, "SELECT created_at FROM payments WHERE id = ? AND app_id = ? AND mode = ?", afterID, appID, mode).Scan(&created)
+		if err == sql.ErrNoRows {
+			return []Payment{}, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		query += " AND (created_at < ? OR (created_at = ? AND id < ?))"
+		args = append(args, created, created, afterID)
 	}
-	query += " ORDER BY id DESC LIMIT ?"
+	query += " ORDER BY created_at DESC, id DESC LIMIT ?"
 	args = append(args, limit)
 	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {

@@ -142,6 +142,9 @@ func (s *Service) handleNotification(ctx context.Context, ev store.ProviderEvent
 		if err == nil && s.o.Subs != nil {
 			err = s.o.Subs.ReconcilePayment(ctx, res.Payment.ID) // a renewal moves its subscription
 		}
+		if err == nil {
+			err = s.recordMatch(ctx, ev.ID, "payment", res.Payment.ID, res.Payment.ID, firstNonEmpty(ps.ProviderPaymentID, ps.ProviderOrderID))
+		}
 		return err
 	case n.Kind == connector.NotifyRefund && n.Refund != nil:
 		rs := n.Refund
@@ -159,6 +162,9 @@ func (s *Service) handleNotification(ctx context.Context, ev store.ProviderEvent
 			return err
 		}
 		_, err = s.syncRefund(ctx, r.ID, rs.ProviderRefundID)
+		if err == nil {
+			err = s.recordMatch(ctx, ev.ID, "refund", r.ID, r.PaymentID, firstNonEmpty(rs.ProviderRefundID, rs.ProviderRef))
+		}
 		return err
 	case n.Kind == connector.NotifyDispute && n.Dispute != nil:
 		if s.o.Disputes == nil {
@@ -166,9 +172,12 @@ func (s *Service) handleNotification(ctx context.Context, ev store.ProviderEvent
 		}
 		// The disputes service fetches the dispute from the provider (scoped to
 		// this account) and applies that, not the notification.
-		_, err := s.o.Disputes.SyncNotification(ctx, account, n)
+		result, err := s.o.Disputes.SyncNotification(ctx, account, n)
 		if errors.Is(err, disputes.ErrUnknownPayment) || errors.Is(err, disputes.ErrNoReader) || errors.Is(err, connector.ErrNotFound) {
 			return s.recordUnknown(ctx, ev, "dispute", n.Dispute.ProviderDisputeID, n)
+		}
+		if err == nil {
+			err = s.recordMatch(ctx, ev.ID, "dispute", result.Dispute.ID, result.Dispute.PaymentID, n.Dispute.ProviderDisputeID)
 		}
 		return err
 	case n.Kind == connector.NotifyPayout && n.Payout != nil:
@@ -199,6 +208,13 @@ func (s *Service) handleNotification(ctx context.Context, ev store.ProviderEvent
 	}
 	id := n.EventID
 	return s.recordUnknown(ctx, ev, string(n.Kind), id, n)
+}
+
+func (s *Service) recordMatch(ctx context.Context, eventID, objectType, objectID, paymentID, providerID string) error {
+	return s.o.DB.Write(ctx, func(tx store.Tx) error {
+		return store.InsertProviderEventMatch(ctx, tx, store.ProviderEventMatch{ProviderEventID: eventID, ObjectType: objectType,
+			ObjectID: objectID, PaymentID: paymentID, ProviderID: providerID, CreatedAt: s.o.Now().UTC()})
+	})
 }
 
 func (s *Service) recordUnknown(ctx context.Context, ev store.ProviderEventRow, kind, providerID string, n connector.Notification) error {

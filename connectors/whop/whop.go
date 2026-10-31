@@ -17,7 +17,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,6 +34,7 @@ import (
 const (
 	apiBase          = "https://api.whop.com/api/v1"
 	sandboxAPIBase   = "https://sandbox-api.whop.com/api/v1"
+	apiVersionDate   = "2026-10-29-8"
 	webhookTolerance = 5 * time.Minute
 )
 
@@ -155,6 +155,7 @@ func (w *whop) do(ctx context.Context, method, path string, query url.Values, in
 	}
 	req.Header.Set("Authorization", "Bearer "+w.cfg.APIKey)
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Api-Version-Date", apiVersionDate)
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -288,7 +289,21 @@ type paymentEntity struct {
 	Membership     *struct {
 		ID string `json:"id"`
 	} `json:"membership"`
-	PaymentMethod  string `json:"payment_method_type"`
+	PaymentMethod     string `json:"payment_method_type"`
+	CardBrand         string `json:"card_brand"`
+	CardLast4         string `json:"card_last4"`
+	PaymentInstrument *struct {
+		Card *struct {
+			Brand string `json:"brand"`
+			Last4 string `json:"last4"`
+		} `json:"card"`
+	} `json:"payment_instrument"`
+	PaymentMethodDetails *struct {
+		Card *struct {
+			Brand string `json:"brand"`
+			Last4 string `json:"last4"`
+		} `json:"card"`
+	} `json:"payment_method"`
 	CreatedAt      string `json:"created_at"`
 	FailureMessage string `json:"failure_message"`
 }
@@ -370,10 +385,23 @@ func (p paymentEntity) snapshot() (connector.PaymentSnapshot, error) {
 	if err != nil {
 		return connector.PaymentSnapshot{}, err
 	}
+	details := connector.PaymentMethodDetails{}
+	brand, last4 := p.CardBrand, p.CardLast4
+	if p.PaymentInstrument != nil && p.PaymentInstrument.Card != nil {
+		brand = firstNonEmpty(brand, p.PaymentInstrument.Card.Brand)
+		last4 = firstNonEmpty(last4, p.PaymentInstrument.Card.Last4)
+	}
+	if p.PaymentMethodDetails != nil && p.PaymentMethodDetails.Card != nil {
+		brand = firstNonEmpty(brand, p.PaymentMethodDetails.Card.Brand)
+		last4 = firstNonEmpty(last4, p.PaymentMethodDetails.Card.Last4)
+	}
+	if (p.PaymentMethod == "" || strings.EqualFold(p.PaymentMethod, "card")) && (brand != "" || last4 != "") {
+		details.Card = &connector.CardDetails{Network: brand, Last4: last4}
+	}
 	return connector.PaymentSnapshot{
 		ProviderRef: p.Metadata["ref"], ProviderOrderID: p.CheckoutConfig, ProviderPaymentID: p.ID,
 		Status: mapPaymentStatus(p.Status, p.Substatus), RawStatus: firstNonEmpty(p.Substatus, p.Status),
-		Amount: amt, Currency: cur, Method: p.PaymentMethod, AmountRefunded: ref,
+		Amount: amt, Currency: cur, Method: p.PaymentMethod, MethodDetails: details, AmountRefunded: ref,
 		ErrorMessage: p.FailureMessage, CreatedAt: parseTime(p.CreatedAt),
 	}, nil
 }
@@ -394,7 +422,7 @@ func (r refundEntity) snapshot() (connector.RefundSnapshot, error) {
 	}, nil
 }
 
-// CreateCheckout creates a checkout configuration (inline one-time plan) and
+// CreateCheckout creates a checkout configuration (inline one-time variant) and
 // redirects the customer to its purchase_url. provider_ref travels in metadata
 // so webhooks can be matched back.
 func (w *whop) CreateCheckout(ctx context.Context, req connector.CheckoutRequest) (connector.CheckoutResult, error) {
@@ -409,10 +437,11 @@ func (w *whop) CreateCheckout(ctx context.Context, req connector.CheckoutRequest
 		return connector.CheckoutResult{}, err
 	}
 	in := map[string]any{
-		"plan": map[string]any{
-			"company_id": w.cfg.CompanyID, "plan_type": "one_time",
+		"account_id": w.cfg.CompanyID,
+		"variant": map[string]any{
+			"account_id": w.cfg.CompanyID, "billing_type": "one_time",
 			"currency": strings.ToLower(req.Currency), "initial_price": json.Number(price),
-			"product": oneTimeProduct(req.AppID, req.Description),
+			"title": checkoutTitle(req.Description, "Payment"),
 		},
 		"metadata": map[string]string{"pay": req.PaymentID, "att": req.AttemptID, "app": req.AppID, "ref": req.ProviderRef},
 	}
@@ -421,7 +450,8 @@ func (w *whop) CreateCheckout(ctx context.Context, req connector.CheckoutRequest
 		ID          string `json:"id"`
 		PurchaseURL string `json:"purchase_url"`
 	}
-	if err := w.do(ctx, "POST", "/checkout_configurations", nil, in, &out, nil); err != nil {
+	if err := w.do(ctx, "POST", "/checkout_configurations", nil, in, &out,
+		map[string]string{"Idempotency-Key": req.ProviderRef}); err != nil {
 		return connector.CheckoutResult{}, err
 	}
 	if out.ID == "" || out.PurchaseURL == "" {
@@ -575,7 +605,13 @@ func (w *whop) FetchPayment(ctx context.Context, ref connector.PaymentRef) (conn
 		}
 		if len(mine) == 0 {
 			var cc struct {
-				ID   string `json:"id"`
+				ID      string `json:"id"`
+				Variant struct {
+					InitialPrice number `json:"initial_price"`
+					Currency     string `json:"currency"`
+				} `json:"variant"`
+				// Plan is retained for checkout configurations created under the
+				// legacy Whop response shape.
 				Plan struct {
 					InitialPrice number `json:"initial_price"`
 					Currency     string `json:"currency"`
@@ -584,8 +620,12 @@ func (w *whop) FetchPayment(ctx context.Context, ref connector.PaymentRef) (conn
 			if err := w.do(ctx, "GET", "/checkout_configurations/"+url.PathEscape(ref.ProviderOrderID), nil, nil, &cc, nil); err != nil {
 				return connector.PaymentSnapshot{}, err
 			}
-			cur := strings.ToUpper(cc.Plan.Currency)
-			amt, err := minor(cc.Plan.InitialPrice, firstNonEmpty(cur, "USD"))
+			price, currency := cc.Variant.InitialPrice, cc.Variant.Currency
+			if currency == "" {
+				price, currency = cc.Plan.InitialPrice, cc.Plan.Currency
+			}
+			cur := strings.ToUpper(currency)
+			amt, err := minor(price, firstNonEmpty(cur, "USD"))
 			if err != nil {
 				return connector.PaymentSnapshot{}, err
 			}
@@ -730,13 +770,14 @@ func (w *whop) setRedirect(in map[string]any, ref string) {
 	}
 }
 
-// oneTimeProduct names the product Whop shows at checkout. Without it Whop
-// attaches the plan to an unrelated existing product. The external id is
-// stable per app and description so repeat payments share one product.
-func oneTimeProduct(appID, description string) map[string]any {
-	title := firstNonEmptyStr(description, "Payment")
-	sum := sha256.Sum256([]byte(appID + "\x00" + title))
-	return map[string]any{"title": title, "external_identifier": "paymux-" + hex.EncodeToString(sum[:8])}
+// checkoutTitle bounds merchant descriptions to Whop's 30-character variant
+// title limit without splitting a multibyte character.
+func checkoutTitle(description, fallback string) string {
+	title := []rune(firstNonEmptyStr(strings.TrimSpace(description), fallback))
+	if len(title) > 30 {
+		title = title[:30]
+	}
+	return string(title)
 }
 
 // maxPaymentPages bounds the scan for a checkout's payments; webhooks carry the

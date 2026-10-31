@@ -53,6 +53,10 @@ previous release reads.
 
 ## Release notes that need action
 
+- **Short payment IDs.** New payments use a compact 14-character ID. Existing
+  `pay_` IDs are not rewritten and remain valid in API paths and dashboard
+  searches. Integrations should accept both forms and treat IDs as opaque.
+
 - **0037, provider payment attempt history.** Paymux now keeps each provider-side
   payment made against one checkout attempt, so a failed payment followed by a
   successful retry on the same provider order is visible in the dashboard.

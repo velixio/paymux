@@ -10,6 +10,7 @@ export type Item = {
 
 const MAX_RECENT = 8;
 const EMAIL = /^[^@\s/]+@[^@\s/]+\.[^@\s/]+$/;
+const PAYMENT_ID = /^[0-9A-Za-z]{14}$/;
 
 // Record id prefixes and the page that shows them.
 const RECORDS: { prefix: string; kind: string; path: string }[] = [
@@ -30,6 +31,18 @@ const search = (path: string, kind: string, q: string): Item => ({
 export function intents(query: string): Item[] {
   const q = query.trim();
   if (!q) return [];
+  if (PAYMENT_ID.test(q)) {
+    return [
+      {
+        id: `record:${q}`,
+        label: `Open payment ${q}`,
+        hint: `/dashboard/payments/${q}`,
+        href: `/dashboard/payments/${q}`,
+      },
+      search("payments", "payments", q),
+      search("invoices", "invoices", q),
+    ];
+  }
   for (const r of RECORDS) {
     if (
       q.startsWith(r.prefix) &&

@@ -78,12 +78,6 @@ func TestAuditPage(t *testing.T) {
 	})
 }
 
-// period returns the HTML of one overview section.
-func period(t *testing.T, body, id string) string {
-	t.Helper()
-	return regexpFind(t, `(?s)(<section[^>]*id="period-`+id+`".*?</section>)`, body)
-}
-
 func TestOverviewTotalsFromLedger(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
@@ -121,23 +115,18 @@ func TestOverviewTotalsFromLedger(t *testing.T) {
 		}
 		c := e.roleClient("viewer")
 		body := e.pageOK(c, "/dashboard/overview")
-		today, week, month := period(t, body, "today"), period(t, body, "7d"), period(t, body, "30d")
-
-		// today (UTC midnight .. now): Alpha 100.00 gross, 25.00 refunds; Beta 7.00
-		row := func(sec, app, cur string) string {
-			return regexpFind(t, `(?s)(<tr>\s*<td>`+app+`</td>\s*<td>`+cur+`</td>.*?</tr>)`, sec)
-		}
-		has(t, row(today, "Alpha", "INR"), "100.00 INR", "25.00 INR", "75.00 INR")
-		has(t, row(today, "Beta", "USD"), "7.00 USD")
-		has(t, row(week, "Alpha", "INR"), "150.00 INR", "25.00 INR", "125.00 INR")
-		has(t, row(month, "Alpha", "INR"), "350.00 INR", "25.00 INR", "325.00 INR")
-		lacks(t, month, "1,128.99", "999.00", "1234.56") // the 40-day-old charge and the test-mode one
+		// USD is the default headline when present, while the breakdown keeps
+		// every currency native. The old charge and test-mode charge are excluded.
+		has(t, body, `data-currency="USD"`, "7.00 USD", "Currency details", "350.00 INR", "25.00 INR", "325.00 INR")
+		lacks(t, body, "1,128.99", "999.00", "1234.56")
+		inr := e.pageOK(c, "/dashboard/overview?currency=INR")
+		has(t, inr, `data-currency="INR"`, "350.00 INR")
 		lacks(t, body, "1234.56")
 
 		// the mode toggle applies
 		e.setMode(c, "test")
 		body = e.pageOK(c, "/dashboard/overview")
-		has(t, period(t, body, "today"), "1234.56 INR")
+		has(t, body, "1234.56 INR")
 		lacks(t, body, "100.00 INR")
 	})
 }
@@ -146,9 +135,8 @@ func TestOverviewEmpty(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		body := e.pageOK(e.roleClient("viewer"), "/dashboard/overview")
-		for _, id := range []string{"today", "7d", "30d"} {
-			has(t, period(t, body, id), "No activity")
-		}
+		has(t, body, `id="revenue-data"`, `data-gross="0"`)
+		lacks(t, body, `id="period-today"`, `id="period-7d"`, `id="period-30d"`)
 	})
 }
 

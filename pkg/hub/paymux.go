@@ -233,9 +233,10 @@ func (a *App) Start(ctx context.Context) error {
 		return err
 	}
 
+	mailer := notify.New(a.cfg)
 	// The outbound service is the events.Emitter the domain services emit
 	// through, unless WithEmitter swapped it.
-	out := outbound.New(outbound.Options{DB: db, Queue: q, Box: box,
+	out := outbound.New(outbound.Options{DB: db, Queue: q, Box: box, Mailer: mailer,
 		AllowPrivate: a.cfg.AllowPrivateWebhooks, Logger: a.log})
 	out.Register()
 	var emitter events.Emitter = out
@@ -267,7 +268,6 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	// GST invoicing: documents are issued by hooks inside the transaction in
 	// which a payment or refund succeeds.
-	mailer := notify.New(a.cfg)
 	inv := invoice.New(invoice.Options{DB: db, Box: box, Settings: set, Jobs: q, Emitter: emitter, Mailer: mailer,
 		BaseURL: customerURL})
 	inv.RegisterJobs(q)

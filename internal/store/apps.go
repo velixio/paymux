@@ -11,6 +11,9 @@ import (
 type App struct {
 	ID, OrgID, Name, Slug, DefaultReturnURL string
 	CreatedAt                               time.Time
+	// AcceptedCurrencies is empty when the app accepts every currency that its
+	// routed provider accounts support.
+	AcceptedCurrencies []string
 }
 
 // APIKey is a row of api_keys. Hash is the lowercase hex SHA-256 of the key.
@@ -49,21 +52,26 @@ func scanAPIKey(row interface{ Scan(...any) error }) (APIKey, error) {
 
 // InsertApp inserts a. A duplicate (org, slug) returns ErrConflict.
 func InsertApp(ctx context.Context, tx Tx, a App) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO apps (id, org_id, name, slug, default_return_url, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, a.ID, a.OrgID, a.Name, a.Slug, nullIfEmpty(a.DefaultReturnURL), ms(a.CreatedAt), ms(a.CreatedAt))
+	currencies, _ := json.Marshal(a.AcceptedCurrencies)
+	_, err := tx.ExecContext(ctx, `INSERT INTO apps (id, org_id, name, slug, default_return_url, accepted_currencies, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, a.ID, a.OrgID, a.Name, a.Slug, nullIfEmpty(a.DefaultReturnURL), string(currencies), ms(a.CreatedAt), ms(a.CreatedAt))
 	if IsUniqueViolation(err) {
 		return ErrConflict
 	}
 	return err
 }
 
-const appCols = "id, org_id, name, slug, COALESCE(default_return_url, ''), created_at"
+const appCols = "id, org_id, name, slug, COALESCE(default_return_url, ''), accepted_currencies, created_at"
 
 func scanApp(row interface{ Scan(...any) error }) (App, error) {
 	var a App
+	var currencies string
 	var created int64
-	if err := row.Scan(&a.ID, &a.OrgID, &a.Name, &a.Slug, &a.DefaultReturnURL, &created); err != nil {
+	if err := row.Scan(&a.ID, &a.OrgID, &a.Name, &a.Slug, &a.DefaultReturnURL, &currencies, &created); err != nil {
 		return App{}, notFound(err)
+	}
+	if err := json.Unmarshal([]byte(currencies), &a.AcceptedCurrencies); err != nil {
+		return App{}, err
 	}
 	a.CreatedAt = fromMS(created)
 	return a, nil

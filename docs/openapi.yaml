@@ -322,7 +322,7 @@ paths:
         - name: payment_id
           in: query
           required: true
-          schema: { type: string, pattern: "^pay_[0-9a-z]{26}$" }
+          schema: { type: string, pattern: "^([0-9A-Za-z]{14}|pay_[0-9a-z]{26})$" }
       responses:
         "200":
           description: The invoices.
@@ -392,7 +392,7 @@ paths:
         - name: payment_id
           in: query
           required: true
-          schema: { type: string, pattern: "^pay_[0-9a-z]{26}$" }
+          schema: { type: string, pattern: "^([0-9A-Za-z]{14}|pay_[0-9a-z]{26})$" }
       responses:
         "200":
           description: The credit notes.
@@ -898,7 +898,7 @@ components:
       name: id
       in: path
       required: true
-      schema: { type: string, pattern: "^pay_[0-9a-z]{26}$" }
+      schema: { type: string, pattern: "^([0-9A-Za-z]{14}|pay_[0-9a-z]{26})$" }
   responses:
     InvalidRequest:
       description: The request is invalid (`invalid_request`), or the body is over 1 MiB (413).
@@ -989,7 +989,7 @@ components:
               description: The id of this request, also sent as the X-Request-Id header. It identifies the matching rows of the hub's Logs page.
             payment_id:
               type: string
-              pattern: "^pay_[0-9a-z]{26}$"
+              pattern: "^([0-9A-Za-z]{14}|pay_[0-9a-z]{26})$"
               description: Present when a payment exists even though its initial provider checkout failed.
     PaymentStatus:
       type: string
@@ -1048,7 +1048,7 @@ components:
       type: object
       required: [id, object, status, kind, amount, currency, amount_received, amount_refunded, metadata, expires_at, created_at, version, flags]
       properties:
-        id: { type: string, pattern: "^pay_[0-9a-z]{26}$" }
+        id: { type: string, pattern: "^([0-9A-Za-z]{14}|pay_[0-9a-z]{26})$" }
         object: { type: string, const: payment }
         livemode: { type: boolean, description: "false for an object of test mode, true for a live one" }
         status: { $ref: "#/components/schemas/PaymentStatus" }
@@ -1121,8 +1121,12 @@ components:
       allOf:
         - $ref: "#/components/schemas/Payment"
         - type: object
-          required: [attempts]
+          required: [checkout_mode, attempts]
           properties:
+            checkout_mode:
+              type: string
+              enum: [hosted, provider_action]
+              description: The checkout integration currently selected on the App. Use this field when recovering a failed provider-action checkout.
             attempts:
               type: array
               description: Oldest first.
@@ -1179,7 +1183,7 @@ components:
           required: [kind, payment_id, status, launcher, action]
           properties:
             kind: { type: string, const: checkout }
-            payment_id: { type: string, pattern: "^pay_[0-9a-z]{26}$" }
+            payment_id: { type: string, pattern: "^([0-9A-Za-z]{14}|pay_[0-9a-z]{26})$" }
             status: { $ref: "#/components/schemas/PaymentStatus" }
             launcher: { type: string, description: Connector name understood by the browser SDK. }
             action: { $ref: "#/components/schemas/ProviderAction" }
@@ -1187,7 +1191,7 @@ components:
           required: [kind, payment_id, status]
           properties:
             kind: { type: string, const: complete }
-            payment_id: { type: string, pattern: "^pay_[0-9a-z]{26}$" }
+            payment_id: { type: string, pattern: "^([0-9A-Za-z]{14}|pay_[0-9a-z]{26})$" }
             status: { $ref: "#/components/schemas/PaymentStatus" }
     PaymentList:
       type: object

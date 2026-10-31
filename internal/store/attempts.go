@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -88,6 +89,66 @@ func ListAttempts(ctx context.Context, q Queryer, paymentID string) ([]Attempt, 
 			return nil, err
 		}
 		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// ListAttemptsForPayments returns every attempt for the requested payments in
+// one query. Dashboard list pages use it to show provider, method and attempt
+// count without issuing one query per payment.
+func ListAttemptsForPayments(ctx context.Context, q Queryer, paymentIDs []string) ([]Attempt, error) {
+	if len(paymentIDs) == 0 {
+		return []Attempt{}, nil
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(paymentIDs)), ",")
+	args := make([]any, len(paymentIDs))
+	for i, id := range paymentIDs {
+		args[i] = id
+	}
+	rows, err := q.QueryContext(ctx, "SELECT "+attemptCols+" FROM payment_attempts WHERE payment_id IN ("+marks+") ORDER BY created_at, id", args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Attempt
+	for rows.Next() {
+		a, err := scanAttempt(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// CountProviderPaymentAttemptsForPayments returns the number of distinct
+// provider-side payment tries attached to each Paymux payment. One Paymux
+// checkout attempt can contain several provider tries when a customer retries
+// a failed payment on the same provider order.
+func CountProviderPaymentAttemptsForPayments(ctx context.Context, q Queryer, paymentIDs []string) (map[string]int, error) {
+	out := make(map[string]int, len(paymentIDs))
+	if len(paymentIDs) == 0 {
+		return out, nil
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(paymentIDs)), ",")
+	args := make([]any, len(paymentIDs))
+	for i := range paymentIDs {
+		args[i] = paymentIDs[i]
+	}
+	rows, err := q.QueryContext(ctx, `SELECT a.payment_id, COUNT(*)
+		FROM provider_payment_attempts p JOIN payment_attempts a ON a.id = p.attempt_id
+		WHERE a.payment_id IN (`+marks+`) GROUP BY a.payment_id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var paymentID string
+		var count int
+		if err := rows.Scan(&paymentID, &count); err != nil {
+			return nil, err
+		}
+		out[paymentID] = count
 	}
 	return out, rows.Err()
 }

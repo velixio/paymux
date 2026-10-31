@@ -3,7 +3,7 @@
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
 <h1>FX rates</h1>
-<p class="muted">The RBI / FBIL reference rate (INR per 1 unit of the foreign currency) for an IST calendar day. Invoices issued that day in that currency use it.</p>
+<p class="muted">These RBI / FBIL reference rates are used only for INR reporting and GST invoices. They never change a checkout amount. Checkout currency and settlement details remain the provider gateway's source of truth.</p>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <h3>Invoices pending a rate</h3>
 <div class="table-scroll"><table class="grid">

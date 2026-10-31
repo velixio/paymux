@@ -215,17 +215,22 @@ func TestVerifyDomainToken(t *testing.T) {
 	})
 }
 
-func (e *env) attemptOn(account string, at time.Time) {
+func (e *env) attemptOn(account string, at time.Time, observed ...bool) {
 	e.t.Helper()
 	err := e.db.Write(ctx, func(tx store.Tx) error {
 		n := at.UnixNano()
 		pid := "pay_" + at.Format("150405.000000000")
+		providerPaymentID := "pp_" + at.Format("150405.000000000")
+		if len(observed) > 0 && !observed[0] {
+			providerPaymentID = ""
+		}
 		if err := store.InsertPayment(ctx, tx, store.Payment{ID: pid, OrgID: store.DefaultOrgID, AppID: "app_1", Mode: "test", Kind: "one_time",
 			Amount: 1, Currency: "INR", Status: "created", ClientSecretHash: "x", ExpiresAt: at, Version: 1, CreatedAt: at, UpdatedAt: at}); err != nil {
 			return err
 		}
 		return store.InsertAttempt(ctx, tx, store.Attempt{ID: "att_" + at.Format("150405.000000000"), OrgID: store.DefaultOrgID, Mode: "test",
-			PaymentID: pid, ProviderAccountID: account, ProviderRef: "REF" + at.Format("150405.000000000") + string(rune('A'+n%26)), Status: "created", CreatedAt: at, UpdatedAt: at})
+			PaymentID: pid, ProviderAccountID: account, ProviderRef: "REF" + at.Format("150405.000000000") + string(rune('A'+n%26)),
+			ProviderPaymentID: providerPaymentID, Status: "created", CreatedAt: at, UpdatedAt: at})
 	})
 	if err != nil {
 		e.t.Fatal(err)
@@ -258,12 +263,14 @@ func TestSilenceDetector(t *testing.T) {
 		e.account("pa_ok")
 		e.account("pa_idle")
 		e.account("pa_forged")
+		e.account("pa_abandoned")
 		now := e.clk.Now()
 		e.attemptOn("pa_silent", now.Add(-2*time.Hour))
 		e.attemptOn("pa_ok", now.Add(-2*time.Hour+time.Second))
 		e.event("pa_ok", "e1", true, now.Add(-time.Hour))
 		e.attemptOn("pa_forged", now.Add(-3*time.Hour))
-		e.event("pa_forged", "e2", false, now.Add(-time.Hour)) // unverified deliveries do not count
+		e.event("pa_forged", "e2", false, now.Add(-time.Hour))  // unverified deliveries do not count
+		e.attemptOn("pa_abandoned", now.Add(-time.Hour), false) // an order alone does not imply a webhook
 		// pa_idle: no attempts at all, nothing to expect.
 		e.attemptOn("pa_idle", now.Add(-10*time.Hour)) // too old to matter
 

@@ -15,8 +15,8 @@ afterEach(() => {
 });
 
 const KEY = "paymux-filters:u@example.com (admin):/dashboard/payments";
-const form = (method = "get") =>
-  `<form class="filters" method="${method}" action="/dashboard/payments"><input type="search" name="q" aria-label="Search payments"><select name="status" aria-label="Status"><option value="">Any</option><option value="succeeded">Succeeded</option></select><input type="hidden" name="csrf" value="tok"><button type="submit">Filter</button></form><p>Payments body</p>`;
+const form = (method = "get", autoSearch = false, value = "") =>
+  `<form class="filters" method="${method}" action="/dashboard/payments"${autoSearch ? ' data-auto-search="true"' : ""}><input type="search" name="q" value="${value}" aria-label="Search payments"><select name="status" aria-label="Status"><option value="">Any</option><option value="succeeded">Succeeded</option></select><input type="hidden" name="csrf" value="tok"><button type="submit">Filter</button></form><p>Payments body</p>`;
 
 async function payments(method = "get") {
   handlers["/dashboard/payments"] = () => pageHtml("Payments", form(method));
@@ -69,6 +69,26 @@ test("a chip applies its filter to the current tab", async () => {
     expect(router.state.location.searchStr).toBe("?q=alice&status=succeeded"),
   );
   expect(router.state.location.pathname).toBe("/dashboard/payments");
+});
+
+test("payment search keeps focus so typing can continue after refresh", async () => {
+  handlers["/dashboard/payments"] = (call) =>
+    pageHtml(
+      "Payments",
+      form("get", true, call === 1 ? "" : call === 2 ? "a" : "ab"),
+    );
+  const router = await mount("/dashboard/payments");
+  fireEvent.input(search(""), { target: { value: "a" } });
+  await waitFor(
+    () => expect(router.state.location.searchStr).toContain("q=a"),
+    { timeout: 1000 },
+  );
+  await waitFor(() => expect(document.activeElement).toBe(search("a")));
+  fireEvent.input(search("a"), { target: { value: "ab" } });
+  await waitFor(
+    () => expect(router.state.location.searchStr).toContain("q=ab"),
+    { timeout: 1000 },
+  );
 });
 
 test("a chip can be removed", async () => {
