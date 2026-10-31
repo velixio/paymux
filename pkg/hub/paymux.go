@@ -89,9 +89,18 @@ func cancelDashboardStreamOnShutdown(ctx context.Context, next http.Handler) htt
 			return
 		}
 		streamCtx, cancel := context.WithCancel(r.Context())
-		stop := context.AfterFunc(ctx, cancel)
-		defer stop()
-		defer cancel()
+		callbackDone := make(chan struct{})
+		stop := context.AfterFunc(ctx, func() {
+			cancel()
+			_ = http.NewResponseController(w).SetWriteDeadline(time.Now())
+			close(callbackDone)
+		})
+		defer func() {
+			if !stop() {
+				<-callbackDone
+			}
+			cancel()
+		}()
 		next.ServeHTTP(w, r.WithContext(streamCtx))
 	})
 }
