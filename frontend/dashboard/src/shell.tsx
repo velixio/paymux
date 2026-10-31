@@ -122,7 +122,10 @@ const hrefOf = (loc: { pathname: string; searchStr: string }) =>
   loc.pathname + loc.searchStr;
 
 const sections = [
-  { name: "Workspace", keys: ["overview", "payments", "payment-links"] },
+  {
+    name: "Workspace",
+    keys: ["overview", "analytics", "payments", "payment-links"],
+  },
   { name: "Billing", keys: ["subscriptions", "invoices"] },
   {
     name: "Operations",
@@ -136,6 +139,7 @@ const sections = [
 ];
 const iconMap: Record<string, React.ComponentType<{ size?: number }>> = {
   overview: House,
+  analytics: BarChart3,
   payments: CreditCard,
   "payment-links": LinkIcon,
   subscriptions: Repeat,

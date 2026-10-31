@@ -8,6 +8,8 @@
 <select name="status" aria-label="Status"><option value="">Any status</option>{{range .Statuses}}<option value="{{.}}"{{if eq . $.Filter.Status}} selected{{end}}>{{.}}</option>{{end}}</select>
 <input name="from" type="date" value="{{.Filter.From}}" aria-label="From date">
 <input name="to" type="date" value="{{.Filter.To}}" aria-label="To date">
+{{if .Filter.Currency}}<input name="currency" type="hidden" value="{{.Filter.Currency}}">{{end}}
+{{if .Filter.Country}}<input name="country" type="hidden" value="{{.Filter.Country}}">{{end}}
 <input name="q" type="search" value="{{.Filter.Q}}" placeholder="Payment, order, transaction or customer" aria-label="Search payments" size="34" autocomplete="off">
 <button class="btn small" type="submit">Filter</button>
 </form>

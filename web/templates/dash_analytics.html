@@ -1,0 +1,36 @@
+{{define "title"}}Analytics - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
+{{define "mainclass"}}dash{{end}}
+{{define "content"}}{{template "dash_open" .}}
+{{with .Analytics}}
+<header class="analytics-header"><div><p class="eyebrow">Payments intelligence</p><h1>Analytics <span class="mode mode-{{$.Mode}}">{{$.Mode}}</span></h1><p class="muted">Payment cohorts, retry outcomes and country performance. Counts and amounts use the selected native currency.</p></div><a class="btn" href="{{.CountriesCSV}}" download>Export countries CSV</a></header>
+<nav class="range-presets" aria-label="Analytics range">{{range .Presets}}<a href="{{.Href}}"{{if .Current}} aria-current="page" class="active"{{end}}>{{.Label}}</a>{{end}}</nav>
+<form class="analytics-filters filters" method="get" action="/dashboard/analytics">
+<label>From<input type="date" name="from" value="{{.FromS}}"></label><label>To<input type="date" name="to" value="{{.ToS}}"></label>
+<label>App<select name="app"><option value="">All apps</option>{{range .Apps}}<option value="{{.ID}}"{{if eq .ID $.Analytics.Query.App}} selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+<label>Currency<select name="currency">{{range .Currencies}}<option value="{{.}}"{{if eq . $.Analytics.Currency}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Country<select name="country"><option value="">All countries</option>{{range .Countries}}<option value="{{.}}"{{if eq . $.Analytics.Query.Country}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Group by<select name="bucket"><option value="auto"{{if eq .Query.Bucket "auto"}} selected{{end}}>Auto</option><option value="hour"{{if eq .Query.Bucket "hour"}} selected{{end}}>Hour</option><option value="day"{{if eq .Query.Bucket "day"}} selected{{end}}>Day</option><option value="week"{{if eq .Query.Bucket "week"}} selected{{end}}>Week</option><option value="month"{{if eq .Query.Bucket "month"}} selected{{end}}>Month</option><option value="quarter"{{if eq .Query.Bucket "quarter"}} selected{{end}}>Quarter</option></select></label>
+<input type="hidden" name="range" value="custom"><button class="btn small" type="submit">Apply</button>
+</form>
+<section class="analytics-kpis" aria-label="Payment outcome summary">
+<article><span>Created</span><strong>{{.Created}}</strong><small>{{.CreatedChange}} vs previous period</small></article>
+<article><span>Paid</span><strong>{{.Paid}}</strong><small>{{.PaidChange}} · {{.SuccessRate}} success</small></article>
+<article><span>Failed</span><strong>{{.Failed}}</strong><small>{{.FailedChange}} vs previous period</small></article>
+<article><span>Waiting / review</span><strong>{{.Waiting}}</strong><small>{{.Incomplete}} expired or canceled</small></article>
+<article><span>Paid amount</span><strong>{{.PaidAmount}}</strong><small>{{.Currency}}, native amount</small></article>
+<article><span>Refunded</span><strong>{{.RefundedAmount}}</strong><small>{{.Currency}}, booked refunds</small></article>
+</section>
+<div class="analytics-primary-grid">
+<section class="analytics-panel"><div class="analytics-panel-head"><div><p class="eyebrow">Payment cohorts</p><h2>Created, paid and failed</h2></div><span class="analytics-context">{{.FromS}} – {{.ToS}}</span></div>{{template "analytics_outcome_chart" .}}</section>
+<section class="analytics-panel"><div class="analytics-panel-head"><div><p class="eyebrow">Geography</p><h2>Country ranking</h2></div><span class="analytics-context">Ranked by paid payments</span></div>{{template "analytics_country_ranking" .}}</section>
+</div>
+<section class="analytics-panel analytics-country-table"><div class="analytics-panel-head"><div><p class="eyebrow">Country detail</p><h2>Customer-country outcomes</h2></div><p class="muted">Country comes from the payment routing country, then billing country. Missing values remain Unknown.</p></div>
+<div class="table-scroll"><table class="grid"><thead><tr><th>Country</th><th>Created</th><th>Paid</th><th>Failed</th><th>Waiting</th><th>Expired / canceled</th><th>Success</th><th>Paid amount</th><th>Refunded</th><th></th></tr></thead><tbody>{{range .CountryRows}}<tr><th scope="row"><a href="{{.Href}}">{{.Label}}</a></th><td>{{.Created}}</td><td>{{.Paid}}</td><td>{{.Failed}}</td><td>{{.Waiting}}</td><td>{{.Incomplete}}</td><td>{{.SuccessRate}}</td><td>{{.PaidAmount}}</td><td>{{.RefundedAmount}}</td><td><a href="{{.PaymentsHref}}">Payments</a></td></tr>{{else}}<tr><td colspan="10" class="muted">No country data in this range.</td></tr>{{end}}</tbody></table></div></section>
+<div class="analytics-detail-grid">
+<section class="analytics-panel"><div class="analytics-panel-head"><div><p class="eyebrow">Routing</p><h2>Provider performance</h2></div><span class="analytics-context">Provider-side attempts</span></div><div class="table-scroll"><table class="grid"><thead><tr><th>Provider</th><th>Attempts</th><th>Paid</th><th>Failed</th><th>Success</th></tr></thead><tbody>{{range .Providers}}<tr><th scope="row">{{.Label}}</th><td>{{.Attempts}}</td><td>{{.Paid}}</td><td>{{.Failed}}</td><td>{{.SuccessRate}}</td></tr>{{else}}<tr><td colspan="5" class="muted">No attempts in this range.</td></tr>{{end}}</tbody></table></div></section>
+<section class="analytics-panel"><div class="analytics-panel-head"><div><p class="eyebrow">Checkout</p><h2>Payment methods</h2></div><span class="analytics-context">Provider-side attempts</span></div><div class="table-scroll"><table class="grid"><thead><tr><th>Method</th><th>Attempts</th><th>Paid</th><th>Failed</th><th>Success</th></tr></thead><tbody>{{range .Methods}}<tr><th scope="row">{{.Label}}</th><td>{{.Attempts}}</td><td>{{.Paid}}</td><td>{{.Failed}}</td><td>{{.SuccessRate}}</td></tr>{{else}}<tr><td colspan="5" class="muted">No payment-method data in this range.</td></tr>{{end}}</tbody></table></div></section>
+<section class="analytics-panel"><div class="analytics-panel-head"><div><p class="eyebrow">Failures</p><h2>Top failure reasons</h2></div><span class="analytics-context">Provider-side attempts</span></div><div class="table-scroll"><table class="grid"><thead><tr><th>Code</th><th>Provider message</th><th>Count</th></tr></thead><tbody>{{range .Failures}}<tr><th scope="row"><code>{{.Code}}</code></th><td>{{.Message}}</td><td>{{.Count}}</td></tr>{{else}}<tr><td colspan="3" class="muted">No failed attempts in this range.</td></tr>{{end}}</tbody></table></div></section>
+</div>
+{{end}}
+{{template "dash_close" .}}{{end}}

@@ -1295,6 +1295,75 @@ main.dash:has(#paymux-react-root) {
   border-radius: 8px;
   font-size: 13px;
 }
+
+/* Analytics uses server-rendered SVG bars so it works in both workspaces. */
+.react-content .analytics-header,
+.react-content .analytics-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.react-content .analytics-header { margin-bottom: 14px; }
+.react-content .analytics-header h1,
+.react-content .analytics-panel-head h2,
+.react-content .analytics-panel-head h3 { margin: 0; }
+.react-content .eyebrow { margin: 0 0 4px; color: var(--muted-foreground); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.react-content .analytics-filters { align-items: end; margin: 0 0 16px; }
+.react-content .analytics-filters label { display: grid; gap: 4px; color: var(--muted-foreground); font-size: 11px; }
+.react-content .analytics-kpis,
+.react-content .analytics-overview-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin: 0 0 14px; }
+.react-content .analytics-kpis article,
+.react-content .analytics-overview-kpis span { min-width: 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 9px; background: var(--card); }
+.react-content .analytics-kpis span,
+.react-content .analytics-kpis small { display: block; color: var(--muted-foreground); font-size: 10px; }
+.react-content .analytics-kpis strong,
+.react-content .analytics-overview-kpis strong { display: block; margin: 2px 0; font-size: 20px; font-variant-numeric: tabular-nums; }
+.react-content .analytics-primary-grid,
+.react-content .analytics-detail-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr); gap: 14px; margin: 0 0 14px; }
+.react-content .analytics-detail-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.react-content .analytics-panel,
+.react-content .overview-analytics { padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+.react-content .overview-analytics { margin-top: 18px; }
+.react-content .overview-analytics .analytics-panel { padding: 0; border: 0; }
+.react-content .analytics-context { color: var(--muted-foreground); font-size: 10px; white-space: nowrap; }
+.react-content .analytics-chart { display: grid; gap: 8px; margin-top: 16px; }
+.react-content .analytics-chart-row { display: grid; grid-template-columns: minmax(76px, auto) 1fr; gap: 10px; align-items: center; }
+.react-content .analytics-period { color: var(--muted-foreground); font-size: 10px; white-space: nowrap; }
+.react-content .analytics-bars { display: grid; gap: 3px; }
+.react-content .analytics-bar { display: grid; grid-template-columns: minmax(0, 1fr) 30px; gap: 6px; align-items: center; }
+.react-content .analytics-bar svg { display: block; width: 100%; height: 6px; overflow: visible; }
+.react-content .analytics-bar small { color: var(--muted-foreground); font-size: 9px; text-align: right; font-variant-numeric: tabular-nums; }
+.react-content .analytics-bar.created rect { fill: var(--muted-foreground); }
+.react-content .analytics-bar.paid rect { fill: var(--status-ok-fg); }
+.react-content .analytics-bar.failed rect { fill: var(--status-bad-fg); }
+.react-content .analytics-legend { display: flex; gap: 14px; margin: 12px 0 0 86px; color: var(--muted-foreground); font-size: 10px; }
+.react-content .analytics-legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 2px; background: var(--muted-foreground); }
+.react-content .analytics-legend .paid::before { background: var(--status-ok-fg); }
+.react-content .analytics-legend .failed::before { background: var(--status-bad-fg); }
+.react-content .country-ranking { display: grid; gap: 12px; margin-top: 16px; }
+.react-content .country-rank-row { display: grid; grid-template-columns: minmax(70px, auto) minmax(70px, 1fr) auto; gap: 10px; align-items: center; color: inherit; text-decoration: none; }
+.react-content .country-rank-name { display: grid; }
+.react-content .country-rank-name small { color: var(--muted-foreground); font-size: 9px; }
+.react-content .country-rank-row svg { display: block; width: 100%; height: 8px; }
+.react-content .country-rank-row rect { fill: var(--primary); }
+.react-content .country-rank-value { font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.react-content .analytics-country-table { margin-bottom: 14px; }
+.react-content .analytics-country-table table,
+.react-content .analytics-detail-grid table { max-width: none; }
+@media (max-width: 1050px) {
+  .react-content .analytics-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .react-content .analytics-detail-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .react-content .analytics-header,
+  .react-content .analytics-panel-head { flex-direction: column; gap: 8px; }
+  .react-content .analytics-primary-grid { grid-template-columns: 1fr; }
+  .react-content .analytics-kpis,
+  .react-content .analytics-overview-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .react-content .analytics-chart-row { grid-template-columns: 68px 1fr; }
+  .react-content .analytics-legend { margin-left: 78px; }
+}
 /* KPI tiles */
 .react-content .revenue-kpis {
   display: grid;

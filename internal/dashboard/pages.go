@@ -107,6 +107,7 @@ type Page struct {
 	AuditRows   []auditRow
 	AuditFilter auditFilter
 	Revenue     revenueView
+	Analytics   *analyticsView
 }
 
 type appOpt struct{ ID, Name string }
@@ -124,6 +125,7 @@ func (d *Dashboard) routesPages() {
 	d.routesApps()
 	d.routesSettings()
 	d.routesAuditOverview()
+	d.routesAnalytics()
 	d.routesLogs()
 	d.routesInvoices()
 	d.routesTax()

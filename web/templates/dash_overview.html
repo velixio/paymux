@@ -33,4 +33,11 @@
 <p><a href="{{.CSVHref}}" download>Download CSV</a></p>
 </section>
 {{end}}
+{{with .Analytics}}
+<section class="overview-analytics" aria-labelledby="payment-health-title">
+<div class="analytics-panel-head"><div><p class="eyebrow">Payment health</p><h2 id="payment-health-title">Payment outcomes</h2></div><a href="{{.Href}}">Open analytics</a></div>
+<div class="analytics-overview-kpis"><span><strong>{{.Created}}</strong> created</span><span><strong>{{.Paid}}</strong> paid</span><span><strong>{{.Failed}}</strong> failed</span><span><strong>{{.SuccessRate}}</strong> success</span></div>
+<div class="analytics-primary-grid overview-analytics-grid"><section class="analytics-panel">{{template "analytics_outcome_chart" .}}</section><section class="analytics-panel"><div class="analytics-panel-head"><h3>Top countries</h3><span class="analytics-context">By paid payments</span></div>{{template "analytics_country_ranking" .}}</section></div>
+</section>
+{{end}}
 {{template "dash_close" .}}{{end}}
