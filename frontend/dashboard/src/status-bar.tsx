@@ -60,7 +60,7 @@ export function StatusBar({
   updatedAt,
   warnings,
   onShortcuts,
-  liveConnection = "unavailable",
+  liveConnection,
 }: {
   updatedAt: number | undefined;
   warnings: string[];
@@ -76,14 +76,16 @@ export function StatusBar({
       ? "Live"
       : liveConnection === "connecting"
         ? "Reconnecting"
-        : "Connected";
+        : liveConnection === "unavailable"
+          ? "Unavailable"
+          : "Connected";
   return (
     <footer className="status-bar">
       <span
         className={
-          live || (online && liveConnection === "unavailable")
+          live || (online && liveConnection === undefined)
             ? "status-online"
-            : online
+            : online && liveConnection === "connecting"
               ? "status-connecting"
               : "status-offline"
         }
