@@ -38,6 +38,11 @@ import { useRuntime, WorkspaceLink } from "./runtime";
 const ThemePreview = lazy(() => import("./theme-preview"));
 const ThemeEditor = lazy(() => import("./theme-editor"));
 
+// Filter results replace the server-rendered form. Remember that an automatic
+// search initiated the navigation so the replacement input can retain the
+// user's keyboard focus and caret instead of interrupting their typing.
+let pendingAutoSearchFocus: string | null = null;
+
 // The theme form is plain and complete on its own. This keeps its DOM in place
 // (so nothing typed is lost when the editor chunk arrives) and adds the live
 // preview and contrast table beside it once the chunk has loaded.
@@ -117,6 +122,17 @@ function Form({ node }: { node: ViewNode }) {
     (node.attrs.class ?? "").split(/\s+/).includes("filters") &&
     (node.attrs.method ?? "get").toLowerCase() === "get";
   const autoSearch = filterForm && node.attrs["data-auto-search"] === "true";
+  useEffect(() => {
+    const el = form.current;
+    if (!autoSearch || !el || pendingAutoSearchFocus !== el.action) return;
+    const input = el.querySelector<HTMLInputElement>(
+      'input[type="search"][name="q"]',
+    );
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(input.value.length, input.value.length);
+    pendingAutoSearchFocus = null;
+  }, [autoSearch, node]);
   return (
     <form
       {...attributes(node)}
@@ -139,7 +155,10 @@ function Form({ node }: { node: ViewNode }) {
         ) {
           if (searchTimer.current) clearTimeout(searchTimer.current);
           searchTimer.current = setTimeout(() => {
-            if (form.current) submit(form.current, null);
+            if (form.current) {
+              pendingAutoSearchFocus = form.current.action;
+              submit(form.current, null);
+            }
           }, 250);
         }
       }}
