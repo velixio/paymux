@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -77,6 +78,34 @@ func GetAttempt(ctx context.Context, q Queryer, id string) (Attempt, error) {
 // ListAttempts returns the attempts of a payment, oldest first.
 func ListAttempts(ctx context.Context, q Queryer, paymentID string) ([]Attempt, error) {
 	rows, err := q.QueryContext(ctx, "SELECT "+attemptCols+" FROM payment_attempts WHERE payment_id = ? ORDER BY id", paymentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Attempt
+	for rows.Next() {
+		a, err := scanAttempt(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// ListAttemptsForPayments returns every attempt for the requested payments in
+// one query. Dashboard list pages use it to show provider, method and attempt
+// count without issuing one query per payment.
+func ListAttemptsForPayments(ctx context.Context, q Queryer, paymentIDs []string) ([]Attempt, error) {
+	if len(paymentIDs) == 0 {
+		return []Attempt{}, nil
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(paymentIDs)), ",")
+	args := make([]any, len(paymentIDs))
+	for i, id := range paymentIDs {
+		args[i] = id
+	}
+	rows, err := q.QueryContext(ctx, "SELECT "+attemptCols+" FROM payment_attempts WHERE payment_id IN ("+marks+") ORDER BY created_at, id", args...)
 	if err != nil {
 		return nil, err
 	}

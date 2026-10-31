@@ -12,12 +12,12 @@
 <button class="btn small" type="submit">Filter</button>
 </form>
 <div class="table-scroll"><table class="grid">
-<thead><tr><th>Payment</th><th>App</th><th>Status</th><th class="money">Amount</th><th>Order ref</th><th>Customer</th><th>Created</th></tr></thead>
+<thead><tr><th>Payment</th><th>App</th><th>Status</th><th class="money">Amount</th><th>Provider &amp; method</th><th>Attempts</th><th>Customer</th><th>Created</th></tr></thead>
 <tbody>
 {{range .Rows}}<tr>
-<td><a href="/dashboard/payments/{{.ID}}">{{.ID}}</a></td><td>{{.App}}</td><td><span class="status status-{{.StatusClass}}">{{.Status}}</span></td>
-<td class="money">{{.Amount}}</td><td>{{.OrderRef}}</td><td>{{.Customer}}</td><td>{{.Created}}</td>
-</tr>{{else}}<tr><td colspan="7" class="muted">No payments match. Adjust your filters or create a test payment using the API. <a href="/docs">Open API reference</a></td></tr>{{end}}
+<td><a href="/dashboard/payments/{{.ID}}">{{.ID}}</a>{{if .OrderRef}}<br><small class="muted">{{.OrderRef}}</small>{{end}}</td><td>{{.App}}</td><td><span class="status status-{{.StatusClass}}">{{.Status}}</span></td>
+<td class="money">{{.Amount}}</td><td>{{if .Provider}}<strong>{{.Provider}}</strong>{{if .ProviderAccount}}<br><small class="muted">{{.ProviderAccount}}</small>{{end}}{{if .Method}}<br>{{.Method}}{{end}}{{if .MethodMeta}}<br><small class="muted">{{.MethodMeta}}</small>{{end}}{{else}}<span class="muted">Not routed</span>{{end}}</td><td>{{.Attempts}}</td><td>{{.Customer}}</td><td>{{.Created}}</td>
+</tr>{{else}}<tr><td colspan="8" class="muted">No payments match. Adjust your filters or create a test payment using the API. <a href="/docs">Open API reference</a></td></tr>{{end}}
 </tbody>
 </table></div>
 {{with .NextURL}}<p><a class="next" href="{{.}}">Older payments &rarr;</a></p>{{end}}
