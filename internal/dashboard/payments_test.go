@@ -336,7 +336,8 @@ func TestPaymentDetailShowsTimeline(t *testing.T) {
 		f := e.detailFixture()
 		c := e.roleClient("viewer")
 		list := e.pageOK(c, "/dashboard/payments")
-		has(t, list, "Provider &amp; method", "Razorpay", "Razorpay main", "UPI", "credit card", "ORD-D1", "<td>2</td>")
+		has(t, list, "class=\"provider-logo provider-logo-razorpay\"", "aria-label=\"Razorpay\"", "title=\"Razorpay\"", ">RZ</span>", "UPI", "credit card", "ORD-D1", "<td class=\"num\">2</td>")
+		lacks(t, list, "Razorpay main", "Provider &amp; method")
 		body := e.pageOK(c, "/dashboard/payments/"+f.pay.ID)
 		has(t, body, "pay_d1", "ORD-D1", "100.00 INR", "succeeded",
 			// customer and billing details

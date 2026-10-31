@@ -23,7 +23,7 @@ import (
 
 type payRow struct {
 	ID, App, Status, StatusClass, Amount, Customer, OrderRef, Created string
-	Provider, ProviderAccount, Method, MethodMeta                     string
+	Provider, ProviderKey, ProviderMark, Method, MethodMeta           string
 	Attempts                                                          int
 }
 
@@ -156,7 +156,6 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 		return
 	}
 	names := map[string]string{}
-	accountNames := map[string]string{}
 	accountConnectors := map[string]string{}
 	attemptsByPayment := map[string][]store.Attempt{}
 	v := d.shell(r, s, "payments", "Payments")
@@ -165,7 +164,6 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 		v.AppOpts = append(v.AppOpts, appOpt{ID: a.ID, Name: a.Name})
 	}
 	for _, account := range accounts {
-		accountNames[account.ID] = account.Name
 		accountConnectors[account.ID] = account.Connector
 	}
 	for _, attempt := range attempts {
@@ -182,15 +180,13 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 		paymentAttempts := attemptsByPayment[p.ID]
 		row.Attempts = len(paymentAttempts)
 		if selected, ok := paymentListAttempt(p, paymentAttempts); ok {
-			row.ProviderAccount = accountNames[selected.ProviderAccountID]
 			connectorName := accountConnectors[selected.ProviderAccountID]
+			row.ProviderKey = connectorName
+			row.ProviderMark = paymentProviderMark(connectorName)
 			if _, info, found := connector.Lookup(connectorName); found {
 				row.Provider = info.DisplayName
 			} else {
 				row.Provider = connectorName
-			}
-			if row.ProviderAccount == row.Provider || row.ProviderAccount == connectorName {
-				row.ProviderAccount = ""
 			}
 			row.Method, row.MethodMeta = paymentListMethod(selected)
 		}
@@ -219,6 +215,27 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 		v.NextURL = prefix + "/payments?" + next.Encode()
 	}
 	d.render(w, http.StatusOK, "dash_payments", v)
+}
+
+func paymentProviderMark(name string) string {
+	marks := map[string]string{
+		"cashfree":  "CF",
+		"payu":      "PU",
+		"razorpay":  "RZ",
+		"remote":    "RM",
+		"simulator": "SM",
+		"stripe":    "ST",
+		"whop":      "WH",
+		"zoho":      "ZH",
+	}
+	if mark := marks[name]; mark != "" {
+		return mark
+	}
+	name = strings.ToUpper(name)
+	if len(name) > 2 {
+		return name[:2]
+	}
+	return name
 }
 
 // paymentListAttempt chooses the attempt that best explains the payment. A
