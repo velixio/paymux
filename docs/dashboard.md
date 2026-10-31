@@ -83,6 +83,8 @@ Analytics can be filtered by date range, app, native currency, customer country,
 
 Live and test data are always isolated by the dashboard mode switch. Amounts are never combined across currencies with a static FX rate; choose one native currency at a time. Provider settlement data remains authoritative.
 
+Operational pages update automatically while the dashboard is open. A single authenticated server-sent events stream carries lightweight change notices scoped to the signed-in organisation and selected mode; it never sends payment or webhook payloads. The browser coalesces bursts and reloads clean Overview, Analytics, Payments, Subscriptions, Invoices, Disputes, Reconciliation, Reports, and Alerts data. Pages with unsaved edits are left alone. The status bar shows **Live** when the stream is connected and **Reconnecting** while the browser resumes it using the last event ID.
+
 ## Tabs, revenue chart and shortcuts
 
 The dashboard keeps pages open as tabs. Overview is pinned. Alt-click a link (or open a page from the pinned Overview) to open it in a new tab; reload the browser and your tabs come back. A tab with unsaved edits shows a dot and asks before it closes. A page that shows a secret only once, such as a new API key, closes its content when you leave the tab, so copy the secret before switching. Shortcuts: `[` and `]` switch tabs, `g` then `1` to `9` jumps to a tab, `g w` closes the current tab, `g t` reopens the last closed one, `Ctrl+K` (or `/`) opens the command bar and `?` lists all shortcuts. In tables, `j` and `k` move between rows, `Enter` opens one and `Alt+Enter` opens it in a new tab.

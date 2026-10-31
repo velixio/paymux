@@ -85,6 +85,7 @@ import { createMatcher, isTyping, type Binding } from "./keys";
 import { TAB_KEYS, type TabAction } from "./shortcuts";
 import { ShortcutSheet } from "./shortcut-sheet";
 import { StatusBar } from "./status-bar";
+import { useDashboardLiveEvents } from "./live-events";
 import { TabStrip } from "./tab-strip";
 import { TabView } from "./tab-view";
 import { TabsContext, useTabs, type TabsApi } from "./tabs-context";
@@ -653,6 +654,16 @@ function TabsShell({
   const activeKey = queryKey(active.href);
   const loading = useIsFetching({ queryKey: activeKey }) > 0;
   const refresh = () => void client.refetchQueries({ queryKey: activeKey });
+  const dirtyHrefs = useMemo(
+    () =>
+      new Set(
+        state.tabs
+          .filter((tab) => dirtyIds.has(tab.id))
+          .map((tab) => withPeek(tab.href, null)),
+      ),
+    [state.tabs, dirtyIds],
+  );
+  const liveConnection = useDashboardLiveEvents(client, dirtyHrefs);
 
   return (
     <TabsContext.Provider value={api}>
@@ -801,6 +812,7 @@ function TabsShell({
           updatedAt={client.getQueryState(activeKey)?.dataUpdatedAt}
           warnings={page.warnings}
           onShortcuts={() => setShortcutsOpen(true)}
+          liveConnection={liveConnection}
         />
         <Dialog
           open={!!confirm}

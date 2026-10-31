@@ -913,6 +913,9 @@
 .app-shell .status-offline .status-dot {
   background: var(--status-bad-fg);
 }
+.app-shell .status-connecting .status-dot {
+  background: var(--status-warn-fg);
+}
 .app-shell .status-warning {
   display: inline-flex;
   align-items: center;

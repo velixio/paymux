@@ -147,6 +147,50 @@ func TestEventAndDeliveryRows(t *testing.T) {
 	})
 }
 
+func TestDashboardEventsAreOrderedAndScoped(t *testing.T) {
+	storetest.Each(t, func(t *testing.T, db *store.DB) {
+		migrated(t, db)
+		now := time.UnixMilli(1_700_000_000_000).UTC()
+		events := []store.EventRow{
+			{ID: "evt_01", OrgID: "org_1", AppID: "app_1", Mode: "live", Type: "payment.created", ObjectType: "payment", ObjectID: "pay_1", ObjectVersion: 1, Data: json.RawMessage(`{}`), CreatedAt: now},
+			{ID: "evt_02", OrgID: "org_1", AppID: "app_1", Mode: "test", Type: "payment.created", ObjectType: "payment", ObjectID: "pay_test", ObjectVersion: 1, Data: json.RawMessage(`{}`), CreatedAt: now},
+			{ID: "evt_03", OrgID: "org_2", AppID: "app_2", Mode: "live", Type: "payment.created", ObjectType: "payment", ObjectID: "pay_other", ObjectVersion: 1, Data: json.RawMessage(`{}`), CreatedAt: now},
+			{ID: "evt_04", OrgID: "org_1", AppID: "app_1", Mode: "live", Type: "payment.succeeded", ObjectType: "payment", ObjectID: "pay_1", ObjectVersion: 2, Data: json.RawMessage(`{}`), CreatedAt: now},
+		}
+		if err := db.Write(ctx, func(tx store.Tx) error {
+			for _, event := range events {
+				if err := db.InsertEvent(ctx, tx, event); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Read(ctx, func(q store.Querier) error {
+			visible, err := store.DashboardEventVisible(ctx, q, "evt_01", "org_1", "live")
+			if err != nil || !visible {
+				t.Fatalf("visible = %v, %v", visible, err)
+			}
+			visible, err = store.DashboardEventVisible(ctx, q, "evt_02", "org_1", "live")
+			if err != nil || visible {
+				t.Fatalf("cross-mode visible = %v, %v", visible, err)
+			}
+			latest, err := store.LatestDashboardEventID(ctx, q, "org_1", "live")
+			if err != nil || latest != "evt_04" {
+				t.Fatalf("latest = %q, %v", latest, err)
+			}
+			got, err := store.DashboardEventsAfter(ctx, q, "org_1", "live", "evt_01", 10)
+			if err != nil || len(got) != 1 || got[0].ID != "evt_04" || got[0].ObjectID != "pay_1" {
+				t.Fatalf("events = %+v, %v", got, err)
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
 func TestInsertProviderEvent(t *testing.T) {
 	storetest.Each(t, func(t *testing.T, db *store.DB) {
 		migrated(t, db)

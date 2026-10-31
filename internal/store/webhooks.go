@@ -65,6 +65,47 @@ func GetEventByID(ctx context.Context, q Queryer, id string) (EventRow, error) {
 	return e, err
 }
 
+// LatestDashboardEventID returns the newest persisted event visible to one
+// organization and mode. Event IDs are time-ordered UUIDv7 values.
+func LatestDashboardEventID(ctx context.Context, q Queryer, orgID, mode string) (string, error) {
+	var id string
+	err := q.QueryRowContext(ctx, `SELECT COALESCE(MAX(id),'') FROM events WHERE org_id = ? AND mode = ?`, orgID, mode).Scan(&id)
+	return id, err
+}
+
+// DashboardEventVisible reports whether an event cursor belongs to the
+// organization and mode requesting the stream.
+func DashboardEventVisible(ctx context.Context, q Queryer, id, orgID, mode string) (bool, error) {
+	var visible int
+	err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM events WHERE id = ? AND org_id = ? AND mode = ?)`,
+		id, orgID, mode).Scan(&visible)
+	return visible != 0, err
+}
+
+// DashboardEventsAfter returns persisted events after a time-ordered event ID.
+// The organization and mode predicates prevent cross-tenant or test/live leaks.
+func DashboardEventsAfter(ctx context.Context, q Queryer, orgID, mode, afterID string, limit int) ([]EventRow, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id, org_id, app_id, mode, type, object_type, object_id, object_version, data, created_at
+		FROM events WHERE org_id = ? AND mode = ? AND id > ? ORDER BY id LIMIT ?`, orgID, mode, afterID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []EventRow
+	for rows.Next() {
+		var e EventRow
+		var data string
+		var created int64
+		if err := rows.Scan(&e.ID, &e.OrgID, &e.AppID, &e.Mode, &e.Type, &e.ObjectType, &e.ObjectID,
+			&e.ObjectVersion, &data, &created); err != nil {
+			return nil, err
+		}
+		e.Data, e.CreatedAt = json.RawMessage(data), fromMS(created)
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // EndpointRow is a row of webhook_endpoints. An empty EventTypes list means
 // every event type.
 type EndpointRow struct {

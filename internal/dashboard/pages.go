@@ -115,6 +115,7 @@ type appOpt struct{ ID, Name string }
 // routesPages registers the part-2 pages.
 func (d *Dashboard) routesPages() {
 	m := d.mux
+	d.routesLive()
 	m.HandleFunc("GET "+prefix+"/payments", d.authed(authz.PaymentRead, d.paymentsPage))
 	m.HandleFunc("GET "+prefix+"/payments/{id}", d.authed(authz.PaymentRead, d.paymentPage))
 	m.HandleFunc("POST "+prefix+"/payments/{id}/sync", d.authed(authz.PaymentCancel, d.paymentSyncSubmit))

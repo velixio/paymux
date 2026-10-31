@@ -6,6 +6,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { agoText } from "./status";
+import type { LiveConnection } from "./live-events";
 
 const TICK_MS = 10_000;
 
@@ -59,18 +60,38 @@ export function StatusBar({
   updatedAt,
   warnings,
   onShortcuts,
+  liveConnection = "unavailable",
 }: {
   updatedAt: number | undefined;
   warnings: string[];
   onShortcuts: () => void;
+  liveConnection?: LiveConnection;
 }) {
   const online = useOnline();
   const now = useNow();
+  const live = online && liveConnection === "live";
+  const connectionLabel = !online
+    ? "Offline"
+    : live
+      ? "Live"
+      : liveConnection === "connecting"
+        ? "Reconnecting"
+        : "Connected";
   return (
     <footer className="status-bar">
-      <span className={online ? "status-online" : "status-offline"}>
+      <span
+        className={
+          live || (online && liveConnection === "unavailable")
+            ? "status-online"
+            : online
+              ? "status-connecting"
+              : "status-offline"
+        }
+        aria-live="polite"
+        aria-atomic="true"
+      >
         <span className="status-dot" aria-hidden="true" />
-        {online ? "Connected" : "Offline"}
+        {connectionLabel}
       </span>
       {updatedAt !== undefined && (
         <span>Updated {agoText(now - updatedAt)}</span>
