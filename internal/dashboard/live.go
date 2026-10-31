@@ -81,6 +81,7 @@ func (d *Dashboard) dashboardEvents(w http.ResponseWriter, r *http.Request, s *s
 	if cursor.ID != "" {
 		seen[cursor.ID] = cursor.CreatedAt
 	}
+	rescan := false
 	defer poll.Stop()
 	defer heartbeat.Stop()
 	for {
@@ -88,12 +89,17 @@ func (d *Dashboard) dashboardEvents(w http.ResponseWriter, r *http.Request, s *s
 		case <-r.Context().Done():
 			return
 		case <-heartbeat.C:
+			rescan = true
 			_, _ = fmt.Fprint(w, "data: {\"type\":\"dashboard.sync\"}\n\n")
 			if controller.Flush() != nil {
 				return
 			}
 		case <-poll.C:
-			scan := store.EventCursor{CreatedAt: cursor.CreatedAt.Add(-dashboardEventLookback)}
+			scan := cursor
+			if rescan {
+				scan = store.EventCursor{CreatedAt: cursor.CreatedAt.Add(-dashboardEventLookback)}
+				rescan = false
+			}
 			for {
 				var events []store.EventRow
 				err := d.o.DB.Read(r.Context(), func(q store.Querier) (err error) {

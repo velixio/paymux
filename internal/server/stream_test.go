@@ -51,7 +51,10 @@ func TestDashboardEventRoutePreservesStreaming(t *testing.T) {
 			t.Errorf("flush: %v", err)
 			return
 		}
-		<-proceed
+		select {
+		case <-proceed:
+		case <-r.Context().Done():
+		}
 	})
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()

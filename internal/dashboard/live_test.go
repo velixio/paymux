@@ -15,7 +15,10 @@ import (
 
 func TestDashboardEventStreamResumesAndScopesMode(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
-		e := newEnv(t, db, func(o *Options) { o.LivePollInterval = time.Millisecond })
+		e := newEnv(t, db, func(o *Options) {
+			o.LivePollInterval = time.Millisecond
+			o.LiveHeartbeatInterval = time.Millisecond
+		})
 		viewer := e.roleClient("viewer")
 		now := e.clk.Now()
 		if err := db.Write(ctx, func(tx store.Tx) error {
@@ -51,7 +54,7 @@ func TestDashboardEventStreamResumesAndScopesMode(t *testing.T) {
 		for scanner.Scan() {
 			line := scanner.Text()
 			lines = append(lines, line)
-			if strings.HasPrefix(line, "data: ") {
+			if strings.HasPrefix(line, "data: ") && !strings.Contains(line, "dashboard.sync") {
 				break
 			}
 		}
