@@ -95,16 +95,16 @@ func TestModeScopedNotificationSettings(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		admin := e.roleClient("admin")
-		body := e.pageOK(admin, "/dashboard/settings")
-		has(t, body, `action="/dashboard/settings/notifications"`, "Payment notifications")
+		body := e.pageOK(admin, "/dashboard/settings/notifications")
+		has(t, body, `action="/dashboard/settings/notifications"`, "Important payment updates")
 		tok := csrfOf(t, body)
 		form := url.Values{"csrf": {tok}, "email_enabled": {"1"}, "email": {"ops@example.com"}, "telegram_enabled": {"1"},
 			"telegram_token": {"123456:ABC_def-789"}, "telegram_chat_id": {"-100123"}, "events": {"payment.failed, payment.succeeded"}}
 		if r, out := e.post(admin, "/dashboard/settings/notifications", form); r.StatusCode != 303 {
 			t.Fatalf("save notifications: %d\n%s", r.StatusCode, out)
 		}
-		body = e.pageOK(admin, "/dashboard/settings")
-		has(t, body, `value="ops@example.com"`, `value="-100123"`, `value="payment.failed, payment.succeeded"`, "set — leave blank to keep")
+		body = e.pageOK(admin, "/dashboard/settings/notifications")
+		has(t, body, `value="ops@example.com"`, `value="-100123"`, `value="payment.failed, payment.succeeded"`, "Set — leave blank to keep")
 		lacks(t, body, "123456:ABC_def-789")
 		var cfg store.NotificationConfig
 		if err := db.Read(ctx, func(q store.Querier) (err error) {
@@ -115,10 +115,10 @@ func TestModeScopedNotificationSettings(t *testing.T) {
 		}
 
 		e.setMode(admin, "test")
-		testBody := e.pageOK(admin, "/dashboard/settings")
+		testBody := e.pageOK(admin, "/dashboard/settings/notifications")
 		lacks(t, testBody, `value="ops@example.com"`, `value="-100123"`)
 		viewer := e.roleClient("viewer")
-		lacks(t, e.pageOK(viewer, "/dashboard/settings"), `action="/dashboard/settings/notifications"`)
+		lacks(t, e.pageOK(viewer, "/dashboard/settings/notifications"), `action="/dashboard/settings/notifications"`)
 	})
 }
 
@@ -156,7 +156,7 @@ func TestRoutingEditorReadsAndWritesCanonicalFormat(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		admin := e.roleClient("admin")
-		body := e.pageOK(admin, "/dashboard/settings")
+		body := e.pageOK(admin, "/dashboard/settings/routing")
 		tok := csrfOf(t, body)
 		// the seeded defaults are shown as ordered rules with a catch-all
 		has(t, body, `action="/dashboard/settings/routing"`, `value="inr-default"`, `value="bdt-default"`, `value="razorpay, zoho, payu"`,
@@ -183,7 +183,7 @@ func TestRoutingEditorReadsAndWritesCanonicalFormat(t *testing.T) {
 		}
 
 		// reload: every field comes back, in order
-		body = e.pageOK(admin, "/dashboard/settings")
+		body = e.pageOK(admin, "/dashboard/settings/routing")
 		has(t, body, `value="inr-pinned"`, `value="INR"`, `value="IN"`, `value="one_time"`, `value="1000"`, `value="5000000"`,
 			`value="plan=pro"`, `value="account:pa_inr, razorpay"`, `value="daily"`, `value="100"`, `value="50000000"`, `value="block-jpy"`, `value="Yen not supported"`)
 		if strings.Index(body, "inr-pinned") > strings.Index(body, "block-jpy") {
@@ -208,7 +208,7 @@ func TestRoutingEditorReadsAndWritesCanonicalFormat(t *testing.T) {
 		}
 		v, _ = e.set.ResolveOrg(ctx, store.DefaultOrgID, "routing")
 		has(t, string(v.Raw), `"kind":"reject"`, "We cannot take this payment.")
-		has(t, e.pageOK(admin, "/dashboard/settings"), `value="We cannot take this payment."`)
+		has(t, e.pageOK(admin, "/dashboard/settings/routing"), `value="We cannot take this payment."`)
 
 		// rejections come from the settings validator
 		for name, f := range map[string]url.Values{
@@ -229,8 +229,8 @@ func TestRoutingEditorReadsAndWritesCanonicalFormat(t *testing.T) {
 		}
 
 		viewer := e.roleClient("viewer")
-		vb := e.pageOK(viewer, "/dashboard/settings")
-		lacks(t, vb, `action="/dashboard/settings/routing"`)
+		vb := e.pageOK(viewer, "/dashboard/settings/routing")
+		lacks(t, vb, `method="post" action="/dashboard/settings/routing"`)
 		has(t, vb, "inr-pinned", "account:pa_inr, razorpay")
 		vt := csrfOf(t, vb)
 		if r, _ := e.post(viewer, "/dashboard/settings/routing", routeForm(vt, rules[:1], map[string]string{"ca_targets": "razorpay"})); r.StatusCode != 403 {
@@ -246,7 +246,7 @@ func TestRoutingTestBox(t *testing.T) {
 		app := e.seedApp("alpha")
 		viewer := e.roleClient("viewer")
 		try := func(q string) string { // just the result box, not the editor around it
-			return regexpFind(t, `(?s)(<div class="route-result">.*?</div>)`, e.pageOK(viewer, "/dashboard/settings?test=1&"+q))
+			return regexpFind(t, `(?s)(<div class="route-result"[^>]*>.*?</div>)`, e.pageOK(viewer, "/dashboard/settings/routing?test=1&"+q))
 		}
 		// a currency with its own rule (the seeded defaults)
 		body := try("mode=live&currency=INR&country=IN&amount=100000&purpose=one_time")
@@ -298,7 +298,7 @@ func TestRoutingTestBox(t *testing.T) {
 
 		// input validation
 		for _, q := range []string{"currency=us", "currency=USD&amount=abc", "currency=USD&amount=-5", "currency=USD&mode=staging", "currency=USD&purpose=barter", "currency=USD&app=app_nope"} {
-			if r, _ := e.get(viewer, "/dashboard/settings?test=1&"+q); r.StatusCode != 400 {
+			if r, _ := e.get(viewer, "/dashboard/settings/routing?test=1&"+q); r.StatusCode != 400 {
 				t.Errorf("%s: %d", q, r.StatusCode)
 			}
 		}
@@ -309,14 +309,14 @@ func TestRoutingEditorRulesAreCardsWithOrderNumbers(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)
 		admin := e.roleClient("admin")
-		body := e.pageOK(admin, "/dashboard/settings")
+		body := e.pageOK(admin, "/dashboard/settings/routing")
 		tok := csrfOf(t, body)
 		// each rule is a labelled block with an order number, not a table row
-		cards := strings.Count(body, `class="rule-card"`)
-		if cards < 4 { // two seeded rules, the catch-all and blank rows
+		cards := strings.Count(body, `class="routing-rule`)
+		if cards < 4 { // two seeded rules, the catch-all and one collapsed new rule
 			t.Fatalf("rule cards: %d", cards)
 		}
-		has(t, body, `name="r_order"`, `value="1"`, `value="2"`, `Name<input class="field" name="r_name"`, `Targets<input class="field" name="r_targets"`, `<label>Currencies`, `class="rule-card catch-all"`)
+		has(t, body, `name="r_order"`, `value="1"`, `value="2"`, `Name<input class="field" name="r_name"`, `Targets, in priority order<input class="field" name="r_targets"`, `<label>Currencies`, `class="routing-rule catch-all"`)
 		lacks(t, regexpFind(t, `(?s)(<form[^>]*routing-editor.*?</form>)`, body), "<table")
 
 		order := func(a, b string) []string {
@@ -354,10 +354,21 @@ func TestRoutingEditorRulesAreCardsWithOrderNumbers(t *testing.T) {
 			t.Errorf("non-numeric order: %d", r.StatusCode)
 		}
 		// the page numbers the stored rules 1..n, in order
-		page := e.pageOK(admin, "/dashboard/settings")
+		page := e.pageOK(admin, "/dashboard/settings/routing")
 		has(t, page, `value="first-written"`, `value="second-written"`)
 		if strings.Index(page, `value="first-written"`) > strings.Index(page, `value="second-written"`) {
 			t.Error("rules are not shown in their stored order")
+		}
+		remove := routeForm(tok, []map[string]string{
+			{"r_name": "first-written", "r_currency": "INR", "r_targets": "razorpay"},
+			{"r_name": "second-written", "r_currency": "BDT", "r_targets": "whop"}}, map[string]string{"ca_targets": "razorpay"})
+		remove.Set("r_delete_0", "1")
+		if r, out := e.post(admin, "/dashboard/settings/routing", remove); r.StatusCode != 303 {
+			t.Fatalf("remove rule: %d\n%s", r.StatusCode, out)
+		}
+		v, _ := e.set.ResolveOrg(ctx, store.DefaultOrgID, "routing")
+		if strings.Contains(string(v.Raw), "first-written") || !strings.Contains(string(v.Raw), "second-written") {
+			t.Fatalf("remove rule stored %s", v.Raw)
 		}
 	})
 }

@@ -57,6 +57,8 @@ type notificationView struct {
 func (d *Dashboard) routesSettings() {
 	m := d.mux
 	m.HandleFunc("GET "+prefix+"/settings", d.authed(authz.SettingsRead, d.settingsPage))
+	m.HandleFunc("GET "+prefix+"/settings/routing", d.authed(authz.SettingsRead, d.settingsPage))
+	m.HandleFunc("GET "+prefix+"/settings/notifications", d.authed(authz.SettingsRead, d.settingsPage))
 	m.HandleFunc("POST "+prefix+"/settings/routing", d.authed(authz.SettingsWrite, d.recent(d.routingSave)))
 	m.HandleFunc("POST "+prefix+"/settings/notifications", d.authed(authz.SettingsWrite, d.recent(d.notificationsSave)))
 	m.HandleFunc("POST "+prefix+"/settings/{key}", d.authed(authz.SettingsWrite, d.recent(d.orgSettingSet)))
@@ -77,6 +79,13 @@ func (d *Dashboard) renderSettings(w http.ResponseWriter, r *http.Request, s *se
 	}
 	v := d.shell(r, s, "settings", "Settings")
 	v.Error = errMsg
+	v.SettingsSection = "general"
+	switch r.URL.Path {
+	case prefix + "/settings/routing":
+		v.SettingsSection = "routing"
+	case prefix + "/settings/notifications":
+		v.SettingsSection = "notifications"
+	}
 
 	rows, err := d.settingRows(ctx, "", org, settings.LevelOrg)
 	if err != nil {
@@ -97,7 +106,7 @@ func (d *Dashboard) renderSettings(w http.ResponseWriter, r *http.Request, s *se
 		return
 	}
 	rv.CanWrite = s.can(authz.SettingsWrite)
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 1; i++ {
 		rv.BlankRows = append(rv.BlankRows, i)
 	}
 	v.Routing = rv
@@ -363,6 +372,9 @@ func (d *Dashboard) routingSave(w http.ResponseWriter, r *http.Request, s *sessi
 	doc := routingDoc{Rules: []routing.Rule{}}
 	var orders []int
 	for i := range f["r_name"] {
+		if f.Get("r_delete_"+strconv.Itoa(i)) != "" {
+			continue
+		}
 		if get("r_name", i)+get("r_currency", i)+get("r_country", i)+get("r_purpose", i)+get("r_amin", i)+get("r_amax", i)+
 			get("r_meta", i)+get("r_targets", i)+get("r_message", i)+get("r_limit_period", i)+get("r_limit_sales", i)+get("r_limit_amount", i) == "" {
 			continue // a blank row
@@ -460,7 +472,7 @@ func (d *Dashboard) routingSave(w http.ResponseWriter, r *http.Request, s *sessi
 		d.fail(w, err)
 		return
 	}
-	http.Redirect(w, r, prefix+"/settings", http.StatusSeeOther)
+	http.Redirect(w, r, prefix+"/settings/routing", http.StatusSeeOther)
 }
 
 func (d *Dashboard) notificationsSave(w http.ResponseWriter, r *http.Request, s *session) {
@@ -484,7 +496,7 @@ func (d *Dashboard) notificationsSave(w http.ResponseWriter, r *http.Request, s 
 		d.fail(w, err)
 		return
 	}
-	http.Redirect(w, r, prefix+"/settings#notifications", http.StatusSeeOther)
+	http.Redirect(w, r, prefix+"/settings/notifications", http.StatusSeeOther)
 }
 
 func (d *Dashboard) orgSettingSet(w http.ResponseWriter, r *http.Request, s *session) {

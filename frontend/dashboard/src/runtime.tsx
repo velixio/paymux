@@ -69,6 +69,7 @@ export function WorkspaceLink({
       to={url.pathname}
       search={Object.fromEntries(url.searchParams)}
       hash={url.hash.slice(1)}
+      activeOptions={{ exact: true }}
       {...props}
       onClick={(event) => {
         // Alt-click opens a new tab. A plain click navigates in the current

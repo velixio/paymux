@@ -159,16 +159,32 @@ test("organization settings stay usable at phone width", async ({ page }) => {
   await expect(
     content.getByRole("heading", { name: "Organization settings" }),
   ).toBeVisible();
+  await content
+    .getByRole("link", { name: "Notifications", exact: true })
+    .click();
   await expect(content.locator("#notifications")).toBeVisible();
   await expect(
     content.getByRole("textbox", { name: "Notification email" }),
   ).toBeVisible();
 
-  const routing = content.locator("#routing");
-  await routing.getByText("Routing rules and route tester").click();
-  await expect(routing.getByLabel("Limit period").first()).toBeVisible();
-  await expect(routing.getByLabel("Sales limit").first()).toBeVisible();
-  await expect(routing.getByLabel("Amount limit").first()).toBeVisible();
+  await content.getByRole("link", { name: "Routing", exact: true }).click();
+  await expect(
+    content.getByRole("heading", { name: "Payment routing" }),
+  ).toBeVisible();
+  await expect(
+    content.locator(".setting-nav a[aria-current='page']"),
+  ).toHaveCount(1);
+  const rules = content.locator("details.routing-rule");
+  await expect(rules).toHaveCount(4);
+  await expect(rules.first()).not.toHaveAttribute("open", "");
+
+  const collapsedHeight = await content.evaluate((node) => node.scrollHeight);
+  expect(collapsedHeight).toBeLessThan(2000);
+
+  await rules.first().locator("summary").click();
+  await expect(rules.first().getByLabel("Period")).toBeVisible();
+  await expect(rules.first().getByLabel("Sales count")).toBeVisible();
+  await expect(rules.first().getByLabel("Captured amount")).toBeVisible();
 
   const overflow = await content.evaluate(
     (node) => node.scrollWidth - node.clientWidth,
