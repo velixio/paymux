@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/velixio/paymux/internal/store"
 	"github.com/velixio/paymux/internal/store/storetest"
@@ -43,13 +44,21 @@ func TestAnalyticsPageSeparatesModesAndRanksCountries(t *testing.T) {
 					return err
 				}
 			}
+			for _, attempt := range []store.ProviderPaymentAttempt{
+				{ProviderAccountID: "pa_analytics", ProviderPaymentID: "provider_retry_failed", AttemptID: "att_paid", Status: "failed", Method: "card", FailureCode: "retry_declined", FailureMessage: "First retry declined", CreatedAt: at, UpdatedAt: at},
+				{ProviderAccountID: "pa_analytics", ProviderPaymentID: "provider_retry_paid", AttemptID: "att_paid", Status: "captured", Method: "card", CreatedAt: at.Add(time.Minute), UpdatedAt: at.Add(time.Minute)},
+			} {
+				if err := store.UpsertProviderPaymentAttempt(ctx, tx, attempt); err != nil {
+					return err
+				}
+			}
 			return nil
 		}); err != nil {
 			t.Fatal(err)
 		}
 
 		body := e.pageOK(viewer, "/dashboard/analytics?range=7d&currency=USD")
-		for _, want := range []string{"Payments intelligence", "Country ranking", "Provider performance", "Top failure reasons", "US", "IN", "35.00 USD", "Payments", "simulator", "CARD", "declined", "Card declined"} {
+		for _, want := range []string{"Payments intelligence", "Country ranking", "Provider performance", "Top failure reasons", "US", "IN", "35.00 USD", "Payments", "simulator", "CARD", "declined", "Card declined", "retry_declined", "First retry declined"} {
 			if !strings.Contains(body, want) {
 				t.Errorf("analytics page missing %q", want)
 			}

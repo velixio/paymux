@@ -73,6 +73,7 @@ func analyticsRate(n, total int64) string {
 	return fmt.Sprintf("%.1f%%", float64(n)*100/float64(total))
 }
 
+// analyticsPercent scales a chart value while keeping nonzero values visible.
 func analyticsPercent(n, max int64) int {
 	if n <= 0 || max <= 0 {
 		return 0
@@ -84,6 +85,8 @@ func analyticsPercent(n, max int64) int {
 	return p
 }
 
+// analyticsCSVSafe prevents spreadsheet programs from interpreting exported
+// untrusted text as a formula.
 func analyticsCSVSafe(s string) string {
 	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) {
 		return "'" + s
@@ -91,6 +94,7 @@ func analyticsCSVSafe(s string) string {
 	return s
 }
 
+// sumAnalyticsPoints computes payment-level totals across time buckets.
 func sumAnalyticsPoints(points []store.PaymentOutcomePoint) (created, paid, failed, waiting, incomplete int64) {
 	for _, p := range points {
 		created += p.Created
@@ -102,12 +106,15 @@ func sumAnalyticsPoints(points []store.PaymentOutcomePoint) (created, paid, fail
 	return
 }
 
+// analyticsFilter converts a validated dashboard query into a store filter.
 func analyticsFilter(org, mode string, aq analyticsQuery, bucket string, loc *time.Location) store.AnalyticsFilter {
 	_, off := aq.From.In(loc).Zone()
 	return store.AnalyticsFilter{OrgID: org, Mode: mode, AppID: aq.App, Currency: aq.Currency, Country: aq.Country,
 		From: aq.From, To: aq.To, Hourly: bucket == "hour", OffsetSeconds: off}
 }
 
+// analyticsData validates filters and assembles all payment- and attempt-level
+// datasets used by the Analytics page and the compact Overview panels.
 func (d *Dashboard) analyticsData(ctx context.Context, r *http.Request, org, mode string) (v analyticsView, bad string, err error) {
 	err = d.o.DB.Read(ctx, func(q store.Querier) error {
 		first, hasFirst, err := store.FirstPaymentAt(ctx, q, org, mode)

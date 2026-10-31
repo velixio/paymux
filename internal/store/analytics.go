@@ -47,6 +47,7 @@ func analyticsCountryExpr(paymentCountry, billingCountry string) string {
 	return `CASE WHEN LENGTH(` + value + `) = 2 THEN UPPER(` + value + `) ELSE 'Unknown' END`
 }
 
+// analyticsWhere builds the shared tenant, mode, range, and cohort predicates.
 func analyticsWhere(f AnalyticsFilter, alias string) (string, []any) {
 	country := analyticsCountryExpr(alias+`.country`, `c.billing_country`)
 	where := alias + `.org_id = ? AND ` + alias + `.mode = ? AND ` + alias + `.created_at >= ? AND ` + alias + `.created_at < ?`
@@ -123,6 +124,8 @@ func CountryOutcomes(ctx context.Context, q Queryer, f AnalyticsFilter, limit in
 	return out, rows.Err()
 }
 
+// dimensionOutcomes aggregates provider outcomes by connector or payment
+// method without hiding retries.
 func dimensionOutcomes(ctx context.Context, q Queryer, f AnalyticsFilter, dimension string, limit int) ([]DimensionOutcome, error) {
 	where, args := analyticsWhere(f, "p")
 	key, label, joins := `COALESCE(NULLIF(o.method,''),'unknown')`, `COALESCE(NULLIF(o.method,''),'Unknown')`, ""
