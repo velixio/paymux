@@ -225,6 +225,7 @@ func SetAppProviderAccounts(ctx context.Context, tx Tx, appID string, accountIDs
 type PaymentFilter struct {
 	OrgID                       string // required: an empty org matches nothing
 	AppID, Mode, Status, Search string
+	Currency, Country           string
 	From, To                    time.Time
 }
 
@@ -251,6 +252,12 @@ func SearchPayments(ctx context.Context, q Queryer, f PaymentFilter, afterID str
 	}
 	if f.Status != "" {
 		add("status = ?", f.Status)
+	}
+	if f.Currency != "" {
+		add("currency = ?", f.Currency)
+	}
+	if f.Country != "" {
+		add(`COALESCE(NULLIF(country,''), NULLIF((SELECT billing_country FROM customers c WHERE c.id = payments.customer_id),''), 'Unknown') = ?`, f.Country)
 	}
 	if !f.From.IsZero() {
 		add("created_at >= ?", ms(f.From))

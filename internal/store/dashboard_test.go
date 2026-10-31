@@ -191,7 +191,8 @@ func TestSearchPayments(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		seedBase(t, db)
 		err := db.Write(ctx, func(tx store.Tx) error {
-			if _, err := store.UpsertCustomer(ctx, tx, store.Customer{ID: "cus_1", OrgID: store.DefaultOrgID, AppID: "app_a", Mode: "test", Email: "Pri.Ya@Example.com"}, t0); err != nil {
+			if _, err := store.UpsertCustomer(ctx, tx, store.Customer{ID: "cus_1", OrgID: store.DefaultOrgID, AppID: "app_a", Mode: "test", Email: "Pri.Ya@Example.com",
+				Billing: store.Billing{Country: "US"}}, t0); err != nil {
 				return err
 			}
 			for _, p := range []store.Payment{
@@ -240,6 +241,9 @@ func TestSearchPayments(t *testing.T) {
 			{"mode only", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test"}, []string{"pay_03", "pay_02", "pay_01"}},
 			{"app", store.PaymentFilter{OrgID: store.DefaultOrgID, AppID: "app_a", Mode: "test"}, []string{"pay_02", "pay_01"}},
 			{"status", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Status: "succeeded"}, []string{"pay_03", "pay_01"}},
+			{"currency", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Currency: "INR"}, []string{"pay_03", "pay_02", "pay_01"}},
+			{"billing country fallback", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Country: "US"}, []string{"pay_01"}},
+			{"unknown country", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Country: "Unknown"}, []string{"pay_03", "pay_02"}},
 			{"from", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", From: t0.Add(12 * time.Hour)}, []string{"pay_03", "pay_02"}},
 			{"to exclusive", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", To: t0.Add(24 * time.Hour)}, []string{"pay_01"}},
 			{"search id prefix", store.PaymentFilter{OrgID: store.DefaultOrgID, Mode: "test", Search: "pay_02"}, []string{"pay_02"}},

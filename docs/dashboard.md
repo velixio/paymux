@@ -75,11 +75,19 @@ Use **Update** (admins only) to install a newer release: it shows the running an
 
 Use **Alerts** to triage retained operational alerts. Acknowledgement records that someone reviewed the alert; it does not repair the underlying condition. Review the audit log for administrative changes.
 
+## Overview and payment analytics
+
+**Overview** combines the native-currency revenue summary with a compact payment-health chart and the top customer countries. Use **Analytics** for the detailed view: created, paid, failed, waiting/review, and expired/canceled payment cohorts; country rankings and CSV export; provider and payment-method attempt performance; and the most frequent provider failure reasons.
+
+Analytics can be filtered by date range, app, native currency, customer country, and time bucket. Counts are grouped by the payment creation time, while each payment is classified by its current status. Provider and method tables are attempt-level, so a failed retry followed by a successful retry remains visible. Country uses the payment's country snapshot and falls back to the stored customer billing country for older records. **Payments** links in the country table open the matching transactions.
+
+Live and test data are always isolated by the dashboard mode switch. Amounts are never combined across currencies with a static FX rate; choose one native currency at a time. Provider settlement data remains authoritative.
+
 ## Tabs, revenue chart and shortcuts
 
 The dashboard keeps pages open as tabs. Overview is pinned. Alt-click a link (or open a page from the pinned Overview) to open it in a new tab; reload the browser and your tabs come back. A tab with unsaved edits shows a dot and asks before it closes. A page that shows a secret only once, such as a new API key, closes its content when you leave the tab, so copy the secret before switching. Shortcuts: `[` and `]` switch tabs, `g` then `1` to `9` jumps to a tab, `g w` closes the current tab, `g t` reopens the last closed one, `Ctrl+K` (or `/`) opens the command bar and `?` lists all shortcuts. In tables, `j` and `k` move between rows, `Enter` opens one and `Alt+Enter` opens it in a new tab.
 
-**Overview** starts with a revenue chart. Pick a range (Today, 7D, 30D, 3M, 6M, 12M, YTD, All time, or custom dates), a bucket (hour, day, week, month, quarter), an app and a currency. Gross, refunds and net come with the change against the previous period of the same length, and **Download CSV** exports the buckets. USD is preferred when it has activity; otherwise the chart uses the active native currency with the highest activity measured in minor units. The currency picker and native-currency breakdown show each currency without estimated conversion. Provider settlement data remains authoritative.
+The revenue section supports Today, 7D, 30D, 3M, 6M, 12M, YTD, All time, and custom dates; hour, day, week, month, and quarter buckets; and app and currency filters. Gross, refunds and net include change against the previous period of the same length, and **Download CSV** exports the buckets. USD is preferred when it has activity; otherwise the chart uses the active native currency with the highest activity measured in minor units. The currency picker and native-currency breakdown show each currency without estimated conversion.
 
 The command bar finds pages, open tabs and actions, opens a payment, subscription, invoice or dispute by its id, and searches payments, subscriptions and invoices for an email address or any text. On list pages, **Save filter** keeps the current filters as a chip in this browser; the invoice list also searches by invoice number or buyer.
 

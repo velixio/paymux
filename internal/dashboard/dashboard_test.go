@@ -273,7 +273,7 @@ func TestLoginWithPasswordAndTOTP(t *testing.T) {
 		if r.StatusCode != 200 {
 			t.Fatalf("payments: %d", r.StatusCode)
 		}
-		for _, item := range []string{"Overview", "Payments", "Subscriptions", "Disputes", "Invoices", "Reports", "Apps", "Providers", "Settings", "Audit", "Users"} {
+		for _, item := range []string{"Overview", "Analytics", "Payments", "Subscriptions", "Disputes", "Invoices", "Reports", "Apps", "Providers", "Settings", "Audit", "Users"} {
 			if !strings.Contains(body, ">"+item+"<") {
 				t.Errorf("nav missing %s", item)
 			}

@@ -1287,6 +1287,107 @@ h3,
 .overview-actions > a {
   font-size: 13px;
 }
+
+/* Payment analytics */
+.analytics-header,
+.analytics-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.analytics-header { margin-bottom: 14px; }
+.analytics-header h1,
+.analytics-panel-head h2,
+.analytics-panel-head h3 { margin: 0; }
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.analytics-filters {
+  align-items: end;
+  margin: 0 0 16px;
+}
+.analytics-filters label { display: grid; gap: 4px; font-size: 12px; color: var(--color-muted); }
+.analytics-kpis,
+.analytics-overview-kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 14px;
+}
+.analytics-kpis article,
+.analytics-overview-kpis span {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.analytics-kpis span,
+.analytics-kpis small { display: block; color: var(--color-muted); font-size: 11px; }
+.analytics-kpis strong,
+.analytics-overview-kpis strong { display: block; margin: 2px 0; font-size: 20px; font-variant-numeric: tabular-nums; }
+.analytics-primary-grid,
+.analytics-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr);
+  gap: 14px;
+  margin: 0 0 14px;
+}
+.analytics-detail-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.analytics-panel,
+.overview-analytics {
+  padding: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.overview-analytics { margin-top: 18px; }
+.overview-analytics .analytics-panel { padding: 0; border: 0; }
+.analytics-context { color: var(--color-muted); font-size: 11px; white-space: nowrap; }
+.analytics-chart { display: grid; gap: 8px; margin-top: 16px; }
+.analytics-chart-row { display: grid; grid-template-columns: minmax(76px, auto) 1fr; gap: 10px; align-items: center; }
+.analytics-period { color: var(--color-muted); font-size: 11px; white-space: nowrap; }
+.analytics-bars { display: grid; gap: 3px; }
+.analytics-bar { display: grid; grid-template-columns: minmax(0, 1fr) 30px; gap: 6px; align-items: center; }
+.analytics-bar svg { display: block; width: 100%; height: 6px; overflow: visible; }
+.analytics-bar small { color: var(--color-muted); font-size: 10px; text-align: right; font-variant-numeric: tabular-nums; }
+.analytics-bar.created rect { fill: var(--color-muted); }
+.analytics-bar.paid rect { fill: var(--color-ok); }
+.analytics-bar.failed rect { fill: var(--color-danger); }
+.analytics-legend { display: flex; gap: 14px; margin: 12px 0 0 86px; color: var(--color-muted); font-size: 11px; }
+.analytics-legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 2px; background: var(--color-muted); }
+.analytics-legend .paid::before { background: var(--color-ok); }
+.analytics-legend .failed::before { background: var(--color-danger); }
+.country-ranking { display: grid; gap: 12px; margin-top: 16px; }
+.country-rank-row { display: grid; grid-template-columns: minmax(70px, auto) minmax(70px, 1fr) auto; gap: 10px; align-items: center; color: inherit; text-decoration: none; }
+.country-rank-name { display: grid; }
+.country-rank-name small { color: var(--color-muted); font-size: 10px; }
+.country-rank-row svg { display: block; width: 100%; height: 8px; }
+.country-rank-row rect { fill: var(--accent, var(--color-accent)); }
+.country-rank-value { font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.analytics-country-table { margin-bottom: 14px; }
+.analytics-country-table table,
+.analytics-detail-grid table { max-width: none; }
+
+@media (max-width: 1050px) {
+  .analytics-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .analytics-detail-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .analytics-header,
+  .analytics-panel-head { flex-direction: column; gap: 8px; }
+  .analytics-primary-grid { grid-template-columns: 1fr; }
+  .analytics-kpis,
+  .analytics-overview-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .analytics-chart-row { grid-template-columns: 68px 1fr; }
+  .analytics-legend { margin-left: 78px; }
+}
 table.grid .money {
   text-align: right;
   white-space: nowrap;

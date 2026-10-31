@@ -175,7 +175,7 @@ func TestCreatePayment(t *testing.T) {
 			Scope: e.scope, Amount: 49900, Currency: "inr", OrderRef: "ord-9", Description: "Pro plan",
 			Metadata: map[string]string{"plan": "pro"},
 			Customer: &core.CustomerInput{ExternalRef: "u-1", Name: "Asha", Email: "asha@example.com",
-				Billing: store.Billing{StateCode: "29", Country: "IN"}},
+				Billing: store.Billing{StateCode: "29", Country: "in"}},
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -183,7 +183,7 @@ func TestCreatePayment(t *testing.T) {
 		p := res.Payment
 		if p.Status != "created" || p.Version != 1 || p.Currency != "INR" || p.Amount != 49900 || p.Mode != "test" ||
 			p.OrgID != store.DefaultOrgID || p.Kind != "one_time" || p.ReturnURL != "https://app.example.com/return" ||
-			p.Metadata["plan"] != "pro" || p.CustomerID == "" {
+			p.Metadata["plan"] != "pro" || p.CustomerID == "" || p.Country != "IN" {
 			t.Fatalf("payment %+v", p)
 		}
 		if d := p.ExpiresAt.Sub(before); d < 59*time.Minute || d > 61*time.Minute {

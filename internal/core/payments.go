@@ -153,6 +153,11 @@ func (s *Service) CreatePayment(ctx context.Context, in CreatePaymentInput) (Cre
 	if err := ValidateCreatePaymentInput(&in); err != nil {
 		return CreatedPayment{}, err
 	}
+	// Snapshot billing country on the payment when the merchant did not pass a
+	// routing country. Analytics then remain stable if the customer is updated.
+	if in.Country == "" && in.Customer != nil {
+		in.Country = strings.ToUpper(strings.TrimSpace(in.Customer.Billing.Country))
+	}
 	secret := newClientSecret()
 	var p store.Payment
 	err := s.db.Write(ctx, func(tx store.Tx) error {

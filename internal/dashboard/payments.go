@@ -27,7 +27,7 @@ type payRow struct {
 	Attempts                                                          int
 }
 
-type payFilter struct{ App, Status, Q, From, To string }
+type payFilter struct{ App, Status, Q, From, To, Currency, Country string }
 
 type attemptRow struct {
 	ID, Status, Provider, ProviderRef, OrderID, PaymentID, Method, FailureCode, FailureMessage, Created string
@@ -91,13 +91,28 @@ func (d *Dashboard) parseDay(s string) (time.Time, error) {
 
 func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *session) {
 	qv := r.URL.Query()
-	f := payFilter{App: qv.Get("app"), Status: qv.Get("status"), Q: strings.TrimSpace(qv.Get("q")), From: qv.Get("from"), To: qv.Get("to")}
+	f := payFilter{App: qv.Get("app"), Status: qv.Get("status"), Q: strings.TrimSpace(qv.Get("q")), From: qv.Get("from"), To: qv.Get("to"),
+		Currency: strings.ToUpper(strings.TrimSpace(qv.Get("currency"))), Country: strings.TrimSpace(qv.Get("country"))}
+	if !strings.EqualFold(f.Country, "Unknown") {
+		f.Country = strings.ToUpper(f.Country)
+	} else {
+		f.Country = "Unknown"
+	}
 	org, err := d.orgID(r.Context())
 	if err != nil {
 		d.fail(w, err)
 		return
 	}
-	sf := store.PaymentFilter{OrgID: org, AppID: f.App, Mode: d.mode(r, s), Status: f.Status, Search: f.Q}
+	sf := store.PaymentFilter{OrgID: org, AppID: f.App, Mode: d.mode(r, s), Status: f.Status, Search: f.Q,
+		Currency: f.Currency, Country: f.Country}
+	if f.Currency != "" && len(f.Currency) != 3 {
+		badRequest(w, "currency must be a three-letter code")
+		return
+	}
+	if f.Country != "" && f.Country != "Unknown" && len(f.Country) != 2 {
+		badRequest(w, "country must be a two-letter code or Unknown")
+		return
+	}
 	if f.Status != "" {
 		known := false
 		for _, st := range state.AllPaymentStatuses {
@@ -213,7 +228,8 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 	}
 	if hasMore {
 		next := url.Values{}
-		for k, val := range map[string]string{"app": f.App, "status": f.Status, "q": f.Q, "from": f.From, "to": f.To} {
+		for k, val := range map[string]string{"app": f.App, "status": f.Status, "q": f.Q, "from": f.From, "to": f.To,
+			"currency": f.Currency, "country": f.Country} {
 			if val != "" {
 				next.Set(k, val)
 			}
