@@ -29,12 +29,13 @@
 <label>Notification email<input class="field" type="email" name="email" value="{{.Email}}" autocomplete="email" placeholder="payments@example.com"></label>
 <label class="option-row"><input type="checkbox" name="telegram_enabled" value="1"{{if .TelegramEnabled}} checked{{end}}><span><strong>Telegram</strong><small>Send immediate messages to a chat or channel.</small></span></label>
 <div class="settings-field-grid"><label>Bot token<input class="field" type="password" name="telegram_token" autocomplete="new-password" placeholder="{{if .HasTelegramToken}}Set — leave blank to keep{{else}}123456:ABC…{{end}}"><small class="muted">Encrypted and never displayed again.</small></label>
-<label>Chat ID<input class="field" name="telegram_chat_id" value="{{.TelegramChatID}}" autocomplete="off" placeholder="-100123456789"></label></div>
+<label>Chat ID<input class="field" name="telegram_chat_id" value="{{.TelegramChatID}}" autocomplete="off" placeholder="-100123456789"></label>
+<label>Delete messages after<input class="field" type="number" name="telegram_delete_after_hours" value="{{.TelegramDeleteAfterHours}}" min="0" max="47" inputmode="numeric"><small class="muted">Hours (1–47). Use 0 to keep messages. Telegram cannot delete messages after 48 hours.</small></label></div>
 </fieldset>
 <fieldset><legend>Events</legend><label>Event names<input class="field" name="events" value="{{.Events}}" placeholder="payment.succeeded, payment.failed"><small class="muted">Comma-separated. Leave blank for the recommended payment, refund and dispute events.</small></label></fieldset>
 <div class="settings-actions"><button class="btn" type="submit">Save notifications</button></div>
 </form>
-{{else}}<dl class="facts"><dt>Email</dt><dd>{{if .EmailEnabled}}{{.Email}}{{else}}Off{{end}}</dd><dt>Telegram</dt><dd>{{if .TelegramEnabled}}{{.TelegramChatID}}{{else}}Off{{end}}</dd><dt>Events</dt><dd>{{.Events}}</dd></dl>{{end}}
+{{else}}<dl class="facts"><dt>Email</dt><dd>{{if .EmailEnabled}}{{.Email}}{{else}}Off{{end}}</dd><dt>Telegram</dt><dd>{{if .TelegramEnabled}}{{.TelegramChatID}}{{else}}Off{{end}}</dd><dt>Telegram retention</dt><dd>{{if .TelegramDeleteAfterHours}}{{.TelegramDeleteAfterHours}} hours{{else}}Keep messages{{end}}</dd><dt>Events</dt><dd>{{.Events}}</dd></dl>{{end}}
 </section>{{end}}
 {{end}}
 

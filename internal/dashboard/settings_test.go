@@ -99,7 +99,8 @@ func TestModeScopedNotificationSettings(t *testing.T) {
 		has(t, body, `action="/dashboard/settings/notifications"`, "Important payment updates")
 		tok := csrfOf(t, body)
 		form := url.Values{"csrf": {tok}, "email_enabled": {"1"}, "email": {"ops@example.com"}, "telegram_enabled": {"1"},
-			"telegram_token": {"123456:ABC_def-789"}, "telegram_chat_id": {"-100123"}, "events": {"payment.failed, payment.succeeded"}}
+			"telegram_token": {"123456:ABC_def-789"}, "telegram_chat_id": {"-100123"}, "telegram_delete_after_hours": {"12"},
+			"events": {"payment.failed, payment.succeeded"}}
 		if r, out := e.post(admin, "/dashboard/settings/notifications", form); r.StatusCode != 303 {
 			t.Fatalf("save notifications: %d\n%s", r.StatusCode, out)
 		}
@@ -110,7 +111,7 @@ func TestModeScopedNotificationSettings(t *testing.T) {
 		if err := db.Read(ctx, func(q store.Querier) (err error) {
 			cfg, err = store.GetNotificationConfig(ctx, q, store.DefaultOrgID, "live")
 			return err
-		}); err != nil || strings.Contains(string(cfg.TelegramTokenEnc), "123456:ABC_def-789") {
+		}); err != nil || strings.Contains(string(cfg.TelegramTokenEnc), "123456:ABC_def-789") || cfg.TelegramDeleteAfterHours != 12 {
 			t.Fatalf("stored notification config: %+v %v", cfg, err)
 		}
 

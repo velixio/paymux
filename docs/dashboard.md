@@ -57,7 +57,7 @@ Routing settings include a route tester. Verify the intended application, curren
 
 Routing rules can also cap successful sales or captured amount per UTC day, week, or month. When a rule's limit is exhausted, evaluation continues to the next matching rule or catch-all. Amount limits use minor units. These counters are routing controls, not an accounting limit; the ledger and provider remain authoritative.
 
-**Organization settings → Notifications** sends selected mode-specific events to an email address, a Telegram chat, or both. Telegram bot tokens are encrypted and shown only while entered. Recommended events cover payment creation/success/failure, refunds, and disputes; customize the comma-separated list when an operator should receive fewer messages.
+**Organization settings → Notifications** sends selected mode-specific events to an email address, a Telegram chat, or both. Payment messages include the amount and, when collected, the customer's email and country. Telegram bot tokens are encrypted and shown only while entered. Telegram messages can be kept or deleted automatically after 1–47 hours; 47 hours is the default because the Bot API cannot delete messages once they are 48 hours old. The deletion is a durable job, so it survives a Paymux restart. Recommended events cover payment creation/success/failure, refunds, and disputes; customize the comma-separated list when an operator should receive fewer messages.
 
 ## Subscriptions: changing the amount
 

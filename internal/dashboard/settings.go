@@ -52,6 +52,7 @@ type routeResult struct {
 type notificationView struct {
 	Email, TelegramChatID, Events                             string
 	EmailEnabled, TelegramEnabled, HasTelegramToken, CanWrite bool
+	TelegramDeleteAfterHours                                  int
 }
 
 func (d *Dashboard) routesSettings() {
@@ -117,7 +118,8 @@ func (d *Dashboard) renderSettings(w http.ResponseWriter, r *http.Request, s *se
 	}
 	v.Notifications = &notificationView{Email: nc.Email, EmailEnabled: nc.EmailEnabled, TelegramChatID: nc.TelegramChatID,
 		TelegramEnabled: nc.TelegramEnabled, HasTelegramToken: nc.HasTelegramToken,
-		Events: strings.Join(nc.EventTypes, ", "), CanWrite: s.can(authz.SettingsWrite)}
+		TelegramDeleteAfterHours: nc.TelegramDeleteAfterHours,
+		Events:                   strings.Join(nc.EventTypes, ", "), CanWrite: s.can(authz.SettingsWrite)}
 
 	var apps []store.App
 	if err := d.o.DB.Read(ctx, func(q store.Querier) (err error) { apps, err = store.ListApps(ctx, q, org); return }); err != nil {
@@ -493,14 +495,25 @@ func (d *Dashboard) notificationsSave(w http.ResponseWriter, r *http.Request, s 
 	if len(events) == 0 {
 		events = []string{"payment.created", "payment.failed", "payment.succeeded", "refund.succeeded", "dispute.opened", "dispute.lost"}
 	}
+	deleteAfterRaw := r.PostForm.Get("telegram_delete_after_hours")
+	if deleteAfterRaw == "" {
+		deleteAfterRaw = strconv.Itoa(outbound.DefaultTelegramDeleteAfterHours)
+	}
+	deleteAfter, err := strconv.Atoi(deleteAfterRaw)
+	if err != nil {
+		d.renderSettings(w, r, s, http.StatusBadRequest, "Telegram message retention must be a number of hours")
+		return
+	}
 	cfg := outbound.NotificationConfig{Email: strings.TrimSpace(r.PostForm.Get("email")), EmailEnabled: r.PostForm.Get("email_enabled") != "",
-		TelegramChatID: strings.TrimSpace(r.PostForm.Get("telegram_chat_id")), TelegramEnabled: r.PostForm.Get("telegram_enabled") != "", EventTypes: events}
+		TelegramChatID: strings.TrimSpace(r.PostForm.Get("telegram_chat_id")), TelegramEnabled: r.PostForm.Get("telegram_enabled") != "",
+		TelegramDeleteAfterHours: deleteAfter, EventTypes: events}
 	if err := d.o.Outbound.SaveNotificationConfig(r.Context(), org, d.mode(r, s), cfg, r.PostForm.Get("telegram_token")); err != nil {
 		d.renderSettings(w, r, s, http.StatusBadRequest, err.Error())
 		return
 	}
 	if err := d.record(r.Context(), r, s, "notifications.update", org+":"+d.mode(r, s), nil,
-		map[string]any{"email_enabled": cfg.EmailEnabled, "telegram_enabled": cfg.TelegramEnabled, "events": events}); err != nil {
+		map[string]any{"email_enabled": cfg.EmailEnabled, "telegram_enabled": cfg.TelegramEnabled,
+			"telegram_delete_after_hours": cfg.TelegramDeleteAfterHours, "events": events}); err != nil {
 		d.fail(w, err)
 		return
 	}
