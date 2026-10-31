@@ -19,12 +19,13 @@ import (
 // Renewal payments arrive as payment.succeeded webhooks and are reported as
 // subscription notifications carrying the payment.
 //
-// Verified against the Whop sandbox (2026-10-18): the inline renewal plan of POST
-// /checkout_configurations (product details with an external_identifier, no
-// initial_price: it would be charged on top of the first renewal), a purchase on
-// that checkout (the first payment has billing_reason subscription_create and the
-// renewal price), the membership read (current_period_start/end, renewal_price,
-// metadata), and POST /memberships/{id}/cancel.
+// Verified against the Whop sandbox (2026-10-18): a purchase on the checkout
+// (the first payment has billing_reason subscription_create and the renewal
+// price), the membership read (current_period_start/end, renewal_price,
+// metadata), and POST /memberships/{id}/cancel. The checkout request was updated
+// against Whop's 2026-10-29-8 API contract: it uses an inline renewal variant
+// and omits initial_price because that would be charged on top of the first
+// renewal.
 //
 // TODO(spec): not seen live: a renewal payment after the first period, the
 // membership.updated event on a cancellation, trial_period_days through a
@@ -80,7 +81,7 @@ func (m membershipEntity) snapshot() connector.SubscriptionSnapshot {
 }
 
 // CreateSubscriptionCheckout creates a checkout configuration with an inline
-// renewal plan for the recurring price and redirects the customer to its
+// renewal variant for the recurring price and redirects the customer to its
 // purchase_url. The membership appears once the customer buys; the metadata
 // ties it (and each of its payments) back to the subscription.
 func (w *whop) CreateSubscriptionCheckout(ctx context.Context, req connector.SubscriptionRequest) (connector.CheckoutResult, error) {
@@ -95,35 +96,32 @@ func (w *whop) CreateSubscriptionCheckout(ctx context.Context, req connector.Sub
 	if err != nil {
 		return connector.CheckoutResult{}, fmt.Errorf("whop: %w", err)
 	}
-	plan := map[string]any{
-		"company_id": w.cfg.CompanyID, "plan_type": "renewal", "currency": strings.ToLower(req.Currency),
+	variant := map[string]any{
+		"account_id": w.cfg.CompanyID, "billing_type": "renewal", "currency": strings.ToLower(req.Currency),
 		// No initial_price: it is charged on top of the first renewal ("Due today
 		// $19.98" for a $9.99 plan, seen in the sandbox). The first payment is the
 		// renewal price.
 		"renewal_price": json.Number(price), "billing_period": days * req.IntervalCount,
-		// Whop requires inline product details for a renewal plan. A stable
-		// external id per price point lets repeat subscriptions share a product.
-		"product": map[string]any{
-			"title":               firstNonEmptyStr(req.Description, "Subscription"),
-			"external_identifier": fmt.Sprintf("paymux-renewal-%s-%d-%s-%d", strings.ToLower(req.Currency), req.Amount, req.Interval, req.IntervalCount),
-		},
+		"title": checkoutTitle(req.Description, "Subscription"),
 	}
 	if req.StartAt > 0 {
 		if d := time.UnixMilli(req.StartAt).Sub(w.deps.Now()); d > 0 {
-			plan["trial_period_days"] = int((d + 24*time.Hour - 1) / (24 * time.Hour)) // a trial: nothing is charged until it ends
-			plan["initial_price"] = json.Number("0")
+			variant["trial_period_days"] = int((d + 24*time.Hour - 1) / (24 * time.Hour)) // a trial: nothing is charged until it ends
+			variant["initial_price"] = json.Number("0")
 		}
 	}
 	in := map[string]any{
-		"plan":     plan,
-		"metadata": map[string]string{"sub": req.SubscriptionID, "ref": req.ProviderRef},
+		"account_id": w.cfg.CompanyID,
+		"variant":    variant,
+		"metadata":   map[string]string{"sub": req.SubscriptionID, "ref": req.ProviderRef},
 	}
 	w.setRedirect(in, req.ProviderRef)
 	var out struct {
 		ID          string `json:"id"`
 		PurchaseURL string `json:"purchase_url"`
 	}
-	if err := w.do(ctx, "POST", "/checkout_configurations", nil, in, &out, nil); err != nil {
+	if err := w.do(ctx, "POST", "/checkout_configurations", nil, in, &out,
+		map[string]string{"Idempotency-Key": req.ProviderRef}); err != nil {
 		return connector.CheckoutResult{}, err
 	}
 	if out.ID == "" || out.PurchaseURL == "" {
@@ -162,7 +160,7 @@ func (w *whop) CancelSubscription(ctx context.Context, ref connector.Subscriptio
 		map[string]string{"cancellation_mode": mode}, nil, nil)
 }
 
-// UpdateSubscriptionAmount is not supported: the price belongs to the plan,
+// UpdateSubscriptionAmount is not supported: the price belongs to the variant,
 // which every member of it shares.
 func (w *whop) UpdateSubscriptionAmount(context.Context, connector.SubscriptionRef, int64) error {
 	return connector.ErrUnsupported

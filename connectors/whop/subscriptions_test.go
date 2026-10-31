@@ -27,7 +27,7 @@ func TestInfoDeclaresMemberships(t *testing.T) {
 	}
 }
 
-func TestCreateSubscriptionCheckoutBuildsARenewalPlan(t *testing.T) {
+func TestCreateSubscriptionCheckoutBuildsARenewalVariant(t *testing.T) {
 	f := newFake("")
 	m := subMgr(t, f)
 	res, err := m.CreateSubscriptionCheckout(context.Background(), connector.SubscriptionRequest{SubscriptionID: "sub_x", ProviderRef: "SUBREF01",
@@ -40,31 +40,32 @@ func TestCreateSubscriptionCheckoutBuildsARenewalPlan(t *testing.T) {
 	}
 	connectortest.CheckAllowed(t, m, res.NextAction)
 	var body struct {
-		Plan struct {
-			CompanyID, PlanType, Currency string
-			RenewalPrice, InitialPrice    json.Number
-			BillingPeriod                 int
-			TrialDays                     *int `json:"trial_period_days"`
-		} `json:"plan"`
+		AccountID string `json:"account_id"`
+		Variant   struct {
+			AccountID, BillingType, Currency string
+			RenewalPrice, InitialPrice       json.Number
+			BillingPeriod                    int
+			TrialDays                        *int `json:"trial_period_days"`
+		} `json:"variant"`
 		Metadata    map[string]string `json:"metadata"`
 		RedirectURL string            `json:"redirect_url"`
 	}
 	raw := f.bodies["POST /api/v1/checkout_configurations"]
 	_ = json.Unmarshal(raw, &body)
-	p := body.Plan
+	p := body.Variant
 	// json field names are snake_case in the body; re-decode them explicitly.
 	var generic map[string]map[string]any
 	_ = json.Unmarshal(raw, &generic)
-	pl := generic["plan"]
-	if pl["plan_type"] != "renewal" || pl["currency"] != "bdt" || pl["company_id"] != "biz_1" || pl["billing_period"] != float64(60) ||
+	pl := generic["variant"]
+	if body.AccountID != "biz_1" || pl["billing_type"] != "renewal" || pl["currency"] != "bdt" || pl["account_id"] != "biz_1" || pl["billing_period"] != float64(60) ||
 		pl["renewal_price"] != 499.0 || pl["trial_period_days"] != nil {
-		t.Errorf("plan = %v (%+v)", pl, p)
+		t.Errorf("variant = %v (%+v)", pl, p)
 	}
-	// A renewal plan with an initial_price charges it on top of the first renewal
-	// ("Due today $19.98" for a $9.99 plan, seen in the sandbox): none is sent, and
+	// A renewal variant with an initial_price charges it on top of the first renewal
+	// ("Due today $19.98" for a $9.99 variant, seen in the sandbox): none is sent, and
 	// the first payment is the renewal price.
 	if _, has := pl["initial_price"]; has {
-		t.Errorf("initial_price must not be sent for a plan without a trial: %v", pl)
+		t.Errorf("initial_price must not be sent for a variant without a trial: %v", pl)
 	}
 	if body.Metadata["sub"] != "sub_x" || body.Metadata["ref"] != "SUBREF01" || body.RedirectURL != "https://pay.example.com/return/acc/SUBREF01" {
 		t.Errorf("body = %s", raw)
@@ -78,8 +79,8 @@ func TestCreateSubscriptionCheckoutBuildsARenewalPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = json.Unmarshal(f2.bodies["POST /api/v1/checkout_configurations"], &generic)
-	if pl := generic["plan"]; pl["trial_period_days"] != float64(14) || pl["initial_price"] != 0.0 || pl["billing_period"] != float64(7) {
-		t.Errorf("trial plan = %v", pl)
+	if pl := generic["variant"]; pl["trial_period_days"] != float64(14) || pl["initial_price"] != 0.0 || pl["billing_period"] != float64(7) {
+		t.Errorf("trial variant = %v", pl)
 	}
 	for _, bad := range []connector.SubscriptionRequest{
 		{ProviderRef: "R", Amount: 100, Currency: "USD", Interval: "fortnight", IntervalCount: 1},
@@ -168,11 +169,9 @@ func TestMembershipAndRenewalWebhooks(t *testing.T) {
 	}
 }
 
-// Whop refuses a renewal plan without inline product details (seen in the
-// sandbox, 2026-10-17): "you must pass in product details" and "Please input
-// an external identifier". The product id is stable per price point so
-// repeat subscriptions share one product.
-func TestRenewalPlanCarriesProductDetails(t *testing.T) {
+// Current Whop checkout configurations accept an inline variant. The title is
+// shown at checkout and must respect Whop's 30-character limit.
+func TestRenewalVariantCarriesBoundedTitle(t *testing.T) {
 	f := newFake("")
 	if _, err := subMgr(t, f).CreateSubscriptionCheckout(context.Background(), connector.SubscriptionRequest{SubscriptionID: "sub_x", ProviderRef: "SUBREF01",
 		Amount: 49900, Currency: "BDT", Interval: "month", IntervalCount: 2, Description: "Voicestudio Pro"}); err != nil {
@@ -180,9 +179,9 @@ func TestRenewalPlanCarriesProductDetails(t *testing.T) {
 	}
 	var generic map[string]map[string]any
 	_ = json.Unmarshal(f.bodies["POST /api/v1/checkout_configurations"], &generic)
-	prod, _ := generic["plan"]["product"].(map[string]any)
-	if prod["title"] != "Voicestudio Pro" || prod["external_identifier"] != "paymux-renewal-bdt-49900-month-2" {
-		t.Fatalf("product = %v", prod)
+	variant := generic["variant"]
+	if variant["title"] != "Voicestudio Pro" {
+		t.Fatalf("variant = %v", variant)
 	}
 	f2 := newFake("")
 	if _, err := subMgr(t, f2).CreateSubscriptionCheckout(context.Background(), connector.SubscriptionRequest{ProviderRef: "R", Amount: 100,
@@ -190,14 +189,12 @@ func TestRenewalPlanCarriesProductDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = json.Unmarshal(f2.bodies["POST /api/v1/checkout_configurations"], &generic)
-	if prod, _ = generic["plan"]["product"].(map[string]any); prod["title"] != "Subscription" {
-		t.Fatalf("default title: %v", prod)
+	if variant = generic["variant"]; variant["title"] != "Subscription" {
+		t.Fatalf("default title: %v", variant)
 	}
 }
 
-// One-time checkouts also send inline product details, otherwise Whop shows
-// the payment under an unrelated existing product (seen in the sandbox).
-func TestOneTimePlanCarriesProductDetails(t *testing.T) {
+func TestOneTimeVariantCarriesBoundedTitle(t *testing.T) {
 	f := newFake("")
 	c := newConn(t, f)
 	if _, err := c.CreateCheckout(context.Background(), connector.CheckoutRequest{PaymentID: "p", AttemptID: "a", AppID: "app_1", ProviderRef: "R1",
@@ -206,18 +203,17 @@ func TestOneTimePlanCarriesProductDetails(t *testing.T) {
 	}
 	var generic map[string]map[string]any
 	_ = json.Unmarshal(f.bodies["POST /api/v1/checkout_configurations"], &generic)
-	prod, _ := generic["plan"]["product"].(map[string]any)
-	if prod["title"] != "Supermetry Pro" || prod["external_identifier"] == "" || prod["external_identifier"] == nil {
-		t.Fatalf("product = %v", prod)
+	variant := generic["variant"]
+	if variant["title"] != "Supermetry Pro" || variant["billing_type"] != "one_time" {
+		t.Fatalf("variant = %v", variant)
 	}
-	id1 := prod["external_identifier"]
 	f2 := newFake("")
 	if _, err := newConn(t, f2).CreateCheckout(context.Background(), connector.CheckoutRequest{PaymentID: "p2", AttemptID: "a2", AppID: "app_1", ProviderRef: "R2",
-		Amount: 2500, Currency: "USD", Description: "Supermetry Pro"}); err != nil {
+		Amount: 2500, Currency: "USD", Description: "A voice product title that is much too long for Whop"}); err != nil {
 		t.Fatal(err)
 	}
 	_ = json.Unmarshal(f2.bodies["POST /api/v1/checkout_configurations"], &generic)
-	if prod, _ = generic["plan"]["product"].(map[string]any); prod["external_identifier"] != id1 {
-		t.Fatalf("same app+description should reuse one product: %v vs %v", prod["external_identifier"], id1)
+	if title, _ := generic["variant"]["title"].(string); len([]rune(title)) != 30 {
+		t.Fatalf("bounded title = %q", title)
 	}
 }

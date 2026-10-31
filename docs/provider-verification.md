@@ -496,11 +496,17 @@ Fixed on the way:
   the amounts can be reported together; Paymux then refuses the mismatch and the
   refund stays pending. Check what the Resolution Center sends.
 - [x] **Subscriptions** (`subscriptions.go`), run on the sandbox (2026-10-18):
-  the inline renewal plan works, but **`initial_price` on a non-trial renewal
-  plan doubled the first charge** (fixed: it is omitted; a $9.99 first payment
-  was verified); a membership carries `current_period_start/end` and a
+  the inline renewal checkout works, but **`initial_price` on a non-trial renewal
+  checkout doubled the first charge** (fixed: it is omitted; a $9.99 first
+  payment was verified); a membership carries `current_period_start/end` and a
   `renewal_price` object; status "canceling" means active until the period ends.
   Cancellation and the `membership.*` event names are from the documentation.
+- [x] **Checkout configuration contract** (2026-10-31): updated one-time and
+  subscription checkout creation from the removed inline `plan` shape to Whop's
+  current inline `variant` shape (`account_id`, `billing_type`, and `title`),
+  pinned `Api-Version-Date: 2026-10-29-8`, and added provider idempotency keys.
+  The regression fixture rejects the old shape with the same
+  `variant_id is required for payment mode` error returned by production.
 - [x] **Payments and refunds**, re-run on the sandbox: refunds above the
   remainder are clamped by Whop with a 200, so the connector reads the payment
   first and refuses with `ErrNotRefundable`; refund objects are `rf_...` ids
