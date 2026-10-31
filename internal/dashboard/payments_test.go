@@ -375,7 +375,7 @@ func TestPaymentListMethodLabels(t *testing.T) {
 		method, metadata string
 	}{
 		"card": {store.Attempt{Method: "card", MethodDetails: `{"card":{"last4":"5000","network":"American Express","funding":"credit","international":false}}`},
-			"American Express •••• 5000", "credit · domestic"},
+			"American Express 5000", "credit · domestic"},
 		"upi":         {store.Attempt{Method: "upi", MethodDetails: `{"upi":{"payer_account_type":"credit_card"}}`}, "UPI", "credit card"},
 		"net banking": {store.Attempt{Method: "netbanking", MethodDetails: `{"bank":"HDFC"}`}, "Net banking", "HDFC"},
 		"wallet":      {store.Attempt{Method: "wallet", MethodDetails: `{"wallet":"Paytm"}`}, "Wallet", "Paytm"},

@@ -1382,10 +1382,11 @@ table.grid .num {
   font-feature-settings: "tnum";
 }
 
-.payments-grid th,
-.payments-grid td {
-  padding: 9px 12px;
+table.payments-grid th,
+table.payments-grid td {
+  padding: 6px 10px;
   vertical-align: middle;
+  line-height: 1.2;
 }
 .payments-grid .num {
   text-align: center;
@@ -1394,22 +1395,30 @@ table.grid .num {
 .payment-method {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  line-height: 1.2;
+  gap: 6px;
+}
+.payment-method-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+.payment-method-copy > span,
+.payment-method-copy > small {
   white-space: nowrap;
 }
 .provider-logo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 23px;
-  height: 23px;
-  flex: 0 0 23px;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
   border: 1px solid var(--color-line);
   border-radius: 6px;
   background: var(--color-nav);
   color: inherit;
-  font-size: 8px;
+  font-size: 7px;
   font-weight: 800;
   letter-spacing: -0.02em;
   cursor: help;

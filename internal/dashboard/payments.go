@@ -267,7 +267,7 @@ func paymentListMethod(a store.Attempt) (string, string) {
 	switch strings.ToLower(a.Method) {
 	case "card":
 		if summary != "" {
-			method = summary
+			method = strings.ReplaceAll(summary, "•••• ", "")
 		}
 	case "upi", "netbanking", "wallet", "bank_transfer":
 		if summary != "" {
