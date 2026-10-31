@@ -50,11 +50,11 @@ Paymux sits between your apps and your gateways and does that work once.
 
 ## ✨ What you get
 
-- 🔀 **Smart routing.** Rules by app, currency, country and amount, with a circuit breaker that skips a gateway that keeps failing.
+- 🔀 **Smart routing.** Rules by app, currency, country and amount, daily/weekly/monthly sales or amount limits, and a circuit breaker that skips a gateway that keeps failing.
 - 📒 **One trustworthy ledger.** Payments, refunds, disputes, subscriptions and payouts. A gateway webhook is only a hint: Paymux re-fetches the truth before it changes anything.
 - 🧾 **GST invoices out of the box.** CGST/SGST or IGST, LUT exports, credit notes, e-invoice JSON, digitally signed PDFs.
 - 🔁 **Subscriptions.** Gateway-managed (Razorpay, Stripe, Whop) and Paymux-managed on UPI AutoPay, card and e-mandates, with dunning and RBI pre-debit rules.
-- 🔔 **Signed webhooks to your apps** in the [Standard Webhooks](https://www.standardwebhooks.com) format, with retries, delivery history and replay.
+- 🔔 **Signed webhooks to your apps** in the [Standard Webhooks](https://www.standardwebhooks.com) format, with retries, exact attempt history and replay; optional email or Telegram operator notifications cover important payment and dispute events.
 - 🔗 **Hosted pay pages and payment links.** Themed, translated (English, Hindi), mobile-friendly, on your own domains.
 - 🖥️ **A real dashboard.** Payments, disputes, reconciliation, invoices, reports, alerts, audit log, roles, 2FA, and an error log you can search by request id.
 - 🧩 **Extensible.** Write a connector for any gateway, add Go or JavaScript hooks, theme the pages. Your changes survive upgrades.
@@ -142,7 +142,7 @@ curl -s localhost:8080/v1/payments \
   -H "Authorization: Bearer pmx_test_sk_..." \
   -H "Idempotency-Key: order-123" \
   -d '{"amount":49900,"currency":"INR","order_ref":"order-123","description":"Pro plan"}'
-# → { "id": "pay_…", "status": "created", "checkout_mode": "hosted", "checkout_url": "https://…/pay/pay_…?t=…" }
+# → { "id": "TuSgrD0tRwOTok", "status": "created", "checkout_mode": "hosted", "checkout_url": "https://…/pay/TuSgrD0tRwOTok?t=…" }
 ```
 
 Send your customer to `checkout_url`. Your app learns the result from a **signed webhook** or from `GET /v1/payments/{id}`. Never trust the browser redirect on its own.

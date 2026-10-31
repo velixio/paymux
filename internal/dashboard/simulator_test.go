@@ -55,11 +55,13 @@ func TestSimulateDisputeFromTheDashboard(t *testing.T) {
 		path := page + "/simulate-dispute"
 
 		op := e.roleClient("operator")
+		e.setMode(op, "test")
 		body := e.pageOK(op, page)
 		has(t, body, "Simulator", "Simulate a dispute", att.ID)
 		tok := csrfOf(t, body)
 
 		viewer := e.roleClient("viewer")
+		e.setMode(viewer, "test")
 		if r, _ := e.post(viewer, path, url.Values{"attempt_id": {att.ID}, "csrf": {csrfOf(t, e.pageOK(viewer, page))}}); r.StatusCode != 403 {
 			t.Fatalf("viewer: %d", r.StatusCode)
 		}
@@ -139,10 +141,12 @@ func TestSimulateRenewalFromTheDashboard(t *testing.T) {
 		path := page + "/simulate-renewal"
 
 		op := e.roleClient("operator")
+		e.setMode(op, "test")
 		body := e.pageOK(op, page)
 		has(t, body, "Simulate a renewal")
 		tok := csrfOf(t, body)
 		viewer := e.roleClient("viewer")
+		e.setMode(viewer, "test")
 		if r, _ := e.post(viewer, path, url.Values{"csrf": {csrfOf(t, e.pageOK(viewer, page))}}); r.StatusCode != 403 {
 			t.Fatalf("viewer: %d", r.StatusCode)
 		}
@@ -176,10 +180,12 @@ func TestSimulateAProviderDashboardRefund(t *testing.T) {
 		path := page + "/simulate-refund"
 
 		op := e.roleClient("operator")
+		e.setMode(op, "test")
 		body := e.pageOK(op, page)
 		has(t, body, "Refund from the provider", att.ID)
 		tok := csrfOf(t, body)
 		viewer := e.roleClient("viewer")
+		e.setMode(viewer, "test")
 		if r, _ := e.post(viewer, path, url.Values{"attempt_id": {att.ID}, "csrf": {csrfOf(t, e.pageOK(viewer, page))}}); r.StatusCode != 403 {
 			t.Fatalf("viewer: %d", r.StatusCode)
 		}

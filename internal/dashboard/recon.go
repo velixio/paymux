@@ -70,7 +70,7 @@ func (d *Dashboard) renderRecon(w http.ResponseWriter, r *http.Request, s *sessi
 		items []store.ReconItem
 	)
 	err = d.o.DB.Read(ctx, func(q store.Querier) (err error) {
-		if accts, err = store.ListProviderAccounts(ctx, q, org, ""); err != nil {
+		if accts, err = store.ListProviderAccounts(ctx, q, org, d.mode(r, s)); err != nil {
 			return err
 		}
 		if runs, err = store.ListReconRuns(ctx, q, org, 30); err != nil {
@@ -110,11 +110,17 @@ func (d *Dashboard) renderRecon(w http.ResponseWriter, r *http.Request, s *sessi
 		v.ReconAccounts = append(v.ReconAccounts, row)
 	}
 	for _, run := range runs {
+		if name[run.ProviderAccountID] == "" {
+			continue
+		}
 		v.ReconRuns = append(v.ReconRuns, reconRunRow{ID: run.ID, Account: name[run.ProviderAccountID], Started: d.fmtTime(run.StartedAt),
 			Window: d.fmtTime(run.WindowFrom) + " to " + d.fmtTime(run.WindowTo), Status: run.Status, Error: run.Error,
 			Checked: run.Checked, Items: run.Items, Fixed: run.Fixed})
 	}
 	for _, it := range items {
+		if name[it.ProviderAccountID] == "" {
+			continue
+		}
 		openItem := it.State == "open" || it.State == "to_link"
 		switch f.State {
 		case "", "open":
@@ -141,6 +147,28 @@ func (d *Dashboard) reconResolve(w http.ResponseWriter, r *http.Request, s *sess
 		d.fail(w, err)
 		return
 	}
+	var item store.ReconItem
+	err = d.o.DB.Read(r.Context(), func(q store.Querier) (err error) {
+		if item, err = store.GetReconItem(r.Context(), q, r.PathValue("id")); err != nil {
+			return err
+		}
+		pa, err := store.GetProviderAccount(r.Context(), q, item.ProviderAccountID)
+		if err != nil {
+			return err
+		}
+		if item.OrgID != scope.OrgID || pa.Mode != d.mode(r, s) {
+			return store.ErrNotFound
+		}
+		return nil
+	})
+	if errors.Is(err, store.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
 	err = d.o.Recon.Resolve(r.Context(), s.auditActor(), scope, r.PathValue("id"), strings.TrimSpace(r.PostForm.Get("note")))
 	switch {
 	case err == nil:
@@ -163,7 +191,8 @@ func (d *Dashboard) reconRun(w http.ResponseWriter, r *http.Request, s *session)
 		return
 	}
 	id := r.PostForm.Get("account_id")
-	if _, err := d.o.Connectors.Account(r.Context(), scope, id); errors.Is(err, core.ErrNotFound) {
+	pa, err := d.o.Connectors.Account(r.Context(), scope, id)
+	if errors.Is(err, core.ErrNotFound) || err == nil && pa.Mode != d.mode(r, s) {
 		http.NotFound(w, r)
 		return
 	} else if err != nil {

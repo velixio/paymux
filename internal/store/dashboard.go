@@ -51,6 +51,16 @@ func SetAppReturnURL(ctx context.Context, tx Tx, id, url string, now time.Time) 
 	return updateApp(ctx, tx, id, now, "default_return_url = ?", nullIfEmpty(url))
 }
 
+// SetAppAcceptedCurrencies replaces the app-level currency allow-list. An
+// empty list means every currency supported by the selected provider route.
+func SetAppAcceptedCurrencies(ctx context.Context, tx Tx, id string, currencies []string, now time.Time) error {
+	b, err := json.Marshal(currencies)
+	if err != nil {
+		return err
+	}
+	return updateApp(ctx, tx, id, now, "accepted_currencies = ?", string(b))
+}
+
 // GetAppBranding returns the app's branding JSON document.
 func GetAppBranding(ctx context.Context, q Queryer, id string) (string, error) {
 	var b string
@@ -224,7 +234,8 @@ func likeEscape(s string) string {
 }
 
 // SearchPayments returns matching payments newest first. after is an exclusive
-// id cursor.
+// payment-ID cursor; the ID resolves its creation time because payment IDs are
+// random rather than chronologically sortable.
 func SearchPayments(ctx context.Context, q Queryer, f PaymentFilter, afterID string, limit int) ([]Payment, error) {
 	query := "SELECT " + paymentCols + " FROM payments WHERE org_id = ?"
 	args := []any{f.OrgID}
@@ -254,9 +265,17 @@ func SearchPayments(ctx context.Context, q Queryer, f PaymentFilter, afterID str
 			e+"%", "%"+e+"%", "%"+e+"%")
 	}
 	if afterID != "" {
-		add("id < ?", afterID)
+		var created int64
+		err := q.QueryRowContext(ctx, "SELECT created_at FROM payments WHERE id = ? AND org_id = ?", afterID, f.OrgID).Scan(&created)
+		if err == sql.ErrNoRows {
+			return []Payment{}, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		add("(created_at < ? OR (created_at = ? AND id < ?))", created, created, afterID)
 	}
-	query += " ORDER BY id DESC LIMIT ?"
+	query += " ORDER BY created_at DESC, id DESC LIMIT ?"
 	args = append(args, limit)
 	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {

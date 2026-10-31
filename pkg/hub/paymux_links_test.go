@@ -115,7 +115,7 @@ func TestPaymentLinkFlow(t *testing.T) {
 		form := neturl.Values{"csrf": {csrf[1]}, "name": {"Asha K"}, "email": {"asha@example.com"}, "phone": {"98765 43210"}}
 		code, hdr, out := do(browser, "POST", "/l/"+slug, strings.NewReader(form.Encode()), map[string]string{"Content-Type": "application/x-www-form-urlencoded"})
 		loc, _ := neturl.Parse(hdr.Get("Location"))
-		if code != 303 || loc == nil || !strings.HasPrefix(loc.Path, "/pay/pay_") {
+		if code != 303 || loc == nil || !regexp.MustCompile(`^/pay/[0-9A-Za-z]{14}$`).MatchString(loc.Path) {
 			t.Fatalf("submit: %d %q %s", code, hdr.Get("Location"), out)
 		}
 		payID := strings.TrimPrefix(loc.Path, "/pay/")

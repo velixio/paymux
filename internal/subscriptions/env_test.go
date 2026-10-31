@@ -564,7 +564,10 @@ func (e *env) renewalPayments(subID string) []store.Payment {
 	e.t.Helper()
 	var out []store.Payment
 	err := e.db.Read(ctx, func(q store.Querier) error {
-		rows, err := q.QueryContext(ctx, "SELECT id FROM payments WHERE subscription_id = ? ORDER BY id", subID)
+		// The test clock can create successive renewal payments at the same
+		// instant. updated_at still records which period was processed later;
+		// the random public payment ID is only a final stable tie-breaker.
+		rows, err := q.QueryContext(ctx, "SELECT id FROM payments WHERE subscription_id = ? ORDER BY updated_at, created_at, id", subID)
 		if err != nil {
 			return err
 		}

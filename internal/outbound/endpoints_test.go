@@ -55,6 +55,15 @@ func TestEndpointLifecycle(t *testing.T) {
 		if list[0].URL != url || len(list[0].EventTypes) != 0 {
 			t.Fatalf("after update %+v", list[0])
 		}
+		rotated, err := e.svc.RotateEndpointSecret(ctx, ep.ID)
+		if err != nil || rotated == secret || !strings.HasPrefix(rotated, "whsec_") {
+			t.Fatalf("rotated secret %q: %v", rotated, err)
+		}
+		row, _ = db.GetEndpoint(ctx, ep.ID)
+		pt, err = e.box.Open(row.SigningSecretEnc, []byte("webhook_endpoints.signing_secret:"+ep.ID))
+		if err != nil || string(pt) != rotated || strings.Contains(string(row.SigningSecretEnc), rotated) {
+			t.Fatalf("rotated secret storage: %q %v", pt, err)
+		}
 		if err := e.svc.DisableEndpoint(ctx, ep.ID); err != nil {
 			t.Fatal(err)
 		}

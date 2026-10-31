@@ -50,6 +50,21 @@ func (db *DB) InsertEvent(ctx context.Context, tx Tx, e EventRow) error {
 	return nil
 }
 
+// GetEventByID loads one persisted domain event.
+func GetEventByID(ctx context.Context, q Queryer, id string) (EventRow, error) {
+	var e EventRow
+	var data string
+	var created int64
+	err := q.QueryRowContext(ctx, `SELECT id, org_id, app_id, mode, type, object_type, object_id, object_version, data, created_at
+		FROM events WHERE id = ?`, id).Scan(&e.ID, &e.OrgID, &e.AppID, &e.Mode, &e.Type, &e.ObjectType, &e.ObjectID,
+		&e.ObjectVersion, &data, &created)
+	if errors.Is(err, sql.ErrNoRows) {
+		return EventRow{}, ErrNotFound
+	}
+	e.Data, e.CreatedAt = json.RawMessage(data), fromMS(created)
+	return e, err
+}
+
 // EndpointRow is a row of webhook_endpoints. An empty EventTypes list means
 // every event type.
 type EndpointRow struct {
@@ -154,9 +169,10 @@ func (db *DB) ListEnabledEndpoints(ctx context.Context, tx Tx, appID string) ([]
 
 // EndpointUpdate carries the fields to change; nil fields are left alone.
 type EndpointUpdate struct {
-	URL        *string
-	EventTypes *[]string
-	Enabled    *bool
+	URL              *string
+	EventTypes       *[]string
+	Enabled          *bool
+	SigningSecretEnc *[]byte
 }
 
 // UpdateEndpoint applies u to the endpoint, or returns ErrNotFound.
@@ -178,6 +194,10 @@ func (db *DB) UpdateEndpoint(ctx context.Context, id string, u EndpointUpdate, n
 		if u.Enabled != nil {
 			set += ", enabled = ?"
 			args = append(args, b2i(*u.Enabled))
+		}
+		if u.SigningSecretEnc != nil {
+			set += ", signing_secret_enc = ?"
+			args = append(args, *u.SigningSecretEnc)
 		}
 		res, err := tx.ExecContext(ctx, `UPDATE webhook_endpoints SET `+set+` WHERE id = ?`, append(args, id)...)
 		if err != nil {
@@ -201,6 +221,46 @@ type DeliveryRow struct {
 	LastError               string
 	DeliveredAt             time.Time
 	CreatedAt, UpdatedAt    time.Time
+}
+
+// DeliveryAttemptRow preserves the exact JSON sent to a merchant endpoint and
+// the bounded response returned for each retry.
+type DeliveryAttemptRow struct {
+	ID, DeliveryID, RequestBody, ResponseBody, Error string
+	AttemptNo, ResponseStatus                        int
+	CreatedAt                                        time.Time
+}
+
+func InsertDeliveryAttempt(ctx context.Context, tx Tx, a DeliveryAttemptRow) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO webhook_delivery_attempts
+		(id, delivery_id, attempt_no, request_body, response_status, response_body, error, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, a.ID, a.DeliveryID, a.AttemptNo, a.RequestBody,
+		nullInt(a.ResponseStatus), nullStr(a.ResponseBody), nullStr(a.Error), ms(a.CreatedAt))
+	return err
+}
+
+func ListDeliveryAttempts(ctx context.Context, q Querier, endpointID string, limit int) ([]DeliveryAttemptRow, error) {
+	rows, err := q.QueryContext(ctx, `SELECT a.id, a.delivery_id, a.attempt_no, a.request_body,
+		a.response_status, a.response_body, a.error, a.created_at
+		FROM webhook_delivery_attempts a JOIN webhook_deliveries d ON d.id = a.delivery_id
+		WHERE d.endpoint_id = ? ORDER BY a.created_at DESC, a.id DESC LIMIT ?`, endpointID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DeliveryAttemptRow
+	for rows.Next() {
+		var a DeliveryAttemptRow
+		var status sql.NullInt64
+		var body, errText sql.NullString
+		var created int64
+		if err := rows.Scan(&a.ID, &a.DeliveryID, &a.AttemptNo, &a.RequestBody, &status, &body, &errText, &created); err != nil {
+			return nil, err
+		}
+		a.ResponseStatus, a.ResponseBody, a.Error, a.CreatedAt = int(status.Int64), body.String, errText.String, fromMS(created)
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }
 
 // InsertDelivery inserts a delivery inside tx.

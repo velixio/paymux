@@ -2,10 +2,29 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
+
+// RoutingUsage returns captured, non-duplicate sales and their received amount
+// for provider accounts since the start of a quota period.
+func RoutingUsage(ctx context.Context, q Queryer, accountIDs []string, since time.Time) (sales, amount int64, err error) {
+	if len(accountIDs) == 0 {
+		return 0, 0, nil
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(accountIDs)), ",")
+	args := make([]any, 0, len(accountIDs)+1)
+	for _, id := range accountIDs {
+		args = append(args, id)
+	}
+	args = append(args, ms(since))
+	err = q.QueryRowContext(ctx, `SELECT COUNT(DISTINCT payment_id), COALESCE(SUM(amount_received), 0)
+		FROM payment_attempts WHERE provider_account_id IN (`+marks+`) AND status = 'captured' AND duplicate = 0 AND updated_at >= ?`, args...).Scan(&sales, &amount)
+	return
+}
 
 // Payment is a row of payments.
 type Payment struct {
@@ -111,8 +130,10 @@ func UpdatePayment(ctx context.Context, tx Tx, p *Payment, now time.Time) error 
 	return nil
 }
 
-// ListPayments returns an app's payments in one mode, newest first (ids are
-// time-ordered). afterID is an exclusive cursor; status filters when set.
+// ListPayments returns an app's payments in one mode, newest first. afterID is
+// an exclusive cursor; status filters when set. Payment IDs are random, so the
+// cursor resolves the row's creation time and uses the ID only as a stable
+// tie-breaker.
 func ListPayments(ctx context.Context, q Queryer, appID, mode, status, afterID string, limit int) ([]Payment, error) {
 	query := "SELECT " + paymentCols + " FROM payments WHERE app_id = ? AND mode = ?"
 	args := []any{appID, mode}
@@ -121,10 +142,18 @@ func ListPayments(ctx context.Context, q Queryer, appID, mode, status, afterID s
 		args = append(args, status)
 	}
 	if afterID != "" {
-		query += " AND id < ?"
-		args = append(args, afterID)
+		var created int64
+		err := q.QueryRowContext(ctx, "SELECT created_at FROM payments WHERE id = ? AND app_id = ? AND mode = ?", afterID, appID, mode).Scan(&created)
+		if err == sql.ErrNoRows {
+			return []Payment{}, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		query += " AND (created_at < ? OR (created_at = ? AND id < ?))"
+		args = append(args, created, created, afterID)
 	}
-	query += " ORDER BY id DESC LIMIT ?"
+	query += " ORDER BY created_at DESC, id DESC LIMIT ?"
 	args = append(args, limit)
 	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {

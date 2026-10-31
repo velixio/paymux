@@ -70,6 +70,7 @@ var slugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 // CreateAppInput is the input of CreateApp.
 type CreateAppInput struct {
 	Name, Slug, DefaultReturnURL string
+	AcceptedCurrencies           []string
 }
 
 // CreateApp creates an app in the org and audits it.
@@ -91,7 +92,8 @@ func (s *Service) CreateApp(ctx context.Context, actor audit.Actor, sc OrgScope,
 	err := s.db.Write(ctx, func(tx store.Tx) error {
 		org := sc.OrgID
 		app = store.App{ID: ids.New("app"), OrgID: org, Name: in.Name, Slug: in.Slug, DefaultReturnURL: in.DefaultReturnURL,
-			CreatedAt: s.nowUTC()}
+			AcceptedCurrencies: in.AcceptedCurrencies,
+			CreatedAt:          s.nowUTC()}
 		if err := store.InsertApp(ctx, tx, app); err != nil {
 			if errors.Is(err, store.ErrConflict) {
 				return newErr(ErrConflict, "an app with slug %q already exists", in.Slug)

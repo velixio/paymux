@@ -117,6 +117,42 @@ type UnknownObject struct {
 	CreatedAt                                                        time.Time
 }
 
+// ProviderEventMatch records the local transaction resolved from an inbound
+// provider event. It makes raw webhook history traceable without parsing the
+// provider payload again.
+type ProviderEventMatch struct {
+	ProviderEventID, ObjectType, ObjectID, PaymentID, ProviderID string
+	CreatedAt                                                    time.Time
+}
+
+func InsertProviderEventMatch(ctx context.Context, tx Tx, m ProviderEventMatch) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO provider_event_matches
+		(provider_event_id, object_type, object_id, payment_id, provider_id, created_at) VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT (provider_event_id, object_type, object_id) DO NOTHING`,
+		m.ProviderEventID, m.ObjectType, m.ObjectID, nullIfEmpty(m.PaymentID), nullIfEmpty(m.ProviderID), ms(m.CreatedAt))
+	return err
+}
+
+func ListProviderEventMatches(ctx context.Context, q Queryer, eventID string) ([]ProviderEventMatch, error) {
+	rows, err := q.QueryContext(ctx, `SELECT provider_event_id, object_type, object_id, COALESCE(payment_id,''),
+		COALESCE(provider_id,''), created_at FROM provider_event_matches WHERE provider_event_id = ? ORDER BY created_at, object_type, object_id`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ProviderEventMatch
+	for rows.Next() {
+		var m ProviderEventMatch
+		var at int64
+		if err := rows.Scan(&m.ProviderEventID, &m.ObjectType, &m.ObjectID, &m.PaymentID, &m.ProviderID, &at); err != nil {
+			return nil, err
+		}
+		m.CreatedAt = fromMS(at)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // InsertUnknownObject records u once per (account, event, kind, id).
 func InsertUnknownObject(ctx context.Context, tx Tx, u UnknownObject) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO unknown_provider_objects
@@ -295,6 +331,33 @@ func GetProviderEventByID(ctx context.Context, q Queryer, id string) (ProviderEv
 	p.Headers, p.Verified = []byte(headers), verified != 0
 	p.ReceivedAt, p.ProcessedAt, p.Error = fromMS(received), fromNullMS(processed), errText.String
 	return p, nil
+}
+
+// ListProviderEvents returns recent raw inbound webhook events for an account.
+func ListProviderEvents(ctx context.Context, q Queryer, accountID string, limit int) ([]ProviderEventRow, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id, provider_account_id, provider_event_id, headers, body, verified,
+		received_at, processed_at, error FROM provider_events WHERE provider_account_id = ?
+		ORDER BY received_at DESC, id DESC LIMIT ?`, accountID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ProviderEventRow
+	for rows.Next() {
+		var p ProviderEventRow
+		var headers string
+		var verified int
+		var received int64
+		var processed sql.NullInt64
+		var errText sql.NullString
+		if err := rows.Scan(&p.ID, &p.ProviderAccountID, &p.ProviderEventID, &headers, &p.Body, &verified,
+			&received, &processed, &errText); err != nil {
+			return nil, err
+		}
+		p.Headers, p.Verified, p.ReceivedAt, p.ProcessedAt, p.Error = []byte(headers), verified != 0, fromMS(received), fromNullMS(processed), errText.String
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 // MarkProviderEventProcessed stamps processed_at and the processing error ("" for none).

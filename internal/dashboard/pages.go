@@ -42,10 +42,11 @@ type Page struct {
 	Reveal *secretReveal // a secret shown once
 
 	// settings (app tab and org page)
-	Table    *settingsTable
-	Routing  *routingView
-	Route    *routeResult
-	TestForm testForm
+	Table         *settingsTable
+	Routing       *routingView
+	Route         *routeResult
+	TestForm      testForm
+	Notifications *notificationView
 
 	// invoices and credit notes
 	DocRows        []docRow

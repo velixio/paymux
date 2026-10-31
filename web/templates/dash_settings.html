@@ -3,11 +3,24 @@
 {{define "mainclass"}}dash{{end}}
 {{define "content"}}{{template "dash_open" .}}
 <h1>Organization settings</h1>
-<p class="muted">Control how your payment hub routes, bills and delivers.</p><div class="setting-scope"><strong>Organization scope</strong><br>Defaults for every app. App overrides take priority where supported. These policies are shared across payment modes.</div><nav class="setting-nav" aria-label="Settings sections"><a href="#routing">Routing rules</a><a href="#route-test">Test a route</a><a href="#policies">Payment and billing policies</a><a href="/dashboard/users">Users</a><a href="/dashboard/roles">Roles</a><a href="/dashboard/appearance">Appearance</a></nav>
+<p class="muted">Control how your payment hub routes, bills and delivers.</p><div class="setting-scope"><strong>Organization scope</strong><br>Defaults for every app. App overrides take priority where supported. Mode-specific controls below apply only to <strong>{{.Mode}}</strong>.</div><nav class="setting-nav" aria-label="Settings sections"><a href="#routing">Routing rules</a><a href="#route-test">Test a route</a><a href="#notifications">Notifications</a><a href="#policies">Payment and billing policies</a><a href="/dashboard/users">Users</a><a href="/dashboard/roles">Roles</a><a href="/dashboard/appearance">Appearance</a></nav>
 {{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 
 <h3 id="policies">Payment and billing policies</h3><p class="muted">Choose a category. Each setting shows its effective value, source and built-in default.</p>
 {{template "dash_settings_table" .}}
+{{with .Notifications}}<section id="notifications" class="settings-panel"><h3>Payment notifications</h3>
+<p class="muted">Send selected {{$.Mode}} events by email, Telegram, or both. Telegram bot tokens are encrypted and never shown again.</p>
+{{if .CanWrite}}<form method="post" action="/dashboard/settings/notifications" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label><input type="checkbox" name="email_enabled" value="1"{{if .EmailEnabled}} checked{{end}}> Send email</label>
+<label>Notification email<input class="field" type="email" name="email" value="{{.Email}}" autocomplete="email"></label>
+<label><input type="checkbox" name="telegram_enabled" value="1"{{if .TelegramEnabled}} checked{{end}}> Send Telegram messages</label>
+<label>Telegram bot token<input class="field" type="password" name="telegram_token" autocomplete="new-password" placeholder="{{if .HasTelegramToken}}set — leave blank to keep{{else}}123456:ABC…{{end}}"></label>
+<label>Telegram chat ID<input class="field" name="telegram_chat_id" value="{{.TelegramChatID}}" autocomplete="off"></label>
+<label>Events<input class="field" name="events" value="{{.Events}}" placeholder="payment.created, payment.failed, payment.succeeded, dispute.opened"><small class="muted">Comma-separated. Blank uses the recommended payment, refund and dispute events.</small></label>
+<button class="btn" type="submit">Save notifications</button></form>
+{{else}}<dl class="facts"><dt>Email</dt><dd>{{if .EmailEnabled}}{{.Email}}{{else}}off{{end}}</dd><dt>Telegram</dt><dd>{{if .TelegramEnabled}}{{.TelegramChatID}}{{else}}off{{end}}</dd><dt>Events</dt><dd>{{.Events}}</dd></dl>{{end}}
+</section>{{end}}
 <details class="routing-disclosure" id="routing"><summary>Routing rules and route tester</summary>
 {{with .Routing}}
 <p class="muted">Rules are tried in order. The first rule whose conditions match and that has an eligible account decides; otherwise the catch-all applies.
@@ -34,6 +47,11 @@ Conditions are comma separated lists; leave a condition empty to match anything.
 <label>Metadata<input class="field" name="r_meta" value="{{.Metadata}}" placeholder="plan=pro"></label>
 </div>
 <div class="rc-row">
+<label>Limit period<select class="field" name="r_limit_period"><option value="">No limit</option><option value="daily"{{if eq .LimitPeriod "daily"}} selected{{end}}>Daily</option><option value="weekly"{{if eq .LimitPeriod "weekly"}} selected{{end}}>Weekly</option><option value="monthly"{{if eq .LimitPeriod "monthly"}} selected{{end}}>Monthly</option></select></label>
+<label>Sales limit<input class="field" name="r_limit_sales" value="{{.LimitSales}}" inputmode="numeric" placeholder="e.g. 100"></label>
+<label>Amount limit<input class="field" name="r_limit_amount" value="{{.LimitAmount}}" inputmode="numeric" placeholder="minor units"></label>
+</div>
+<div class="rc-row">
 <label class="rc-wide">Targets<input class="field" name="r_targets" value="{{.Targets}}" placeholder="razorpay, account:pa_123"></label>
 </div>
 <div class="rc-row">
@@ -57,6 +75,11 @@ Conditions are comma separated lists; leave a condition empty to match anything.
 <label>Minimum amount<input class="field" name="r_amin" inputmode="numeric"></label>
 <label>Maximum amount<input class="field" name="r_amax" inputmode="numeric"></label>
 <label>Metadata<input class="field" name="r_meta"></label>
+</div>
+<div class="rc-row">
+<label>Limit period<select class="field" name="r_limit_period"><option value="">No limit</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label>
+<label>Sales limit<input class="field" name="r_limit_sales" inputmode="numeric"></label>
+<label>Amount limit<input class="field" name="r_limit_amount" inputmode="numeric"></label>
 </div>
 <div class="rc-row">
 <label class="rc-wide">Targets<input class="field" name="r_targets" placeholder="razorpay, whop"></label>

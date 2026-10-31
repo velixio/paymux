@@ -1465,3 +1465,55 @@ table.grid .num {
 .theme-form .seed .check {
   white-space: nowrap;
 }
+
+/* Settings, webhook history and provider event inspection. */
+.settings-panel,
+.routing-disclosure,
+.delivery-attempt {
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.settings-panel,
+.routing-disclosure {
+  margin: 24px 0;
+  padding: 20px;
+}
+.settings-panel > :first-child,
+.routing-disclosure > :first-child {
+  margin-top: 0;
+}
+.routing-disclosure > summary,
+.delivery-attempt > summary {
+  cursor: pointer;
+  font-weight: 650;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.delivery-attempt {
+  margin: 12px 0;
+  padding: 0 16px 16px;
+  overflow: hidden;
+}
+.payload {
+  max-height: 28rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  background: var(--color-bg);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.linkbtn.danger {
+  color: #b42318;
+}
+@media (max-width: 640px) {
+  .settings-panel,
+  .routing-disclosure {
+    padding: 16px;
+  }
+}

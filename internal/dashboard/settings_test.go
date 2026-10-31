@@ -91,10 +91,41 @@ func TestOrgSettingsPage(t *testing.T) {
 	})
 }
 
+func TestModeScopedNotificationSettings(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		admin := e.roleClient("admin")
+		body := e.pageOK(admin, "/dashboard/settings")
+		has(t, body, `action="/dashboard/settings/notifications"`, "Payment notifications")
+		tok := csrfOf(t, body)
+		form := url.Values{"csrf": {tok}, "email_enabled": {"1"}, "email": {"ops@example.com"}, "telegram_enabled": {"1"},
+			"telegram_token": {"123456:ABC_def-789"}, "telegram_chat_id": {"-100123"}, "events": {"payment.failed, payment.succeeded"}}
+		if r, out := e.post(admin, "/dashboard/settings/notifications", form); r.StatusCode != 303 {
+			t.Fatalf("save notifications: %d\n%s", r.StatusCode, out)
+		}
+		body = e.pageOK(admin, "/dashboard/settings")
+		has(t, body, `value="ops@example.com"`, `value="-100123"`, `value="payment.failed, payment.succeeded"`, "set — leave blank to keep")
+		lacks(t, body, "123456:ABC_def-789")
+		var cfg store.NotificationConfig
+		if err := db.Read(ctx, func(q store.Querier) (err error) {
+			cfg, err = store.GetNotificationConfig(ctx, q, store.DefaultOrgID, "live")
+			return err
+		}); err != nil || strings.Contains(string(cfg.TelegramTokenEnc), "123456:ABC_def-789") {
+			t.Fatalf("stored notification config: %+v %v", cfg, err)
+		}
+
+		e.setMode(admin, "test")
+		testBody := e.pageOK(admin, "/dashboard/settings")
+		lacks(t, testBody, `value="ops@example.com"`, `value="-100123"`)
+		viewer := e.roleClient("viewer")
+		lacks(t, e.pageOK(viewer, "/dashboard/settings"), `action="/dashboard/settings/notifications"`)
+	})
+}
+
 // routeForm builds the editor's form: rules is a list of rule field maps.
 func routeForm(tok string, rules []map[string]string, catchAll map[string]string) url.Values {
 	f := url.Values{"csrf": {tok}}
-	for _, k := range []string{"r_order", "r_name", "r_currency", "r_country", "r_purpose", "r_amin", "r_amax", "r_meta", "r_action", "r_targets", "r_message"} {
+	for _, k := range []string{"r_order", "r_name", "r_currency", "r_country", "r_purpose", "r_amin", "r_amax", "r_meta", "r_action", "r_targets", "r_message", "r_limit_period", "r_limit_sales", "r_limit_amount"} {
 		for _, r := range rules {
 			v := r[k]
 			if k == "r_action" && v == "" {
@@ -133,7 +164,7 @@ func TestRoutingEditorReadsAndWritesCanonicalFormat(t *testing.T) {
 
 		rules := []map[string]string{
 			{"r_name": "inr-pinned", "r_currency": "inr", "r_country": "in", "r_purpose": "one_time", "r_amin": "1000", "r_amax": "5000000",
-				"r_meta": "plan=pro", "r_targets": "account:pa_inr, razorpay"},
+				"r_meta": "plan=pro", "r_targets": "account:pa_inr, razorpay", "r_limit_period": "daily", "r_limit_sales": "100", "r_limit_amount": "50000000"},
 			{"r_name": "block-jpy", "r_currency": "JPY", "r_action": "reject", "r_message": "Yen not supported"},
 			{}, {}, // blank rows are ignored
 		}
@@ -144,7 +175,7 @@ func TestRoutingEditorReadsAndWritesCanonicalFormat(t *testing.T) {
 		v, _ := e.set.ResolveOrg(ctx, store.DefaultOrgID, "routing")
 		want := `{"rules":[
 			{"name":"inr-pinned","when":{"currency":["INR"],"country":["IN"],"purpose":["one_time"],"amount_min":1000,"amount_max":5000000,"metadata":{"plan":"pro"}},
-			 "action":{"kind":"route","targets":[{"account_id":"pa_inr"},{"connector":"razorpay"}]}},
+			 "action":{"kind":"route","targets":[{"account_id":"pa_inr"},{"connector":"razorpay"}]},"limit":{"period":"daily","max_sales":100,"max_amount":50000000}},
 			{"name":"block-jpy","when":{"currency":["JPY"]},"action":{"kind":"reject","message":"Yen not supported"}}],
 			"catch_all":{"name":"catch-all","when":{},"action":{"kind":"route","targets":[{"connector":"razorpay"},{"connector":"whop"}]}}}`
 		if !reflect.DeepEqual(normJSON(t, string(v.Raw)), normJSON(t, want)) {
@@ -154,14 +185,14 @@ func TestRoutingEditorReadsAndWritesCanonicalFormat(t *testing.T) {
 		// reload: every field comes back, in order
 		body = e.pageOK(admin, "/dashboard/settings")
 		has(t, body, `value="inr-pinned"`, `value="INR"`, `value="IN"`, `value="one_time"`, `value="1000"`, `value="5000000"`,
-			`value="plan=pro"`, `value="account:pa_inr, razorpay"`, `value="block-jpy"`, `value="Yen not supported"`)
+			`value="plan=pro"`, `value="account:pa_inr, razorpay"`, `value="daily"`, `value="100"`, `value="50000000"`, `value="block-jpy"`, `value="Yen not supported"`)
 		if strings.Index(body, "inr-pinned") > strings.Index(body, "block-jpy") {
 			t.Error("rules are not shown in order")
 		}
 		// saving the page unchanged keeps the rules (including metadata)
 		again := routeForm(tok, []map[string]string{
 			{"r_name": "inr-pinned", "r_currency": "INR", "r_country": "IN", "r_purpose": "one_time", "r_amin": "1000", "r_amax": "5000000",
-				"r_meta": "plan=pro", "r_targets": "account:pa_inr, razorpay"},
+				"r_meta": "plan=pro", "r_targets": "account:pa_inr, razorpay", "r_limit_period": "daily", "r_limit_sales": "100", "r_limit_amount": "50000000"},
 			{"r_name": "block-jpy", "r_currency": "JPY", "r_action": "reject", "r_message": "Yen not supported"}},
 			map[string]string{"ca_targets": "razorpay, whop"})
 		e.post(admin, "/dashboard/settings/routing", again)

@@ -28,6 +28,12 @@ const it = (id: string, label: string, hint?: string): Item => ({
 });
 
 describe("intents", () => {
+  test("opens a short payment id directly", () => {
+    const [first] = intents("TuSgrD0tRwOTok");
+    expect(first.label).toBe("Open payment TuSgrD0tRwOTok");
+    expect(first.href).toBe("/dashboard/payments/TuSgrD0tRwOTok");
+  });
+
   test("pay_ id goes to /dashboard/payments/<id>", () => {
     const [first] = intents("pay_01abc");
     expect(first.href).toBe("/dashboard/payments/pay_01abc");

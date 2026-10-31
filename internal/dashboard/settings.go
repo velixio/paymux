@@ -12,6 +12,7 @@ import (
 
 	"github.com/velixio/paymux/internal/authz"
 	"github.com/velixio/paymux/internal/checkout"
+	"github.com/velixio/paymux/internal/outbound"
 	"github.com/velixio/paymux/internal/routing"
 	"github.com/velixio/paymux/internal/settings"
 	"github.com/velixio/paymux/internal/store"
@@ -21,7 +22,7 @@ import (
 type ruleEdit struct {
 	Order                                                            string
 	Name, Currency, Country, Purpose, AmountMin, AmountMax, Metadata string
-	Action, Targets, Message                                         string
+	Action, Targets, Message, LimitPeriod, LimitSales, LimitAmount   string
 }
 
 // routingView is the org routing setting laid out for the editor: ordered
@@ -48,10 +49,16 @@ type routeResult struct {
 	Message  string
 }
 
+type notificationView struct {
+	Email, TelegramChatID, Events                             string
+	EmailEnabled, TelegramEnabled, HasTelegramToken, CanWrite bool
+}
+
 func (d *Dashboard) routesSettings() {
 	m := d.mux
 	m.HandleFunc("GET "+prefix+"/settings", d.authed(authz.SettingsRead, d.settingsPage))
 	m.HandleFunc("POST "+prefix+"/settings/routing", d.authed(authz.SettingsWrite, d.recent(d.routingSave)))
+	m.HandleFunc("POST "+prefix+"/settings/notifications", d.authed(authz.SettingsWrite, d.recent(d.notificationsSave)))
 	m.HandleFunc("POST "+prefix+"/settings/{key}", d.authed(authz.SettingsWrite, d.recent(d.orgSettingSet)))
 }
 
@@ -94,6 +101,14 @@ func (d *Dashboard) renderSettings(w http.ResponseWriter, r *http.Request, s *se
 		rv.BlankRows = append(rv.BlankRows, i)
 	}
 	v.Routing = rv
+	nc, err := d.o.Outbound.NotificationConfig(ctx, org, v.Mode)
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	v.Notifications = &notificationView{Email: nc.Email, EmailEnabled: nc.EmailEnabled, TelegramChatID: nc.TelegramChatID,
+		TelegramEnabled: nc.TelegramEnabled, HasTelegramToken: nc.HasTelegramToken,
+		Events: strings.Join(nc.EventTypes, ", "), CanWrite: s.can(authz.SettingsWrite)}
 
 	var apps []store.App
 	if err := d.o.DB.Read(ctx, func(q store.Querier) (err error) { apps, err = store.ListApps(ctx, q, org); return }); err != nil {
@@ -164,6 +179,10 @@ func toEdit(r routing.Rule) ruleEdit {
 	e := ruleEdit{Name: r.Name, Currency: strings.Join(r.When.Currency, ", "), Country: strings.Join(r.When.Country, ", "),
 		Purpose: strings.Join(r.When.Purpose, ", "), AmountMin: joinInts(r.When.AmountMin), AmountMax: joinInts(r.When.AmountMax),
 		Action: r.Action.Kind, Message: r.Action.Message}
+	if r.Limit != nil {
+		e.LimitPeriod = r.Limit.Period
+		e.LimitSales, e.LimitAmount = joinInts(r.Limit.MaxSales), joinInts(r.Limit.MaxAmount)
+	}
 	keys := make([]string, 0, len(r.When.Metadata))
 	for k := range r.When.Metadata {
 		keys = append(keys, k)
@@ -298,7 +317,16 @@ func (d *Dashboard) testRouting(r *http.Request, orgID string, tf testForm) (*ro
 	for _, pa := range pas {
 		names[pa.ID] = pa.Name
 	}
-	res, err := routing.Choose(cfg, routing.Request{Currency: tf.Currency, Country: tf.Country, Amount: amount, Purpose: tf.Purpose},
+	res, err := routing.Choose(cfg, routing.Request{Currency: tf.Currency, Country: tf.Country, Amount: amount, Purpose: tf.Purpose,
+		Usage: func(ids []string, period string) (int64, int64, error) {
+			since, err := routing.PeriodStart(period, d.o.Now())
+			if err != nil {
+				return 0, 0, err
+			}
+			var sales, total int64
+			err = d.o.DB.Read(ctx, func(q store.Querier) (err error) { sales, total, err = store.RoutingUsage(ctx, q, ids, since); return })
+			return sales, total, err
+		}},
 		checkout.RoutingAccounts(pas), nil)
 	var rej *routing.RejectedError
 	switch {
@@ -336,7 +364,7 @@ func (d *Dashboard) routingSave(w http.ResponseWriter, r *http.Request, s *sessi
 	var orders []int
 	for i := range f["r_name"] {
 		if get("r_name", i)+get("r_currency", i)+get("r_country", i)+get("r_purpose", i)+get("r_amin", i)+get("r_amax", i)+
-			get("r_meta", i)+get("r_targets", i)+get("r_message", i) == "" {
+			get("r_meta", i)+get("r_targets", i)+get("r_message", i)+get("r_limit_period", i)+get("r_limit_sales", i)+get("r_limit_amount", i) == "" {
 			continue // a blank row
 		}
 		order := i + 1 // blank: keep the written position
@@ -360,6 +388,21 @@ func (d *Dashboard) routingSave(w http.ResponseWriter, r *http.Request, s *sessi
 		}
 		if err == nil {
 			rule.When.Metadata, err = parseMetadata(get("r_meta", i))
+		}
+		period := get("r_limit_period", i)
+		var maxSales, maxAmount *int64
+		if err == nil {
+			maxSales, err = parseAmount("Sales limit", get("r_limit_sales", i))
+		}
+		if err == nil {
+			maxAmount, err = parseAmount("Amount limit", get("r_limit_amount", i))
+		}
+		if err == nil && (maxSales != nil || maxAmount != nil) {
+			if period != "daily" && period != "weekly" && period != "monthly" {
+				err = fieldErr("a limit period must be daily, weekly or monthly")
+			} else {
+				rule.Limit = &routing.Limit{Period: period, MaxSales: maxSales, MaxAmount: maxAmount}
+			}
 		}
 		if err != nil {
 			d.renderSettings(w, r, s, http.StatusBadRequest, "Rule "+rule.Name+": "+err.Error())
@@ -418,6 +461,30 @@ func (d *Dashboard) routingSave(w http.ResponseWriter, r *http.Request, s *sessi
 		return
 	}
 	http.Redirect(w, r, prefix+"/settings", http.StatusSeeOther)
+}
+
+func (d *Dashboard) notificationsSave(w http.ResponseWriter, r *http.Request, s *session) {
+	org, err := d.orgID(r.Context())
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	events := splitList(r.PostForm.Get("events"))
+	if len(events) == 0 {
+		events = []string{"payment.created", "payment.failed", "payment.succeeded", "refund.succeeded", "dispute.opened", "dispute.lost"}
+	}
+	cfg := outbound.NotificationConfig{Email: strings.TrimSpace(r.PostForm.Get("email")), EmailEnabled: r.PostForm.Get("email_enabled") != "",
+		TelegramChatID: strings.TrimSpace(r.PostForm.Get("telegram_chat_id")), TelegramEnabled: r.PostForm.Get("telegram_enabled") != "", EventTypes: events}
+	if err := d.o.Outbound.SaveNotificationConfig(r.Context(), org, d.mode(r, s), cfg, r.PostForm.Get("telegram_token")); err != nil {
+		d.renderSettings(w, r, s, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := d.record(r.Context(), r, s, "notifications.update", org+":"+d.mode(r, s), nil,
+		map[string]any{"email_enabled": cfg.EmailEnabled, "telegram_enabled": cfg.TelegramEnabled, "events": events}); err != nil {
+		d.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, prefix+"/settings#notifications", http.StatusSeeOther)
 }
 
 func (d *Dashboard) orgSettingSet(w http.ResponseWriter, r *http.Request, s *session) {

@@ -22,7 +22,7 @@ The login page has a **Remember me for 30 days** checkbox, off by default (the n
 
 ## Applications and keys
 
-An application owns its API integration and webhook endpoints. Its detail tabs include keys, webhooks, branding, providers, domains, tax, and settings.
+An application owns its API integration and webhook endpoints. Its detail tabs include keys, webhooks, branding, providers, domains, tax, and settings. **Branding → Accepted currencies** is an optional allow-list: blank stays dynamic and permits any currency supported by the selected provider route; for example `USD, INR, EUR` rejects every other currency before checkout.
 
 - Create keys for the correct mode and minimal required scopes. Copy new secret material when displayed; it is not recoverable from a later page visit.
 - Revoke unused keys after migrating callers. Do not rotate a key without updating its consumers.
@@ -31,7 +31,7 @@ An application owns its API integration and webhook endpoints. Its detail tabs i
 
 ## Provider accounts
 
-The list shows account, connector, mode, status, currencies, and purposes. Open an account for credentials, app links, provider-specific configuration, and the provider webhook URL. Webhook URLs are deliberately absent from the list.
+The list shows account, connector, mode, status, currencies, and purposes. Open an account for credentials, app links, provider-specific configuration, and the provider webhook URL. The detail page also retains inbound payload/header history, processing errors, matched Paymux transactions, and trace-log links. Webhook URLs are deliberately absent from the list.
 
 Register that exact account URL in the provider dashboard. A provider account's webhook secret is not your app endpoint's `whsec_` signing secret. For Zoho connection and callback registration, follow the [runbook](runbook.md).
 
@@ -55,6 +55,10 @@ Save and confirm the effective value. A validation error leaves the submitted va
 
 Routing settings include a route tester. Verify the intended application, currency, amount, country, and purpose before applying new traffic rules.
 
+Routing rules can also cap successful sales or captured amount per UTC day, week, or month. When a rule's limit is exhausted, evaluation continues to the next matching rule or catch-all. Amount limits use minor units. These counters are routing controls, not an accounting limit; the ledger and provider remain authoritative.
+
+**Organization settings → Notifications** sends selected mode-specific events to an email address, a Telegram chat, or both. Telegram bot tokens are encrypted and shown only while entered. Recommended events cover payment creation/success/failure, refunds, and disputes; customize the comma-separated list when an operator should receive fewer messages.
+
 ## Subscriptions: changing the amount
 
 On a subscription's page, *Change the amount* sets a new amount per period (from the next period; for a subscription Paymux bills itself the difference can also be charged for the current one). The control follows what the provider can do (`connector.Info.CanChangeSubscriptionAmount`): where it keeps the plan of a subscription paid by a given method (Razorpay does for cards and UPI), the form is not shown and the page says *the provider cannot change the plan of a card subscription; cancel it and start a new one*. If a change is attempted anyway, or the provider refuses it, the page shows the same words or the provider's own message (with secrets removed) instead of a generic error. The change is audited as `subscription.update`. The other controls (cancel, a new checkout link for a customer who has to authorise a mandate, the simulator's renewal) appear only where they apply to the subscription's billing model.
@@ -75,7 +79,7 @@ Use **Alerts** to triage retained operational alerts. Acknowledgement records th
 
 The dashboard keeps pages open as tabs. Overview is pinned. Alt-click a link (or open a page from the pinned Overview) to open it in a new tab; reload the browser and your tabs come back. A tab with unsaved edits shows a dot and asks before it closes. A page that shows a secret only once, such as a new API key, closes its content when you leave the tab, so copy the secret before switching. Shortcuts: `[` and `]` switch tabs, `g` then `1` to `9` jumps to a tab, `g w` closes the current tab, `g t` reopens the last closed one, `Ctrl+K` (or `/`) opens the command bar and `?` lists all shortcuts. In tables, `j` and `k` move between rows, `Enter` opens one and `Alt+Enter` opens it in a new tab.
 
-**Overview** starts with a revenue chart. Pick a range (Today, 7D, 30D, 3M, 6M, 12M, YTD, All time, or custom dates), a bucket (hour, day, week, month, quarter), an app and a currency. Gross, refunds and net come with the change against the previous period of the same length, and **Download CSV** exports the buckets. Amounts are shown in rupees by default: other currencies are converted at the exchange rate stored for each day. If a day has no rate the nearest stored one is used and the chart says it includes estimated conversions; a currency with no rate at all is listed as not included until you add rates on the **FX rates** page. Choose a currency in the picker to see its own amounts with no conversion.
+**Overview** starts with a revenue chart. Pick a range (Today, 7D, 30D, 3M, 6M, 12M, YTD, All time, or custom dates), a bucket (hour, day, week, month, quarter), an app and a currency. Gross, refunds and net come with the change against the previous period of the same length, and **Download CSV** exports the buckets. Amounts are shown in rupees by default: other currencies are converted at the exchange rate stored for each day. If a day has no rate the nearest stored one is used and the chart says it includes estimated conversions; a currency with no rate at all is listed as not included until you add rates on the **FX rates** page. Choose a currency in the picker to see its own amounts with no conversion. FX rates are only for reporting and tax documents: Paymux does not use a static rate to rewrite checkout prices, and provider settlement data remains authoritative.
 
 The command bar finds pages, open tabs and actions, opens a payment, subscription, invoice or dispute by its id, and searches payments, subscriptions and invoices for an email address or any text. On list pages, **Save filter** keeps the current filters as a chip in this browser; the invoice list also searches by invoice number or buyer.
 

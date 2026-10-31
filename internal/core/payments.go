@@ -160,6 +160,9 @@ func (s *Service) CreatePayment(ctx context.Context, in CreatePaymentInput) (Cre
 		if err != nil {
 			return mapStoreErr(err, "app")
 		}
+		if len(app.AcceptedCurrencies) > 0 && !slices.Contains(app.AcceptedCurrencies, strings.ToUpper(in.Currency)) {
+			return newErr(ErrCurrencyNotAccepted, "this app does not accept %s payments", in.Currency)
+		}
 		var buyer store.Billing
 		if in.Customer != nil {
 			buyer = in.Customer.Billing
@@ -185,7 +188,7 @@ func (s *Service) CreatePayment(ctx context.Context, in CreatePaymentInput) (Cre
 		}
 		now := s.nowUTC()
 		p = store.Payment{
-			ID: ids.New("pay"), OrgID: app.OrgID, AppID: app.ID, Mode: in.Scope.Mode, Kind: in.Kind, Amount: in.Amount,
+			ID: ids.Payment(), OrgID: app.OrgID, AppID: app.ID, Mode: in.Scope.Mode, Kind: in.Kind, Amount: in.Amount,
 			Currency: in.Currency, Status: string(state.PaymentCreated), OrderRef: in.OrderRef, Description: in.Description,
 			Metadata: in.Metadata, ReturnURL: in.ReturnURL, ClientSecretHash: hashSecret(secret),
 			ExpiresAt: now.Add(time.Duration(minutes) * time.Minute), Version: 1, CreatedAt: now, UpdatedAt: now,

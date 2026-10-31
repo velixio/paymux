@@ -31,6 +31,18 @@ func TestNewFormat(t *testing.T) {
 	}
 }
 
+func TestPaymentFormat(t *testing.T) {
+	re := regexp.MustCompile(`^[0-9A-Za-z]{14}$`)
+	for _, g := range []*Generator{testGen(steppingClock()), NewGenerator(time.Now, nil)} {
+		if id := g.Payment(); !re.MatchString(id) {
+			t.Fatalf("bad payment id %q", id)
+		}
+	}
+	if id := Payment(); !re.MatchString(id) {
+		t.Fatalf("bad default payment id %q", id)
+	}
+}
+
 func TestNewPanicsOnBadPrefix(t *testing.T) {
 	g := testGen(steppingClock())
 	for _, p := range []string{"", "Pay", "pa_y", "a", "toolong"} {
@@ -124,5 +136,17 @@ func TestUniqueSameMillisecond(t *testing.T) {
 			t.Fatalf("duplicate %q at %d", r, i)
 		}
 		seen[r] = struct{}{}
+	}
+}
+
+func TestPaymentIDsUnique(t *testing.T) {
+	g := NewGenerator(time.Now, nil)
+	seen := make(map[string]struct{}, 100000)
+	for i := 0; i < 100000; i++ {
+		id := g.Payment()
+		if _, dup := seen[id]; dup {
+			t.Fatalf("duplicate %q at %d", id, i)
+		}
+		seen[id] = struct{}{}
 	}
 }

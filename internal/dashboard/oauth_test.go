@@ -116,7 +116,7 @@ func newOAuthEnv(t *testing.T, db *store.DB) *oauthEnv {
 				return &http.Client{Transport: rt}
 			}})
 	})
-	pa, err := e.d.o.Connectors.CreateAccount(ctx, audit.System, orgScope(), connectors.CreateAccountInput{Connector: "zoho", Name: "Zoho", Mode: "test",
+	pa, err := e.d.o.Connectors.CreateAccount(ctx, audit.System, orgScope(), connectors.CreateAccountInput{Connector: "zoho", Name: "Zoho", Mode: "live",
 		Config: json.RawMessage(zohoNotConnected)})
 	if err != nil {
 		t.Fatal(err)
@@ -198,7 +198,7 @@ func TestConnectPanelShowsTheRedirectURIAndTheSteps(t *testing.T) {
 		}
 		// Only for a connector that can.
 		st := fakeconn.Register("plainfake")
-		pa, err := e.d.o.Connectors.CreateAccount(ctx, audit.System, orgScope(), connectors.CreateAccountInput{Connector: st.Name, Name: "Plain", Mode: "test",
+		pa, err := e.d.o.Connectors.CreateAccount(ctx, audit.System, orgScope(), connectors.CreateAccountInput{Connector: st.Name, Name: "Plain", Mode: "live",
 			Config: json.RawMessage(fakeconn.ValidConfig)})
 		if err != nil {
 			t.Fatal(err)

@@ -105,7 +105,7 @@ const event = await verifier.verify(request.headers, new Uint8Array(await reques
 Return only the customer checkout URL to that order's authenticated browser:
 
 ```json
-{"checkout_url":"https://pay.example.com/pay/pay_...?t=..."}
+{"checkout_url":"https://pay.example.com/pay/TuSgrD0tRwOTok?t=..."}
 ```
 
 The checkout URL is returned only when the payment is created; retrieving the

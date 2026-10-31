@@ -397,6 +397,20 @@ func validRouting(raw json.RawMessage) error {
 		if err := validAction(r.Action); err != nil {
 			return fmt.Errorf("rule %q: %v", r.Name, err)
 		}
+		if r.Limit != nil {
+			if r.Action.Kind != "route" {
+				return fmt.Errorf("rule %q: only route actions can have a limit", r.Name)
+			}
+			if r.Limit.Period != "daily" && r.Limit.Period != "weekly" && r.Limit.Period != "monthly" {
+				return fmt.Errorf("rule %q: limit period must be daily, weekly or monthly", r.Name)
+			}
+			if r.Limit.MaxSales == nil && r.Limit.MaxAmount == nil {
+				return fmt.Errorf("rule %q: limit needs max_sales or max_amount", r.Name)
+			}
+			if r.Limit.MaxSales != nil && *r.Limit.MaxSales < 1 || r.Limit.MaxAmount != nil && *r.Limit.MaxAmount < 1 {
+				return fmt.Errorf("rule %q: limits must be at least 1", r.Name)
+			}
+		}
 	}
 	return nil
 }

@@ -150,3 +150,28 @@ test("navigating the workspace reports no Content Security Policy violation", as
   }
   expect(violations).toEqual([]);
 });
+
+test("organization settings stay usable at phone width", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await login(page);
+  await page.goto("/dashboard/settings");
+  const content = visible(page);
+  await expect(
+    content.getByRole("heading", { name: "Organization settings" }),
+  ).toBeVisible();
+  await expect(content.locator("#notifications")).toBeVisible();
+  await expect(
+    content.getByRole("textbox", { name: "Notification email" }),
+  ).toBeVisible();
+
+  const routing = content.locator("#routing");
+  await routing.getByText("Routing rules and route tester").click();
+  await expect(routing.getByLabel("Limit period").first()).toBeVisible();
+  await expect(routing.getByLabel("Sales limit").first()).toBeVisible();
+  await expect(routing.getByLabel("Amount limit").first()).toBeVisible();
+
+  const overflow = await content.evaluate(
+    (node) => node.scrollWidth - node.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
+});

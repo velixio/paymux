@@ -213,12 +213,12 @@ func TestCreatePaymentResponse(t *testing.T) {
 	each(t, func(t *testing.T, f *fixture) {
 		r, m := f.createPayment(createBody)
 		id, _ := m["id"].(string)
-		if !strings.HasPrefix(id, "pay_") || m["object"] != "payment" || m["status"] != "created" || m["amount"] != float64(49900) ||
+		if !regexp.MustCompile(`^[0-9A-Za-z]{14}$`).MatchString(id) || m["object"] != "payment" || m["status"] != "created" || m["amount"] != float64(49900) ||
 			m["currency"] != "INR" || m["order_ref"] != "ord-1" || m["version"] != float64(1) {
 			t.Fatalf("body %s", r.raw)
 		}
 		co, _ := m["checkout_url"].(string)
-		re := regexp.MustCompile(`^https://pay\.example\.com/pay/(pay_[0-9a-z]{26})\?t=([A-Za-z0-9_-]{43})$`)
+		re := regexp.MustCompile(`^https://pay\.example\.com/pay/([0-9A-Za-z]{14})\?t=([A-Za-z0-9_-]{43})$`)
 		sub := re.FindStringSubmatch(co)
 		if sub == nil || sub[1] != id {
 			t.Fatalf("checkout_url %q", co)

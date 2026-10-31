@@ -55,6 +55,14 @@ type checkOpt struct {
 
 type linkedApp struct{ ID, Name string }
 
+type providerEventView struct {
+	ID, ProviderID, Received, Processed, Error, Headers, Payload string
+	Verified                                                     bool
+	Matches                                                      []providerEventMatchView
+}
+
+type providerEventMatchView struct{ Kind, ID, ProviderID, PaymentID string }
+
 type provForm struct {
 	New                                                bool
 	ID, Connector, Display, Name, Mode, Status         string
@@ -74,6 +82,7 @@ type provForm struct {
 	HasWebhookSecret                                   bool
 	Unavailable                                        bool
 	OAuth                                              *oauthPanel
+	Inbound                                            []providerEventView
 }
 
 func (d *Dashboard) routesProviders() {
@@ -250,7 +259,10 @@ func (d *Dashboard) providersPage(w http.ResponseWriter, r *http.Request, s *ses
 		return
 	}
 	var accts []store.ProviderAccountInfo
-	if err := d.o.DB.Read(ctx, func(q store.Querier) (err error) { accts, err = store.ListProviderAccounts(ctx, q, org, ""); return }); err != nil {
+	if err := d.o.DB.Read(ctx, func(q store.Querier) (err error) {
+		accts, err = store.ListProviderAccounts(ctx, q, org, d.mode(r, s))
+		return
+	}); err != nil {
 		d.fail(w, err)
 		return
 	}
@@ -295,11 +307,11 @@ func (d *Dashboard) renderNewProvider(w http.ResponseWriter, r *http.Request, s 
 		d.fail(w, err)
 		return
 	}
-	f := &provForm{New: true, Connector: info.Name, Display: firstNonBlank(info.DisplayName, info.Name), Mode: "test", CanManage: true,
+	f := &provForm{New: true, Connector: info.Name, Display: firstNonBlank(info.DisplayName, info.Name), Mode: d.mode(r, s), CanManage: true,
 		Fields: fillFields(schemaFields(info.ConfigSchema), nil, post)}
 	on, onP := info.Currencies, []string{"one_time"}
 	if post != nil {
-		f.Name, f.Mode, f.StatementDescriptor, f.ProviderGSTIN, f.AppID = post.Get("name"), post.Get("mode"), post.Get("statement_descriptor"), post.Get("provider_gstin"), post.Get("app_id")
+		f.Name, f.Mode, f.StatementDescriptor, f.ProviderGSTIN, f.AppID = post.Get("name"), d.mode(r, s), post.Get("statement_descriptor"), post.Get("provider_gstin"), post.Get("app_id")
 		on, onP = post["currency"], post["purpose"]
 	}
 	f.Currencies, f.Purposes = checks(info.Currencies, on), checks([]string{"one_time", "subscription"}, onP)
@@ -327,6 +339,10 @@ func (d *Dashboard) providerCreate(w http.ResponseWriter, r *http.Request, s *se
 		http.NotFound(w, r)
 		return
 	}
+	if !postedModeMatches(r, d.mode(r, s)) {
+		d.renderNewProvider(w, r, s, info, http.StatusBadRequest, "The requested mode does not match the dashboard mode. Switch modes before creating the account.", f)
+		return
+	}
 	scope, err := d.orgScope(r)
 	if err != nil {
 		d.fail(w, err)
@@ -336,7 +352,7 @@ func (d *Dashboard) providerCreate(w http.ResponseWriter, r *http.Request, s *se
 	if err == nil {
 		var pa store.ProviderAccount
 		pa, err = d.o.Connectors.CreateAccount(r.Context(), s.auditActor(), scope, connectors.CreateAccountInput{
-			Connector: info.Name, Name: f.Get("name"), Mode: f.Get("mode"), Config: cfg, Currencies: f["currency"], Purposes: f["purpose"],
+			Connector: info.Name, Name: f.Get("name"), Mode: d.mode(r, s), Config: cfg, Currencies: f["currency"], Purposes: f["purpose"],
 			StatementDescriptor: strings.TrimSpace(f.Get("statement_descriptor")), ProviderGSTIN: strings.ToUpper(strings.TrimSpace(f.Get("provider_gstin"))),
 			AppID: f.Get("app_id")})
 		if err == nil {
@@ -354,7 +370,7 @@ func (d *Dashboard) providerCreate(w http.ResponseWriter, r *http.Request, s *se
 }
 
 // loadProvider answers 404 for an unknown account or one of another org.
-func (d *Dashboard) loadProvider(w http.ResponseWriter, r *http.Request) (store.ProviderAccount, core.OrgScope, bool) {
+func (d *Dashboard) loadProvider(w http.ResponseWriter, r *http.Request, s *session) (store.ProviderAccount, core.OrgScope, bool) {
 	scope, err := d.orgScope(r)
 	if err != nil {
 		d.fail(w, err)
@@ -367,6 +383,10 @@ func (d *Dashboard) loadProvider(w http.ResponseWriter, r *http.Request) (store.
 	}
 	if err != nil {
 		d.fail(w, err)
+		return pa, scope, false
+	}
+	if pa.Mode != d.mode(r, s) {
+		http.NotFound(w, r)
 		return pa, scope, false
 	}
 	return pa, scope, true
@@ -388,7 +408,7 @@ func (d *Dashboard) providerPage(w http.ResponseWriter, r *http.Request, s *sess
 }
 
 func (d *Dashboard) renderProvider(w http.ResponseWriter, r *http.Request, s *session, status int, errMsg, test string, testOK bool, post url.Values) {
-	pa, scope, ok := d.loadProvider(w, r)
+	pa, scope, ok := d.loadProvider(w, r, s)
 	if !ok {
 		return
 	}
@@ -444,6 +464,24 @@ func (d *Dashboard) renderProvider(w http.ResponseWriter, r *http.Request, s *se
 				f.Linkable = append(f.Linkable, appOpt{ID: a.ID, Name: a.Name})
 			}
 		}
+		events, err := store.ListProviderEvents(r.Context(), q, pa.ID, 20)
+		if err != nil {
+			return err
+		}
+		for _, event := range events {
+			row := providerEventView{ID: event.ID, ProviderID: event.ProviderEventID, Verified: event.Verified,
+				Received: d.fmtTime(event.ReceivedAt), Processed: d.fmtTime(event.ProcessedAt), Error: event.Error,
+				Headers: string(event.Headers), Payload: string(event.Body)}
+			matches, err := store.ListProviderEventMatches(r.Context(), q, event.ID)
+			if err != nil {
+				return err
+			}
+			for _, match := range matches {
+				row.Matches = append(row.Matches, providerEventMatchView{Kind: match.ObjectType, ID: match.ObjectID,
+					ProviderID: match.ProviderID, PaymentID: match.PaymentID})
+			}
+			f.Inbound = append(f.Inbound, row)
+		}
 		return nil
 	})
 	if err != nil {
@@ -464,7 +502,7 @@ func (d *Dashboard) renderProvider(w http.ResponseWriter, r *http.Request, s *se
 }
 
 func (d *Dashboard) providerUpdate(w http.ResponseWriter, r *http.Request, s *session) {
-	pa, scope, ok := d.loadProvider(w, r)
+	pa, scope, ok := d.loadProvider(w, r, s)
 	if !ok {
 		return
 	}
@@ -496,7 +534,7 @@ func (d *Dashboard) providerUpdate(w http.ResponseWriter, r *http.Request, s *se
 }
 
 func (d *Dashboard) providerLink(w http.ResponseWriter, r *http.Request, s *session) {
-	pa, scope, ok := d.loadProvider(w, r)
+	pa, scope, ok := d.loadProvider(w, r, s)
 	if !ok {
 		return
 	}
@@ -514,7 +552,7 @@ func (d *Dashboard) providerLink(w http.ResponseWriter, r *http.Request, s *sess
 }
 
 func (d *Dashboard) providerTest(w http.ResponseWriter, r *http.Request, s *session) {
-	pa, scope, ok := d.loadProvider(w, r)
+	pa, scope, ok := d.loadProvider(w, r, s)
 	if !ok {
 		return
 	}
@@ -527,7 +565,7 @@ func (d *Dashboard) providerTest(w http.ResponseWriter, r *http.Request, s *sess
 }
 
 func (d *Dashboard) providerWebhookConfigure(w http.ResponseWriter, r *http.Request, s *session) {
-	pa, scope, ok := d.loadProvider(w, r)
+	pa, scope, ok := d.loadProvider(w, r, s)
 	if !ok {
 		return
 	}
@@ -540,7 +578,7 @@ func (d *Dashboard) providerWebhookConfigure(w http.ResponseWriter, r *http.Requ
 }
 
 func (d *Dashboard) providerWebhookSecret(w http.ResponseWriter, r *http.Request, s *session) {
-	pa, scope, ok := d.loadProvider(w, r)
+	pa, scope, ok := d.loadProvider(w, r, s)
 	if !ok {
 		return
 	}

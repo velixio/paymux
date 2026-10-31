@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -317,7 +318,7 @@ func TestStartCreatesANormalPaymentCarryingTheLinkId(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.HasPrefix(st.PaymentID, "pay_") || st.ClientSecret == "" {
+		if !regexp.MustCompile(`^[0-9A-Za-z]{14}$`).MatchString(st.PaymentID) || st.ClientSecret == "" {
 			t.Fatalf("started %+v", st)
 		}
 		p, err := e.core.GetPaymentByID(ctx, st.PaymentID)

@@ -108,7 +108,7 @@ func (d *Dashboard) renderDisputes(w http.ResponseWriter, r *http.Request, s *se
 		if apps, err = store.ListApps(ctx, q, scope.OrgID); err != nil {
 			return err
 		}
-		accts, err = store.ListProviderAccounts(ctx, q, scope.OrgID, "")
+		accts, err = store.ListProviderAccounts(ctx, q, scope.OrgID, d.mode(r, s))
 		return err
 	})
 	if err != nil {
@@ -191,7 +191,7 @@ func (d *Dashboard) disputeManual(w http.ResponseWriter, r *http.Request, s *ses
 		p, err = store.GetPayment(r.Context(), q, strings.TrimSpace(f.Get("payment_id")))
 		return
 	})
-	if errors.Is(err, store.ErrNotFound) || err == nil && p.OrgID != scope.OrgID {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (p.OrgID != scope.OrgID || p.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -219,7 +219,7 @@ func (d *Dashboard) disputeManual(w http.ResponseWriter, r *http.Request, s *ses
 }
 
 // loadDispute answers 404 for an unknown dispute or one of another org.
-func (d *Dashboard) loadDispute(w http.ResponseWriter, r *http.Request) (store.Dispute, bool) {
+func (d *Dashboard) loadDispute(w http.ResponseWriter, r *http.Request, s *session) (store.Dispute, bool) {
 	scope, err := d.orgScope(r)
 	if err != nil {
 		d.fail(w, err)
@@ -234,6 +234,10 @@ func (d *Dashboard) loadDispute(w http.ResponseWriter, r *http.Request) (store.D
 		d.fail(w, err)
 		return dp, false
 	}
+	if dp.Mode != d.mode(r, s) {
+		http.NotFound(w, r)
+		return dp, false
+	}
 	return dp, true
 }
 
@@ -243,7 +247,7 @@ func (d *Dashboard) disputePage(w http.ResponseWriter, r *http.Request, s *sessi
 
 func (d *Dashboard) renderDispute(w http.ResponseWriter, r *http.Request, s *session, status int, errMsg string) {
 	ctx := r.Context()
-	dp, ok := d.loadDispute(w, r)
+	dp, ok := d.loadDispute(w, r, s)
 	if !ok {
 		return
 	}
@@ -353,7 +357,7 @@ func (d *Dashboard) renderDispute(w http.ResponseWriter, r *http.Request, s *ses
 }
 
 func (d *Dashboard) disputeEvidenceFile(w http.ResponseWriter, r *http.Request, s *session) {
-	dp, ok := d.loadDispute(w, r)
+	dp, ok := d.loadDispute(w, r, s)
 	if !ok {
 		return
 	}
@@ -382,6 +386,9 @@ func (d *Dashboard) disputeEvidenceFile(w http.ResponseWriter, r *http.Request, 
 }
 
 func (d *Dashboard) disputeAction(w http.ResponseWriter, r *http.Request, s *session, do func(scope core.OrgScope) error, then func() string) {
+	if _, ok := d.loadDispute(w, r, s); !ok {
+		return
+	}
 	scope, err := d.orgScope(r)
 	if err != nil {
 		d.fail(w, err)

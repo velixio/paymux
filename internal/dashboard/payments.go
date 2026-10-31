@@ -77,8 +77,9 @@ type payDetail struct {
 	RefundNonce string
 	// SimAttempts are the captured attempts on a test-mode simulator account,
 	// the ones a dispute can be simulated on.
-	SimAttempts []attemptOpt
-	CanSimulate bool
+	SimAttempts  []attemptOpt
+	CanSimulate  bool
+	AttemptCount int
 }
 
 // parseDay parses YYYY-MM-DD in the dashboard's time zone.
@@ -222,7 +223,7 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 		if dels, err = store.ListPaymentDeliveries(ctx, q, id); err != nil {
 			return err
 		}
-		if accounts, err = store.ListProviderAccounts(ctx, q, p.OrgID, ""); err != nil {
+		if accounts, err = store.ListProviderAccounts(ctx, q, p.OrgID, p.Mode); err != nil {
 			return err
 		}
 		if p.CustomerID != "" {
@@ -232,7 +233,7 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 		}
 		return nil
 	})
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, p.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, p.OrgID) || p.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -251,7 +252,7 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	det := &payDetail{ID: p.ID, App: app.Name, AppID: app.ID, Mode: p.Mode, Status: displayStatus, StatusClass: statusClass, Currency: p.Currency,
 		Amount: fmtMoney(p.Amount, p.Currency), Received: fmtMoney(p.AmountReceived, p.Currency), Refunded: fmtMoney(p.AmountRefunded, p.Currency),
 		OrderRef: p.OrderRef, Description: p.Description, Created: d.fmtTime(p.CreatedAt), Flags: p.Flags,
-		CanReplay: s.can(authz.WebhookReplay)}
+		CanReplay: s.can(authz.WebhookReplay), AttemptCount: len(providerAttempts)}
 	if cust.ID != "" {
 		det.Customer = &customerDetail{ExternalRef: cust.ExternalRef, Name: cust.Name, Email: cust.Email, Phone: cust.Phone,
 			LegalName: cust.Billing.LegalName, GSTIN: cust.Billing.GSTIN, Line1: cust.Billing.Line1, Line2: cust.Billing.Line2,
@@ -356,7 +357,7 @@ func (d *Dashboard) paymentSyncSubmit(w http.ResponseWriter, r *http.Request, s 
 		attempts, err = store.ListAttempts(ctx, q, id)
 		return err
 	})
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, p.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, p.OrgID) || p.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -393,6 +394,12 @@ func paymentDisplayStatus(p store.Payment) (label, class string) {
 		return "refunded", "refunded"
 	case p.HasFlag(core.FlagRefundedPartial):
 		return "partially refunded", "partially-refunded"
+	case p.Status == string(state.PaymentRequiresAction):
+		return "Waiting for customer", p.Status
+	case p.Status == string(state.PaymentCreated):
+		return "Created", p.Status
+	case p.Status == string(state.PaymentFailed):
+		return "Ready to retry", p.Status
 	default:
 		return p.Status, p.Status
 	}
@@ -445,7 +452,7 @@ func (d *Dashboard) refundSubmit(w http.ResponseWriter, r *http.Request, s *sess
 	ctx := r.Context()
 	var p store.Payment
 	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) { p, err = store.GetPayment(ctx, q, r.PathValue("id")); return })
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, p.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, p.OrgID) || p.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -522,7 +529,7 @@ func (d *Dashboard) simulatorTarget(w http.ResponseWriter, r *http.Request, s *s
 		attempts, err = store.ListAttempts(ctx, q, p.ID)
 		return err
 	})
-	if errors.Is(err, store.ErrNotFound) || err == nil && !d.inOrg(ctx, p.OrgID) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, p.OrgID) || p.Mode != d.mode(r, s)) {
 		http.NotFound(w, r)
 		return p, store.Attempt{}, nil, false
 	}

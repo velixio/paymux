@@ -146,8 +146,8 @@ func truncate(s string, n int) string {
 }
 
 // oauthTarget loads the account and checks its connector can connect.
-func (d *Dashboard) oauthTarget(w http.ResponseWriter, r *http.Request) (pa store.ProviderAccount, scope core.OrgScope, info connector.Info, ok bool) {
-	pa, scope, ok = d.loadProvider(w, r)
+func (d *Dashboard) oauthTarget(w http.ResponseWriter, r *http.Request, s *session) (pa store.ProviderAccount, scope core.OrgScope, info connector.Info, ok bool) {
+	pa, scope, ok = d.loadProvider(w, r, s)
 	if !ok {
 		return
 	}
@@ -216,7 +216,7 @@ func hashState(state string) string {
 
 // oauthConnect saves the client and sends the operator to the provider.
 func (d *Dashboard) oauthConnect(w http.ResponseWriter, r *http.Request, s *session) {
-	pa, scope, info, ok := d.oauthTarget(w, r)
+	pa, scope, info, ok := d.oauthTarget(w, r, s)
 	if !ok {
 		return
 	}
@@ -319,7 +319,7 @@ func (d *Dashboard) oauthCallback(w http.ResponseWriter, r *http.Request, s *ses
 		bad("The provider returned no authorization code.")
 		return
 	}
-	pa, _, info, ok := d.oauthTarget(w, r)
+	pa, _, info, ok := d.oauthTarget(w, r, s)
 	if !ok {
 		return
 	}
@@ -346,7 +346,7 @@ func (d *Dashboard) oauthCallback(w http.ResponseWriter, r *http.Request, s *ses
 // oauthPasteCode connects with a grant code the operator pastes (a self
 // client's code, which has no redirect).
 func (d *Dashboard) oauthPasteCode(w http.ResponseWriter, r *http.Request, s *session) {
-	pa, scope, info, ok := d.oauthTarget(w, r)
+	pa, scope, info, ok := d.oauthTarget(w, r, s)
 	if !ok {
 		return
 	}

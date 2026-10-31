@@ -9,6 +9,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/velixio/paymux/internal/core"
 	"github.com/velixio/paymux/internal/routing"
@@ -25,12 +26,21 @@ type Routing struct {
 	breaker  *routing.Breaker
 	settings *settings.Service // when set, routing rules come through its cache
 	suggest  Suggester
+	now      func() time.Time
 }
 
 var _ core.Router = (*Routing)(nil)
 
 // NewRouting returns a Routing using b to deprioritise failing accounts.
-func NewRouting(b *routing.Breaker) *Routing { return &Routing{breaker: b} }
+func NewRouting(b *routing.Breaker) *Routing { return &Routing{breaker: b, now: time.Now} }
+
+// WithClock sets the clock used for daily, weekly and monthly routing limits.
+func (r *Routing) WithClock(now func() time.Time) *Routing {
+	if now != nil {
+		r.now = now
+	}
+	return r
+}
 
 // WithSettings makes Routing read the routing setting through s's short-TTL
 // cache instead of querying it for every payment. It returns r.
@@ -222,7 +232,14 @@ func (r *Routing) pick(ctx context.Context, q store.Queryer, req core.RouteReque
 		isOpen = r.breaker.Open
 	}
 	res, err := routing.Choose(cfg, routing.Request{Currency: req.Currency, Country: req.Country, Amount: req.Amount,
-		Purpose: purpose, Metadata: req.Metadata, AllowedConnectors: req.AllowedConnectors}, accounts, isOpen)
+		Purpose: purpose, Metadata: req.Metadata, AllowedConnectors: req.AllowedConnectors,
+		Usage: func(ids []string, period string) (int64, int64, error) {
+			since, err := routing.PeriodStart(period, r.now())
+			if err != nil {
+				return 0, 0, err
+			}
+			return store.RoutingUsage(ctx, q, ids, since)
+		}}, accounts, isOpen)
 	var rej *routing.RejectedError
 	switch {
 	case errors.As(err, &rej):

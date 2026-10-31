@@ -26,7 +26,7 @@ func TestAPIKeyCreateCannotHandOutPowerTheRoleLacks(t *testing.T) {
 		app := e.seedApp("alpha")
 		page := "/dashboard/apps/" + app.ID
 		// The admin's full-access key exists already (to be rotated later).
-		if r, _ := e.post(e.c, page+"/keys", url.Values{"mode": {"test"}, "csrf": {tok}}); r.StatusCode != 200 {
+		if r, _ := e.post(e.c, page+"/keys", url.Values{"mode": {"live"}, "csrf": {tok}}); r.StatusCode != 200 {
 			t.Fatalf("admin key: %d", r.StatusCode)
 		}
 		c := e.client()
@@ -54,7 +54,7 @@ func TestAPIKeyCreateCannotHandOutPowerTheRoleLacks(t *testing.T) {
 			t.Errorf("a refused request created a key")
 		}
 		// Rotating the full-access key into a new full-access key is the same power.
-		if r, _ := e.post(c, page+"/keys/rotate", url.Values{"mode": {"test"}, "csrf": {ktok}}); r.StatusCode != 403 {
+		if r, _ := e.post(c, page+"/keys/rotate", url.Values{"mode": {"live"}, "csrf": {ktok}}); r.StatusCode != 403 {
 			t.Errorf("rotate inheriting full access: %d", r.StatusCode)
 		}
 		if keys() != before {
