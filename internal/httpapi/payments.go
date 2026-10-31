@@ -338,13 +338,19 @@ func (a *API) getPayment(w http.ResponseWriter, r *http.Request, pr core.Princip
 		a.failCore(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, paymentDetail{PaymentView: core.ViewPayment(p), Attempts: attempts})
+	mode, err := a.checkoutMode(r, pr.AppID)
+	if err != nil {
+		a.fail(w, r, http.StatusInternalServerError, "internal", "checkout mode could not be loaded")
+		return
+	}
+	writeJSON(w, http.StatusOK, paymentDetail{PaymentView: core.ViewPayment(p), CheckoutMode: mode, Attempts: attempts})
 }
 
 // paymentDetail is GET /v1/payments/{id}: the payment and its attempts.
 type paymentDetail struct {
 	core.PaymentView
-	Attempts []core.AttemptView `json:"attempts"`
+	CheckoutMode string             `json:"checkout_mode"`
+	Attempts     []core.AttemptView `json:"attempts"`
 }
 
 type listResp struct {

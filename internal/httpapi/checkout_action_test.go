@@ -152,6 +152,21 @@ func TestProviderActionCheckoutStaysOnTheMerchantBackend(t *testing.T) {
 		if payment["checkout_mode"] != "provider_action" || payment["checkout_url"] != nil {
 			t.Fatalf("payment response: %+v", payment)
 		}
+		createdID, _ := payment["id"].(string)
+		getReq, _ := http.NewRequest(http.MethodGet, testServer.URL+"/v1/payments/"+createdID, nil)
+		getReq.Header.Set("Authorization", "Bearer "+key)
+		getRes, err := testServer.Client().Do(getReq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer getRes.Body.Close()
+		var gotPayment map[string]any
+		if err := json.NewDecoder(getRes.Body).Decode(&gotPayment); err != nil {
+			t.Fatal(err)
+		}
+		if got := gotPayment["checkout_mode"]; getRes.StatusCode != http.StatusOK || got != "provider_action" {
+			t.Fatalf("GET checkout_mode = %v, want provider_action", got)
+		}
 		paymentID := payment["id"].(string)
 		initial, _ := payment["checkout"].(map[string]any)
 		provider, _ := initial["action"].(map[string]any)

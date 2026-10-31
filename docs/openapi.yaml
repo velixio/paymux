@@ -1121,8 +1121,12 @@ components:
       allOf:
         - $ref: "#/components/schemas/Payment"
         - type: object
-          required: [attempts]
+          required: [checkout_mode, attempts]
           properties:
+            checkout_mode:
+              type: string
+              enum: [hosted, provider_action]
+              description: The checkout integration currently selected on the App. Use this field when recovering a failed provider-action checkout.
             attempts:
               type: array
               description: Oldest first.
