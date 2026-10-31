@@ -86,7 +86,7 @@ func (s *Service) SaveNotificationConfig(ctx context.Context, orgID, mode string
 		return errors.New("enter a Telegram bot token and chat id before enabling Telegram notifications")
 	}
 	if c.TelegramDeleteAfterHours < 0 || c.TelegramDeleteAfterHours > MaxTelegramDeleteAfterHours {
-		return fmt.Errorf("Telegram message retention must be 0 (never) or 1–%d hours", MaxTelegramDeleteAfterHours)
+		return fmt.Errorf("telegram message retention must be 0 (never) or 1–%d hours", MaxTelegramDeleteAfterHours)
 	}
 	c.EventTypes = uniqueEventTypes(c.EventTypes)
 	return s.db.Write(ctx, func(tx store.Tx) error {
