@@ -41,7 +41,7 @@ const ThemeEditor = lazy(() => import("./theme-editor"));
 // Filter results replace the server-rendered form. Remember that an automatic
 // search initiated the navigation so the replacement input can retain the
 // user's keyboard focus and caret instead of interrupting their typing.
-let pendingAutoSearchFocus: string | null = null;
+let pendingAutoSearchFocus: { action: string; restore: boolean } | null = null;
 
 // The theme form is plain and complete on its own. This keeps its DOM in place
 // (so nothing typed is lost when the editor chunk arrives) and adds the live
@@ -124,14 +124,17 @@ function Form({ node }: { node: ViewNode }) {
   const autoSearch = filterForm && node.attrs["data-auto-search"] === "true";
   useEffect(() => {
     const el = form.current;
-    if (!autoSearch || !el || pendingAutoSearchFocus !== el.action) return;
+    if (!autoSearch || !el || pendingAutoSearchFocus?.action !== el.action)
+      return;
+    const restore = pendingAutoSearchFocus.restore;
+    pendingAutoSearchFocus = null;
+    if (!restore) return;
     const input = el.querySelector<HTMLInputElement>(
       'input[type="search"][name="q"]',
     );
     if (!input) return;
     input.focus({ preventScroll: true });
     input.setSelectionRange(input.value.length, input.value.length);
-    pendingAutoSearchFocus = null;
   }, [autoSearch, node]);
   return (
     <form
@@ -142,6 +145,16 @@ function Form({ node }: { node: ViewNode }) {
       }}
       aria-busy={pending}
       data-dirty={dirty || undefined}
+      onBlurCapture={(event) => {
+        if (
+          pendingAutoSearchFocus?.action === event.currentTarget.action &&
+          event.target instanceof HTMLInputElement &&
+          event.target.type === "search" &&
+          event.relatedTarget
+        ) {
+          pendingAutoSearchFocus.restore = false;
+        }
+      }}
       onInput={(event) => {
         const changed = fingerprint(event.currentTarget) !== baseline.current;
         setDirty(changed);
@@ -155,9 +168,22 @@ function Form({ node }: { node: ViewNode }) {
         ) {
           if (searchTimer.current) clearTimeout(searchTimer.current);
           searchTimer.current = setTimeout(() => {
-            if (form.current) {
-              pendingAutoSearchFocus = form.current.action;
-              submit(form.current, null);
+            searchTimer.current = null;
+            const current = form.current;
+            if (
+              current &&
+              !current.closest<HTMLElement>(".react-content")?.hidden
+            ) {
+              const search = current.querySelector<HTMLInputElement>(
+                'input[type="search"][name="q"]',
+              );
+              pendingAutoSearchFocus = {
+                action: current.action,
+                restore:
+                  document.activeElement === search ||
+                  document.activeElement === document.body,
+              };
+              submit(current, null);
             }
           }, 250);
         }

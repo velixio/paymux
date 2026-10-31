@@ -18,6 +18,7 @@ import (
 	"github.com/velixio/paymux/internal/ids"
 	"github.com/velixio/paymux/internal/settings"
 	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // ErrConflict means the request collides with existing data (a duplicate slug).
@@ -88,6 +89,19 @@ func (s *Service) CreateApp(ctx context.Context, actor audit.Actor, sc OrgScope,
 	if in.DefaultReturnURL != "" && !validURL(in.DefaultReturnURL) {
 		return store.App{}, newErr(ErrInvalid, "default_return_url must be an absolute http(s) URL")
 	}
+	seenCurrencies := map[string]bool{}
+	currencies := make([]string, 0, len(in.AcceptedCurrencies))
+	for _, currency := range in.AcceptedCurrencies {
+		currency = strings.ToUpper(strings.TrimSpace(currency))
+		if _, err := money.Exponent(currency); err != nil {
+			return store.App{}, newErr(ErrInvalid, "accepted currency %q is not a supported ISO-4217 code", currency)
+		}
+		if !seenCurrencies[currency] {
+			seenCurrencies[currency] = true
+			currencies = append(currencies, currency)
+		}
+	}
+	in.AcceptedCurrencies = currencies
 	var app store.App
 	err := s.db.Write(ctx, func(tx store.Tx) error {
 		org := sc.OrgID

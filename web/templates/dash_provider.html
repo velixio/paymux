@@ -68,7 +68,7 @@
 {{range .Inbound}}<details class="delivery-attempt"><summary>{{.Received}} · {{.ProviderID}} · {{if .Verified}}verified{{else}}unverified{{end}}</summary>
 <p><code>{{.ID}}</code> · <a href="/dashboard/logs?q={{.ID}}">trace logs</a>{{if .Processed}} · processed {{.Processed}}{{end}}</p>{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
 {{if .Matches}}<h4>Matched transactions</h4><ul>{{range .Matches}}<li>{{.Kind}} <code>{{.ID}}</code>{{if .ProviderID}} · provider <code>{{.ProviderID}}</code>{{end}}{{if .PaymentID}} · <a href="/dashboard/payments/{{.PaymentID}}">payment {{.PaymentID}}</a>{{end}}</li>{{end}}</ul>{{end}}
-<h4>Payload</h4><pre class="payload"><code>{{.Payload}}</code></pre><h4>Headers</h4><pre class="payload"><code>{{.Headers}}</code></pre></details>
+{{if $.Prov.CanManage}}<h4>Payload</h4><pre class="payload"><code>{{.Payload}}</code></pre><h4>Headers</h4><pre class="payload"><code>{{.Headers}}</code></pre>{{end}}</details>
 {{else}}<p class="muted">No provider webhooks received in this mode.</p>{{end}}
 {{if and .CanManage (not .Unavailable)}}
 <h3>Settings</h3>

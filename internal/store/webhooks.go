@@ -445,8 +445,12 @@ func PurgeProviderEvents(ctx context.Context, tx Tx, forged bool, before time.Ti
 	if forged {
 		cond = "provider_event_id LIKE 'unverified:%'"
 	}
+	selected := `SELECT id FROM provider_events WHERE received_at < ? AND ` + cond + ` ORDER BY received_at LIMIT ?`
+	if _, err := tx.ExecContext(ctx, `DELETE FROM provider_event_matches WHERE provider_event_id IN (`+selected+`)`, ms(before), limit); err != nil {
+		return 0, err
+	}
 	res, err := tx.ExecContext(ctx, `DELETE FROM provider_events WHERE id IN (
-		SELECT id FROM provider_events WHERE received_at < ? AND `+cond+` ORDER BY received_at LIMIT ?)`, ms(before), limit)
+		`+selected+`)`, ms(before), limit)
 	if err != nil {
 		return 0, err
 	}

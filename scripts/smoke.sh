@@ -39,7 +39,7 @@ run_one() {
 	echo
 	echo "################ smoke test: $db ################"
 	tmp="$(mktemp -d)"
-	local port iport key url=""
+	local port iport key url="" database_url=""
 	port="$(free_port)"
 	iport="$(free_port)"
 	key="$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
@@ -50,6 +50,9 @@ run_one() {
 		*\?*) url="${PAYMUX_TEST_POSTGRES_URL}&search_path=$schema" ;;
 		*) url="${PAYMUX_TEST_POSTGRES_URL}?search_path=$schema" ;;
 		esac
+		database_url="$url"
+	else
+		database_url="sqlite://$tmp/data/paymux.db"
 	fi
 
 	env -i PATH="$PATH" HOME="$tmp" \
@@ -58,10 +61,10 @@ run_one() {
 		PAYMUX_LISTEN="127.0.0.1:$port" \
 		PAYMUX_INTERNAL_LISTEN="127.0.0.1:$iport" \
 		PAYMUX_DATA_DIR="$tmp/data" \
+		PAYMUX_DATABASE_URL="$database_url" \
 		PAYMUX_MASTER_KEY="$key" \
 		PAYMUX_DEV_SKIP_2FA=true \
 		PAYMUX_ALLOW_PRIVATE_WEBHOOKS=true \
-		${url:+PAYMUX_DATABASE_URL="$url"} \
 		bin/paymux serve >"$tmp/server.log" 2>&1 &
 	pid=$!
 

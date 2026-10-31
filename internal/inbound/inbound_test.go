@@ -84,7 +84,7 @@ func TestVerifiedEventStoredAndQueued(t *testing.T) {
 		e := newEnv(t, db)
 		e.acc["pa_1"] = fakeVerifier(func(h http.Header, b []byte) (string, error) { return "ev_1", nil })
 		body := []byte(`{"event":"payment.captured"}`)
-		rec := e.post("pa_1", body, "X-Sig", "abc", "Authorization", "Bearer secret", "Content-Type", "application/json")
+		rec := e.post("pa_1", body, "X-Sig", "abc", "X-Api-Key", "hidden", "Authorization", "Bearer secret", "Content-Type", "application/json")
 		if rec.Code != 200 {
 			t.Fatalf("code %d", rec.Code)
 		}
@@ -95,7 +95,7 @@ func TestVerifiedEventStoredAndQueued(t *testing.T) {
 		if !row.Verified || !bytes.Equal(row.Body, body) || row.ReceivedAt.UnixMilli() != 1_800_000_000_000 {
 			t.Fatalf("row %+v", row)
 		}
-		if !strings.Contains(string(row.Headers), "X-Sig") || strings.Contains(string(row.Headers), "secret") ||
+		if !strings.Contains(string(row.Headers), "X-Sig") || strings.Contains(string(row.Headers), "secret") || strings.Contains(string(row.Headers), "hidden") ||
 			strings.Contains(strings.ToLower(string(row.Headers)), "authorization") {
 			t.Fatalf("headers not allow-listed: %s", row.Headers)
 		}

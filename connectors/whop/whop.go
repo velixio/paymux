@@ -395,7 +395,7 @@ func (p paymentEntity) snapshot() (connector.PaymentSnapshot, error) {
 		brand = firstNonEmpty(brand, p.PaymentMethodDetails.Card.Brand)
 		last4 = firstNonEmpty(last4, p.PaymentMethodDetails.Card.Last4)
 	}
-	if strings.EqualFold(p.PaymentMethod, "card") && (brand != "" || last4 != "") {
+	if (p.PaymentMethod == "" || strings.EqualFold(p.PaymentMethod, "card")) && (brand != "" || last4 != "") {
 		details.Card = &connector.CardDetails{Network: brand, Last4: last4}
 	}
 	return connector.PaymentSnapshot{

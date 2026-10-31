@@ -4,7 +4,7 @@
 {{define "content"}}{{template "dash_open" .}}
 <header class="settings-header">
   <div><p class="eyebrow">Workspace</p><h1>Organization settings</h1><p class="muted">Control payment behavior for every app in this organization.</p></div>
-  <div class="setting-scope"><strong>{{.Mode}} mode</strong><span>Changes here apply to {{.Mode}} traffic unless stated otherwise.</span></div>
+  <div class="setting-scope"><strong>{{.Mode}} mode</strong><span>Notifications use this mode. Routing applies organization-wide.</span></div>
 </header>
 <nav class="setting-nav" aria-label="Organization settings">
   <a href="/dashboard/settings"{{if eq .SettingsSection "general"}} class="active" aria-current="page"{{end}}>General</a>
@@ -67,7 +67,7 @@
 <div class="routing-rule-body"><fieldset><legend>Fallback outcome</legend><div class="settings-field-grid"><label>Action<select class="field" name="ca_action"><option value="route"{{if eq .CatchAll.Action "route"}} selected{{end}}>Route</option><option value="reject"{{if eq .CatchAll.Action "reject"}} selected{{end}}>Reject</option><option value="none"{{if eq .CatchAll.Action "none"}} selected{{end}}>No fallback</option></select></label><label>Targets<input class="field" name="ca_targets" value="{{.CatchAll.Targets}}" placeholder="razorpay, whop"></label><label>Customer message when rejected<input class="field" name="ca_message" value="{{.CatchAll.Message}}"></label></div></fieldset></div></details>
 <div class="settings-actions routing-save"><span>Changes affect new payment attempts after saving.</span><button class="btn" type="submit">Save routing</button></div>
 </form>
-{{else}}<div class="routing-readonly">{{range .Rules}}<article><div><strong>{{.Order}}. {{.Name}}</strong><span>{{if .Currency}}{{.Currency}}{{else}}Any currency{{end}} · {{if .Purpose}}{{.Purpose}}{{else}}Any purpose{{end}}</span></div><span>{{.Action}}{{if .Targets}} → {{.Targets}}{{end}}</span></article>{{end}}<article><div><strong>Catch-all</strong><span>When nothing else matches</span></div><span>{{.CatchAll.Action}}{{if .CatchAll.Targets}} → {{.CatchAll.Targets}}{{end}}</span></article></div>{{end}}
+{{else}}<div class="routing-readonly">{{range .Rules}}<article><div><strong>{{.Order}}. {{.Name}}</strong><span>{{if .Currency}}{{.Currency}}{{else}}Any currency{{end}} · {{if .Purpose}}{{.Purpose}}{{else}}Any purpose{{end}}{{if .LimitPeriod}} · {{.LimitPeriod}}{{if .LimitSales}} / {{.LimitSales}} sales{{end}}{{if .LimitAmount}} / {{.LimitAmount}} captured{{end}}{{end}}</span></div><span>{{.Action}}{{if .Targets}} → {{.Targets}}{{end}}</span></article>{{end}}<article><div><strong>Catch-all</strong><span>When nothing else matches</span></div><span>{{.CatchAll.Action}}{{if .CatchAll.Targets}} → {{.CatchAll.Targets}}{{end}}</span></article></div>{{end}}
 </section>
 <aside class="route-tester" aria-labelledby="route-test-title"><div><p class="eyebrow">Preview</p><h3 id="route-test-title">Test a route</h3><p class="muted">See which rule and providers a payment would use. This does not create a payment.</p></div>
 <form method="get" action="/dashboard/settings/routing" class="stack"><input type="hidden" name="test" value="1">

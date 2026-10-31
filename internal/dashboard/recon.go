@@ -69,11 +69,12 @@ func (d *Dashboard) renderRecon(w http.ResponseWriter, r *http.Request, s *sessi
 		runs  []store.ReconRun
 		items []store.ReconItem
 	)
+	mode := d.mode(r, s)
 	err = d.o.DB.Read(ctx, func(q store.Querier) (err error) {
-		if accts, err = store.ListProviderAccounts(ctx, q, org, d.mode(r, s)); err != nil {
+		if accts, err = store.ListProviderAccounts(ctx, q, org, mode); err != nil {
 			return err
 		}
-		if runs, err = store.ListReconRuns(ctx, q, org, 30); err != nil {
+		if runs, err = store.ListReconRuns(ctx, q, org, mode, 30); err != nil {
 			return err
 		}
 		items, err = store.ListReconItems(ctx, q, org, false)

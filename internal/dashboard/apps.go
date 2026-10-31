@@ -25,6 +25,7 @@ import (
 	"github.com/velixio/paymux/internal/outbound"
 	"github.com/velixio/paymux/internal/settings"
 	"github.com/velixio/paymux/internal/store"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 const (
@@ -595,6 +596,10 @@ func (d *Dashboard) brandingSave(w http.ResponseWriter, r *http.Request, s *sess
 	for _, currency := range currencies {
 		if !currencyRE.MatchString(currency) {
 			reject("Accepted currencies must be 3-letter ISO codes such as INR, USD or EUR.")
+			return
+		}
+		if _, err := money.Exponent(currency); err != nil {
+			reject(currency + " is not a supported ISO-4217 currency code.")
 			return
 		}
 	}

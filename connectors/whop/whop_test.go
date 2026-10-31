@@ -65,6 +65,13 @@ func TestGoldenSignature(t *testing.T) {
 	}
 }
 
+func TestSnapshotKeepsCardFactsWithoutPaymentMethod(t *testing.T) {
+	snapshot, err := (paymentEntity{Currency: "USD", Total: "4.99", CardBrand: "visa", CardLast4: "5155"}).snapshot()
+	if err != nil || snapshot.MethodDetails.Card == nil || snapshot.MethodDetails.Card.Network != "visa" || snapshot.MethodDetails.Card.Last4 != "5155" {
+		t.Fatalf("snapshot %+v: %v", snapshot, err)
+	}
+}
+
 // fake is a Whop v1 API.
 type fake struct {
 	mu           sync.Mutex

@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/velixio/paymux/internal/events"
@@ -106,6 +107,14 @@ func (s *Service) schedule() []time.Duration {
 
 type deliverPayload struct {
 	DeliveryID string `json:"delivery_id"`
+}
+
+func safeText(s string, limit int) string {
+	s = strings.ReplaceAll(strings.ToValidUTF8(s, "\uFFFD"), "\x00", "")
+	if len(s) > limit {
+		s = strings.ToValidUTF8(s[:limit], "")
+	}
+	return s
 }
 
 func (s *Service) enqueue(ctx context.Context, tx store.Tx, deliveryID string, attempt int, runAt time.Time) error {
@@ -206,13 +215,10 @@ func (s *Service) handleDeliver(ctx context.Context, payload json.RawMessage) er
 	record := func(tx store.Tx) error {
 		msg := ""
 		if result.err != nil {
-			msg = result.err.Error()
-			if len(msg) > 500 {
-				msg = msg[:500]
-			}
+			msg = safeText(result.err.Error(), 500)
 		}
 		return store.InsertDeliveryAttempt(ctx, tx, store.DeliveryAttemptRow{ID: ids.New("wha"), DeliveryID: d.Delivery.ID,
-			AttemptNo: attempt, RequestBody: result.request, ResponseStatus: result.status, ResponseBody: result.response, Error: msg, CreatedAt: now})
+			AttemptNo: attempt, RequestBody: result.request, ResponseStatus: result.status, ResponseBody: safeText(result.response, 64<<10), Error: msg, CreatedAt: now})
 	}
 	if derr == nil {
 		return s.db.Write(ctx, func(tx store.Tx) error {
@@ -224,10 +230,7 @@ func (s *Service) handleDeliver(ctx context.Context, payload json.RawMessage) er
 		})
 	}
 
-	msg := derr.Error()
-	if len(msg) > 500 {
-		msg = msg[:500]
-	}
+	msg := safeText(derr.Error(), 500)
 	u := store.DeliveryUpdate{Status: "pending", AttemptCount: attempt, LastStatus: status, LastError: msg}
 	sched := s.schedule()
 	var terminal bool

@@ -39,6 +39,8 @@ export function intents(query: string): Item[] {
         hint: `/dashboard/payments/${q}`,
         href: `/dashboard/payments/${q}`,
       },
+      search("payments", "payments", q),
+      search("invoices", "invoices", q),
     ];
   }
   for (const r of RECORDS) {

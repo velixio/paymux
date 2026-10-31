@@ -9,20 +9,22 @@ import (
 	"time"
 )
 
-// RoutingUsage returns captured, non-duplicate sales and their received amount
-// for provider accounts since the start of a quota period.
-func RoutingUsage(ctx context.Context, q Queryer, accountIDs []string, since time.Time) (sales, amount int64, err error) {
+// RoutingUsage returns captured, non-duplicate sales and their immutable
+// ledger amount in one currency since the start of a quota period.
+func RoutingUsage(ctx context.Context, q Queryer, accountIDs []string, currency string, since time.Time) (sales, amount int64, err error) {
 	if len(accountIDs) == 0 {
 		return 0, 0, nil
 	}
 	marks := strings.TrimSuffix(strings.Repeat("?,", len(accountIDs)), ",")
-	args := make([]any, 0, len(accountIDs)+1)
+	args := make([]any, 0, len(accountIDs)+2)
 	for _, id := range accountIDs {
 		args = append(args, id)
 	}
-	args = append(args, ms(since))
-	err = q.QueryRowContext(ctx, `SELECT COUNT(DISTINCT payment_id), COALESCE(SUM(amount_received), 0)
-		FROM payment_attempts WHERE provider_account_id IN (`+marks+`) AND status = 'captured' AND duplicate = 0 AND updated_at >= ?`, args...).Scan(&sales, &amount)
+	args = append(args, currency, ms(since))
+	err = q.QueryRowContext(ctx, `SELECT COUNT(DISTINCT a.payment_id), COALESCE(SUM(l.amount), 0)
+		FROM payment_attempts a JOIN ledger_entries l ON l.attempt_id = a.id AND l.kind = 'charge'
+		WHERE a.provider_account_id IN (`+marks+`) AND a.status = 'captured' AND a.duplicate = 0
+		AND l.currency = ? AND l.occurred_at >= ?`, args...).Scan(&sales, &amount)
 	return
 }
 

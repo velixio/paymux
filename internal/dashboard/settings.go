@@ -293,6 +293,7 @@ func (d *Dashboard) testRouting(r *http.Request, orgID string, tf testForm) (*ro
 
 	var cfg routing.Config
 	var pas []store.ProviderAccount
+	var acceptedCurrencies []string
 	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) {
 		if tf.App != "" {
 			app, err := store.GetApp(ctx, q, tf.App)
@@ -302,6 +303,7 @@ func (d *Dashboard) testRouting(r *http.Request, orgID string, tf testForm) (*ro
 			if cfg, err = checkout.AppRoutingConfig(ctx, q, app); err != nil {
 				return err
 			}
+			acceptedCurrencies = app.AcceptedCurrencies
 			pas, err = store.ListAppProviderAccounts(ctx, q, app.ID, tf.Mode)
 			return err
 		}
@@ -322,6 +324,9 @@ func (d *Dashboard) testRouting(r *http.Request, orgID string, tf testForm) (*ro
 		d.o.Logger.Error("dashboard: routing test", "err", err)
 		return &routeResult{NoRoute: true, Message: "could not load the routing setting"}, ""
 	}
+	if len(acceptedCurrencies) > 0 && !slices.Contains(acceptedCurrencies, tf.Currency) {
+		return &routeResult{Rejected: true, Message: "the selected app does not accept " + tf.Currency}, ""
+	}
 	names := map[string]string{}
 	for _, pa := range pas {
 		names[pa.ID] = pa.Name
@@ -333,7 +338,10 @@ func (d *Dashboard) testRouting(r *http.Request, orgID string, tf testForm) (*ro
 				return 0, 0, err
 			}
 			var sales, total int64
-			err = d.o.DB.Read(ctx, func(q store.Querier) (err error) { sales, total, err = store.RoutingUsage(ctx, q, ids, since); return })
+			err = d.o.DB.Read(ctx, func(q store.Querier) (err error) {
+				sales, total, err = store.RoutingUsage(ctx, q, ids, tf.Currency, since)
+				return
+			})
 			return sales, total, err
 		}},
 		checkout.RoutingAccounts(pas), nil)

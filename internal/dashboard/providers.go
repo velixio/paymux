@@ -470,8 +470,10 @@ func (d *Dashboard) renderProvider(w http.ResponseWriter, r *http.Request, s *se
 		}
 		for _, event := range events {
 			row := providerEventView{ID: event.ID, ProviderID: event.ProviderEventID, Verified: event.Verified,
-				Received: d.fmtTime(event.ReceivedAt), Processed: d.fmtTime(event.ProcessedAt), Error: event.Error,
-				Headers: string(event.Headers), Payload: string(event.Body)}
+				Received: d.fmtTime(event.ReceivedAt), Processed: d.fmtTime(event.ProcessedAt), Error: event.Error}
+			if f.CanManage {
+				row.Headers, row.Payload = string(event.Headers), string(event.Body)
+			}
 			matches, err := store.ListProviderEventMatches(r.Context(), q, event.ID)
 			if err != nil {
 				return err

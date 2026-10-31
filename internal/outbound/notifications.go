@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/mail"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -133,7 +134,11 @@ func (s *Service) handleNotification(ctx context.Context, raw json.RawMessage) e
 			req.Header.Set("Content-Type", "application/json")
 			resp, err := s.notifyClient.Do(req)
 			if err != nil {
-				errs = append(errs, err)
+				var urlErr *url.Error
+				if errors.As(err, &urlErr) {
+					err = urlErr.Err
+				}
+				errs = append(errs, fmt.Errorf("telegram request failed: %w", err))
 			} else {
 				_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 				resp.Body.Close()

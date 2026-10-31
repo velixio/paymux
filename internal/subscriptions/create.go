@@ -215,7 +215,7 @@ func (s *Service) chooseRoute(ctx context.Context, q store.Queryer, appID, mode 
 			if err != nil {
 				return 0, 0, err
 			}
-			return store.RoutingUsage(ctx, q, ids, since)
+			return store.RoutingUsage(ctx, q, ids, in.Currency, since)
 		}}, accounts, nil)
 	var rej *routing.RejectedError
 	switch {

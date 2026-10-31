@@ -149,6 +149,11 @@ func keepHeader(name string) bool {
 	if strings.HasPrefix(n, "x-forwarded-") || n == "x-real-ip" {
 		return false
 	}
+	for _, sensitive := range []string{"auth", "token", "key", "secret", "cookie", "credential"} {
+		if strings.Contains(n, sensitive) {
+			return false
+		}
+	}
 	return strings.HasPrefix(n, "x-")
 }
 

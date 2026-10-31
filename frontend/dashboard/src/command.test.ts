@@ -29,9 +29,14 @@ const it = (id: string, label: string, hint?: string): Item => ({
 
 describe("intents", () => {
   test("opens a short payment id directly", () => {
-    const [first] = intents("TuSgrD0tRwOTok");
+    const results = intents("TuSgrD0tRwOTok");
+    const [first] = results;
     expect(first.label).toBe("Open payment TuSgrD0tRwOTok");
     expect(first.href).toBe("/dashboard/payments/TuSgrD0tRwOTok");
+    expect(results.slice(1).map((item) => item.href)).toEqual([
+      "/dashboard/payments?q=TuSgrD0tRwOTok",
+      "/dashboard/invoices?q=TuSgrD0tRwOTok",
+    ]);
   });
 
   test("pay_ id goes to /dashboard/payments/<id>", () => {

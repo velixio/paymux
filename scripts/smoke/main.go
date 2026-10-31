@@ -290,6 +290,7 @@ func main() {
 		"prices_include_tax", "1", "sac_code", "998315"), "/dashboard/apps/"+appID)
 
 	step("a simulator provider account, linked to the app")
+	dashboardPost("/dashboard/mode", form("mode", "test", "next", "/dashboard/providers"), "/dashboard/apps")
 	_, hdr, _ = dashboardPost("/dashboard/providers", form("connector", "simulator", "name", "Simulator", "mode", "test", "app_id", appID,
 		"currency", []string{"INR", "USD", "BDT"}, "purpose", []string{"one_time", "subscription"}), "/dashboard/providers/new?connector=simulator")
 	expect(strings.Contains(hdr.Get("Location"), "/dashboard/providers/pa_"), "the simulator account was not created (Location %q)", hdr.Get("Location"))

@@ -238,7 +238,7 @@ func (r *Routing) pick(ctx context.Context, q store.Queryer, req core.RouteReque
 			if err != nil {
 				return 0, 0, err
 			}
-			return store.RoutingUsage(ctx, q, ids, since)
+			return store.RoutingUsage(ctx, q, ids, req.Currency, since)
 		}}, accounts, isOpen)
 	var rej *routing.RejectedError
 	switch {

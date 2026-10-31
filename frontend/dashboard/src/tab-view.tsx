@@ -52,7 +52,7 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
   // data when shown, unless it holds unsaved edits.
   const view = useRef({ data, updatedAt: dataUpdatedAt });
   const wasActive = useRef(active);
-  if (active && !(dirty && !wasActive.current))
+  if (active && data && !(dirty && !wasActive.current))
     view.current = { data, updatedAt: dataUpdatedAt };
   wasActive.current = active;
   const shown = view.current;
