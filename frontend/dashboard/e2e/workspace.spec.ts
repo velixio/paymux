@@ -34,14 +34,15 @@ test("login, overview shows revenue table, switch to 12M shows monthly rows, CSV
   );
   const rows = page.locator("#revenue-data tr[data-start]");
   expect(await rows.count()).toBeGreaterThanOrEqual(12);
-  // the seeded mid-month payments land in their own month, and USD is converted
+  // The seeded INR payments land in their own months. Foreign currencies are
+  // kept separate rather than being silently converted into this chart.
   const gross = await rows.evaluateAll((trs) =>
     trs.map((tr) => Number(tr.getAttribute("data-gross"))),
   );
   expect(gross.filter((g) => g > 0).length).toBeGreaterThanOrEqual(11);
   await expect(page.locator("#revenue-data")).toHaveAttribute(
     "data-converted",
-    "true",
+    "false",
   );
 
   // The CSV link carries the current query (12M); fetch it with the session.

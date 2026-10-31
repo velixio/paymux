@@ -106,7 +106,6 @@ type Page struct {
 	// audit log and overview
 	AuditRows   []auditRow
 	AuditFilter auditFilter
-	Periods     []periodView
 	Revenue     revenueView
 }
 
