@@ -79,6 +79,23 @@ func newServer(h http.Handler) *http.Server {
 		WriteTimeout: writeTimeout, IdleTimeout: idleTimeout, MaxHeaderBytes: maxHeaderBytes}
 }
 
+// cancelDashboardStreamOnShutdown closes the long-lived SSE request when the
+// application stops. Ordinary requests keep their own contexts so Shutdown can
+// still drain payment and API work gracefully.
+func cancelDashboardStreamOnShutdown(ctx context.Context, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/dashboard/events" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		streamCtx, cancel := context.WithCancel(r.Context())
+		stop := context.AfterFunc(ctx, cancel)
+		defer stop()
+		defer cancel()
+		next.ServeHTTP(w, r.WithContext(streamCtx))
+	})
+}
+
 // App is a Paymux instance.
 type App struct {
 	cfg     config.Config
@@ -537,10 +554,10 @@ func (a *App) Start(ctx context.Context) error {
 	a.addr, a.iaddr = ln.Addr().String(), iln.Addr().String()
 	a.mu.Unlock()
 
-	main, internal := newServer(public), newServer(internalMux)
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	main, internal := newServer(cancelDashboardStreamOnShutdown(ctx, public)), newServer(internalMux)
+
 	const workers = 3
 	errc := make(chan error, workers)
 	serve := func(s *http.Server, l net.Listener) {
