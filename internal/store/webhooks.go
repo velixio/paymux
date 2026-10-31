@@ -77,7 +77,7 @@ func LatestDashboardEventID(ctx context.Context, q Queryer, orgID, mode string) 
 // organization and mode requesting the stream.
 func DashboardEventVisible(ctx context.Context, q Queryer, id, orgID, mode string) (bool, error) {
 	var visible int
-	err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM events WHERE id = ? AND org_id = ? AND mode = ?)`,
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE id = ? AND org_id = ? AND mode = ?`,
 		id, orgID, mode).Scan(&visible)
 	return visible != 0, err
 }
