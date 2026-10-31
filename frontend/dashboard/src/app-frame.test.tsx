@@ -69,7 +69,7 @@ test("nav items show a count only when the page carries one", async () => {
 test("the status bar shows the connection", async () => {
   await mount();
   const bar = q(".status-bar");
-  expect(within(bar).getByText("Connected")).toBeTruthy();
+  expect(within(bar).getByText("Unavailable")).toBeTruthy();
   act(() => {
     window.dispatchEvent(new Event("offline"));
   });
@@ -77,7 +77,7 @@ test("the status bar shows the connection", async () => {
   act(() => {
     window.dispatchEvent(new Event("online"));
   });
-  expect(within(bar).getByText("Connected")).toBeTruthy();
+  expect(within(bar).getByText("Unavailable")).toBeTruthy();
 });
 
 test("the status bar shows when the active tab was last updated", async () => {

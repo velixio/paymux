@@ -25,10 +25,11 @@ var requestTimeout = 30 * time.Second
 // deadline of its connection.
 const exportTimeout = 5 * time.Minute
 
-// streamed are the routes whose output is large: the Logs export and the GST
-// report downloads. http.TimeoutHandler would hold the whole body in memory and
-// cut it at requestTimeout, so they run outside it (audit H-15).
+// streamed are routes whose output must reach the client incrementally.
+// http.TimeoutHandler buffers them and strips streaming support, so they run
+// outside it (audit H-15).
 var streamed = map[string]bool{
+	"/dashboard/events":       true,
 	"/dashboard/logs.jsonl":   true,
 	"/dashboard/reports/zip":  true,
 	"/dashboard/reports/file": true,

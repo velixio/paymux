@@ -42,12 +42,40 @@ func TestExportRoutesAreNotBufferedByTheTimeoutHandler(t *testing.T) {
 	}
 }
 
-func TestStreamedRoutesAreExactlyTheExports(t *testing.T) {
+func TestDashboardEventRoutePreservesStreaming(t *testing.T) {
+	s, _, _ := newServer(t)
+	proceed := make(chan struct{})
+	s.HandleFunc("GET /dashboard/events", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("data: ready\n\n"))
+		if err := http.NewResponseController(w).Flush(); err != nil {
+			t.Errorf("flush: %v", err)
+			return
+		}
+		select {
+		case <-proceed:
+		case <-r.Context().Done():
+		}
+	})
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	res, err := http.Get(srv.URL + "/dashboard/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	buf := make([]byte, len("data: ready\n\n"))
+	if _, err := io.ReadFull(res.Body, buf); err != nil || string(buf) != "data: ready\n\n" {
+		t.Fatalf("first event = %q %v", buf, err)
+	}
+	close(proceed)
+}
+
+func TestStreamedRoutesAreExactlyTheExportsAndEvents(t *testing.T) {
 	for _, c := range []struct {
 		method, path string
 		want         bool
 	}{
-		{"GET", "/dashboard/logs.jsonl", true}, {"GET", "/dashboard/reports/zip", true}, {"GET", "/dashboard/reports/file", true},
+		{"GET", "/dashboard/events", true}, {"GET", "/dashboard/logs.jsonl", true}, {"GET", "/dashboard/reports/zip", true}, {"GET", "/dashboard/reports/file", true},
 		{"POST", "/dashboard/logs.jsonl", false}, {"GET", "/dashboard/logs", false}, {"GET", "/dashboard/reports/zip/", false},
 		{"GET", "/v1/payments", false}, {"GET", "/dashboard/reports", false},
 	} {

@@ -65,6 +65,68 @@ func GetEventByID(ctx context.Context, q Queryer, id string) (EventRow, error) {
 	return e, err
 }
 
+// EventCursor is a stable position in the dashboard event scan. CreatedAt is
+// compared first because UUIDv7 IDs created in one millisecond are randomized.
+type EventCursor struct {
+	ID        string
+	CreatedAt time.Time
+}
+
+// LatestDashboardEventCursor returns the newest persisted event visible to one
+// organization and mode.
+func LatestDashboardEventCursor(ctx context.Context, q Queryer, orgID, mode string) (EventCursor, error) {
+	var c EventCursor
+	var created int64
+	err := q.QueryRowContext(ctx, `SELECT id, created_at FROM events WHERE org_id = ? AND mode = ?
+		ORDER BY created_at DESC, id DESC LIMIT 1`, orgID, mode).Scan(&c.ID, &created)
+	if errors.Is(err, sql.ErrNoRows) {
+		return EventCursor{}, nil
+	}
+	c.CreatedAt = fromMS(created)
+	return c, err
+}
+
+// DashboardEventCursor returns a cursor only when the event belongs to the
+// organization and mode requesting the stream.
+func DashboardEventCursor(ctx context.Context, q Queryer, id, orgID, mode string) (EventCursor, bool, error) {
+	var c EventCursor
+	var created int64
+	err := q.QueryRowContext(ctx, `SELECT id, created_at FROM events WHERE id = ? AND org_id = ? AND mode = ?`,
+		id, orgID, mode).Scan(&c.ID, &created)
+	if errors.Is(err, sql.ErrNoRows) {
+		return EventCursor{}, false, nil
+	}
+	if err != nil {
+		return EventCursor{}, false, err
+	}
+	c.CreatedAt = fromMS(created)
+	return c, true, nil
+}
+
+// DashboardEventsPage returns one stable page ordered by creation time and ID.
+// The organization and mode predicates prevent cross-tenant or test/live leaks.
+func DashboardEventsPage(ctx context.Context, q Queryer, orgID, mode string, after EventCursor, limit int) ([]EventRow, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id, org_id, app_id, mode, type, object_type, object_id, object_version, created_at
+		FROM events WHERE org_id = ? AND mode = ? AND (created_at > ? OR (created_at = ? AND id > ?))
+		ORDER BY created_at, id LIMIT ?`, orgID, mode, ms(after.CreatedAt), ms(after.CreatedAt), after.ID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []EventRow
+	for rows.Next() {
+		var e EventRow
+		var created int64
+		if err := rows.Scan(&e.ID, &e.OrgID, &e.AppID, &e.Mode, &e.Type, &e.ObjectType, &e.ObjectID,
+			&e.ObjectVersion, &created); err != nil {
+			return nil, err
+		}
+		e.CreatedAt = fromMS(created)
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // EndpointRow is a row of webhook_endpoints. An empty EventTypes list means
 // every event type.
 type EndpointRow struct {

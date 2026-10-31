@@ -84,6 +84,10 @@ type Options struct {
 	DevSkip2FA bool
 	Logger     *slog.Logger
 	Now        func() time.Time
+	// LivePollInterval and LiveHeartbeatInterval tune the dashboard event
+	// stream. Zero uses the production defaults; tests may use short intervals.
+	LivePollInterval      time.Duration
+	LiveHeartbeatInterval time.Duration
 
 	// TrustedProxies are the reverse proxies whose X-Forwarded-For is
 	// believed when working out the client address.
@@ -180,6 +184,12 @@ func New(o Options) (*Dashboard, error) {
 	}
 	if o.Now == nil {
 		o.Now = time.Now
+	}
+	if o.LivePollInterval <= 0 {
+		o.LivePollInterval = dashboardEventPoll
+	}
+	if o.LiveHeartbeatInterval <= 0 {
+		o.LiveHeartbeatInterval = dashboardEventHeartbeat
 	}
 	d := &Dashboard{o: o, mux: http.NewServeMux(), lim: newLimiter(loginFailures, loginWindow),
 		attempts: newLimiter(loginAttemptsPerMinute, time.Minute), acctPw: newLimiter(accountPasswordFailures, loginWindow), acctTOTP: newLimiter(accountTOTPFailures, loginWindow), budgets: newTicketBudgets(),

@@ -30,6 +30,9 @@ const JobDeliver = "webhook.deliver"
 // JobNotify sends configured operator email and Telegram notifications.
 const JobNotify = "notification.deliver"
 
+// JobDeleteTelegram deletes an operator notification after its configured retention.
+const JobDeleteTelegram = "notification.telegram.delete"
+
 // DefaultRetrySchedule is the spec §6.5 / §8a webhook_retry_schedule: the
 // delay before attempt 1, 2, ... (about 3 days in total).
 var DefaultRetrySchedule = []time.Duration{0, time.Minute, 5 * time.Minute, 30 * time.Minute,
@@ -94,6 +97,7 @@ func New(o Options) *Service {
 func (s *Service) Register() {
 	s.q.Register(JobDeliver, s.handleDeliver)
 	s.q.Register(JobNotify, s.handleNotification)
+	s.q.Register(JobDeleteTelegram, s.handleTelegramDelete)
 }
 
 func (s *Service) schedule() []time.Duration {

@@ -53,6 +53,11 @@ previous release reads.
 
 ## Release notes that need action
 
+- **0043, dashboard event index.** On PostgreSQL, the first upgrade builds an
+  index over the existing `events` table. Reads continue, but writes to that
+  table can pause while the transactional index build completes. For a large
+  event history, schedule the upgrade during a quiet period.
+
 - **Short payment IDs.** New payments use a compact 14-character ID. Existing
   `pay_` IDs are not rewritten and remain valid in API paths and dashboard
   searches. Integrations should accept both forms and treat IDs as opaque.

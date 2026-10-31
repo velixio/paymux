@@ -57,7 +57,7 @@ Routing settings include a route tester. Verify the intended application, curren
 
 Routing rules can also cap successful sales or captured amount per UTC day, week, or month. When a rule's limit is exhausted, evaluation continues to the next matching rule or catch-all. Amount limits use minor units. These counters are routing controls, not an accounting limit; the ledger and provider remain authoritative.
 
-**Organization settings → Notifications** sends selected mode-specific events to an email address, a Telegram chat, or both. Telegram bot tokens are encrypted and shown only while entered. Recommended events cover payment creation/success/failure, refunds, and disputes; customize the comma-separated list when an operator should receive fewer messages.
+**Organization settings → Notifications** sends selected mode-specific events to an email address, a Telegram chat, or both. Payment messages include the amount and, when collected, the customer's email and country. Telegram bot tokens are encrypted and shown only while entered. Telegram messages can be kept or deleted automatically after 1–47 hours; 47 hours is the default because the Bot API cannot delete messages once they are 48 hours old. The deletion is a durable job, so it survives a Paymux restart. Recommended events cover payment creation/success/failure, refunds, and disputes; customize the comma-separated list when an operator should receive fewer messages.
 
 ## Subscriptions: changing the amount
 
@@ -82,6 +82,8 @@ Use **Alerts** to triage retained operational alerts. Acknowledgement records th
 Analytics can be filtered by date range, app, native currency, customer country, and time bucket. Counts are grouped by the payment creation time, while each payment is classified by its current status. Provider and method tables are attempt-level, so a failed retry followed by a successful retry remains visible. Country uses the payment routing country when present and otherwise the stored customer billing country. **Payments** links in the country table open the matching transactions.
 
 Live and test data are always isolated by the dashboard mode switch. Amounts are never combined across currencies with a static FX rate; choose one native currency at a time. Provider settlement data remains authoritative.
+
+Operational pages update automatically while the dashboard is open. A single authenticated server-sent events stream carries lightweight change notices scoped to the signed-in organisation and selected mode; it never sends payment or webhook payloads. The browser coalesces bursts and reloads clean Overview, Analytics, Payments, Subscriptions, Invoices, Disputes, Reconciliation, Reports, and Alerts data. Pages with unsaved edits are left alone. The status bar shows **Live** when the stream is connected and **Reconnecting** while the browser resumes it using the last event ID.
 
 ## Tabs, revenue chart and shortcuts
 
