@@ -10,7 +10,9 @@ import (
 )
 
 // RoutingUsage returns captured, non-duplicate sales and their immutable
-// ledger amount in one currency since the start of a quota period.
+// ledger amount in one currency since the start of a quota period. A legacy
+// charge without an attempt ID counts only when exactly one captured attempt
+// establishes its account; ambiguous charges are excluded.
 func RoutingUsage(ctx context.Context, q Queryer, accountIDs []string, currency string, since time.Time) (sales, amount int64, err error) {
 	if len(accountIDs) == 0 {
 		return 0, 0, nil
@@ -27,8 +29,11 @@ func RoutingUsage(ctx context.Context, q Queryer, accountIDs []string, currency 
 		FROM ledger_entries l WHERE l.kind = 'charge' AND (
 			EXISTS (SELECT 1 FROM payment_attempts a WHERE a.id = l.attempt_id
 				AND a.provider_account_id IN (`+marks+`) AND a.status = 'captured' AND a.duplicate = 0)
-			OR (l.attempt_id IS NULL AND EXISTS (SELECT 1 FROM payment_attempts a WHERE a.payment_id = l.payment_id
-				AND a.provider_account_id IN (`+marks+`) AND a.status = 'captured' AND a.duplicate = 0))
+			OR (l.attempt_id IS NULL
+				AND (SELECT COUNT(*) FROM payment_attempts captured
+					WHERE captured.payment_id = l.payment_id AND captured.status = 'captured') = 1
+				AND EXISTS (SELECT 1 FROM payment_attempts a WHERE a.payment_id = l.payment_id
+					AND a.provider_account_id IN (`+marks+`) AND a.status = 'captured' AND a.duplicate = 0))
 		) AND l.currency = ? AND l.occurred_at >= ?`, args...).Scan(&sales, &amount)
 	return
 }

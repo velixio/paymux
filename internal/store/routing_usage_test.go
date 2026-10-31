@@ -32,5 +32,20 @@ func TestRoutingUsageIncludesLegacyChargeWithoutAttemptID(t *testing.T) {
 		if err != nil || sales != 1 || amount != 100 {
 			t.Fatalf("usage sales=%d amount=%d: %v", sales, amount, err)
 		}
+
+		// Once another capture makes the old charge's account ambiguous, the
+		// conservative policy excludes it instead of assigning it arbitrarily.
+		if err := exec(t, db, `INSERT INTO payment_attempts
+			(id, org_id, mode, payment_id, provider_account_id, provider_ref, status, amount_received, duplicate, created_at, updated_at)
+			VALUES ('att_duplicate', 'o', 'test', 'pay_usage', 'pa_other', 'provider_duplicate', 'captured', 100, 1, 11, 11)`); err != nil {
+			t.Fatal(err)
+		}
+		err = db.Read(context.Background(), func(q store.Querier) (err error) {
+			sales, amount, err = store.RoutingUsage(context.Background(), q, []string{"pa_usage"}, "INR", time.UnixMilli(1))
+			return err
+		})
+		if err != nil || sales != 0 || amount != 0 {
+			t.Fatalf("ambiguous usage sales=%d amount=%d: %v", sales, amount, err)
+		}
 	})
 }
