@@ -132,9 +132,11 @@ func (s *Service) handleNotification(ctx context.Context, raw json.RawMessage) e
 	if !matches(cfg.EventTypes, ev.Type) {
 		return nil
 	}
-	text := fmt.Sprintf("[%s] %s\n\n%s: %s", strings.ToUpper(ev.Mode), ev.Type, title(ev.ObjectType), ev.ObjectID)
-	if details := s.notificationDetails(ctx, ev); details != "" {
-		text += "\n" + details
+	text := fmt.Sprintf("[%s] %s · %s", strings.ToUpper(ev.Mode), ev.Type, ev.ObjectID)
+	first, second := s.notificationDetails(ctx, ev)
+	text += first
+	if second != "" {
+		text += "\n" + second
 	}
 	var errs []error
 	if cfg.EmailEnabled {
@@ -233,9 +235,9 @@ func (s *Service) handleTelegramDelete(ctx context.Context, raw json.RawMessage)
 	return err
 }
 
-func (s *Service) notificationDetails(ctx context.Context, ev store.EventRow) string {
+func (s *Service) notificationDetails(ctx context.Context, ev store.EventRow) (string, string) {
 	if ev.ObjectType != "payment" {
-		return ""
+		return "", ""
 	}
 	var payment store.Payment
 	var customer store.Customer
@@ -258,31 +260,25 @@ func (s *Service) notificationDetails(ctx context.Context, ev store.EventRow) st
 		return nil
 	})
 	if err != nil || payment.OrgID != ev.OrgID || payment.Mode != ev.Mode {
-		return ""
+		return "", ""
 	}
 	amount, err := money.FormatDecimal(payment.Amount, payment.Currency)
 	if err != nil {
 		amount = strconv.FormatInt(payment.Amount, 10)
 	}
-	lines := []string{"Amount: " + amount + " " + payment.Currency}
+	first := " · " + amount + " " + payment.Currency
+	var second []string
 	if customer.Email != "" {
-		lines = append(lines, "Customer: "+customer.Email)
+		second = append(second, customer.Email)
 	}
 	country := customer.Billing.Country
 	if country == "" {
 		country = payment.Country
 	}
 	if label := countryLabel(country); label != "" {
-		lines = append(lines, "Country: "+label)
+		second = append([]string{label}, second...)
 	}
-	return strings.Join(lines, "\n")
-}
-
-func title(s string) string {
-	if s == "" {
-		return "Object"
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
+	return first, strings.Join(second, " · ")
 }
 
 func countryLabel(code string) string {
