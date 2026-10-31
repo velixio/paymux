@@ -85,7 +85,8 @@ func TestApplicationShutdownCancelsOnlyTheDashboardEventStream(t *testing.T) {
 		default:
 			t.Fatal("dashboard event stream did not return after shutdown")
 		}
-		if !w.writeReturned || writeErr != context.DeadlineExceeded || requestErr != context.Canceled || w.deadline.IsZero() {
+		if !w.writeReturned || writeErr != context.DeadlineExceeded || requestErr != context.Canceled ||
+			w.deadline.IsZero() || w.deadline.After(time.Now()) {
 			t.Fatalf("stream shutdown: write_returned=%v write_err=%v request_err=%v deadline=%v",
 				w.writeReturned, writeErr, requestErr, w.deadline)
 		}
