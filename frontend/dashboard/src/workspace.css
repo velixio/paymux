@@ -1347,6 +1347,35 @@ main.dash:has(#paymux-react-root) {
   font-size: 12px;
   color: var(--muted-foreground);
 }
+.react-content .currency-breakdown {
+  margin-top: 12px;
+}
+.react-content .currency-breakdown-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+.react-content .currency-breakdown-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.react-content .currency-breakdown-head p {
+  margin: 0;
+}
+.react-content .currency-breakdown th,
+.react-content .currency-breakdown td {
+  padding-block: 6px;
+}
+.react-content .currency-breakdown tbody th {
+  font-weight: 600;
+}
+.react-content .currency-breakdown :is(th, td):not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 .react-content .revenue-custom {
   height: 30px;
   padding: 0 12px;

@@ -12,7 +12,7 @@
 <label>From <input type="date" name="from" value="{{.FromS}}"></label>
 <label>To <input type="date" name="to" value="{{.ToS}}"></label>
 <label>App <select name="app"><option value="">All apps</option>{{range .Apps}}<option value="{{.ID}}"{{if eq .ID $.Revenue.Query.App}} selected{{end}}>{{.Name}}</option>{{end}}</select></label>
-<label>Currency <select name="currency"><option value="">Automatic (native)</option>{{range .Currencies}}<option value="{{.}}"{{if eq . $.Revenue.Query.Currency}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Currency <select name="currency"><option value="">USD preferred</option>{{range .Currencies}}<option value="{{.}}"{{if eq . $.Revenue.Query.Currency}} selected{{end}}>{{.}}</option>{{end}}</select></label>
 <label>Group by <select name="bucket"><option value="auto"{{if eq .Query.Bucket "auto"}} selected{{end}}>Auto</option><option value="hour"{{if eq .Query.Bucket "hour"}} selected{{end}}>Hour</option><option value="day"{{if eq .Query.Bucket "day"}} selected{{end}}>Day</option><option value="week"{{if eq .Query.Bucket "week"}} selected{{end}}>Week</option><option value="month"{{if eq .Query.Bucket "month"}} selected{{end}}>Month</option><option value="quarter"{{if eq .Query.Bucket "quarter"}} selected{{end}}>Quarter</option></select></label>
 <input type="hidden" name="range" value="custom">
 <button class="btn small" type="submit">Apply custom range</button>
@@ -22,11 +22,14 @@
 <div><dt>Refunds</dt><dd>{{.RefundsS}} <span class="change" data-metric="refunds">{{.RefundsChange}}</span></dd></div>
 <div><dt>Net</dt><dd>{{.NetS}} <span class="change" data-metric="net">{{.NetChange}}</span></dd></div>
 </dl>
-{{if .OtherCurrencies}}<p class="muted">Showing {{.Currency}} only. Other currencies in this range: {{range $i, $x := .OtherCurrencies}}{{if $i}}, {{end}}{{$x}}{{end}}. Select a currency to view its native totals.</p>{{end}}
 <div class="table-scroll"><table id="revenue-data" class="grid" data-currency="{{.Currency}}" data-exp="{{.Exp}}" data-bucket="{{.Bucket}}" data-converted="{{.Converted}}" data-estimated="{{.Estimated}}">
 <thead><tr><th>Period</th><th>Gross</th><th>Refunds</th><th>Net</th></tr></thead>
 <tbody>{{range .Points}}<tr data-start="{{.StartS}}" data-gross="{{.Gross}}" data-refunds="{{.Refunds}}" data-prev-gross="{{.PrevGross}}" data-prev-refunds="{{.PrevRefunds}}"><td>{{.Label}}</td><td>{{.GrossS}}</td><td>{{.RefundsS}}</td><td>{{.NetS}}</td></tr>{{else}}<tr><td colspan="4" class="muted">No activity in this range.</td></tr>{{end}}</tbody>
 </table></div>
+{{if .CurrencyTotals}}<section class="currency-breakdown" aria-labelledby="currency-breakdown-title">
+<div class="currency-breakdown-head"><h3 id="currency-breakdown-title">Currency details</h3><p class="muted">Native totals for this range. Currencies are not combined using estimated FX rates.</p></div>
+<div class="table-scroll"><table class="grid"><thead><tr><th scope="col">Currency</th><th scope="col">Gross</th><th scope="col">Refunds</th><th scope="col">Net</th></tr></thead><tbody>{{range .CurrencyTotals}}<tr><th scope="row">{{.Currency}}</th><td>{{.GrossS}}</td><td>{{.RefundsS}}</td><td>{{.NetS}}</td></tr>{{end}}</tbody></table></div>
+</section>{{end}}
 <p><a href="{{.CSVHref}}" download>Download CSV</a></p>
 </section>
 {{end}}

@@ -21,7 +21,7 @@ test("login, overview shows revenue table, switch to 12M shows monthly rows, CSV
 
   const table = page.locator("#revenue-data");
   await expect(table).toBeAttached();
-  await expect(table).toHaveAttribute("data-currency", "INR");
+  await expect(table).toHaveAttribute("data-currency", "USD");
   await expect(table).toHaveAttribute("data-bucket", "day"); // 30D is daily
   expect(await table.locator("tr[data-start]").count()).toBeGreaterThanOrEqual(
     30,
@@ -34,8 +34,20 @@ test("login, overview shows revenue table, switch to 12M shows monthly rows, CSV
   );
   const rows = page.locator("#revenue-data tr[data-start]");
   expect(await rows.count()).toBeGreaterThanOrEqual(12);
-  // The seeded INR payments land in their own months. Foreign currencies are
-  // kept separate rather than being silently converted into this chart.
+  // USD is the default headline, and the native-currency breakdown remains
+  // visible below it instead of combining currencies through FX.
+  await expect(
+    page.getByRole("heading", { name: "Currency details" }),
+  ).toBeVisible();
+  await expect(page.locator(".currency-breakdown")).toContainText("INR");
+  await expect(page.locator(".currency-breakdown")).toContainText("USD");
+
+  // Select INR to inspect the denser seeded INR history.
+  await page.goto("/dashboard/overview?range=12m&currency=INR");
+  await expect(page.locator("#revenue-data")).toHaveAttribute(
+    "data-currency",
+    "INR",
+  );
   const gross = await rows.evaluateAll((trs) =>
     trs.map((tr) => Number(tr.getAttribute("data-gross"))),
   );

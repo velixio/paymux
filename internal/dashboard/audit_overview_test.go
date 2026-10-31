@@ -115,12 +115,12 @@ func TestOverviewTotalsFromLedger(t *testing.T) {
 		}
 		c := e.roleClient("viewer")
 		body := e.pageOK(c, "/dashboard/overview")
-		// The default chart uses the most active native currency and never adds
-		// USD to INR. The 40-day-old charge and test-mode charge are excluded.
-		has(t, body, `data-currency="INR"`, "350.00 INR", "25.00 INR", "325.00 INR", "Other currencies in this range:", "USD")
+		// USD is the default headline when present, while the breakdown keeps
+		// every currency native. The old charge and test-mode charge are excluded.
+		has(t, body, `data-currency="USD"`, "7.00 USD", "Currency details", "350.00 INR", "25.00 INR", "325.00 INR")
 		lacks(t, body, "1,128.99", "999.00", "1234.56")
-		usd := e.pageOK(c, "/dashboard/overview?currency=USD")
-		has(t, usd, `data-currency="USD"`, "7.00 USD")
+		inr := e.pageOK(c, "/dashboard/overview?currency=INR")
+		has(t, inr, `data-currency="INR"`, "350.00 INR")
 		lacks(t, body, "1234.56")
 
 		// the mode toggle applies

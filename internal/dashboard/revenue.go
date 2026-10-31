@@ -157,6 +157,10 @@ type revenuePreset struct {
 	Current         bool
 }
 
+type revenueCurrencyTotal struct {
+	Currency, GrossS, RefundsS, NetS string
+}
+
 type revenueView struct {
 	Query                                 revenueQuery
 	Bucket                                string // the bucket in use (auto resolved)
@@ -169,7 +173,7 @@ type revenueView struct {
 	GrossS, RefundsS, NetS                string
 	GrossChange, NetChange, RefundsChange string
 	Currencies                            []string
-	OtherCurrencies                       []string
+	CurrencyTotals                        []revenueCurrencyTotal
 	Presets                               []revenuePreset
 	Apps                                  []appOpt
 	CSVHref                               string
@@ -215,17 +219,21 @@ func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode stri
 	}
 	shown := rq.Currency
 	if shown == "" {
-		activity := map[string]int64{}
-		for _, r := range rows {
-			activity[r.Currency] += abs64(r.Gross) + abs64(r.Refunds)
-		}
-		for currency, amount := range activity {
-			if shown == "" || amount > activity[shown] || amount == activity[shown] && currency < shown {
-				shown = currency
+		if present["USD"] {
+			shown = "USD"
+		} else {
+			activity := map[string]int64{}
+			for _, r := range rows {
+				activity[r.Currency] += abs64(r.Gross) + abs64(r.Refunds)
+			}
+			for currency, amount := range activity {
+				if shown == "" || amount > activity[shown] || amount == activity[shown] && currency < shown {
+					shown = currency
+				}
 			}
 		}
 		if shown == "" {
-			shown = "INR"
+			shown = "USD"
 		}
 	}
 	v.Currency = shown
@@ -282,10 +290,21 @@ func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode stri
 	// Pickers and links.
 	present[shown] = shown != ""
 	v.Currencies = sortedKeys(present)
-	for _, currency := range v.Currencies {
-		if currency != shown {
-			v.OtherCurrencies = append(v.OtherCurrencies, currency)
-		}
+	totals := map[string][2]int64{}
+	for _, r := range rows {
+		t := totals[r.Currency]
+		t[0] += r.Gross
+		t[1] += r.Refunds
+		totals[r.Currency] = t
+	}
+	for _, currency := range sortedKeys(totals) {
+		t := totals[currency]
+		v.CurrencyTotals = append(v.CurrencyTotals, revenueCurrencyTotal{
+			Currency: currency,
+			GrossS:   fmtSigned(t[0], currency),
+			RefundsS: fmtSigned(t[1], currency),
+			NetS:     fmtSigned(t[0]-t[1], currency),
+		})
 	}
 	v.FromS, v.ToS = rq.From.Format("2006-01-02"), rq.To.AddDate(0, 0, -1).Format("2006-01-02")
 	for _, p := range revenueRanges {

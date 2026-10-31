@@ -223,7 +223,7 @@ func TestRevenueKeepsNativeCurrenciesSeparate(t *testing.T) {
 		// use it to combine unlike currencies.
 		e.seedRates(store.FXRate{Currency: "USD", Date: "2027-01-13", Rate: "80"})
 		body := e.pageOK(vw, "/dashboard/overview?range=7d")
-		if c, conv, est := tableAttr(t, body, "data-currency"), tableAttr(t, body, "data-converted"), tableAttr(t, body, "data-estimated"); c != "INR" || conv != "false" || est != "false" {
+		if c, conv, est := tableAttr(t, body, "data-currency"), tableAttr(t, body, "data-converted"), tableAttr(t, body, "data-estimated"); c != "USD" || conv != "false" || est != "false" {
 			t.Fatalf("currency %s converted %s estimated %s", c, conv, est)
 		}
 		if tableAttr(t, body, "data-exp") != "2" || tableAttr(t, body, "data-bucket") != "day" {
@@ -233,18 +233,17 @@ func TestRevenueKeepsNativeCurrenciesSeparate(t *testing.T) {
 		if len(pts) != 7 {
 			t.Fatalf("want 7 daily points, got %d", len(pts))
 		}
-		for day, want := range map[string][2]int64{"2027-01-13": {0, 0}, "2027-01-14": {0, 0}, "2027-01-10": {0, 0}, "2027-01-15": {1000000, 0}, "2027-01-12": {0, 0}} {
+		for day, want := range map[string][2]int64{"2027-01-13": {1000, 200}, "2027-01-14": {500, 0}, "2027-01-10": {100, 0}, "2027-01-15": {0, 0}, "2027-01-12": {0, 0}} {
 			if got := pts[day]; got.gross != want[0] || got.refunds != want[1] {
 				t.Errorf("%s: %+v want %v", day, got, want)
 			}
 		}
-		has(t, body, "Other currencies in this range:", "EUR", "USD", "native totals")
+		has(t, body, "Currency details", "20.00 EUR", "10000.00 INR", "16.00 USD", "2.00 USD", "14.00 USD", "Native totals")
 		lacks(t, body, "stored daily rate", "estimated conversions")
-		// Choosing USD shows its exact native ledger values.
-		body = e.pageOK(vw, "/dashboard/overview?range=7d&currency=USD")
-		usd := revByDay(body)
-		if tableAttr(t, body, "data-currency") != "USD" || tableAttr(t, body, "data-converted") != "false" || usd["2027-01-13"].gross != 1000 || usd["2027-01-13"].refunds != 200 || usd["2027-01-14"].gross != 500 {
-			t.Errorf("USD view: %s", body)
+		// Choosing INR shows only its exact native ledger values.
+		body = e.pageOK(vw, "/dashboard/overview?range=7d&currency=INR")
+		if tableAttr(t, body, "data-currency") != "INR" || revByDay(body)["2027-01-15"].gross != 1000000 {
+			t.Errorf("INR view: %s", body)
 		}
 	})
 }
@@ -330,7 +329,7 @@ func TestOverviewRendersRevenueTable(t *testing.T) {
 		e.seedLedger(ledRow{"pay_1", "charge", "INR", 12345, e.d15(14)})
 		body := e.pageOK(vw, "/dashboard/overview")
 		has(t, body, `<nav class="range-presets"`, `href="/dashboard/overview?range=7d"`, `aria-current="page"`, `class="revenue-summary"`,
-			`id="revenue-data"`, `data-gross="12345"`, "123.45 INR", "/dashboard/overview/revenue.csv?", "Automatic (native)")
+			`id="revenue-data"`, `data-gross="12345"`, "123.45 INR", "/dashboard/overview/revenue.csv?", "USD preferred", "Currency details")
 		lacks(t, body, `id="period-today"`)
 		if tableAttr(t, body, "data-bucket") != "day" {
 			t.Error("30d is daily")
