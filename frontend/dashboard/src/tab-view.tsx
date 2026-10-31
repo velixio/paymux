@@ -56,6 +56,7 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
     view.current = { data, updatedAt: dataUpdatedAt };
   wasActive.current = active;
   const shown = view.current;
+  const currentError = active && !data ? error : null;
 
   useEffect(() => {
     if (
@@ -102,7 +103,18 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
             scroll.current = section.current.scrollTop;
         }}
       >
-        {shown.data ? (
+        {currentError ? (
+          <div className="workspace-load-error">
+            <Alert variant="destructive">
+              <AlertTitle>Unable to load workspace</AlertTitle>
+              <AlertDescription>{currentError.message}</AlertDescription>
+            </Alert>
+            <Button onClick={() => refetch()}>Try again</Button>
+            <a href={href + (href.includes("?") ? "&" : "?") + "classic=1"}>
+              Use the classic dashboard
+            </a>
+          </div>
+        ) : shown.data ? (
           <RuntimeProvider
             key={shown.updatedAt}
             page={shown.data}
@@ -121,17 +133,6 @@ function TabBody({ tab, active, dirty, onDirty, onOnce, scroll }: BodyProps) {
               syncHash={active}
             />
           </RuntimeProvider>
-        ) : error ? (
-          <div className="workspace-load-error">
-            <Alert variant="destructive">
-              <AlertTitle>Unable to load workspace</AlertTitle>
-              <AlertDescription>{error.message}</AlertDescription>
-            </Alert>
-            <Button onClick={() => refetch()}>Try again</Button>
-            <a href={href + (href.includes("?") ? "&" : "?") + "classic=1"}>
-              Use the classic dashboard
-            </a>
-          </div>
         ) : (
           <div
             className="workspace-loading"

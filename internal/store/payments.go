@@ -16,15 +16,20 @@ func RoutingUsage(ctx context.Context, q Queryer, accountIDs []string, currency 
 		return 0, 0, nil
 	}
 	marks := strings.TrimSuffix(strings.Repeat("?,", len(accountIDs)), ",")
-	args := make([]any, 0, len(accountIDs)+2)
+	args := make([]any, 0, len(accountIDs)*2+2)
 	for _, id := range accountIDs {
 		args = append(args, id)
 	}
+	accountArgs := append([]any(nil), args...)
+	args = append(accountArgs, accountArgs...)
 	args = append(args, currency, ms(since))
-	err = q.QueryRowContext(ctx, `SELECT COUNT(DISTINCT a.payment_id), COALESCE(SUM(l.amount), 0)
-		FROM payment_attempts a JOIN ledger_entries l ON l.attempt_id = a.id AND l.kind = 'charge'
-		WHERE a.provider_account_id IN (`+marks+`) AND a.status = 'captured' AND a.duplicate = 0
-		AND l.currency = ? AND l.occurred_at >= ?`, args...).Scan(&sales, &amount)
+	err = q.QueryRowContext(ctx, `SELECT COUNT(DISTINCT l.payment_id), COALESCE(SUM(l.amount), 0)
+		FROM ledger_entries l WHERE l.kind = 'charge' AND (
+			EXISTS (SELECT 1 FROM payment_attempts a WHERE a.id = l.attempt_id
+				AND a.provider_account_id IN (`+marks+`) AND a.status = 'captured' AND a.duplicate = 0)
+			OR (l.attempt_id IS NULL AND EXISTS (SELECT 1 FROM payment_attempts a WHERE a.payment_id = l.payment_id
+				AND a.provider_account_id IN (`+marks+`) AND a.status = 'captured' AND a.duplicate = 0))
+		) AND l.currency = ? AND l.occurred_at >= ?`, args...).Scan(&sales, &amount)
 	return
 }
 
