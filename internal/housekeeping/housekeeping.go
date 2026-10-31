@@ -337,9 +337,11 @@ type SilenceOptions struct {
 	Now              func() time.Time
 }
 
-// SilenceDetector raises an alert when a provider account created attempts in
-// the window but received no verified webhook: providers disable failing
-// webhooks (Razorpay after 24h, Zoho after 2 days, Whop after 72h).
+// SilenceDetector raises an alert when a provider account has observed
+// provider-side payments in the window but received no verified webhook:
+// providers disable failing webhooks (Razorpay after 24h, Zoho after 2 days,
+// Whop after 72h). Checkout orders without a provider payment ID are ignored;
+// the customer may simply have abandoned them before trying to pay.
 type SilenceDetector struct {
 	o     SilenceOptions
 	mu    sync.Mutex
@@ -373,9 +375,9 @@ func (d *SilenceDetector) Run(ctx context.Context) error {
 	now := d.o.Now().UTC()
 	since := now.Add(-d.o.Window)
 	for _, pa := range accounts {
-		var attempts, events int
+		var payments, events int
 		err := d.o.DB.Read(ctx, func(q store.Querier) (err error) {
-			if attempts, err = store.CountAttemptsSince(ctx, q, pa.ID, since); err != nil {
+			if payments, err = store.CountObservedProviderPaymentsSince(ctx, q, pa.ID, since); err != nil {
 				return err
 			}
 			events, err = store.CountVerifiedEventsSince(ctx, q, pa.ID, since)
@@ -384,7 +386,7 @@ func (d *SilenceDetector) Run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if attempts == 0 || events > 0 {
+		if payments == 0 || events > 0 {
 			continue
 		}
 		d.mu.Lock()
@@ -398,8 +400,8 @@ func (d *SilenceDetector) Run(ctx context.Context) error {
 			continue
 		}
 		err = d.o.Alerts.Raise(ctx, notify.Alert{Severity: notify.SeverityWarning, Kind: "provider.silent",
-			Message: fmt.Sprintf("%s account %s created %d attempt(s) in the last %s but received no verified webhook. The provider may have disabled the webhook; check %s's dashboard.",
-				pa.Connector, pa.Name, attempts, d.o.Window, pa.Connector),
+			Message: fmt.Sprintf("%s account %s observed %d provider payment(s) in the last %s but received no verified webhook. The provider may have disabled the webhook; check %s's dashboard.",
+				pa.Connector, pa.Name, payments, d.o.Window, pa.Connector),
 			Refs: map[string]string{"provider_account": pa.ID}})
 		if err != nil {
 			d.mu.Lock()

@@ -452,10 +452,15 @@ func DemoteDomain(ctx context.Context, tx Tx, id, errText string, now time.Time)
 	return err
 }
 
-// CountAttemptsSince counts the account's attempts created at or after since.
-func CountAttemptsSince(ctx context.Context, q Queryer, accountID string, since time.Time) (int, error) {
+// CountObservedProviderPaymentsSince counts attempts where Paymux has learned a
+// provider payment ID. A checkout order by itself does not imply that the
+// customer tried to pay, so it must not be used as evidence that a webhook is
+// missing.
+func CountObservedProviderPaymentsSince(ctx context.Context, q Queryer, accountID string, since time.Time) (int, error) {
 	var n int
-	err := q.QueryRowContext(ctx, "SELECT COUNT(*) FROM payment_attempts WHERE provider_account_id = ? AND created_at >= ?", accountID, ms(since)).Scan(&n)
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM payment_attempts
+		WHERE provider_account_id = ? AND created_at >= ? AND provider_payment_id IS NOT NULL AND provider_payment_id <> ''`,
+		accountID, ms(since)).Scan(&n)
 	return n, err
 }
 
