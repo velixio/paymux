@@ -86,15 +86,25 @@ func TestAProviderRefundMatchesKnownPaymentRetryHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 		e.providerRefund("retry", connector.RefundSnapshot{ProviderRefundID: "rfnd_retry", ProviderPaymentID: "pay_retry",
-			Status: connector.RefundSucceeded, RawStatus: "processed", Amount: 10000, Currency: "INR"})
+			Status: connector.RefundPending, RawStatus: "pending", Amount: 10000, Currency: "INR"})
 
 		ev := refundHook(t, e, st.AccountID, "retry-refund", "rfnd_retry", 10000)
 		if err := e.flow.ProcessProviderEvent(ctx, jobPayload(st.AccountID, ev)); err != nil {
 			t.Fatal(err)
 		}
 		rows := refundRows(e, p.ID)
-		if len(rows) != 1 || rows[0].ProviderRefundID != "rfnd_retry" || rows[0].InitiatedBy != "provider" {
+		if len(rows) != 1 || rows[0].ProviderRefundID != "rfnd_retry" || rows[0].InitiatedBy != "provider" || rows[0].Status != "pending" {
 			t.Fatalf("refund was not matched through provider history: %+v", rows)
+		}
+		e.providerRefund("retry", connector.RefundSnapshot{ProviderRefundID: "rfnd_retry", ProviderPaymentID: "pay_retry",
+			Status: connector.RefundSucceeded, RawStatus: "processed", Amount: 10000, Currency: "INR"})
+		ev = refundHook(t, e, st.AccountID, "retry-refund-complete", "rfnd_retry", 10000)
+		if err := e.flow.ProcessProviderEvent(ctx, jobPayload(st.AccountID, ev)); err != nil {
+			t.Fatal(err)
+		}
+		rows = refundRows(e, p.ID)
+		if len(rows) != 1 || rows[0].Status != "succeeded" {
+			t.Fatalf("known retry refund did not advance: %+v", rows)
 		}
 		if e.count("SELECT COUNT(*) FROM unknown_provider_objects") != 0 {
 			t.Fatal("known retry refund was recorded as unknown")

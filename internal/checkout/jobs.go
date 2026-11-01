@@ -344,7 +344,11 @@ func (s *Service) syncRefund(ctx context.Context, refundID, providerRefundID str
 	if err != nil {
 		return core.RefundApplyResult{}, err
 	}
-	if err := refundIsOurs(r, a, snap); err != nil {
+	paymentMatches, err := refundPaymentIsOurs(ctx, s.o.DB, a, snap.ProviderPaymentID)
+	if err != nil {
+		return core.RefundApplyResult{}, err
+	}
+	if err := refundIsOurs(r, a, snap, paymentMatches); err != nil {
 		s.o.Logger.Warn("checkout: the provider returned a refund that is not this refund's; ignored", "refund", r.ID,
 			"account", a.ProviderAccountID, "provider_refund", snap.ProviderRefundID, "err", err)
 		return core.RefundApplyResult{Refund: r}, err
@@ -360,9 +364,9 @@ var ErrNotOurs = errors.New("checkout: the provider's object does not match ours
 // where both sides say, the payment, the receipt, the amount and the currency
 // agree. A refund the provider reports with another amount is not applied
 // silently: it stays pending and loud for a person to look at.
-func refundIsOurs(r store.Refund, a store.Attempt, snap connector.RefundSnapshot) error {
+func refundIsOurs(r store.Refund, a store.Attempt, snap connector.RefundSnapshot, paymentMatches bool) error {
 	switch {
-	case snap.ProviderPaymentID != "" && a.ProviderPaymentID != "" && snap.ProviderPaymentID != a.ProviderPaymentID:
+	case snap.ProviderPaymentID != "" && !paymentMatches:
 		return fmt.Errorf("%w: it is a refund of payment %s, ours is of %s", ErrNotOurs, snap.ProviderPaymentID, a.ProviderPaymentID)
 	case snap.ProviderRef != "" && snap.ProviderRef != r.ProviderRef && r.InitiatedBy != "provider": // a provider refund carries the provider's receipt, not our token
 		return fmt.Errorf("%w: its receipt is %q, ours is %q", ErrNotOurs, snap.ProviderRef, r.ProviderRef)

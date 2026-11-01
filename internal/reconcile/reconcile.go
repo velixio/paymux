@@ -132,6 +132,19 @@ func providerAttemptStatus(status string) string {
 	}
 }
 
+// paymentStatusRank orders the provider states that require canonical money
+// effects; non-money and terminal failure states intentionally share rank 0.
+func paymentStatusRank(status string) int {
+	switch status {
+	case string(state.AttemptCaptured):
+		return 2
+	case string(state.AttemptAuthorized):
+		return 1
+	default:
+		return 0
+	}
+}
+
 const maxPages = 200
 
 // RunAll reconciles every active provider account. A failing account is
@@ -355,9 +368,29 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 		if id == "" {
 			continue
 		}
-		rec := recon.Record{ProviderID: id, Status: providerAttemptStatus(a.Status), Amount: a.PaymentAmount, Currency: a.PaymentCurrency}
-		if a.Status == string(state.AttemptCaptured) {
+		status := providerAttemptStatus(a.Status)
+		if a.Historical {
+			canonical := openStatus(a.CanonicalStatus)
+			// History proves ownership, but must not hide a provider state that
+			// the canonical attempt and its ledger have not applied yet.
+			if paymentStatusRank(status) > paymentStatusRank(canonical) {
+				status = canonical
+			}
+		}
+		rec := recon.Record{ProviderID: id, Status: status, Amount: a.PaymentAmount, Currency: a.PaymentCurrency}
+		if a.Historical || a.Status == string(state.AttemptCaptured) {
 			rec.Amount, rec.Currency = a.AmountReceived, a.CurrencyReceived
+		}
+		// A history row written from an incomplete canonical attempt can lack
+		// observational amount data. Unknown is not a mismatch: use the
+		// authenticated provider listing solely for the missing comparison field.
+		if snap, listed := byPayID[id]; listed {
+			if rec.Amount == 0 {
+				rec.Amount = snap.Amount
+			}
+			if rec.Currency == "" {
+				rec.Currency = snap.Currency
+			}
 		}
 		ours = append(ours, rec)
 	}
@@ -579,6 +612,7 @@ func describe(it recon.Item, pa store.ProviderAccount, detail string) string {
 	return fmt.Sprintf("%s account %s: %s for %s", pa.Connector, pa.Name, it.Kind, it.ProviderID)
 }
 
+// formatMoney renders stored minor units without guessing unknown currencies.
 func formatMoney(amount int64, currency string) string {
 	decimal, err := money.FormatDecimal(amount, currency)
 	if err != nil {

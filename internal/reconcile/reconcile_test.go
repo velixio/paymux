@@ -242,7 +242,7 @@ func TestKnownProviderPaymentRetriesAreNotReportedAsUnknown(t *testing.T) {
 		if err := e.db.Write(ctx, func(tx store.Tx) error {
 			return store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: e.acct,
 				ProviderPaymentID: "pay_failed", AttemptID: a.ID, ProviderOrderID: "order_retry", Status: "failed",
-				Amount: 50000, Currency: "INR", CreatedAt: e.clk.Now().Add(-time.Hour), UpdatedAt: e.clk.Now()})
+				CreatedAt: e.clk.Now().Add(-time.Hour), UpdatedAt: e.clk.Now()})
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -256,6 +256,30 @@ func TestKnownProviderPaymentRetriesAreNotReportedAsUnknown(t *testing.T) {
 		}
 		if e.count("SELECT COUNT(*) FROM recon_items WHERE provider_id = 'pay_failed' AND state = 'open'") != 0 {
 			t.Fatal("the old unknown-provider finding remained open after the retry became known")
+		}
+	})
+}
+
+func TestProviderHistoryCannotHideCanonicalPaymentRecovery(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p, a := e.attempt("order_recover")
+		if err := e.db.Write(ctx, func(tx store.Tx) error {
+			return store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: e.acct,
+				ProviderPaymentID: "pay_recover", AttemptID: a.ID, ProviderOrderID: "order_recover", Status: "captured",
+				Amount: 50000, Currency: "INR", CreatedAt: e.clk.Now().Add(-time.Hour), UpdatedAt: e.clk.Now()})
+		}); err != nil {
+			t.Fatal(err)
+		}
+		e.provider("recover", paid("order_recover", "pay_recover", 50000, "INR"))
+
+		run, err := e.rec.RunAccount(ctx, e.acct)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, _ := e.core.GetAttempt(ctx, a.ID)
+		payment, _ := e.core.GetPaymentByID(ctx, p.ID)
+		if run.Fixed != 1 || got.Status != "captured" || got.ProviderPaymentID != "pay_recover" || payment.Status != "succeeded" {
+			t.Fatalf("history hid canonical recovery: run %+v attempt %+v payment %+v", run, got, payment)
 		}
 	})
 }
