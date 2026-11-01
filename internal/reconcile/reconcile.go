@@ -113,6 +113,24 @@ func openStatus(attemptStatus string) string {
 	return attemptStatus
 }
 
+// Provider payment-attempt history retains the provider's raw status for the
+// operator UI. Normalize the common terminal spellings before comparing that
+// history with connector snapshots, which use the core attempt vocabulary.
+func providerAttemptStatus(status string) string {
+	switch status {
+	case "captured", "succeeded", "paid", "refunded":
+		return string(state.AttemptCaptured)
+	case "failed", "canceled", "cancelled", "expired":
+		return string(state.AttemptFailed)
+	case "authorized", "processing":
+		return string(state.AttemptAuthorized)
+	case "created", "pending", "requires_action":
+		return "open"
+	default:
+		return openStatus(status)
+	}
+}
+
 const maxPages = 200
 
 // RunAll reconciles every active provider account. A failing account is
@@ -336,7 +354,7 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 		if id == "" {
 			continue
 		}
-		rec := recon.Record{ProviderID: id, Status: openStatus(a.Status), Amount: a.PaymentAmount, Currency: a.PaymentCurrency}
+		rec := recon.Record{ProviderID: id, Status: providerAttemptStatus(a.Status), Amount: a.PaymentAmount, Currency: a.PaymentCurrency}
 		if a.Status == string(state.AttemptCaptured) {
 			rec.Amount, rec.Currency = a.AmountReceived, a.CurrencyReceived
 		}

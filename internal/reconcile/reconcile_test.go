@@ -223,6 +223,35 @@ func TestStatusMismatchIsAutoFixed(t *testing.T) {
 	})
 }
 
+func TestKnownProviderPaymentRetriesAreNotReportedAsUnknown(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		_, a := e.attempt("order_retry")
+		if _, err := e.core.ApplyAttemptSnapshot(ctx, a.ID, core.Snapshot{Status: state.AttemptCaptured, Amount: 50000,
+			Currency: "INR", ProviderPaymentID: "pay_ok", ProviderOrderID: "order_retry"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.db.Write(ctx, func(tx store.Tx) error {
+			return store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: e.acct,
+				ProviderPaymentID: "pay_failed", AttemptID: a.ID, ProviderOrderID: "order_retry", Status: "failed",
+				Amount: 50000, Currency: "INR", CreatedAt: e.clk.Now().Add(-time.Hour), UpdatedAt: e.clk.Now()})
+		}); err != nil {
+			t.Fatal(err)
+		}
+		failed := paid("order_retry", "pay_failed", 50000, "INR")
+		failed.Status, failed.RawStatus = connector.PaymentFailed, "failed"
+		e.provider("failed", failed)
+		e.provider("ok", paid("order_retry", "pay_ok", 50000, "INR"))
+
+		run, err := e.rec.RunAccount(ctx, e.acct)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if run.Items != 0 || len(e.items(run.ID)) != 0 || slices.Contains(e.alerts.kinds(), "recon.unknown_provider_object") {
+			t.Fatalf("known retries produced findings: run %+v items %+v alerts %v", run, e.items(run.ID), e.alerts.kinds())
+		}
+	})
+}
+
 func TestAmountAndCurrencyMismatchesAreFlaggedOnceAndAlerted(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
 		_, a1 := e.attempt("order_1")

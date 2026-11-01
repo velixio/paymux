@@ -201,6 +201,18 @@ func FindAttempt(ctx context.Context, q Queryer, accountID, providerRef, orderID
 		if !errors.Is(err, ErrNotFound) {
 			return a, err
 		}
+		// One provider order can contain several payment tries. The canonical
+		// payment_attempts row keeps the winning try, while the history table
+		// keeps every provider payment id. Refunds and reconciliation may name
+		// any of those ids, so an exact payment-id lookup must include history.
+		if c.col == "provider_payment_id" {
+			a, err = scanAttempt(q.QueryRowContext(ctx, "SELECT "+attemptCols+` FROM payment_attempts
+				WHERE id = (SELECT attempt_id FROM provider_payment_attempts
+					WHERE provider_account_id = ? AND provider_payment_id = ? LIMIT 1)`, accountID, c.val))
+			if !errors.Is(err, ErrNotFound) {
+				return a, err
+			}
+		}
 	}
 	return Attempt{}, ErrNotFound
 }

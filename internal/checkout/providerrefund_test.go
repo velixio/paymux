@@ -75,6 +75,33 @@ func TestARefundMadeAtTheProviderIsBookedFromTheFetchedTruth(t *testing.T) {
 	})
 }
 
+func TestAProviderRefundMatchesKnownPaymentRetryHistory(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p, st := paid(t, e)
+		if err := e.db.Write(ctx, func(tx store.Tx) error {
+			return store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: st.AccountID,
+				ProviderPaymentID: "pay_retry", AttemptID: st.Attempt.ID, ProviderOrderID: st.Attempt.ProviderOrderID,
+				Status: "captured", Amount: 50000, Currency: "INR", CreatedAt: e.clk.Now(), UpdatedAt: e.clk.Now()})
+		}); err != nil {
+			t.Fatal(err)
+		}
+		e.providerRefund("retry", connector.RefundSnapshot{ProviderRefundID: "rfnd_retry", ProviderPaymentID: "pay_retry",
+			Status: connector.RefundSucceeded, RawStatus: "processed", Amount: 10000, Currency: "INR"})
+
+		ev := refundHook(t, e, st.AccountID, "retry-refund", "rfnd_retry", 10000)
+		if err := e.flow.ProcessProviderEvent(ctx, jobPayload(st.AccountID, ev)); err != nil {
+			t.Fatal(err)
+		}
+		rows := refundRows(e, p.ID)
+		if len(rows) != 1 || rows[0].ProviderRefundID != "rfnd_retry" || rows[0].InitiatedBy != "provider" {
+			t.Fatalf("refund was not matched through provider history: %+v", rows)
+		}
+		if e.count("SELECT COUNT(*) FROM unknown_provider_objects") != 0 {
+			t.Fatal("known retry refund was recorded as unknown")
+		}
+	})
+}
+
 func TestAProviderRefundOfAnUnknownPaymentStaysUnknown(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
 		p, st := paid(t, e)
