@@ -260,6 +260,92 @@ func TestKnownProviderPaymentRetriesAreNotReportedAsUnknown(t *testing.T) {
 	})
 }
 
+func TestUppercaseProviderRetryStatuses(t *testing.T) {
+	for _, tc := range []struct {
+		raw    string
+		status connector.PaymentStatus
+	}{
+		{"FAILED", connector.PaymentFailed},
+		{"USER_DROPPED", connector.PaymentCanceled},
+		{"VOID", connector.PaymentCanceled},
+		{"CANCELLED", connector.PaymentCanceled},
+		{"PENDING", connector.PaymentProcessing},
+		{"NOT_ATTEMPTED", connector.PaymentRequiresAction},
+	} {
+		t.Run(tc.raw, func(t *testing.T) {
+			each(t, func(t *testing.T, e *env) {
+				_, a := e.attempt("order_retry")
+				if _, err := e.core.ApplyAttemptSnapshot(ctx, a.ID, core.Snapshot{Status: state.AttemptCaptured,
+					Amount: 50000, Currency: "INR", ProviderPaymentID: "pay_ok"}); err != nil {
+					t.Fatal(err)
+				}
+				if err := e.db.Write(ctx, func(tx store.Tx) error {
+					return store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{
+						ProviderAccountID: e.acct, ProviderPaymentID: "pay_retry", AttemptID: a.ID,
+						Status: tc.raw, Amount: 50000, Currency: "INR", CreatedAt: e.clk.Now(), UpdatedAt: e.clk.Now()})
+				}); err != nil {
+					t.Fatal(err)
+				}
+				snap := paid("order_retry", "pay_retry", 50000, "INR")
+				snap.Status, snap.RawStatus = tc.status, tc.raw
+				e.provider("retry", snap)
+				run, err := e.rec.RunAccount(ctx, e.acct)
+				if err != nil || run.Items != 0 || len(e.alerts.kinds()) != 0 {
+					t.Fatalf("false mismatch for %s: run %+v items %+v err %v", tc.raw, run, e.items(run.ID), err)
+				}
+			})
+		})
+	}
+}
+
+func TestExtraCapturedRetryRemainsAnOpenFinding(t *testing.T) {
+	for _, historyStatus := range []string{"captured", "SUCCESS", "failed"} {
+		t.Run(historyStatus, func(t *testing.T) {
+			each(t, func(t *testing.T, e *env) {
+				p, a := e.attempt("order_extra")
+				if _, err := e.core.ApplyAttemptSnapshot(ctx, a.ID, core.Snapshot{Status: state.AttemptCaptured,
+					Amount: 50000, Currency: "INR", ProviderPaymentID: "pay_ok"}); err != nil {
+					t.Fatal(err)
+				}
+				e.provider("ok", paid("order_extra", "pay_ok", 50000, "INR"))
+				e.provider("extra", paid("order_extra", "pay_extra", 50000, "INR"))
+				first, err := e.rec.RunAccount(ctx, e.acct)
+				if err != nil || e.items(first.ID)["unknown_provider_object:pay_extra"].State != "open" {
+					t.Fatalf("expected initial unknown finding: run %+v err %v", first, err)
+				}
+				if err := e.db.Write(ctx, func(tx store.Tx) error {
+					return store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{
+						ProviderAccountID: e.acct, ProviderPaymentID: "pay_extra", AttemptID: a.ID,
+						Status: historyStatus, Amount: 50000, Currency: "INR", CreatedAt: e.clk.Now(), UpdatedAt: e.clk.Now()})
+				}); err != nil {
+					t.Fatal(err)
+				}
+				for i := 0; i < 2; i++ {
+					run, err := e.rec.RunAccount(ctx, e.acct)
+					if err != nil || run.Items != 1 || run.Fixed != 0 || e.items(run.ID)["extra_capture:pay_extra"].State != "open" {
+						t.Fatalf("extra capture hidden: run %+v items %+v err %v", run, e.items(run.ID), err)
+					}
+				}
+				if e.count("SELECT COUNT(*) FROM recon_items WHERE kind = 'extra_capture' AND state = 'open'") != 1 {
+					t.Fatal("extra capture finding was duplicated or closed")
+				}
+				if e.count("SELECT COUNT(*) FROM recon_items WHERE kind = 'unknown_provider_object' AND state = 'open'") != 0 {
+					t.Fatal("ownership finding was not replaced")
+				}
+				if got, _ := e.core.GetAttempt(ctx, a.ID); got.ProviderPaymentID != "pay_ok" || got.AmountReceived != 50000 {
+					t.Fatalf("extra capture changed canonical accounting: %+v", got)
+				}
+				if got, _ := e.core.GetPaymentByID(ctx, p.ID); got.AmountReceived != 50000 {
+					t.Fatalf("extra capture changed payment accounting: %+v", got)
+				}
+				if kinds := e.alerts.kinds(); !slices.Equal(kinds, []string{"recon.unknown_provider_object", "recon.extra_capture"}) {
+					t.Fatalf("expected one extra capture alert: %v", kinds)
+				}
+			})
+		})
+	}
+}
+
 func TestProviderHistoryCannotHideCanonicalPaymentRecovery(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
 		p, a := e.attempt("order_recover")

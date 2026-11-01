@@ -11,15 +11,17 @@ const (
 	KindUnknownProviderObject = "unknown_provider_object"
 	KindRenewalToLink         = "renewal_to_link"
 	KindFeeMismatch           = "fee_mismatch"
+	KindExtraCapture          = "extra_capture"
 )
 
 // Record is a payment or refund as seen by one side, keyed by provider id.
 type Record struct {
-	ProviderID     string
-	Status         string
-	Amount         int64
-	Currency       string
-	SubscriptionID string // provider subscription id, for provider-managed renewals
+	ProviderID        string
+	Status            string
+	Amount            int64
+	Currency          string
+	SubscriptionID    string // provider subscription id, for provider-managed renewals
+	CapturedElsewhere bool   // this attempt already booked a different provider payment id
 }
 
 // Item is one reconciliation finding.
@@ -51,6 +53,8 @@ func Diff(ours, theirs []Record, knownSubscription func(string) bool) []Item {
 		}
 		oc := o
 		switch {
+		case o.CapturedElsewhere && t.Status == "captured":
+			items = append(items, Item{Kind: KindExtraCapture, ProviderID: t.ProviderID, Ours: &oc, Theirs: t})
 		case o.Currency != t.Currency:
 			items = append(items, Item{Kind: KindCurrencyMismatch, ProviderID: t.ProviderID, Ours: &oc, Theirs: t})
 		case o.Amount != t.Amount:

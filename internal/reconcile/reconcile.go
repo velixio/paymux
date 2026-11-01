@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/velixio/paymux/internal/audit"
@@ -118,15 +119,18 @@ func openStatus(attemptStatus string) string {
 // operator UI. Normalize the common terminal spellings before comparing that
 // history with connector snapshots, which use the core attempt vocabulary.
 func providerAttemptStatus(status string) string {
+	status = strings.ToLower(status)
 	switch status {
-	case "captured", "succeeded", "paid", "refunded":
+	case "captured", "succeeded", "success", "paid", "refunded":
 		return string(state.AttemptCaptured)
-	case "failed", "canceled", "cancelled", "expired":
+	case "failed", "canceled", "cancelled", "expired", "user_dropped", "void":
 		return string(state.AttemptFailed)
 	case "authorized", "processing":
 		return string(state.AttemptAuthorized)
-	case "created", "pending", "requires_action":
+	case "created", "requires_action", "not_attempted":
 		return "open"
+	case "pending": // Cashfree's PENDING is an in-flight payment.
+		return string(state.AttemptAuthorized)
 	default:
 		return openStatus(status)
 	}
@@ -368,8 +372,9 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 		if id == "" {
 			continue
 		}
-		status := providerAttemptStatus(a.Status)
+		status := openStatus(a.Status)
 		if a.Historical {
+			status = providerAttemptStatus(a.Status)
 			canonical := openStatus(a.CanonicalStatus)
 			// History proves ownership, but must not hide a provider state that
 			// the canonical attempt and its ledger have not applied yet.
@@ -378,6 +383,7 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 			}
 		}
 		rec := recon.Record{ProviderID: id, Status: status, Amount: a.PaymentAmount, Currency: a.PaymentCurrency}
+		rec.CapturedElsewhere = a.Historical && a.CanonicalStatus == string(state.AttemptCaptured)
 		if a.Historical || a.Status == string(state.AttemptCaptured) {
 			rec.Amount, rec.Currency = a.AmountReceived, a.CurrencyReceived
 		}
@@ -602,6 +608,9 @@ func describe(it recon.Item, pa store.ProviderAccount, detail string) string {
 		return detail
 	}
 	switch it.Kind {
+	case recon.KindExtraCapture:
+		return fmt.Sprintf("%s account %s: extra captured payment %s (%s) belongs to an attempt that already booked another payment", pa.Connector, pa.Name, it.ProviderID,
+			formatMoney(it.Theirs.Amount, it.Theirs.Currency))
 	case recon.KindAmountMismatch, recon.KindCurrencyMismatch:
 		return fmt.Sprintf("%s account %s: %s differs for %s: ours %s, provider %s", pa.Connector, pa.Name, it.Kind, it.ProviderID,
 			formatMoney(it.Ours.Amount, it.Ours.Currency), formatMoney(it.Theirs.Amount, it.Theirs.Currency))
