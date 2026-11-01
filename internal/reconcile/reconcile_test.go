@@ -230,6 +230,15 @@ func TestKnownProviderPaymentRetriesAreNotReportedAsUnknown(t *testing.T) {
 			Currency: "INR", ProviderPaymentID: "pay_ok", ProviderOrderID: "order_retry"}); err != nil {
 			t.Fatal(err)
 		}
+		failed := paid("order_retry", "pay_failed", 50000, "INR")
+		failed.Status, failed.RawStatus = connector.PaymentFailed, "failed"
+		e.provider("failed", failed)
+		e.provider("ok", paid("order_retry", "pay_ok", 50000, "INR"))
+
+		first, err := e.rec.RunAccount(ctx, e.acct)
+		if err != nil || e.items(first.ID)["unknown_provider_object:pay_failed"].State != "open" {
+			t.Fatalf("missing pre-history finding: run %+v items %+v err %v", first, e.items(first.ID), err)
+		}
 		if err := e.db.Write(ctx, func(tx store.Tx) error {
 			return store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: e.acct,
 				ProviderPaymentID: "pay_failed", AttemptID: a.ID, ProviderOrderID: "order_retry", Status: "failed",
@@ -237,17 +246,16 @@ func TestKnownProviderPaymentRetriesAreNotReportedAsUnknown(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		failed := paid("order_retry", "pay_failed", 50000, "INR")
-		failed.Status, failed.RawStatus = connector.PaymentFailed, "failed"
-		e.provider("failed", failed)
-		e.provider("ok", paid("order_retry", "pay_ok", 50000, "INR"))
 
 		run, err := e.rec.RunAccount(ctx, e.acct)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if run.Items != 0 || len(e.items(run.ID)) != 0 || slices.Contains(e.alerts.kinds(), "recon.unknown_provider_object") {
-			t.Fatalf("known retries produced findings: run %+v items %+v alerts %v", run, e.items(run.ID), e.alerts.kinds())
+		if run.Items != 0 || len(e.items(run.ID)) != 0 {
+			t.Fatalf("known retries produced findings: run %+v items %+v", run, e.items(run.ID))
+		}
+		if e.count("SELECT COUNT(*) FROM recon_items WHERE provider_id = 'pay_failed' AND state = 'open'") != 0 {
+			t.Fatal("the old unknown-provider finding remained open after the retry became known")
 		}
 	})
 }

@@ -366,6 +366,21 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 		known = func(id string) bool { return s.o.KnownSubscription(ctx, pa.ID, id) }
 	}
 	items := recon.Diff(ours, theirRecs, known)
+	// A payment that used to look foreign can become known after retry history
+	// is recovered. Close that stale finding even though a clean diff produces
+	// no replacement item for record() to close on its own.
+	if err := s.o.DB.Write(ctx, func(tx store.Tx) error {
+		for _, ourRecord := range ours {
+			if _, listed := byPayID[ourRecord.ProviderID]; listed {
+				if err := store.CloseReconItems(ctx, tx, pa.ID, recon.KindUnknownProviderObject, ourRecord.ProviderID); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	for _, it := range items {
 		snap := byPayID[it.ProviderID]
 		fixed := false
