@@ -282,6 +282,15 @@ func TestAmountAndCurrencyMismatchesAreFlaggedOnceAndAlerted(t *testing.T) {
 		if a.Severity != notify.SeverityWarning || a.Refs["provider_account"] != e.acct {
 			t.Errorf("alert %+v", a)
 		}
+		formatted := false
+		for _, alert := range e.alerts.alerts {
+			if bytes.Contains([]byte(alert.Message), []byte("499.99 INR")) && bytes.Contains([]byte(alert.Message), []byte("500.00 INR")) {
+				formatted = true
+			}
+		}
+		if !formatted {
+			t.Errorf("alert amounts are not formatted as major units: %+v", e.alerts.alerts)
+		}
 		// Nothing was changed on our side.
 		if got, _ := e.core.GetAttempt(ctx, a1.ID); got.AmountReceived != 50000 {
 			t.Errorf("flag-only item modified the attempt: %+v", got)
@@ -324,6 +333,11 @@ func TestUnknownProviderObjectAndRenewalLinking(t *testing.T) {
 		slices.Sort(k)
 		if !slices.Equal(k, []string{"recon.unknown_provider_object", "recon.unknown_provider_object"}) {
 			t.Errorf("linked renewals do not alert, unknown payments do: %v", k)
+		}
+		for _, alert := range e.alerts.alerts {
+			if alert.Refs["provider_id"] == "pay_stranger" && !bytes.Contains([]byte(alert.Message), []byte("1.00 INR")) {
+				t.Errorf("unknown-object amount is not formatted as major units: %q", alert.Message)
+			}
 		}
 	})
 }

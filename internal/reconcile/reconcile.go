@@ -24,6 +24,7 @@ import (
 	"github.com/velixio/paymux/internal/settings"
 	"github.com/velixio/paymux/internal/store"
 	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // Alerter raises ops alerts (*notify.Alerts).
@@ -554,13 +555,21 @@ func describe(it recon.Item, pa store.ProviderAccount, detail string) string {
 	}
 	switch it.Kind {
 	case recon.KindAmountMismatch, recon.KindCurrencyMismatch:
-		return fmt.Sprintf("%s account %s: %s differs for %s: ours %d %s, provider %d %s", pa.Connector, pa.Name, it.Kind, it.ProviderID,
-			it.Ours.Amount, it.Ours.Currency, it.Theirs.Amount, it.Theirs.Currency)
+		return fmt.Sprintf("%s account %s: %s differs for %s: ours %s, provider %s", pa.Connector, pa.Name, it.Kind, it.ProviderID,
+			formatMoney(it.Ours.Amount, it.Ours.Currency), formatMoney(it.Theirs.Amount, it.Theirs.Currency))
 	case recon.KindUnknownProviderObject:
-		return fmt.Sprintf("%s account %s has %s %s (%d %s, %s) that Paymux does not know", pa.Connector, pa.Name, "an object", it.ProviderID,
-			it.Theirs.Amount, it.Theirs.Currency, it.Theirs.Status)
+		return fmt.Sprintf("%s account %s has %s %s (%s, %s) that Paymux does not know", pa.Connector, pa.Name, "an object", it.ProviderID,
+			formatMoney(it.Theirs.Amount, it.Theirs.Currency), it.Theirs.Status)
 	}
 	return fmt.Sprintf("%s account %s: %s for %s", pa.Connector, pa.Name, it.Kind, it.ProviderID)
+}
+
+func formatMoney(amount int64, currency string) string {
+	decimal, err := money.FormatDecimal(amount, currency)
+	if err != nil {
+		return fmt.Sprintf("%d minor units %s", amount, currency)
+	}
+	return decimal + " " + currency
 }
 
 // Resolve closes an open item with a note, audited.
