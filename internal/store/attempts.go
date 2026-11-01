@@ -162,8 +162,11 @@ func UpsertProviderPaymentAttempt(ctx context.Context, tx Tx, p ProviderPaymentA
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (provider_account_id, provider_payment_id) DO UPDATE SET
 		attempt_id = excluded.attempt_id, provider_order_id = excluded.provider_order_id, status = excluded.status,
-		method = excluded.method, failure_code = excluded.failure_code, failure_message = excluded.failure_message,
-		amount = excluded.amount, currency = excluded.currency, updated_at = excluded.updated_at`,
+		method = COALESCE(excluded.method, provider_payment_attempts.method),
+		failure_code = COALESCE(excluded.failure_code, provider_payment_attempts.failure_code),
+		failure_message = COALESCE(excluded.failure_message, provider_payment_attempts.failure_message),
+		amount = CASE WHEN excluded.amount > 0 THEN excluded.amount ELSE provider_payment_attempts.amount END,
+		currency = COALESCE(excluded.currency, provider_payment_attempts.currency), updated_at = excluded.updated_at`,
 		p.ProviderAccountID, p.ProviderPaymentID, p.AttemptID, nullIfEmpty(p.ProviderOrderID), p.Status,
 		nullIfEmpty(p.Method), nullIfEmpty(p.FailureCode), nullIfEmpty(p.FailureMessage), p.Amount,
 		nullIfEmpty(p.Currency), ms(p.CreatedAt), ms(p.UpdatedAt))

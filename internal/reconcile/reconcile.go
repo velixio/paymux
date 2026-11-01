@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/velixio/paymux/internal/audit"
@@ -24,6 +25,7 @@ import (
 	"github.com/velixio/paymux/internal/settings"
 	"github.com/velixio/paymux/internal/store"
 	"github.com/velixio/paymux/pkg/connector"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // Alerter raises ops alerts (*notify.Alerts).
@@ -111,6 +113,40 @@ func openStatus(attemptStatus string) string {
 		return "open"
 	}
 	return attemptStatus
+}
+
+// Provider payment-attempt history retains the provider's raw status for the
+// operator UI. Normalize the common terminal spellings before comparing that
+// history with connector snapshots, which use the core attempt vocabulary.
+func providerAttemptStatus(status string) string {
+	status = strings.ToLower(status)
+	switch status {
+	case "captured", "succeeded", "success", "paid", "refunded":
+		return string(state.AttemptCaptured)
+	case "failed", "canceled", "cancelled", "expired", "user_dropped", "void":
+		return string(state.AttemptFailed)
+	case "authorized", "processing":
+		return string(state.AttemptAuthorized)
+	case "created", "requires_action", "not_attempted":
+		return "open"
+	case "pending": // Cashfree's PENDING is an in-flight payment.
+		return string(state.AttemptAuthorized)
+	default:
+		return openStatus(status)
+	}
+}
+
+// paymentStatusRank orders the provider states that require canonical money
+// effects; non-money and terminal failure states intentionally share rank 0.
+func paymentStatusRank(status string) int {
+	switch status {
+	case string(state.AttemptCaptured):
+		return 2
+	case string(state.AttemptAuthorized):
+		return 1
+	default:
+		return 0
+	}
 }
 
 const maxPages = 200
@@ -336,9 +372,31 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 		if id == "" {
 			continue
 		}
-		rec := recon.Record{ProviderID: id, Status: openStatus(a.Status), Amount: a.PaymentAmount, Currency: a.PaymentCurrency}
-		if a.Status == string(state.AttemptCaptured) {
+		status := openStatus(a.Status)
+		if a.Historical {
+			status = providerAttemptStatus(a.Status)
+			canonical := openStatus(a.CanonicalStatus)
+			// History proves ownership, but must not hide a provider state that
+			// the canonical attempt and its ledger have not applied yet.
+			if paymentStatusRank(status) > paymentStatusRank(canonical) {
+				status = canonical
+			}
+		}
+		rec := recon.Record{ProviderID: id, Status: status, Amount: a.PaymentAmount, Currency: a.PaymentCurrency}
+		rec.CapturedElsewhere = a.Historical && a.CanonicalStatus == string(state.AttemptCaptured)
+		if a.Historical || a.Status == string(state.AttemptCaptured) {
 			rec.Amount, rec.Currency = a.AmountReceived, a.CurrencyReceived
+		}
+		// A history row written from an incomplete canonical attempt can lack
+		// observational amount data. Unknown is not a mismatch: use the
+		// authenticated provider listing solely for the missing comparison field.
+		if snap, listed := byPayID[id]; listed {
+			if rec.Amount == 0 {
+				rec.Amount = snap.Amount
+			}
+			if rec.Currency == "" {
+				rec.Currency = snap.Currency
+			}
 		}
 		ours = append(ours, rec)
 	}
@@ -347,6 +405,21 @@ func (s *Service) reconcilePayments(ctx context.Context, pa store.ProviderAccoun
 		known = func(id string) bool { return s.o.KnownSubscription(ctx, pa.ID, id) }
 	}
 	items := recon.Diff(ours, theirRecs, known)
+	// A payment that used to look foreign can become known after retry history
+	// is recovered. Close that stale finding even though a clean diff produces
+	// no replacement item for record() to close on its own.
+	if err := s.o.DB.Write(ctx, func(tx store.Tx) error {
+		for _, ourRecord := range ours {
+			if _, listed := byPayID[ourRecord.ProviderID]; listed {
+				if err := store.CloseReconItems(ctx, tx, pa.ID, recon.KindUnknownProviderObject, ourRecord.ProviderID); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	for _, it := range items {
 		snap := byPayID[it.ProviderID]
 		fixed := false
@@ -535,14 +608,26 @@ func describe(it recon.Item, pa store.ProviderAccount, detail string) string {
 		return detail
 	}
 	switch it.Kind {
+	case recon.KindExtraCapture:
+		return fmt.Sprintf("%s account %s: extra captured payment %s (%s) belongs to an attempt that already booked another payment", pa.Connector, pa.Name, it.ProviderID,
+			formatMoney(it.Theirs.Amount, it.Theirs.Currency))
 	case recon.KindAmountMismatch, recon.KindCurrencyMismatch:
-		return fmt.Sprintf("%s account %s: %s differs for %s: ours %d %s, provider %d %s", pa.Connector, pa.Name, it.Kind, it.ProviderID,
-			it.Ours.Amount, it.Ours.Currency, it.Theirs.Amount, it.Theirs.Currency)
+		return fmt.Sprintf("%s account %s: %s differs for %s: ours %s, provider %s", pa.Connector, pa.Name, it.Kind, it.ProviderID,
+			formatMoney(it.Ours.Amount, it.Ours.Currency), formatMoney(it.Theirs.Amount, it.Theirs.Currency))
 	case recon.KindUnknownProviderObject:
-		return fmt.Sprintf("%s account %s has %s %s (%d %s, %s) that Paymux does not know", pa.Connector, pa.Name, "an object", it.ProviderID,
-			it.Theirs.Amount, it.Theirs.Currency, it.Theirs.Status)
+		return fmt.Sprintf("%s account %s has %s %s (%s, %s) that Paymux does not know", pa.Connector, pa.Name, "an object", it.ProviderID,
+			formatMoney(it.Theirs.Amount, it.Theirs.Currency), it.Theirs.Status)
 	}
 	return fmt.Sprintf("%s account %s: %s for %s", pa.Connector, pa.Name, it.Kind, it.ProviderID)
+}
+
+// formatMoney renders stored minor units without guessing unknown currencies.
+func formatMoney(amount int64, currency string) string {
+	decimal, err := money.FormatDecimal(amount, currency)
+	if err != nil {
+		return fmt.Sprintf("%d minor units %s", amount, currency)
+	}
+	return decimal + " " + currency
 }
 
 // Resolve closes an open item with a note, audited.

@@ -191,10 +191,12 @@ func listReconItems(ctx context.Context, q Queryer, where string, args ...any) (
 // ReconAttempt is our side of a payment record for reconciliation.
 type ReconAttempt struct {
 	AttemptID, ProviderPaymentID, ProviderOrderID, ProviderRef, Status string
+	CanonicalStatus                                                    string
 	AmountReceived                                                     int64
 	CurrencyReceived                                                   string
 	PaymentAmount                                                      int64
 	PaymentCurrency                                                    string
+	Historical                                                         bool
 }
 
 // ListReconAttempts returns the account's attempts created in [from, to] that
@@ -218,6 +220,36 @@ func ListReconAttempts(ctx context.Context, q Queryer, accountID string, from, t
 			&r.PaymentAmount, &r.PaymentCurrency); err != nil {
 			return nil, err
 		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	// A single checkout/order can have a failed provider payment followed by
+	// a successful retry. All of those are ours and all appear in the
+	// provider's account-wide listing, not only the winning id copied onto the
+	// canonical payment_attempts row.
+	rows, err = q.QueryContext(ctx, `SELECT p.attempt_id, p.provider_payment_id, COALESCE(p.provider_order_id,''),
+		a.provider_ref, p.status, p.amount, COALESCE(p.currency,''), p.amount, COALESCE(p.currency,''), a.status
+		FROM provider_payment_attempts p JOIN payment_attempts a ON a.id = p.attempt_id
+		WHERE p.provider_account_id = ? AND p.created_at >= ? AND p.created_at <= ?
+		AND (a.provider_payment_id IS NULL OR a.provider_payment_id <> p.provider_payment_id)
+		ORDER BY p.created_at, p.provider_payment_id`, accountID, ms(from), ms(to))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r ReconAttempt
+		if err := rows.Scan(&r.AttemptID, &r.ProviderPaymentID, &r.ProviderOrderID, &r.ProviderRef, &r.Status,
+			&r.AmountReceived, &r.CurrencyReceived, &r.PaymentAmount, &r.PaymentCurrency, &r.CanonicalStatus); err != nil {
+			return nil, err
+		}
+		r.Historical = true
 		out = append(out, r)
 	}
 	return out, rows.Err()

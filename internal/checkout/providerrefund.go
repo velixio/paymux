@@ -41,7 +41,11 @@ func ImportRefund(ctx context.Context, db *store.DB, c *core.Service, accountID 
 		if err := db.Read(ctx, func(q store.Querier) (err error) { ka, err = store.GetAttempt(ctx, q, known.AttemptID); return }); err != nil {
 			return false, err
 		}
-		if err := refundIsOurs(known, ka, snap); err != nil {
+		paymentMatches, err := refundPaymentIsOurs(ctx, db, ka, snap.ProviderPaymentID)
+		if err != nil {
+			return false, err
+		}
+		if err := refundIsOurs(known, ka, snap, paymentMatches); err != nil {
 			return false, err
 		}
 		_, err = c.ApplyRefundSnapshot(ctx, known.ID, toRefundSnapshot(snap))
@@ -64,6 +68,23 @@ func ImportRefund(ctx context.Context, db *store.DB, c *core.Service, accountID 
 	_, err = c.ImportProviderRefund(ctx, a.ID, core.ProviderRefund{ProviderRefundID: snap.ProviderRefundID, Status: rs.Status,
 		Amount: snap.Amount, Currency: snap.Currency, FailureReason: rs.FailureReason})
 	return err == nil, err
+}
+
+// refundPaymentIsOurs accepts both the canonical provider payment id and any
+// account-scoped retry id recorded for the same Paymux attempt.
+func refundPaymentIsOurs(ctx context.Context, db *store.DB, a store.Attempt, providerPaymentID string) (bool, error) {
+	if providerPaymentID == "" || providerPaymentID == a.ProviderPaymentID {
+		return true, nil
+	}
+	var matched store.Attempt
+	err := db.Read(ctx, func(q store.Querier) (err error) {
+		matched, err = store.FindAttempt(ctx, q, a.ProviderAccountID, "", "", providerPaymentID)
+		return err
+	})
+	if errors.Is(err, store.ErrNotFound) {
+		return false, nil
+	}
+	return err == nil && matched.ID == a.ID, err
 }
 
 // importProviderRefund handles a refund notification for a refund Paymux has

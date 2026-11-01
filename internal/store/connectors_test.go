@@ -110,9 +110,16 @@ func seedPayment(t *testing.T, db *store.DB) {
 func TestFindAttempt(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		seedPayment(t, db)
+		if err := db.Write(ctx, func(tx store.Tx) error {
+			return store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: "pa_1",
+				ProviderPaymentID: "pay_retry", AttemptID: "att_1", Status: "failed", CreatedAt: t0, UpdatedAt: t0})
+		}); err != nil {
+			t.Fatal(err)
+		}
 		_ = db.Read(ctx, func(q store.Querier) error {
 			for name, c := range map[string]struct{ ref, order, pay, want string }{
 				"ref": {"REF2", "", "", "att_2"}, "order": {"", "order_1", "", "att_1"}, "payment": {"", "", "pay_y", "att_4"},
+				"payment history":         {"", "", "pay_retry", "att_1"},
 				"first matching key wins": {"REF1", "", "pay_x", "att_1"},
 			} {
 				a, err := store.FindAttempt(ctx, q, "pa_1", c.ref, c.order, c.pay)
@@ -128,6 +135,35 @@ func TestFindAttempt(t *testing.T) {
 			}
 			return nil
 		})
+	})
+}
+
+func TestProviderPaymentAttemptUpsertPreservesKnownDetails(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		seedPayment(t, db)
+		rich := store.ProviderPaymentAttempt{ProviderAccountID: "pa_1", ProviderPaymentID: "pay_retry", AttemptID: "att_1",
+			ProviderOrderID: "order_1", Status: "failed", Method: "card", FailureCode: "declined", FailureMessage: "declined",
+			Amount: 100, Currency: "INR", CreatedAt: t0, UpdatedAt: t0}
+		if err := db.Write(ctx, func(tx store.Tx) error {
+			if err := store.UpsertProviderPaymentAttempt(ctx, tx, rich); err != nil {
+				return err
+			}
+			return store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: "pa_1",
+				ProviderPaymentID: "pay_retry", AttemptID: "att_1", Status: "failed", CreatedAt: t0, UpdatedAt: t0.Add(time.Minute)})
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var attempts []store.ProviderPaymentAttempt
+		if err := db.Read(ctx, func(q store.Querier) (err error) {
+			attempts, err = store.ListProviderPaymentAttempts(ctx, q, "pay_1")
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if len(attempts) != 1 || attempts[0].Amount != 100 || attempts[0].Currency != "INR" ||
+			attempts[0].Method != "card" || attempts[0].FailureCode != "declined" || attempts[0].FailureMessage != "declined" {
+			t.Fatalf("sparse observation erased known details: %+v", attempts)
+		}
 	})
 }
 

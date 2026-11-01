@@ -223,6 +223,153 @@ func TestStatusMismatchIsAutoFixed(t *testing.T) {
 	})
 }
 
+func TestKnownProviderPaymentRetriesAreNotReportedAsUnknown(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		_, a := e.attempt("order_retry")
+		if _, err := e.core.ApplyAttemptSnapshot(ctx, a.ID, core.Snapshot{Status: state.AttemptCaptured, Amount: 50000,
+			Currency: "INR", ProviderPaymentID: "pay_ok", ProviderOrderID: "order_retry"}); err != nil {
+			t.Fatal(err)
+		}
+		failed := paid("order_retry", "pay_failed", 50000, "INR")
+		failed.Status, failed.RawStatus = connector.PaymentFailed, "failed"
+		e.provider("failed", failed)
+		e.provider("ok", paid("order_retry", "pay_ok", 50000, "INR"))
+
+		first, err := e.rec.RunAccount(ctx, e.acct)
+		if err != nil || e.items(first.ID)["unknown_provider_object:pay_failed"].State != "open" {
+			t.Fatalf("missing pre-history finding: run %+v items %+v err %v", first, e.items(first.ID), err)
+		}
+		if err := e.db.Write(ctx, func(tx store.Tx) error {
+			return store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: e.acct,
+				ProviderPaymentID: "pay_failed", AttemptID: a.ID, ProviderOrderID: "order_retry", Status: "failed",
+				CreatedAt: e.clk.Now().Add(-time.Hour), UpdatedAt: e.clk.Now()})
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		run, err := e.rec.RunAccount(ctx, e.acct)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if run.Items != 0 || len(e.items(run.ID)) != 0 {
+			t.Fatalf("known retries produced findings: run %+v items %+v", run, e.items(run.ID))
+		}
+		if e.count("SELECT COUNT(*) FROM recon_items WHERE provider_id = 'pay_failed' AND state = 'open'") != 0 {
+			t.Fatal("the old unknown-provider finding remained open after the retry became known")
+		}
+	})
+}
+
+func TestUppercaseProviderRetryStatuses(t *testing.T) {
+	for _, tc := range []struct {
+		raw    string
+		status connector.PaymentStatus
+	}{
+		{"FAILED", connector.PaymentFailed},
+		{"USER_DROPPED", connector.PaymentCanceled},
+		{"VOID", connector.PaymentCanceled},
+		{"CANCELLED", connector.PaymentCanceled},
+		{"PENDING", connector.PaymentProcessing},
+		{"NOT_ATTEMPTED", connector.PaymentRequiresAction},
+	} {
+		t.Run(tc.raw, func(t *testing.T) {
+			each(t, func(t *testing.T, e *env) {
+				_, a := e.attempt("order_retry")
+				if _, err := e.core.ApplyAttemptSnapshot(ctx, a.ID, core.Snapshot{Status: state.AttemptCaptured,
+					Amount: 50000, Currency: "INR", ProviderPaymentID: "pay_ok"}); err != nil {
+					t.Fatal(err)
+				}
+				if err := e.db.Write(ctx, func(tx store.Tx) error {
+					return store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{
+						ProviderAccountID: e.acct, ProviderPaymentID: "pay_retry", AttemptID: a.ID,
+						Status: tc.raw, Amount: 50000, Currency: "INR", CreatedAt: e.clk.Now(), UpdatedAt: e.clk.Now()})
+				}); err != nil {
+					t.Fatal(err)
+				}
+				snap := paid("order_retry", "pay_retry", 50000, "INR")
+				snap.Status, snap.RawStatus = tc.status, tc.raw
+				e.provider("retry", snap)
+				run, err := e.rec.RunAccount(ctx, e.acct)
+				if err != nil || run.Items != 0 || len(e.alerts.kinds()) != 0 {
+					t.Fatalf("false mismatch for %s: run %+v items %+v err %v", tc.raw, run, e.items(run.ID), err)
+				}
+			})
+		})
+	}
+}
+
+func TestExtraCapturedRetryRemainsAnOpenFinding(t *testing.T) {
+	for _, historyStatus := range []string{"captured", "SUCCESS", "failed"} {
+		t.Run(historyStatus, func(t *testing.T) {
+			each(t, func(t *testing.T, e *env) {
+				p, a := e.attempt("order_extra")
+				if _, err := e.core.ApplyAttemptSnapshot(ctx, a.ID, core.Snapshot{Status: state.AttemptCaptured,
+					Amount: 50000, Currency: "INR", ProviderPaymentID: "pay_ok"}); err != nil {
+					t.Fatal(err)
+				}
+				e.provider("ok", paid("order_extra", "pay_ok", 50000, "INR"))
+				e.provider("extra", paid("order_extra", "pay_extra", 50000, "INR"))
+				first, err := e.rec.RunAccount(ctx, e.acct)
+				if err != nil || e.items(first.ID)["unknown_provider_object:pay_extra"].State != "open" {
+					t.Fatalf("expected initial unknown finding: run %+v err %v", first, err)
+				}
+				if err := e.db.Write(ctx, func(tx store.Tx) error {
+					return store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{
+						ProviderAccountID: e.acct, ProviderPaymentID: "pay_extra", AttemptID: a.ID,
+						Status: historyStatus, Amount: 50000, Currency: "INR", CreatedAt: e.clk.Now(), UpdatedAt: e.clk.Now()})
+				}); err != nil {
+					t.Fatal(err)
+				}
+				for i := 0; i < 2; i++ {
+					run, err := e.rec.RunAccount(ctx, e.acct)
+					if err != nil || run.Items != 1 || run.Fixed != 0 || e.items(run.ID)["extra_capture:pay_extra"].State != "open" {
+						t.Fatalf("extra capture hidden: run %+v items %+v err %v", run, e.items(run.ID), err)
+					}
+				}
+				if e.count("SELECT COUNT(*) FROM recon_items WHERE kind = 'extra_capture' AND state = 'open'") != 1 {
+					t.Fatal("extra capture finding was duplicated or closed")
+				}
+				if e.count("SELECT COUNT(*) FROM recon_items WHERE kind = 'unknown_provider_object' AND state = 'open'") != 0 {
+					t.Fatal("ownership finding was not replaced")
+				}
+				if got, _ := e.core.GetAttempt(ctx, a.ID); got.ProviderPaymentID != "pay_ok" || got.AmountReceived != 50000 {
+					t.Fatalf("extra capture changed canonical accounting: %+v", got)
+				}
+				if got, _ := e.core.GetPaymentByID(ctx, p.ID); got.AmountReceived != 50000 {
+					t.Fatalf("extra capture changed payment accounting: %+v", got)
+				}
+				if kinds := e.alerts.kinds(); !slices.Equal(kinds, []string{"recon.unknown_provider_object", "recon.extra_capture"}) {
+					t.Fatalf("expected one extra capture alert: %v", kinds)
+				}
+			})
+		})
+	}
+}
+
+func TestProviderHistoryCannotHideCanonicalPaymentRecovery(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		p, a := e.attempt("order_recover")
+		if err := e.db.Write(ctx, func(tx store.Tx) error {
+			return store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: e.acct,
+				ProviderPaymentID: "pay_recover", AttemptID: a.ID, ProviderOrderID: "order_recover", Status: "captured",
+				Amount: 50000, Currency: "INR", CreatedAt: e.clk.Now().Add(-time.Hour), UpdatedAt: e.clk.Now()})
+		}); err != nil {
+			t.Fatal(err)
+		}
+		e.provider("recover", paid("order_recover", "pay_recover", 50000, "INR"))
+
+		run, err := e.rec.RunAccount(ctx, e.acct)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, _ := e.core.GetAttempt(ctx, a.ID)
+		payment, _ := e.core.GetPaymentByID(ctx, p.ID)
+		if run.Fixed != 1 || got.Status != "captured" || got.ProviderPaymentID != "pay_recover" || payment.Status != "succeeded" {
+			t.Fatalf("history hid canonical recovery: run %+v attempt %+v payment %+v", run, got, payment)
+		}
+	})
+}
+
 func TestAmountAndCurrencyMismatchesAreFlaggedOnceAndAlerted(t *testing.T) {
 	each(t, func(t *testing.T, e *env) {
 		_, a1 := e.attempt("order_1")
@@ -252,6 +399,15 @@ func TestAmountAndCurrencyMismatchesAreFlaggedOnceAndAlerted(t *testing.T) {
 		a := e.alerts.alerts[0]
 		if a.Severity != notify.SeverityWarning || a.Refs["provider_account"] != e.acct {
 			t.Errorf("alert %+v", a)
+		}
+		formatted := false
+		for _, alert := range e.alerts.alerts {
+			if bytes.Contains([]byte(alert.Message), []byte("499.99 INR")) && bytes.Contains([]byte(alert.Message), []byte("500.00 INR")) {
+				formatted = true
+			}
+		}
+		if !formatted {
+			t.Errorf("alert amounts are not formatted as major units: %+v", e.alerts.alerts)
 		}
 		// Nothing was changed on our side.
 		if got, _ := e.core.GetAttempt(ctx, a1.ID); got.AmountReceived != 50000 {
@@ -295,6 +451,11 @@ func TestUnknownProviderObjectAndRenewalLinking(t *testing.T) {
 		slices.Sort(k)
 		if !slices.Equal(k, []string{"recon.unknown_provider_object", "recon.unknown_provider_object"}) {
 			t.Errorf("linked renewals do not alert, unknown payments do: %v", k)
+		}
+		for _, alert := range e.alerts.alerts {
+			if alert.Refs["provider_id"] == "pay_stranger" && !bytes.Contains([]byte(alert.Message), []byte("1.00 INR")) {
+				t.Errorf("unknown-object amount is not formatted as major units: %q", alert.Message)
+			}
 		}
 	})
 }
