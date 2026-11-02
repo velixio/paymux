@@ -3,11 +3,11 @@ module github.com/velixio/paymux
 go 1.27.3
 
 require (
-	github.com/dlclark/regexp2/v2 v2.9.1
+	github.com/dlclark/regexp2/v2 v2.12.0
 	github.com/dop251/goja v0.0.0-20261016120441-313b6b662e53
 	github.com/go-pdf/fpdf v0.9.0
 	github.com/jackc/pgx/v5 v5.11.0
-	go.yaml.in/yaml/v3 v3.0.5
+	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/crypto v0.58.0
 	golang.org/x/term v0.47.0
 	golang.org/x/text v0.43.0
