@@ -150,3 +150,8 @@ func (s *Service) RotateEndpointSecret(ctx context.Context, id string) (string, 
 	}
 	return secret, nil
 }
+
+// DeleteEndpoint stops deliveries and removes the endpoint from configuration.
+func (s *Service) DeleteEndpoint(ctx context.Context, id string) error {
+	return s.db.DeleteEndpoint(ctx, id, s.now())
+}

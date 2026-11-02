@@ -183,7 +183,7 @@ func (db *DB) InsertEndpoint(ctx context.Context, tx Tx, e EndpointRow) error {
 func (db *DB) GetEndpoint(ctx context.Context, id string) (EndpointRow, error) {
 	var e EndpointRow
 	err := db.Read(ctx, func(q Querier) (err error) {
-		e, err = scanEndpoint(q.QueryRowContext(ctx, `SELECT `+endpointCols+` FROM webhook_endpoints WHERE id = ?`, id))
+		e, err = scanEndpoint(q.QueryRowContext(ctx, `SELECT `+endpointCols+` FROM webhook_endpoints WHERE deleted = 0 AND id = ?`, id))
 		return
 	})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -213,9 +213,9 @@ func (db *DB) ListEndpoints(ctx context.Context, appID string) ([]EndpointRow, e
 	var out []EndpointRow
 	err := db.Read(ctx, func(q Querier) (err error) {
 		if appID == "" {
-			out, err = collectEndpoints(q.QueryContext(ctx, `SELECT `+endpointCols+` FROM webhook_endpoints ORDER BY created_at, id`))
+			out, err = collectEndpoints(q.QueryContext(ctx, `SELECT `+endpointCols+` FROM webhook_endpoints WHERE deleted = 0 ORDER BY created_at, id`))
 		} else {
-			out, err = collectEndpoints(q.QueryContext(ctx, `SELECT `+endpointCols+` FROM webhook_endpoints WHERE app_id = ? ORDER BY created_at, id`, appID))
+			out, err = collectEndpoints(q.QueryContext(ctx, `SELECT `+endpointCols+` FROM webhook_endpoints WHERE deleted = 0 AND app_id = ? ORDER BY created_at, id`, appID))
 		}
 		return
 	})
@@ -226,7 +226,7 @@ func (db *DB) ListEndpoints(ctx context.Context, appID string) ([]EndpointRow, e
 // just-created endpoint in the same transaction is visible.
 func (db *DB) ListEnabledEndpoints(ctx context.Context, tx Tx, appID string) ([]EndpointRow, error) {
 	return collectEndpoints(tx.QueryContext(ctx, `SELECT `+endpointCols+` FROM webhook_endpoints
-		WHERE app_id = ? AND enabled = 1 ORDER BY created_at, id`, appID))
+		WHERE app_id = ? AND enabled = 1 AND deleted = 0 ORDER BY created_at, id`, appID))
 }
 
 // EndpointUpdate carries the fields to change; nil fields are left alone.
@@ -261,7 +261,7 @@ func (db *DB) UpdateEndpoint(ctx context.Context, id string, u EndpointUpdate, n
 			set += ", signing_secret_enc = ?"
 			args = append(args, *u.SigningSecretEnc)
 		}
-		res, err := tx.ExecContext(ctx, `UPDATE webhook_endpoints SET `+set+` WHERE id = ?`, append(args, id)...)
+		res, err := tx.ExecContext(ctx, `UPDATE webhook_endpoints SET `+set+` WHERE deleted = 0 AND id = ?`, append(args, id)...)
 		if err != nil {
 			return err
 		}
@@ -518,4 +518,22 @@ func PurgeProviderEvents(ctx context.Context, tx Tx, forged bool, before time.Ti
 	}
 	n, err := res.RowsAffected()
 	return int(n), err
+}
+
+// DeleteEndpoint removes an endpoint from configuration while retaining delivery history.
+func (db *DB) DeleteEndpoint(ctx context.Context, id string, now time.Time) error {
+	return db.Write(ctx, func(tx Tx) error {
+		res, err := tx.ExecContext(ctx, "UPDATE webhook_endpoints SET deleted = 1, enabled = 0, updated_at = ? WHERE id = ? AND deleted = 0", ms(now), id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
 }

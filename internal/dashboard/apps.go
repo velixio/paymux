@@ -43,7 +43,14 @@ type keyRow struct {
 	Revoked, Expired                    bool
 }
 
+type eventChoice struct {
+	Name     string
+	Selected bool
+}
+
 type endpointRow struct {
+	EventChoices          []eventChoice
+	AllEvents             bool
 	ID, URL, Events, Mode string
 	Enabled               bool
 	Created               string
@@ -91,6 +98,7 @@ type appView struct {
 
 	Keys               []keyRow
 	ScopeChoices       []string
+	EventChoices       []eventChoice
 	Endpoints          []endpointRow
 	EndpointID         string
 	EndpointEdit       *endpointRow
@@ -120,6 +128,7 @@ func (d *Dashboard) routesApps() {
 	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints", d.authed(authz.SettingsWrite, d.recent(d.endpointCreate)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints/{eid}", d.authed(authz.SettingsWrite, d.recent(d.endpointUpdate)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints/{eid}/secret", d.authed(authz.SettingsWrite, d.recent(d.endpointSecretRotate)))
+	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints/{eid}/delete", d.authed(authz.SettingsWrite, d.recent(d.endpointDelete)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/endpoints/{eid}/disable", d.authed(authz.SettingsWrite, d.recent(d.endpointDisable)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/branding", d.authed(authz.SettingsWrite, d.recent(d.brandingSave)))
 	m.HandleFunc("POST "+prefix+"/apps/{id}/providers", d.authed(authz.ProviderAccountManage, d.recent(d.providersSave)))
@@ -224,7 +233,7 @@ func (d *Dashboard) renderApp(w http.ResponseWriter, r *http.Request, s *session
 	v := d.shell(r, s, "apps", app.Name)
 	v.Error = errMsg
 	v.Reveal = reveal
-	av := &appView{ID: app.ID, Name: app.Name, Slug: app.Slug, ReturnURL: app.DefaultReturnURL, Tab: tab, Tabs: appTabs,
+	av := &appView{EventChoices: webhookEventChoices(nil), ID: app.ID, Name: app.Name, Slug: app.Slug, ReturnURL: app.DefaultReturnURL, Tab: tab, Tabs: appTabs,
 		CanKeys: s.can(authz.APIKeyCreate), CanEndpoints: s.can(authz.SettingsWrite), CanBrand: s.can(authz.SettingsWrite),
 		CanProviders: s.can(authz.ProviderAccountManage), CanSettings: s.can(authz.SettingsWrite), CanReplay: s.can(authz.WebhookReplay)}
 	v.App = av
@@ -254,7 +263,7 @@ func (d *Dashboard) renderApp(w http.ResponseWriter, r *http.Request, s *session
 			if ep.Mode != d.mode(r, s) {
 				continue
 			}
-			av.Endpoints = append(av.Endpoints, endpointRow{ID: ep.ID, URL: ep.URL, Events: strings.Join(ep.EventTypes, ", "), Enabled: ep.Enabled, Mode: ep.Mode})
+			av.Endpoints = append(av.Endpoints, endpointRow{ID: ep.ID, URL: ep.URL, Events: strings.Join(ep.EventTypes, ", "), Enabled: ep.Enabled, Mode: ep.Mode, EventChoices: webhookEventChoices(ep.EventTypes), AllEvents: len(ep.EventTypes) == 0})
 			if ep.ID == r.URL.Query().Get("endpoint") {
 				av.EndpointID = ep.ID
 				copy := av.Endpoints[len(av.Endpoints)-1]
@@ -448,11 +457,10 @@ func (d *Dashboard) endpointCreate(w http.ResponseWriter, r *http.Request, s *se
 		d.renderApp(w, r, s, app, http.StatusBadRequest, "webhooks", "The endpoint URL must be an absolute http(s) URL.", nil)
 		return
 	}
-	var types []string
-	for _, t := range strings.Split(r.PostForm.Get("events"), ",") {
-		if t = strings.TrimSpace(t); t != "" {
-			types = append(types, t)
-		}
+	types := endpointFormEvents(r)
+	if r.PostForm.Get("event_scope") == "selected" && len(types) == 0 {
+		d.renderApp(w, r, s, app, http.StatusBadRequest, "webhooks", "Select at least one event or choose All events.", nil)
+		return
 	}
 	ep, secret, err := d.o.Outbound.CreateEndpoint(r.Context(), outbound.CreateEndpointInput{OrgID: app.OrgID, AppID: app.ID, URL: raw, EventTypes: types, Mode: mode})
 	if err != nil {
@@ -525,7 +533,11 @@ func (d *Dashboard) endpointUpdate(w http.ResponseWriter, r *http.Request, s *se
 		d.renderApp(w, r, s, app, http.StatusBadRequest, "webhooks", "The endpoint URL must be an absolute http(s) URL.", nil)
 		return
 	}
-	types, enabled := endpointEventTypes(r.PostForm.Get("events")), r.PostForm.Get("enabled") != ""
+	types, enabled := endpointFormEvents(r), r.PostForm.Get("enabled") != ""
+	if r.PostForm.Get("event_scope") == "selected" && len(types) == 0 {
+		d.renderApp(w, r, s, app, http.StatusBadRequest, "webhooks", "Select at least one event or choose All events.", nil)
+		return
+	}
 	if err := d.o.Outbound.UpdateEndpoint(r.Context(), eid, outbound.EndpointUpdate{URL: &raw, EventTypes: &types, Enabled: &enabled}); err != nil {
 		d.fail(w, err)
 		return
@@ -837,4 +849,63 @@ func (d *Dashboard) appSettingReset(w http.ResponseWriter, r *http.Request, s *s
 		return
 	}
 	d.appRedirect(w, r, app, "settings")
+}
+
+func (d *Dashboard) endpointDelete(w http.ResponseWriter, r *http.Request, s *session) {
+	app, ok := d.loadApp(w, r)
+	if !ok {
+		return
+	}
+	if r.PostForm.Get("confirm") != "delete" {
+		d.renderApp(w, r, s, app, http.StatusBadRequest, "webhooks", "Confirm deletion before deleting the webhook.", nil)
+		return
+	}
+	eid := r.PathValue("eid")
+	ep, err := d.o.DB.GetEndpoint(r.Context(), eid)
+	if errors.Is(err, store.ErrNotFound) || err == nil && (ep.AppID != app.ID || ep.Mode != d.mode(r, s)) {
+		http.NotFound(w, r)
+		return
+	}
+	if err == nil {
+		err = d.o.Outbound.DeleteEndpoint(r.Context(), eid)
+	}
+	if err == nil {
+		err = d.record(r.Context(), r, s, "webhook_endpoint.delete", eid, map[string]any{"url": ep.URL, "enabled": ep.Enabled}, map[string]any{"deleted": true})
+	}
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	d.appRedirect(w, r, app, "webhooks")
+}
+
+// endpointFormEvents also accepts older comma-separated forms.
+func endpointFormEvents(r *http.Request) []string {
+	if r.PostForm.Get("event_scope") == "all" {
+		return nil
+	}
+	return endpointEventTypes(strings.Join(r.PostForm["events"], ","))
+}
+
+func webhookEventChoices(selected []string) []eventChoice {
+	names := []string{
+		"payment.created", "payment.requires_action", "payment.processing", "payment.succeeded", "payment.failed", "payment.canceled", "payment.expired", "payment.needs_review", "payment.duplicate_refunded",
+		"refund.created", "refund.succeeded", "refund.failed",
+		"dispute.opened", "dispute.updated", "dispute.won", "dispute.lost",
+		"subscription.created", "subscription.activated", "subscription.renewed", "subscription.renewal_upcoming", "subscription.past_due", "subscription.canceled", "subscription.ended", "subscription.incomplete_expired", "subscription.updated", "subscription.reauthorization_required",
+		"mandate.created", "mandate.activated", "mandate.revoked", "mandate.expired", "mandate.failed",
+		"invoice.issued", "credit_note.issued", "payment_link.created", "payment_link.deactivated",
+		"payout.created", "payout.processing", "payout.succeeded", "payout.failed", "payout.reversed", "payout.needs_review",
+	}
+	// Keep custom or legacy subscriptions selectable when editing.
+	for _, name := range selected {
+		if !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	out := make([]eventChoice, 0, len(names))
+	for _, name := range names {
+		out = append(out, eventChoice{Name: name, Selected: slices.Contains(selected, name)})
+	}
+	return out
 }

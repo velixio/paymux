@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/velixio/paymux/internal/authz"
 	"github.com/velixio/paymux/internal/core"
 	"github.com/velixio/paymux/internal/core/state"
+	"github.com/velixio/paymux/internal/events"
 	"github.com/velixio/paymux/internal/store"
 	"github.com/velixio/paymux/pkg/connector"
 	"github.com/velixio/paymux/pkg/connector/money"
@@ -762,4 +764,55 @@ func refundNonceMAC(s *session, paymentID, rnd string) string {
 func validRefundNonce(s *session, paymentID, nonce string) bool {
 	rnd, mac, ok := strings.Cut(nonce, ".")
 	return ok && rnd != "" && hmac.Equal([]byte(refundNonceMAC(s, paymentID, rnd)), []byte(mac))
+}
+
+// paymentWebhookSubmit queues a fresh snapshot without changing payment state.
+func (d *Dashboard) paymentWebhookSubmit(w http.ResponseWriter, r *http.Request, s *session) {
+	ctx := r.Context()
+	noEndpoint := errors.New("no subscribed webhook endpoint")
+	var p store.Payment
+	err := d.o.DB.Write(ctx, func(tx store.Tx) error {
+		var err error
+		p, err = store.GetPaymentForUpdate(ctx, tx, r.PathValue("id"))
+		if err != nil {
+			return err
+		}
+		if !d.inOrg(ctx, p.OrgID) || p.Mode != d.mode(r, s) {
+			return store.ErrNotFound
+		}
+		typ := "payment." + p.Status
+		endpoints, err := d.o.DB.ListEnabledEndpoints(ctx, tx, p.AppID)
+		if err != nil {
+			return err
+		}
+		matched := false
+		for _, ep := range endpoints {
+			if ep.Mode == p.Mode && (len(ep.EventTypes) == 0 || slices.Contains(ep.EventTypes, typ)) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return noEndpoint
+		}
+		return d.o.Outbound.SendWebhook(ctx, tx, events.Event{OrgID: p.OrgID, AppID: p.AppID, Mode: p.Mode,
+			Type: typ, ObjectType: "payment", ObjectID: p.ID, ObjectVersion: p.Version, Data: core.ViewPayment(p)})
+	})
+	if errors.Is(err, store.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if errors.Is(err, noEndpoint) {
+		d.renderPayment(w, r, s, http.StatusBadRequest, "No enabled webhook endpoint subscribes to this payment status. Configure one in App → Webhooks first.", "")
+		return
+	}
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	if err := d.record(ctx, r, s, "webhook.send_payment_status", p.ID, nil, map[string]any{"event_type": "payment." + p.Status, "version": p.Version}); err != nil {
+		d.fail(w, err)
+		return
+	}
+	d.renderPayment(w, r, s, http.StatusOK, "", "Status webhook queued. Check delivery results below.")
 }

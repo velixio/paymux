@@ -103,6 +103,13 @@
 {{end}}
 
 <h3>Webhook deliveries</h3>
+{{if .CanReplay}}
+<form class="stack" method="post" action="/dashboard/payments/{{.ID}}/webhook">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<p>Send the current payment status to enabled webhooks subscribed to this event. This creates a new event for the merchant to process.</p>
+<button class="btn secondary" type="submit">Send status webhook</button>
+</form>
+{{end}}
 <div class="table-scroll"><table class="grid">
 <thead><tr><th>Event</th><th>Endpoint</th><th>Status</th><th>Attempts</th><th>Last result</th><th>Updated</th>{{if .CanReplay}}<th></th>{{end}}</tr></thead>
 <tbody>

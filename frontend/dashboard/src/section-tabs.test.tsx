@@ -105,3 +105,52 @@ test("list pages and pages with fewer than two sections render as before", () =>
   render(<PageContent nodes={nodes} />);
   expect(screen.queryByRole("tab")).toBeNull();
 });
+
+test("webhook editing stays visible inside existing app section navigation", () => {
+  const appNodes = [
+    el("h1", "My app"),
+    {
+      tag: "nav",
+      attrs: { class: "tabs", "aria-label": "App sections" },
+      children: [],
+    },
+    el("p", "Webhook list"),
+  ];
+  const page = render(
+    <PageContent nodes={appNodes} href="/dashboard/apps/app_1?tab=webhooks" />,
+  );
+  page.rerender(
+    <PageContent
+      nodes={[
+        ...appNodes,
+        el("h3", "Edit webhook"),
+        {
+          tag: "label",
+          attrs: {},
+          children: [
+            text("Endpoint URL"),
+            {
+              tag: "input",
+              attrs: {
+                name: "url",
+                value: "https://merchant.example/webhooks",
+              },
+              children: [],
+            },
+          ],
+        },
+        el("h3", "Deliveries"),
+        el("p", "Delivery history"),
+      ]}
+      href="/dashboard/apps/app_1?tab=webhooks&endpoint=whe_1"
+    />,
+  );
+  expect(screen.queryByRole("tab", { name: "Details" })).toBeNull();
+  expect(
+    screen.getByRole("textbox", { name: "Endpoint URL" }).closest("[hidden]"),
+  ).toBeNull();
+  expect(
+    screen.getByRole("heading", { name: "Edit webhook" }).closest("[hidden]"),
+  ).toBeNull();
+  expect(screen.getByText("Delivery history").closest("[hidden]")).toBeNull();
+});

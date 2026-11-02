@@ -135,6 +135,15 @@ func matches(types []string, typ string) bool { return len(types) == 0 || slices
 // Emit records e and schedules a delivery to every enabled endpoint of
 // e.AppID whose event types match, all inside the caller's transaction.
 func (s *Service) Emit(ctx context.Context, tx store.Tx, e events.Event) error {
+	return s.emit(ctx, tx, e, true)
+}
+
+// SendWebhook records a manual webhook event without sending operator notifications.
+func (s *Service) SendWebhook(ctx context.Context, tx store.Tx, e events.Event) error {
+	return s.emit(ctx, tx, e, false)
+}
+
+func (s *Service) emit(ctx context.Context, tx store.Tx, e events.Event, notify bool) error {
 	data, err := json.Marshal(e.Data)
 	if err != nil {
 		return fmt.Errorf("marshal event data: %w", err)
@@ -162,6 +171,9 @@ func (s *Service) Emit(ctx context.Context, tx store.Tx, e events.Event) error {
 		if err := s.enqueue(ctx, tx, d.ID, 0, first); err != nil {
 			return err
 		}
+	}
+	if !notify {
+		return nil
 	}
 	config, err := store.GetNotificationConfig(ctx, tx, e.OrgID, e.Mode)
 	if err != nil {

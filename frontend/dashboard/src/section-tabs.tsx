@@ -8,6 +8,16 @@ const DETAILS = "details";
 
 /** The split of a record page, or null when it should render as it is. */
 export function recordSplit(nodes: ViewNode[]): SplitPage | null {
+  // App settings already have server-selected section navigation. Splitting
+  // them again hides deep-linked forms (such as webhook editing) in Details.
+  if (
+    nodes.some(
+      (node) =>
+        node.tag === "nav" &&
+        (node.attrs.class ?? "").split(/\s+/).includes("tabs"),
+    )
+  )
+    return null;
   return splitSections(nodes);
 }
 
