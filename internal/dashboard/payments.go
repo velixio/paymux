@@ -769,7 +769,7 @@ func validRefundNonce(s *session, paymentID, nonce string) bool {
 // paymentWebhookSubmit queues a fresh snapshot without changing payment state.
 func (d *Dashboard) paymentWebhookSubmit(w http.ResponseWriter, r *http.Request, s *session) {
 	ctx := r.Context()
-	noEndpoint := errors.New("No enabled webhook endpoint subscribes to this payment status. Configure one in App → Webhooks first.")
+	noEndpoint := errors.New("no subscribed webhook endpoint")
 	var p store.Payment
 	err := d.o.DB.Write(ctx, func(tx store.Tx) error {
 		var err error
@@ -803,7 +803,7 @@ func (d *Dashboard) paymentWebhookSubmit(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if errors.Is(err, noEndpoint) {
-		d.renderPayment(w, r, s, http.StatusBadRequest, err.Error(), "")
+		d.renderPayment(w, r, s, http.StatusBadRequest, "No enabled webhook endpoint subscribes to this payment status. Configure one in App → Webhooks first.", "")
 		return
 	}
 	if err != nil {
