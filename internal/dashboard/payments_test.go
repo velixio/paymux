@@ -638,3 +638,66 @@ func TestReplayDeliveryFromDashboard(t *testing.T) {
 		}
 	})
 }
+
+func TestSendCurrentPaymentStatusWebhook(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		f := e.detailFixture()
+		// This payment predates the endpoint and has no event or delivery history.
+		p := e.seedPayment("pay_manual", f.pay.AppID, "live", "succeeded", "MANUAL", 2700, e.clk.Now())
+		path := "/dashboard/payments/" + p.ID
+		viewer := e.roleClient("viewer")
+		vt := csrfOf(t, e.pageOK(viewer, path))
+		if r, _ := e.post(viewer, path+"/webhook", url.Values{"csrf": {vt}}); r.StatusCode != 403 {
+			t.Fatalf("viewer: %d", r.StatusCode)
+		}
+		op := e.roleClient("operator")
+		tok := csrfOf(t, e.pageOK(op, path))
+		if r, body := e.post(op, path+"/webhook", url.Values{"csrf": {tok}}); r.StatusCode != 200 {
+			t.Fatalf("send: %d %s", r.StatusCode, body)
+		}
+		var rows []store.DeliveryListRow
+		if err := db.Read(ctx, func(q store.Querier) (err error) { rows, err = store.ListPaymentDeliveries(ctx, q, p.ID); return }); err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 1 || rows[0].EventType != "payment.succeeded" {
+			t.Fatalf("deliveries: %+v", rows)
+		}
+		detail, err := db.GetDelivery(ctx, rows[0].DeliveryID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if detail.Event.ObjectVersion != p.Version || !strings.Contains(string(detail.Event.Data), `"amount":2700`) {
+			t.Fatalf("snapshot: %+v", detail.Event)
+		}
+		e.runJobs()
+		if f.sink.count() != 2 {
+			t.Fatalf("delivery count: %d", f.sink.count())
+		}
+		if err := db.Read(ctx, func(q store.Querier) error {
+			got, err := store.GetPayment(ctx, q, p.ID)
+			if err == nil && (got.Status != p.Status || got.Version != p.Version || got.AmountReceived != p.AmountReceived) {
+				t.Fatalf("payment changed: %+v", got)
+			}
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		eps, err := e.out.ListEndpoints(ctx, p.AppID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		types := []string{"refund.succeeded"}
+		if err := e.out.UpdateEndpoint(ctx, eps[0].ID, outbound.EndpointUpdate{EventTypes: &types}); err != nil {
+			t.Fatal(err)
+		}
+		if r, _ := e.post(op, path+"/webhook", url.Values{"csrf": {tok}}); r.StatusCode != 400 {
+			t.Fatalf("no subscribed endpoint: %d", r.StatusCode)
+		}
+		e.setMode(op, "test")
+		tok = csrfOf(t, e.pageOK(op, "/dashboard/payments"))
+		if r, _ := e.post(op, path+"/webhook", url.Values{"csrf": {tok}}); r.StatusCode != 404 {
+			t.Fatalf("wrong mode: %d", r.StatusCode)
+		}
+	})
+}

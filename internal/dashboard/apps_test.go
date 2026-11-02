@@ -256,8 +256,33 @@ func TestWebhookEndpointsFromDashboard(t *testing.T) {
 			t.Error("still enabled")
 		}
 		has(t, e.pageOK(admin, page+"?tab=webhooks"), "disabled")
+		edit := page + "/endpoints/" + eps[0].ID
+		if r, _ := e.post(admin, edit, url.Values{"csrf": {tok}, "url": {sink.URL + "/changed"}, "events": {"refund.created, payment.failed"}}); r.StatusCode != 303 {
+			t.Fatalf("edit: %d", r.StatusCode)
+		}
+		updated, err := db.GetEndpoint(ctx, eps[0].ID)
+		if err != nil || updated.URL != sink.URL+"/changed" || strings.Join(updated.EventTypes, ",") != "refund.created,payment.failed" {
+			t.Fatalf("update: %+v %v", updated, err)
+		}
+		if r, _ := e.post(admin, edit+"/delete", url.Values{"csrf": {tok}}); r.StatusCode != 400 {
+			t.Fatalf("unconfirmed delete: %d", r.StatusCode)
+		}
+		if r, _ := e.post(admin, "/dashboard/apps/"+other.ID+"/endpoints/"+eps[0].ID+"/delete", url.Values{"csrf": {tok}, "confirm": {"delete"}}); r.StatusCode != 404 {
+			t.Fatalf("cross-app delete: %d", r.StatusCode)
+		}
+		if r, _ := e.post(admin, edit+"/delete", url.Values{"csrf": {tok}, "confirm": {"delete"}}); r.StatusCode != 303 {
+			t.Fatalf("delete: %d", r.StatusCode)
+		}
+		if r, _ := e.post(admin, edit, url.Values{"csrf": {tok}, "url": {sink.URL}, "enabled": {"1"}}); r.StatusCode != 404 {
+			t.Fatalf("deleted endpoint could be edited: %d", r.StatusCode)
+		}
+		remaining, err := e.out.ListEndpoints(ctx, app.ID)
+		if err != nil || len(remaining) != 0 {
+			t.Fatalf("deleted endpoint listed: %+v %v", remaining, err)
+		}
+
 		var aud []store.AuditRow
-		for _, act := range []string{"webhook_endpoint.create", "webhook_endpoint.disable"} {
+		for _, act := range []string{"webhook_endpoint.create", "webhook_endpoint.disable", "webhook_endpoint.update", "webhook_endpoint.delete"} {
 			_ = db.Read(ctx, func(q store.Querier) (err error) {
 				aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, act, 10)
 				return
@@ -504,4 +529,35 @@ func TestAppSettingsTab(t *testing.T) {
 			t.Errorf("setting.update audit: %+v", aud)
 		}
 	})
+}
+
+func TestEndpointEventSelections(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		form url.Values
+		want string
+	}{
+		{"multiple", url.Values{"event_scope": {"selected"}, "events": {"payment.succeeded", "refund.created"}}, "payment.succeeded,refund.created"},
+		{"all overrides checked", url.Values{"event_scope": {"all"}, "events": {"payment.succeeded"}}, ""},
+		{"empty selection", url.Values{"event_scope": {"selected"}}, ""},
+		{"legacy", url.Values{"events": {"payment.succeeded, refund.created"}}, "payment.succeeded,refund.created"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/", nil)
+			r.PostForm = tc.form
+			if got := strings.Join(endpointFormEvents(r), ","); got != tc.want {
+				t.Fatalf("got %q want %q", got, tc.want)
+			}
+		})
+	}
+	choices := webhookEventChoices([]string{"refund.created", "custom.event"})
+	selected := []string{}
+	for _, choice := range choices {
+		if choice.Selected {
+			selected = append(selected, choice.Name)
+		}
+	}
+	if strings.Join(selected, ",") != "refund.created,custom.event" {
+		t.Fatalf("selection lost: %v", selected)
+	}
 }

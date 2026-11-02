@@ -6,7 +6,7 @@ There are two directions of webhook traffic. A **provider webhook** arrives at P
 
 For a provider account, copy the webhook URL from that account's detail page: `https://your-hub.example/hooks/{provider_account_id}`. Register it with the provider and set the provider-specific signing secret where required. The account list intentionally does not display webhook URLs.
 
-For your application, open **Apps → your app → Webhooks**, add your receiver URL and event filters, and save the signing secret when it is shown. The secret starts with `whsec_`. Keep it on your backend. You can later update the URL and filters, generate a replacement secret, or delete (soft-disable) the endpoint without losing delivery history. Your receiver must be reachable from the hub; localhost refers to the hub's own host or container network.
+For your application, open **Apps → your app → Webhooks**, add your receiver URL and event filters, and save the signing secret when it is shown. The secret starts with `whsec_`. Keep it on your backend. You can later update the URL and filters, generate a replacement secret, or delete the endpoint from configuration while retaining delivery history. Your receiver must be reachable from the hub; localhost refers to the hub's own host or container network.
 
 Private and loopback destinations are blocked by default. Use `PAYMUX_ALLOW_PRIVATE_WEBHOOKS=true` only for the local receiver walkthrough or an intentionally configured private deployment.
 
@@ -69,6 +69,10 @@ Within your own database transaction, apply the order change and record processi
 The default retry delays before successive attempts are: immediately, 1 minute, 5 minutes, 30 minutes, 2 hours, 6 hours, 12 hours, 24 hours, and 24 hours. The effective `webhook_retry_schedule` setting can change this. Network failures and non-2xx responses are recorded; permanent transport/configuration failures may stop delivery earlier.
 
 The dashboard shows every attempt, the exact JSON request body, bounded response body, HTTP status and transport error. Signing headers and secrets are not retained in this history. After fixing the receiver, replay a failed delivery from the app's Webhooks tab. Replay keeps the same event ID and restarts delivery attempts, so your deduplication logic still applies. A pending delivery cannot be replayed as if it had already finished.
+
+To notify a merchant of a payment's current status, open **Payments → the payment → Webhook deliveries → Send status webhook**. This queues a fresh event (for example, `payment.succeeded`) with the current payment snapshot and a new webhook ID, including when the payment has no previous deliveries. It sends to enabled endpoints in the payment's mode that subscribe to that event. If none match, configure the app's webhook first. The action requires webhook replay permission and is audited; it does not change the payment or send operator email/Telegram notifications.
+
+Use **Replay** on a delivery when you want to resend its original event with the same webhook ID. Receivers should still make payment processing idempotent by payment ID, since a manually sent status event has a new event ID for the same payment.
 
 Payment success and delivery success are independent. Fixing delivery does not require charging the customer again.
 
