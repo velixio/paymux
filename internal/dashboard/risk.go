@@ -84,7 +84,7 @@ func riskViewFromJSON(raw, status string) *riskView {
 	}
 	v.Location = strings.Join(location, ", ")
 	for _, c := range []struct{ label, result string }{
-		{"Billing address", r.AddressCheck}, {"Postal code", r.PostalCheck}, {"CVV", r.CVVCheck},
+		{"Address", r.AddressCheck}, {"ZIP / postal", r.PostalCheck}, {"CVV", r.CVVCheck},
 	} {
 		if c.result != "" {
 			v.Checks = append(v.Checks, verificationCheck(c.label, c.result))

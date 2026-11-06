@@ -195,6 +195,14 @@ func (d *Dashboard) fmtTime(t time.Time) string {
 	return t.In(d.o.Location).Format("2006-01-02 15:04:05")
 }
 
+// fmtTimeShort is fmtTime for places read at a glance, without year or seconds.
+func (d *Dashboard) fmtTimeShort(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.In(d.o.Location).Format("Jan 2, 15:04")
+}
+
 // fmtMoney renders minor units as "100.00 INR".
 func fmtMoney(minor int64, currency string) string {
 	s, err := money.FormatDecimal(minor, currency)

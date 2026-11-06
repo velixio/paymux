@@ -1,92 +1,104 @@
 {{define "title"}}{{.Title}} - Paymux{{end}}
 {{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{end}}
 {{define "mainclass"}}dash{{end}}
+{{define "pt_mark"}}{{if eq . "pass"}}<span aria-hidden="true">✓</span> {{else if eq . "fail"}}<span aria-hidden="true">✕</span> {{end}}{{end}}
+{{define "pt_risk_rows"}}<dl class="risk-checks">
+{{range .Checks}}<dt>{{.Label}}</dt><dd class="risk-check-{{.Tone}}"><span aria-hidden="true">{{.Mark}}</span> {{.Text}}</dd>{{end}}
+{{if .Location}}<dt>Location</dt><dd>{{.Location}}</dd>{{end}}
+{{if .IPAddress}}<dt>IP</dt><dd>{{.IPAddress}}</dd>{{end}}
+{{if .AuthorizationCode}}<dt>Auth code</dt><dd>{{.AuthorizationCode}}</dd>{{end}}
+</dl>{{end}}
 {{define "content"}}{{template "dash_open" .}}
 {{with .Pay}}
 <p><a href="/dashboard/payments">&larr; Payments</a></p>
-<h1>{{.ID}} <span class="status status-{{.StatusClass}}">{{.Status}}</span> <span class="mode mode-{{.Mode}}">{{.Mode}}</span></h1>
-{{if $.CanLogs}}<p><a href="/dashboard/logs?payment_id={{.ID}}">Logs for this payment</a></p>{{end}}
+<h1 class="pt-heading">{{.ID}} <span class="status status-{{.StatusClass}}">{{.Status}}</span> <span class="mode mode-{{.Mode}}">{{.Mode}}</span> <span class="pt-amount">{{.Amount}}</span></h1>
 {{with $.Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 {{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
-{{if .CanSync}}
-<form method="post" action="/dashboard/payments/{{.ID}}/sync" class="inline">
-<input type="hidden" name="csrf" value="{{$.CSRF}}">
-<button class="btn secondary" type="submit">Sync from provider</button>
-</form>
+<section class="payment-timeline">
+<dl class="pt-tiles">
+{{with .Glance}}
+<div class="pt-tile pt-tile-wide{{if eq .LastFailureTone "fail"}} pt-tile-alert{{end}}"><dt>Last failure</dt><dd>{{if .LastFailure}}{{.LastFailure}}{{else}}None{{end}}</dd></div>
+<div class="pt-tile"><dt>Tries</dt><dd class="pt-tone-{{.TriesTone}}">{{template "pt_mark" .TriesTone}}{{.Tries}}</dd></div>
+<div class="pt-tile"><dt>Risk</dt><dd class="pt-risk-tile pt-risk-{{.RiskTone}}">{{.RiskText}}</dd></div>
+<div class="pt-tile"><dt>Webhooks</dt><dd class="pt-tone-{{.WebhooksTone}}">{{template "pt_mark" .WebhooksTone}}{{.Webhooks}}</dd></div>
+<div class="pt-tile"><dt>Received</dt><dd>{{.Received}}</dd></div>
 {{end}}
-<dl class="facts">
+</dl>
+<div class="pt-columns">
+<div class="pt-panel pt-main">
+<h2>Timeline</h2>
+<ol class="pt-list">
+{{range .Timeline}}<li class="pt-item pt-{{.Kind}}{{if .System}} pt-system{{end}}">
+<div class="pt-row"><span class="pt-dot pt-dot-{{.Tone}}" aria-hidden="true"></span><span class="pt-title{{if eq .Tone "fail"}} pt-tone-fail{{end}}">{{.Title}}</span><span class="pt-when">{{if .Meta}}{{.Meta}} · {{end}}{{.At}}</span></div>
+{{with .Try}}<div class="pt-card">
+{{if or .Card .Bank .Name}}<p class="pt-instrument">{{if .Card}}<span class="pt-card-name">{{.Card}}</span>{{end}}{{if .Bank}}<span>{{.Bank}}</span>{{end}}{{if .Name}}<span>{{.Name}}</span>{{end}}</p>{{end}}
+{{if or .ThreeDS .Declined .FailureCode}}<p class="pt-chips">{{if .ThreeDS}}<span class="pt-chip pt-chip-{{.ThreeDSTone}}">{{template "pt_mark" .ThreeDSTone}}{{.ThreeDS}}</span>{{end}}{{if .Declined}}<span class="pt-chip pt-chip-fail">{{template "pt_mark" "fail"}}Declined</span>{{end}}{{if .FailureCode}}<code>{{.FailureCode}}</code>{{end}}</p>{{end}}
+<details class="pt-more"><summary>Provider IDs and logs</summary>
+<dl class="pt-facts">
+<dt>Provider</dt><dd>{{.Provider}}</dd>
+<dt>Status</dt><dd>{{.Status}}{{if .Duplicate}} <span class="flag">duplicate</span>{{end}}</dd>
+{{if .MethodMeta}}<dt>Method</dt><dd>{{.Method}} · {{.MethodMeta}}</dd>{{else if .Method}}<dt>Method</dt><dd>{{.Method}}</dd>{{end}}
+<dt>Attempt</dt><dd>{{.AttemptID}}</dd>
+{{if .ProviderRef}}<dt>Reference</dt><dd>{{.ProviderRef}}</dd>{{end}}
+{{if .OrderID}}<dt>Order</dt><dd>{{.OrderID}}</dd>{{end}}
+{{if .PaymentID}}<dt>Payment</dt><dd>{{.PaymentID}}</dd>{{end}}
+{{if .TryID}}<dt>Try</dt><dd>{{.TryID}}</dd>{{end}}
+</dl>
+{{with .Risk}}{{if or .Checks .Location .IPAddress .AuthorizationCode}}{{template "pt_risk_rows" .}}{{end}}{{end}}
+{{if $.CanLogs}}<p><a href="/dashboard/logs?id={{.AttemptID}}">Logs for this attempt</a></p>{{end}}
+</details>
+</div>{{end}}
+{{with .Refund}}<div class="pt-card"><p class="pt-instrument">{{if .Reason}}<span>{{.Reason}}</span>{{end}}<span>{{.InitiatedBy}}{{if .Actor}} ({{.Actor}}){{end}}</span><span>{{.ID}}</span></p>{{if $.CanLogs}}<p><a href="/dashboard/logs?id={{.ID}}">Logs for this refund</a></p>{{end}}</div>{{end}}
+{{with .Webhook}}<details class="pt-card pt-hook"{{if .Failing}} open{{end}}>
+<summary><span class="pt-event">{{.EventType}}</span> <span class="pt-when">{{.Summary}}</span></summary>
+{{if and $.Pay.CanReplay .SendCount}}<form class="inline pt-redeliver" method="post" action="/dashboard/payments/{{$.Pay.ID}}/webhooks/replay"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="event_id" value="{{.EventID}}"><button class="btn" type="submit">Redeliver to all ({{.SendCount}})</button></form>{{end}}
+<ul class="pt-targets">
+{{range .Targets}}<li><span class="pt-endpoint">{{.Endpoint}}{{if .New}} <span class="flag">New</span>{{end}}</span>
+<span class="pt-target-result"><span class="pt-chip pt-chip-{{.Tone}}"{{if .Error}} title="{{.Error}}"{{end}}>{{template "pt_mark" .Tone}}{{.Result}}</span>{{if .NextTry}} <span class="pt-when">next try {{.NextTry}}</span>{{end}}
+{{if and .CanRetry $.Pay.CanReplay}}<form class="inline" method="post" action="/dashboard/deliveries/{{.DeliveryID}}/replay" ><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Path}}"><button class="pt-action" type="submit">Retry</button></form>{{end}}</span></li>{{end}}
+</ul>
+</details>{{end}}
+</li>{{end}}
+</ol>
+{{if .NoTries}}<p class="pt-empty">The customer hasn't tried to pay yet.</p>{{end}}
+<details class="pt-all"><summary>All events</summary></details>
+</div>
+<div class="pt-side">
+{{with .Customer}}<div class="pt-panel pt-customer">
+<h2>Customer</h2>
+{{if .Name}}<p class="pt-customer-name">{{.Name}}</p>{{end}}
+{{if .Email}}<p>{{.Email}}</p>{{end}}
+{{if .Phone}}<p>{{.Phone}}</p>{{end}}
+{{if .HasBilling}}<p>{{if .Line1}}{{.Line1}}{{end}}{{if .Line2}}{{if .Line1}}<br>{{end}}{{.Line2}}{{end}}{{if .City}}<br>{{.City}}{{end}}{{if .StateCode}}{{if .City}}, {{end}}{{.StateCode}}{{end}}{{if .PostalCode}} {{.PostalCode}}{{end}}{{if .Country}}<br>{{.Country}}{{end}}</p>{{end}}
+{{if or .ExternalRef .LegalName .GSTIN}}<dl class="pt-facts">
+{{if .ExternalRef}}<dt>Your ref</dt><dd>{{.ExternalRef}}</dd>{{end}}
+{{if .LegalName}}<dt>Legal name</dt><dd>{{.LegalName}}</dd>{{end}}
+{{if .GSTIN}}<dt>GSTIN</dt><dd>{{.GSTIN}}</dd>{{end}}
+</dl>{{end}}
+</div>{{end}}
+{{with .RiskPanel}}<div class="pt-panel pt-risk">
+<h2>Risk</h2>
+{{template "pt_risk_rows" .}}
+{{if .Provider}}<p class="risk-source">Reported by {{.Provider}}</p>{{end}}
+</div>{{end}}
+<div class="pt-panel">
+<h2>Payment</h2>
+<dl class="pt-facts">
 <dt>App</dt><dd>{{.App}}</dd>
-<dt>Amount</dt><dd>{{.Amount}}</dd>
-<dt>Received</dt><dd>{{.Received}}</dd>
 <dt>Refunded</dt><dd>{{.Refunded}}</dd>
-<dt>Attempts</dt><dd>{{.AttemptCount}}</dd>
-{{if .OrderRef}}<dt>Order ref</dt><dd>{{.OrderRef}}</dd>{{end}}
+{{if .OrderRef}}<dt>Order</dt><dd>{{.OrderRef}}</dd>{{end}}
 {{if .Description}}<dt>Description</dt><dd>{{.Description}}</dd>{{end}}
 <dt>Created</dt><dd>{{.Created}}</dd>
 {{if .Flags}}<dt>Flags</dt><dd>{{range .Flags}}<span class="flag">{{.}}</span> {{end}}</dd>{{end}}
-{{with .Risk}}<dt>Risk review</dt><dd><button type="button" class="risk-row" command="show-modal" commandfor="{{.DialogID}}" aria-haspopup="dialog"><span class="risk-score risk-{{.Tone}}">{{.Score}}</span>{{if .Location}}<span>{{.Location}}</span>{{end}}<svg class="risk-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button></dd>{{end}}
 </dl>
-{{with .Risk}}{{template "risk_dialog" .}}{{end}}
-
-{{with .Customer}}
-<h3>Customer details</h3>
-<dl class="facts">
-{{if .ExternalRef}}<dt>Merchant customer ref</dt><dd>{{.ExternalRef}}</dd>{{end}}
-{{if .Name}}<dt>Name</dt><dd>{{.Name}}</dd>{{end}}
-{{if .Email}}<dt>Email</dt><dd>{{.Email}}</dd>{{end}}
-{{if .Phone}}<dt>Phone</dt><dd>{{.Phone}}</dd>{{end}}
-{{if .LegalName}}<dt>Legal name</dt><dd>{{.LegalName}}</dd>{{end}}
-{{if .GSTIN}}<dt>GSTIN</dt><dd>{{.GSTIN}}</dd>{{end}}
-{{if .HasBilling}}<dt>Billing address</dt><dd>{{if .Line1}}{{.Line1}}{{end}}{{if .Line2}}{{if .Line1}}<br>{{end}}{{.Line2}}{{end}}{{if .City}}<br>{{.City}}{{end}}{{if .StateCode}}{{if .City}}, {{end}}{{.StateCode}}{{end}}{{if .PostalCode}} {{.PostalCode}}{{end}}{{if .Country}}<br>{{.Country}}{{end}}</dd>{{end}}
-</dl>
-{{end}}
-
-<h3>Attempts</h3>
-<div class="table-scroll"><table class="grid">
-<thead><tr><th>Attempt</th><th>Status</th><th>Provider</th><th>Provider ids</th><th>Method</th><th>Failure</th><th>Created</th></tr></thead>
-<tbody>
-{{range .Attempts}}<tr>
-<td>{{.ID}}{{if .Duplicate}} <span class="flag">duplicate</span>{{end}}{{if $.CanLogs}}<br><small><a href="/dashboard/logs?id={{.ID}}">logs</a></small>{{end}}</td><td>{{.Status}}</td><td>{{.Provider}}</td>
-<td><small>ref {{.ProviderRef}}{{if .OrderID}}<br>order {{.OrderID}}{{end}}{{if .PaymentID}}<br>payment {{.PaymentID}}{{end}}</small></td>
-<td>{{.Method}}{{if .MethodSummary}}<br><small>{{.MethodSummary}}</small>{{end}}{{if .MethodMeta}}<br><small class="muted">{{.MethodMeta}}</small>{{end}}</td><td>{{if .FailureCode}}{{.FailureCode}}{{if .FailureMessage}}: {{.FailureMessage}}{{end}}{{end}}</td><td>{{.Created}}</td>
-</tr>{{else}}<tr><td colspan="7" class="muted">No attempts yet.</td></tr>{{end}}
-</tbody>
-</table></div>
-
-{{if .ProviderAttempts}}
-<h3>Provider payment attempts</h3>
-<div class="table-scroll"><table class="grid">
-<thead><tr><th>Provider payment</th><th>Status</th><th>Provider</th><th>Provider order</th><th>Method</th><th>Amount</th><th>Failure</th><th>Created</th></tr></thead>
-<tbody>{{range .ProviderAttempts}}<tr>
-<td>{{.PaymentID}}<br><small>Paymux attempt {{.AttemptID}}</small></td><td>{{.Status}}</td><td>{{.Provider}}</td><td>{{.OrderID}}</td><td>{{.Method}}</td><td>{{.Amount}}</td><td>{{.Failure}}</td><td>{{.Created}}</td>
-</tr>{{end}}</tbody>
-</table></div>
-{{end}}
-
-<h3>Ledger</h3>
-<div class="table-scroll"><table class="grid">
-<thead><tr><th>Entry</th><th>Amount</th><th>At</th></tr></thead>
-<tbody>{{range .Ledger}}<tr><td>{{.Kind}}</td><td>{{.Amount}}</td><td>{{.At}}</td></tr>{{else}}<tr><td colspan="3" class="muted">No ledger entries.</td></tr>{{end}}</tbody>
-</table></div>
-
-<h3>Refunds</h3>
-<div class="table-scroll"><table class="grid">
-<thead><tr><th>Refund</th><th>Amount</th><th>Status</th><th>Reason</th><th>Initiated by</th><th>Created</th></tr></thead>
-<tbody>{{range .Refunds}}<tr><td>{{.ID}}{{if $.CanLogs}}<br><small><a href="/dashboard/logs?id={{.ID}}">logs</a></small>{{end}}</td><td>{{.Amount}}</td><td>{{.Status}}</td><td>{{.Reason}}</td><td>{{.InitiatedBy}}{{if .Actor}} ({{.Actor}}){{end}}</td><td>{{.Created}}</td></tr>{{else}}<tr><td colspan="6" class="muted">No refunds.</td></tr>{{end}}</tbody>
-</table></div>
-{{if .CanRefund}}
-<form method="post" action="/dashboard/payments/{{.ID}}/refund" class="stack">
-<input type="hidden" name="csrf" value="{{$.CSRF}}">
-<input type="hidden" name="nonce" value="{{.RefundNonce}}">
-<h4>Refund</h4>
-<label>Refund amount in {{.Currency}}<input class="field" name="amount" inputmode="decimal" placeholder="Blank = everything refundable" autocomplete="off"></label>
-<label>Reason for refund<input class="field" name="reason" maxlength="500" placeholder="Customer request…" autocomplete="off"></label>
-<select name="attempt_id" class="field" aria-label="Attempt to refund"><option value="">Default (the succeeded attempt)</option>{{range .Pickable}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select>
-<button class="btn" type="submit">Create refund</button>
-</form>
-{{end}}
-
-{{if .CanSimulate}}
+</div>
+<div class="pt-actions">
+{{if .CanSync}}<form method="post" action="/dashboard/payments/{{.ID}}/sync" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn" type="submit">Sync from provider</button></form>{{end}}
+{{if .CanRefund}}<button type="button" class="pt-action" command="show-modal" commandfor="refund-{{.ID}}" aria-haspopup="dialog">Refund</button>{{end}}
+{{if .CanReplay}}<form method="post" action="/dashboard/payments/{{.ID}}/webhook" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="pt-action" type="submit" title="Sends the current status as a new event">Send status webhook</button></form>{{end}}
+{{if $.CanLogs}}<a href="/dashboard/logs?payment_id={{.ID}}">Logs for this payment</a>{{end}}
+</div>
+{{if .CanSimulate}}<details class="pt-panel pt-more"><summary>Test tools</summary>
 <form method="post" action="/dashboard/payments/{{.ID}}/simulate-dispute" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <h4>Simulator</h4>
@@ -102,40 +114,20 @@
 <input class="field" name="amount" inputmode="decimal" placeholder="Amount in {{.Currency}} (blank = what is left)">
 <button class="btn" type="submit">Refund from the provider's dashboard</button>
 </form>
-{{end}}
-
-<h3>Webhook deliveries</h3>
-{{if .CanReplay}}
-<form class="stack" method="post" action="/dashboard/payments/{{.ID}}/webhook">
+</details>{{end}}
+</div>
+</div>
+{{if .CanRefund}}<dialog id="refund-{{.ID}}" class="risk-dialog" aria-labelledby="refund-{{.ID}}-title" closedby="any">
+<div class="risk-dialog-head"><h2 id="refund-{{.ID}}-title">Refund</h2><button type="button" class="risk-close" command="close" commandfor="refund-{{.ID}}" aria-label="Close"><svg class="risk-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<form method="post" action="/dashboard/payments/{{.ID}}/refund" class="stack">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
-<p>Send the current payment status to enabled webhooks subscribed to this event. This creates a new event for the merchant to process.</p>
-<button class="btn secondary" type="submit">Send status webhook</button>
+<input type="hidden" name="nonce" value="{{.RefundNonce}}">
+<label>Refund amount in {{.Currency}}<input class="field" name="amount" inputmode="decimal" placeholder="Blank = everything refundable" autocomplete="off"></label>
+<label>Reason for refund<input class="field" name="reason" maxlength="500" placeholder="Customer request…" autocomplete="off"></label>
+<select name="attempt_id" class="field" aria-label="Attempt to refund"><option value="">Default (the succeeded attempt)</option>{{range .Pickable}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select>
+<button class="btn" type="submit">Create refund</button>
 </form>
-{{end}}
-<div class="table-scroll"><table class="grid">
-<thead><tr><th>Event</th><th>Endpoint</th><th>Status</th><th>Attempts</th><th>Last result</th><th>Updated</th>{{if .CanReplay}}<th></th>{{end}}</tr></thead>
-<tbody>
-{{range .Deliveries}}<tr><td>{{.EventType}}</td><td>{{.Endpoint}}</td><td>{{.Status}}</td><td>{{.Attempts}}</td>
-<td>{{if .LastStatus}}HTTP {{.LastStatus}}{{end}} {{.LastError}}</td><td>{{.At}}</td>
-{{if $.Pay.CanReplay}}<td><form class="inline" method="post" action="/dashboard/deliveries/{{.ID}}/replay"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Path}}"><button class="linkbtn" type="submit">Replay</button></form></td>{{end}}
-</tr>{{else}}<tr><td colspan="7" class="muted">No deliveries.</td></tr>{{end}}
-</tbody>
-</table></div>
-{{if and .CanReplay .Events}}
-<form class="stack" method="post" action="/dashboard/payments/{{.ID}}/webhooks/replay">
-<input type="hidden" name="csrf" value="{{$.CSRF}}">
-<label>Send a past event
-<select class="field" name="event_id" required>{{range .Events}}<option value="{{.ID}}">{{.Type}} - {{.Object}} - {{.At}}</option>{{end}}</select>
-</label>
-<button class="btn" type="submit">Send webhook</button>
-<p class="muted">Sends to every enabled endpoint of this app that accepts the event, including endpoints added later. The event keeps its original webhook-id and data.</p>
-</form>
-{{end}}
-
-<h3>Events</h3>
-<div class="table-scroll"><table class="grid">
-<thead><tr><th>Type</th><th>Object</th><th>Version</th><th>At</th></tr></thead>
-<tbody>{{range .Events}}<tr><td>{{.Type}}</td><td>{{.Object}}</td><td>{{.Version}}</td><td>{{.At}}</td></tr>{{else}}<tr><td colspan="4" class="muted">No events.</td></tr>{{end}}</tbody>
-</table></div>
+</dialog>{{end}}
+</section>
 {{end}}
 {{template "dash_close" .}}{{end}}

@@ -18,6 +18,15 @@ export function recordSplit(nodes: ViewNode[]): SplitPage | null {
     )
   )
     return null;
+  // The payment page is one timeline: it has no sections to hide away.
+  if (
+    nodes.some(
+      (node) =>
+        node.tag === "section" &&
+        (node.attrs.class ?? "").split(/\s+/).includes("payment-timeline"),
+    )
+  )
+    return null;
   return splitSections(nodes);
 }
 

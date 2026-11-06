@@ -40,7 +40,10 @@ type tryRow struct {
 	Card, Bank, Name, ThreeDS, ThreeDSTone    string
 	Declined                                  bool
 	FailureCode, Provider, OrderID, PaymentID string
-	AttemptID                                 string
+	AttemptID, ProviderRef, Status, Method    string
+	TryID                                     string
+	MethodMeta                                string
+	Duplicate                                 bool
 	Risk                                      *riskView
 }
 
@@ -50,6 +53,9 @@ type webhookGroup struct {
 	EventID, EventType string
 	Targets            []webhookTarget
 	SendCount          int
+	// Failing opens the group on the page; Summary stands for it when closed.
+	Failing bool
+	Summary string
 }
 
 type webhookTarget struct {
@@ -82,8 +88,8 @@ const (
 	toneFail = "fail"
 )
 
-// allTries is every try in time order, plus a stand-in for each failed attempt
-// that never reached a try, so a checkout error still shows.
+// allTries is every try in time order, plus a stand-in for each attempt with an
+// outcome but no try: a checkout error, or a payment from before tries were kept.
 func allTries(in timelineData) []store.ProviderPaymentAttempt {
 	out := append([]store.ProviderPaymentAttempt(nil), in.Tries...)
 	hasTry := map[string]bool{}
@@ -91,7 +97,12 @@ func allTries(in timelineData) []store.ProviderPaymentAttempt {
 		hasTry[t.AttemptID] = true
 	}
 	for _, a := range in.Attempts {
-		if a.Status != string(state.AttemptFailed) || hasTry[a.ID] {
+		if hasTry[a.ID] {
+			continue
+		}
+		switch a.Status {
+		case string(state.AttemptFailed), string(state.AttemptCaptured), string(state.AttemptAuthorized):
+		default:
 			continue
 		}
 		at := a.UpdatedAt
@@ -118,6 +129,8 @@ func shownFailureCode(code string) string {
 	return code
 }
 
+const noReason = "No reason given"
+
 func tryFailureReason(t store.ProviderPaymentAttempt) string {
 	if t.FailureMessage != "" {
 		return t.FailureMessage
@@ -128,7 +141,7 @@ func tryFailureReason(t store.ProviderPaymentAttempt) string {
 	if code := shownFailureCode(t.FailureCode); code != "" {
 		return humanWords(code)
 	}
-	return "No reason given"
+	return noReason
 }
 
 func humanWords(s string) string {
@@ -185,6 +198,13 @@ func (in timelineData) tryItem(t store.ProviderPaymentAttempt) timelineItem {
 		OrderID: t.ProviderOrderID, PaymentID: t.ProviderPaymentID, AttemptID: t.AttemptID,
 		Risk: tryRiskView(t.RiskDetails, t.Status, t.ThreeDS)}
 	row.Card, row.Bank, row.Name = tryInstrument(t.Method, t.MethodDetails)
+	row.Status, row.Method, row.TryID = t.Status, t.Method, t.TryID
+	_, row.MethodMeta = paymentMethodSummary(store.Attempt{MethodDetails: t.MethodDetails})
+	for _, a := range in.Attempts {
+		if a.ID == t.AttemptID {
+			row.ProviderRef, row.Duplicate = a.ProviderRef, a.Duplicate
+		}
+	}
 	switch t.ThreeDS {
 	case connector.ThreeDSPassed:
 		row.ThreeDS, row.ThreeDSTone = "3D Secure", tonePass
@@ -197,7 +217,13 @@ func (in timelineData) tryItem(t store.ProviderPaymentAttempt) timelineItem {
 	switch t.Status {
 	case string(state.AttemptFailed):
 		item.Title, item.Tone = tryFailureReason(t), toneFail
-		row.Declined = t.ThreeDS != connector.ThreeDSFailed
+		if item.Title == noReason {
+			item.Title = "Payment failed"
+		}
+		// Only a provider's stated reason makes it a decline: a failure we know
+		// nothing about, or an error before the bank, must not read as one.
+		row.Declined = t.ThreeDS != connector.ThreeDSFailed && t.FailureCode != "checkout_error" &&
+			(t.FailureMessage != "" || row.FailureCode != "")
 	case string(state.AttemptCaptured):
 		item.Title, item.Tone = "Paid", tonePass
 	case string(state.AttemptAuthorized):
@@ -266,7 +292,7 @@ func (in timelineData) webhookRows(eventID string) []webhookTarget {
 }
 
 func (in timelineData) eventItem(ev store.EventRow) timelineItem {
-	item := timelineItem{Kind: "event", At: in.FmtTime(ev.CreatedAt), Title: ev.Type, Tone: toneNone, System: true, when: ev.CreatedAt}
+	item := timelineItem{Kind: "event", At: in.FmtTime(ev.CreatedAt), Title: ev.Type, Meta: strings.TrimSpace(ev.ObjectType + " " + ev.ObjectID), Tone: toneNone, System: true, when: ev.CreatedAt}
 	rows := in.webhookRows(ev.ID)
 	if len(rows) == 0 {
 		return item
@@ -277,15 +303,35 @@ func (in timelineData) eventItem(ev store.EventRow) timelineItem {
 			group.SendCount++
 		}
 	}
-	item.Kind, item.Title, item.System, item.Webhook = "webhook", "Webhook", false, group
+	item.Kind, item.Title, item.Meta, item.System, item.Webhook = "webhook", "Webhook", "", false, group
+	var failing, delivered, added, other int
 	for _, r := range rows {
-		if r.Tone == toneFail && !r.history {
-			item.Tone = toneFail
-			break
+		switch {
+		case r.New:
+			added++
+		case r.Tone == toneFail && !r.history:
+			failing++
+		case r.Tone == tonePass:
+			delivered++
+		default:
+			other++
 		}
-		if r.Tone == tonePass {
-			item.Tone = tonePass
+	}
+	var parts []string
+	for _, c := range []struct {
+		n    int
+		text string
+	}{{failing, "failing"}, {delivered, "delivered"}, {added, "not sent"}, {other, "other"}} {
+		if c.n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", c.n, c.text))
 		}
+	}
+	group.Summary, group.Failing = strings.Join(parts, " · "), failing > 0
+	switch {
+	case failing > 0:
+		item.Tone = toneFail
+	case delivered > 0:
+		item.Tone = tonePass
 	}
 	return item
 }

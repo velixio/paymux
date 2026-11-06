@@ -331,8 +331,12 @@ export function RuntimeProvider({
         action.pathname,
       ) ||
       /\/settings(?:\/|$)/.test(action.pathname);
-    if (needsReview) setReview(submission);
-    else mutation.mutate(submission);
+    if (needsReview) {
+      // A native modal sits in the top layer, over the review step and blocking
+      // it. Its form keeps what was typed if the review is cancelled.
+      form.closest("dialog")?.close();
+      setReview(submission);
+    } else mutation.mutate(submission);
   }
   async function copy(value: string) {
     try {

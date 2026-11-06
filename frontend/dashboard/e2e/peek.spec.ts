@@ -37,9 +37,8 @@ test("a payment opens in the side pane, survives reload and closes with Escape",
   );
   await expect(openTabs(page)).toHaveCount(tabsBefore); // same tab
   await expect(visible(page).locator("tbody tr").first()).toBeVisible(); // the list stays
-  await expect(pane(page).getByRole("tab", { name: "Ledger" })).toBeVisible();
-  await pane(page).getByRole("tab", { name: "Ledger" }).click();
-  await expect(pane(page).getByText("charge")).toBeVisible();
+  await pane(page).getByText("All events").click();
+  await expect(pane(page).getByText("Charge")).toBeVisible();
 
   // j moves the selection; the pane follows.
   const before = page.url();

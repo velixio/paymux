@@ -143,6 +143,22 @@ func TestFailedAttemptWithoutTryStillShows(t *testing.T) {
 	}
 }
 
+// A payment from before tries were kept must not read as if nobody paid.
+func TestPaidAttemptWithoutTryStillShows(t *testing.T) {
+	in := tlData()
+	in.Attempts = []store.Attempt{{ID: "att_1", ProviderAccountID: "acc_1", Status: "captured", CreatedAt: tlAt(1)}}
+	if noTries(in) {
+		t.Fatal("noTries = true")
+	}
+	items := buildTimeline(in)
+	if last := items[len(items)-1]; last.Kind != "try" || last.Title != "Paid" {
+		t.Fatalf("items = %+v", items)
+	}
+	if g := buildGlance(in); g.Tries != "1 paid" {
+		t.Fatalf("glance = %+v", g)
+	}
+}
+
 func TestNoTriesHasOnlyCreated(t *testing.T) {
 	in := tlData()
 	items := buildTimeline(in)
@@ -218,11 +234,24 @@ func TestTryShowsWhatWeHave(t *testing.T) {
 	}
 }
 
+func TestDeclinedOnlyWithAStatedReason(t *testing.T) {
+	for _, c := range []struct {
+		code, message string
+		want          bool
+	}{{"card_declined", "", true}, {"", "Your card was declined", true}, {"failed", "", false}, {"", "", false}, {"checkout_error", "Provider rejected the amount", false}} {
+		in := tlData()
+		in.Tries = []store.ProviderPaymentAttempt{failedTry("p1", 1, c.code, c.message)}
+		if got := buildTimeline(in)[1].Try.Declined; got != c.want {
+			t.Errorf("%q %q: declined = %v", c.code, c.message, got)
+		}
+	}
+}
+
 func TestFailureCodeFailedIsHidden(t *testing.T) {
 	in := tlData()
 	in.Tries = []store.ProviderPaymentAttempt{failedTry("p1", 1, "failed", "")}
 	item := buildTimeline(in)[1]
-	if item.Title != "No reason given" || item.Try.FailureCode != "" {
+	if item.Title != "Payment failed" || item.Try.FailureCode != "" {
 		t.Fatalf("item = %+v, try = %+v", item, item.Try)
 	}
 }

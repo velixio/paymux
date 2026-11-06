@@ -1033,6 +1033,20 @@
   flex-shrink: 0;
   max-width: 60%;
 }
+/* The payment page's amount: large, at the far end, and on a line of its own
+   rather than cut off when the toolbar runs out of room. */
+.app-shell .react-content .toolbar-title:has(.pt-amount) {
+  flex: 1;
+  max-width: none;
+  flex-wrap: wrap;
+  padding: 6px 0;
+}
+.app-shell .react-content .toolbar-title .pt-amount {
+  margin-left: auto;
+  font-size: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .app-shell .react-content .toolbar-title small {
   color: var(--muted-foreground);
   font-size: 12px;

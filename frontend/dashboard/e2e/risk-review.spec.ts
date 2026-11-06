@@ -38,7 +38,7 @@ test("the payments list badge opens the risk modal", async ({ page }) => {
   await expect(dialog).toBeHidden();
 });
 
-test("the payment page risk row opens the modal", async ({
+test("the payment page shows the risk review in its panel, the score in its tile", async ({
   page,
 }) => {
   await page.goto("/dashboard/login");
@@ -52,23 +52,13 @@ test("the payment page risk row opens the modal", async ({
   await expect(row).toHaveCount(1);
   await row.getByRole("link").first().click();
 
-  const open = page.getByRole("button", { name: /19 Low.*Testville/ });
-  await expect(open).toBeVisible();
-  const dialog = page.getByRole("dialog", { name: "Risk review" });
-  await expect(dialog).toBeHidden();
-
-  await open.click();
-  await expect(dialog).toBeVisible();
-  // Centered: the app's CSS reset removes a dialog's default auto margin.
-  const box = await dialog.boundingBox();
-  const width = page.viewportSize()!.width;
-  expect(Math.abs(box!.x + box!.width / 2 - width / 2)).toBeLessThan(2);
-  await expect(dialog).toContainText("Testville, Sample State, US");
-  await expect(dialog).toContainText("203.0.113.24");
-  await expect(dialog).toContainText("No match");
-  await expect(dialog).toContainText("Not verified");
-  await expect(dialog).toContainText("A1B2C3");
-  await expect(dialog).toContainText("Reported by Whop");
-  await dialog.getByRole("button", { name: "Close" }).click();
-  await expect(dialog).toBeHidden();
+  await expect(page.locator(".pt-tile").filter({ hasText: "Risk" })).toContainText("19 Low");
+  const panel = page.locator(".pt-risk");
+  await expect(panel).toContainText("Testville, Sample State, US");
+  await expect(panel).toContainText("203.0.113.24");
+  await expect(panel).toContainText("No match");
+  await expect(panel).toContainText("Not verified");
+  await expect(panel).toContainText("A1B2C3");
+  await expect(panel).toContainText("Reported by Whop");
+  await expect(panel).not.toContainText("19 Low");
 });

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ViewNode } from "./adapter";
 import { PageContent } from "./render";
+import { recordSplit } from "./section-tabs";
 
 // RenderNode only needs the runtime for forms and links; these pages have none.
 vi.mock("./runtime", async (original) => ({
@@ -153,4 +154,14 @@ test("webhook editing stays visible inside existing app section navigation", () 
     screen.getByRole("heading", { name: "Edit webhook" }).closest("[hidden]"),
   ).toBeNull();
   expect(screen.getByText("Delivery history").closest("[hidden]")).toBeNull();
+});
+
+test("recordSplit returns null for the timeline page", () => {
+  const timeline: ViewNode = {
+    tag: "section",
+    attrs: { class: "payment-timeline" },
+    children: [el("h2", "Timeline"), el("h2", "Risk")],
+  };
+  expect(recordSplit([el("h1", "pay_1"), timeline, ...nodes.slice(2)])).toBeNull();
+  expect(recordSplit(nodes)).not.toBeNull();
 });

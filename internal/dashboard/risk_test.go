@@ -17,23 +17,24 @@ func (e *env) seedRiskPayment(id, risk string) {
 		ProviderRef: "pr_" + id, Status: "captured", AmountReceived: 2900, CurrencyReceived: p.Currency, RiskDetails: risk})
 }
 
-func TestPaymentPageShowsRiskReviewInAModal(t *testing.T) {
+func TestPaymentPageShowsRiskReviewInItsPanel(t *testing.T) {
 	e := riskEnv(t)
 	c := e.roleClient("viewer")
 	e.seedRiskPayment("pay_risk", `{"score":19,"ip_address":"203.0.113.24","city":"Testville","region":"Sample State","country":"US",
 		"address_check":"no_match","postal_check":"match","cvv_check":"match","three_d_secure":false,"authorization_code":"A1B2C3"}`)
 	body := e.pageOK(c, "/dashboard/payments/pay_risk")
-	has(t, body,
-		`command="show-modal"`, `commandfor="risk-review"`, `<dialog id="risk-review"`, `command="close"`,
-		`risk-score risk-low`, "19 Low", "Testville, Sample State, US", "203.0.113.24",
-		"No match", "Match", "Not verified", "A1B2C3")
+	has(t, body, `pt-risk"`, "19 Low", "Testville, Sample State, US", "203.0.113.24",
+		"Address", "ZIP / postal", "No match", "Match", "Not verified", "A1B2C3")
+	lacks(t, regexpFind(t, `(?s)(pt-risk".*?</div>)`, body), "19 Low")
 }
 
 func TestPaymentPageHidesRiskReviewWithoutData(t *testing.T) {
 	e := riskEnv(t)
 	c := e.roleClient("viewer")
 	e.seedRiskPayment("pay_plain", "")
-	lacks(t, e.pageOK(c, "/dashboard/payments/pay_plain"), "risk-review", "risk-score")
+	body := e.pageOK(c, "/dashboard/payments/pay_plain")
+	lacks(t, body, `pt-risk"`, "risk-score")
+	has(t, body, "Not provided")
 }
 
 func TestRiskScoreBands(t *testing.T) {
