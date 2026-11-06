@@ -50,10 +50,10 @@ test("a webhook lists its endpoints, and redelivers to all of them", async ({
   const root = page.locator(".payment-timeline");
   await expect(root.locator(".pt-tile").filter({ hasText: "Webhooks" })).toContainText("1 failing");
   const webhook = root.locator(".pt-hook");
-  await expect(webhook).toContainText("api.example.com/hooks");
+  await expect(webhook).toContainText("api.example.com");
   await expect(webhook).toContainText("200");
   await expect(webhook).toContainText("500");
-  await expect(webhook).toContainText("crm.example.com/in");
+  await expect(webhook).toContainText("crm.example.com");
   await expect(webhook).toContainText("Not sent");
   await expect(webhook.getByRole("button", { name: "Retry" })).toHaveCount(1);
 

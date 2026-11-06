@@ -64,7 +64,8 @@ type webhookTarget struct {
 	New, CanRetry                                      bool
 
 	// history marks a delivery to an endpoint that can no longer be sent to.
-	history bool
+	history    bool
+	endpointID string
 }
 
 // timelineData is everything the page's timeline and tiles are built from.
@@ -242,20 +243,21 @@ func (in timelineData) tryItem(t store.ProviderPaymentAttempt) timelineItem {
 	return item
 }
 
-// endpointLabel names an endpoint without its query string, which can hold a secret.
+// endpointLabel names an endpoint by its host. The rest of its URL can hold a
+// secret, and this page doesn't need settings access to read.
 func endpointLabel(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" {
-		return raw
+		return "Endpoint"
 	}
-	return u.Host + strings.TrimSuffix(u.Path, "/")
+	return u.Host
 }
 
-// urlQuery matches a URL with its query or fragment, up to where the URL ends.
-var urlQuery = regexp.MustCompile(`(https?://[^\s"'?#]+)[?#][^\s"']*`)
+// urlPastHost matches a URL, capturing the scheme and host to keep of it.
+var urlPastHost = regexp.MustCompile(`(https?://)(?:[^\s"'/?#@]*@)?([^\s"'/?#]*)[^\s"']*`)
 
 func (in timelineData) targetRow(t outbound.ResendTarget) webhookTarget {
-	row := webhookTarget{DeliveryID: t.DeliveryID, Endpoint: endpointLabel(t.URL), Error: urlQuery.ReplaceAllString(t.LastError, "$1"), New: t.New, Tone: toneNone}
+	row := webhookTarget{DeliveryID: t.DeliveryID, Endpoint: endpointLabel(t.URL), Error: urlPastHost.ReplaceAllString(t.LastError, "$1$2"), New: t.New, Tone: toneNone, endpointID: t.EndpointID}
 	failedBefore := t.LastStatus != 0 || t.LastError != ""
 	switch {
 	case t.New:
@@ -295,9 +297,27 @@ func (in timelineData) webhookRows(eventID string) []webhookTarget {
 		if d.EventID != eventID || current[d.EndpointID] {
 			continue
 		}
-		row := in.targetRow(outbound.ResendTarget{DeliveryID: d.DeliveryID, URL: d.EndpointURL, Status: d.Status, LastStatus: d.LastStatus, LastError: d.LastError})
+		row := in.targetRow(outbound.ResendTarget{DeliveryID: d.DeliveryID, EndpointID: d.EndpointID, URL: d.EndpointURL, Status: d.Status, LastStatus: d.LastStatus, LastError: d.LastError})
 		row.CanRetry, row.NextTry, row.history = false, "", true
 		rows = append(rows, row)
+	}
+	return nameSharedHosts(rows)
+}
+
+// nameSharedHosts adds the endpoint's id where a host alone can't tell two apart.
+func nameSharedHosts(rows []webhookTarget) []webhookTarget {
+	first, shared := map[string]string{}, map[string]bool{}
+	for _, r := range rows {
+		if id, seen := first[r.Endpoint]; !seen {
+			first[r.Endpoint] = r.endpointID
+		} else if id != r.endpointID {
+			shared[r.Endpoint] = true
+		}
+	}
+	for i := range rows {
+		if shared[rows[i].Endpoint] {
+			rows[i].Endpoint += " (" + rows[i].endpointID + ")"
+		}
 	}
 	return rows
 }
@@ -471,7 +491,7 @@ func buildGlance(in timelineData) glanceView {
 				delivered++
 			case r.Tone == toneFail && !r.history:
 				failing++
-			case r.Tone == toneNone:
+			case r.Tone == toneNone && !r.history:
 				sending++
 			}
 		}

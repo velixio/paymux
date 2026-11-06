@@ -200,7 +200,7 @@ func (d *Dashboard) fmtTimeShort(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.In(d.o.Location).Format("Jan 2, 15:04")
+	return t.In(d.location()).Format("Jan 2, 15:04")
 }
 
 // fmtMoney renders minor units as "100.00 INR".

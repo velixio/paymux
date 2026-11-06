@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -313,7 +314,7 @@ func TestRetryOnlyOnFailedTargets(t *testing.T) {
 		endpoint, result, tone, next string
 		canRetry, isNew              bool
 	}{
-		{"a.example.com/hook", "200", "pass", "", false, false},
+		{"a.example.com", "200", "pass", "", false, false},
 		{"b.example.com", "500", "fail", "", true, false},
 		{"c.example.com", "503", "fail", "16:30", true, false},
 		{"d.example.com", "Queued", "none", "", false, false},
@@ -449,10 +450,49 @@ func TestScoreOnlyRiskHasNoPanel(t *testing.T) {
 }
 
 // Errors stored before delivery errors dropped the URL still name the full one.
-func TestDeliveryErrorHidesEndpointQuery(t *testing.T) {
-	row := tlData().targetRow(outbound.ResendTarget{DeliveryID: "whd_1", URL: "https://x.example/hook?token=s3cret", Status: "failed",
-		LastError: `Post "https://x.example/hook?token=s3cret": dial tcp: connection refused`})
-	if want := `Post "https://x.example/hook": dial tcp: connection refused`; row.Error != want {
+func TestDeliveryErrorHidesEndpointSecrets(t *testing.T) {
+	row := tlData().targetRow(outbound.ResendTarget{DeliveryID: "whd_1", URL: "https://x.example/hook/s3cret?token=s3cret", Status: "failed",
+		LastError: `Post "https://me@x.example/hook/s3cret?token=s3cret": dial tcp: connection refused`})
+	if want := `Post "https://x.example": dial tcp: connection refused`; row.Error != want {
 		t.Errorf("error = %q, want %q", row.Error, want)
+	}
+}
+
+// A path can hold a token, and this page doesn't need settings access to read.
+func TestEndpointLabelIsOnlyTheHost(t *testing.T) {
+	for raw, want := range map[string]string{
+		"https://hooks.example.com/services/T1/s3cret?a=1": "hooks.example.com",
+		"https://me:s3cret@hooks.example.com:8443/x":       "hooks.example.com:8443",
+		"://s3cret": "Endpoint",
+	} {
+		if got := endpointLabel(raw); got != want {
+			t.Errorf("%s: label = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+func TestEndpointsOnOneHostStayApart(t *testing.T) {
+	in := tlData()
+	in.Targets = map[string][]outbound.ResendTarget{"ev_1": {
+		{EndpointID: "whe_1", URL: "https://a.example.com/one", DeliveryID: "d1", Status: "delivered"},
+		{EndpointID: "whe_2", URL: "https://a.example.com/two", DeliveryID: "d2", Status: "delivered"},
+		{EndpointID: "whe_3", URL: "https://b.example.com/three", DeliveryID: "d3", Status: "delivered"},
+	}}
+	var got []string
+	for _, r := range in.webhookRows("ev_1") {
+		got = append(got, r.Endpoint)
+	}
+	if want := []string{"a.example.com (whe_1)", "a.example.com (whe_2)", "b.example.com"}; !slices.Equal(got, want) {
+		t.Errorf("labels = %q, want %q", got, want)
+	}
+}
+
+// The worker fails a queued delivery to a disabled endpoint without sending it.
+func TestQueuedDeliveryToGoneEndpointIsNotSending(t *testing.T) {
+	in := tlData()
+	in.Events = []store.EventRow{{ID: "ev_1"}}
+	in.Deliveries = []store.DeliveryListRow{{DeliveryID: "d1", EventID: "ev_1", EndpointID: "gone", EndpointURL: "https://a.example.com", Status: "pending"}}
+	if g := buildGlance(in); g.Webhooks != "None" {
+		t.Errorf("webhooks = %q", g.Webhooks)
 	}
 }
