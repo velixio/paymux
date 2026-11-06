@@ -59,7 +59,7 @@ func Record(ctx context.Context, tx store.Tx, e Entry) error {
 	})
 }
 
-var secretKey = regexp.MustCompile(`(?i)secret|password|passwd|token|hash|api_key|private_key|totp|dsc|authorization|config_enc`)
+var secretKey = regexp.MustCompile(`(?i)secret|password|passwd|token|hash|api_key|private_key|totp|dsc|authorization|config_enc|(^|_)pin($|_)`)
 
 const redacted = "[redacted]"
 

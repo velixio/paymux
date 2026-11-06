@@ -19,12 +19,13 @@ type UserRow struct {
 	ID, Email, PasswordHash string
 	TOTPSecretEnc           []byte
 	TOTPLastStep            int64
+	SigninPINEnc            []byte // the sealed sign-in approval PIN; nil when none is set
 	Role                    string // a built-in (admin, operator, viewer) or custom role name
 	Disabled                bool
 	CreatedAt               time.Time
 }
 
-const userCols = `id, email, password_hash, totp_secret_enc, totp_last_step, role, disabled, created_at`
+const userCols = `id, email, password_hash, totp_secret_enc, totp_last_step, role, disabled, created_at, signin_pin_enc`
 
 func normEmail(e string) string { return strings.ToLower(strings.TrimSpace(e)) }
 
@@ -32,11 +33,14 @@ func scanUser(s scanner) (UserRow, error) {
 	var u UserRow
 	var disabled int
 	var created int64
-	if err := s.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.TOTPSecretEnc, &u.TOTPLastStep, &u.Role, &disabled, &created); err != nil {
+	if err := s.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.TOTPSecretEnc, &u.TOTPLastStep, &u.Role, &disabled, &created, &u.SigninPINEnc); err != nil {
 		return UserRow{}, err
 	}
 	if len(u.TOTPSecretEnc) == 0 {
 		u.TOTPSecretEnc = nil
+	}
+	if len(u.SigninPINEnc) == 0 {
+		u.SigninPINEnc = nil
 	}
 	u.Disabled, u.CreatedAt = disabled != 0, fromMS(created)
 	return u, nil
@@ -63,8 +67,12 @@ func (db *DB) InsertUser(ctx context.Context, u UserRow) error {
 		if u.TOTPSecretEnc != nil {
 			enc = u.TOTPSecretEnc
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO users (`+userCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			u.ID, u.Email, u.PasswordHash, enc, u.TOTPLastStep, u.Role, b2i(u.Disabled), ms(u.CreatedAt))
+		var pin any
+		if u.SigninPINEnc != nil {
+			pin = u.SigninPINEnc
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO users (`+userCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			u.ID, u.Email, u.PasswordHash, enc, u.TOTPLastStep, u.Role, b2i(u.Disabled), ms(u.CreatedAt), pin)
 		if err != nil {
 			return fmt.Errorf("insert user: %w", err)
 		}
@@ -246,10 +254,10 @@ func (db *DB) SessionByTokenHash(ctx context.Context, hash string) (SessionRow, 
 		var disabled, remember int
 		err := q.QueryRowContext(ctx, `SELECT s.id, s.user_id, s.token_hash, s.csrf_key, s.created_at, s.last_seen_at, s.expires_at, s.ip, s.user_agent,
 			s.remember, s.authenticated_at, s.ip_hint,
-			u.id, u.email, u.password_hash, u.totp_secret_enc, u.totp_last_step, u.role, u.disabled, u.created_at
+			u.id, u.email, u.password_hash, u.totp_secret_enc, u.totp_last_step, u.role, u.disabled, u.created_at, u.signin_pin_enc
 			FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`, hash).
 			Scan(&s.ID, &s.UserID, &s.TokenHash, &s.CSRFKey, &created, &seen, &exp, &s.IP, &s.UserAgent, &remember, &authed, &s.IPHint,
-				&u.ID, &u.Email, &u.PasswordHash, &u.TOTPSecretEnc, &u.TOTPLastStep, &u.Role, &disabled, &ucreated)
+				&u.ID, &u.Email, &u.PasswordHash, &u.TOTPSecretEnc, &u.TOTPLastStep, &u.Role, &disabled, &ucreated, &u.SigninPINEnc)
 		if err != nil {
 			return err
 		}

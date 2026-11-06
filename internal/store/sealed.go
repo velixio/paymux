@@ -44,6 +44,7 @@ var sealedSpecs = []sealedSpec{
 	{"provider_accounts.config_enc", "provider_accounts", "config_enc", []string{"id"}, func(k []string) []byte { return secrets.AADProviderConfig(k[0]) }},
 	{"webhook_endpoints.signing_secret_enc", "webhook_endpoints", "signing_secret_enc", []string{"id"}, func(k []string) []byte { return secrets.AADEndpointSecret(k[0]) }},
 	{"users.totp_secret_enc", "users", "totp_secret_enc", []string{"id"}, func(k []string) []byte { return secrets.AADTOTP(k[0]) }},
+	{"users.signin_pin_enc", "users", "signin_pin_enc", []string{"id"}, func(k []string) []byte { return secrets.AADSigninPIN(k[0]) }},
 	{"payouts.beneficiary_enc", "payouts", "beneficiary_enc", []string{"id"}, func(k []string) []byte { return secrets.AADBeneficiary(k[0]) }},
 	{"tax_entities.dsc_enc", "tax_entities", "dsc_enc", []string{"id"}, func(k []string) []byte { return secrets.AADTaxEntityDSC(k[0]) }},
 	{"connector_kv.value_enc", "connector_kv", "value_enc", []string{"provider_account_id", "key"}, func(k []string) []byte { return secrets.AADConnectorKV(k[0], k[1]) }},
