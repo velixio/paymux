@@ -711,3 +711,26 @@ func TestRevenueNamesPreviousPeriodExclusions(t *testing.T) {
 		lacks(t, body, "Not included")
 	})
 }
+
+// A refund with no usable rate is left out too, so the notes must name it rather
+// than report a zero.
+func TestRevenueExclusionsNameRefunds(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		e.seedLedger(
+			ledRow{"pay_1", "charge", "USD", 1000, e.d15(14)},
+			ledRow{"pay_1", "refund", "EUR", -500, e.d15(14)}, // refund only
+			ledRow{"pay_1", "charge", "GBP", 2000, e.d15(13)}, // charge and refund
+			ledRow{"pay_1", "refund", "GBP", -300, e.d15(13)},
+			ledRow{"pay_1", "refund", "SEK", -700, e.d15(5)}, // previous period
+		)
+		e.setDefaultCurrency("USD")
+
+		body := e.pageOK(vw, "/dashboard/overview?range=7d")
+		has(t, body, "Not included: 5.00 EUR refunded, 20.00 GBP (3.00 GBP refunded)", "Previous period leaves out: 7.00 SEK refunded")
+		lacks(t, body, "0.00 EUR,", "0.00 SEK")
+	})
+}
