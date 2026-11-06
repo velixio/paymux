@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -18,6 +19,7 @@ import (
 	"github.com/velixio/paymux/internal/core"
 	"github.com/velixio/paymux/internal/core/state"
 	"github.com/velixio/paymux/internal/events"
+	"github.com/velixio/paymux/internal/outbound"
 	"github.com/velixio/paymux/internal/store"
 	"github.com/velixio/paymux/pkg/connector"
 	"github.com/velixio/paymux/pkg/connector/money"
@@ -58,9 +60,9 @@ type deliveryRow struct {
 }
 
 type eventRow struct {
-	Type, Object string
-	Version      int64
-	At           string
+	ID, Type, Object string
+	Version          int64
+	At               string
 }
 
 type attemptOpt struct{ ID, Label string }
@@ -470,7 +472,7 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 			Status: dl.Status, Attempts: dl.AttemptCount, LastStatus: dl.LastStatus, LastError: dl.LastError, At: d.fmtTime(dl.UpdatedAt)})
 	}
 	for _, ev := range events {
-		det.Events = append(det.Events, eventRow{Type: ev.Type, Object: ev.ObjectType + " " + ev.ObjectID, Version: ev.ObjectVersion, At: d.fmtTime(ev.CreatedAt)})
+		det.Events = append(det.Events, eventRow{ID: ev.ID, Type: ev.Type, Object: ev.ObjectType + " " + ev.ObjectID, Version: ev.ObjectVersion, At: d.fmtTime(ev.CreatedAt)})
 	}
 	v := d.shell(r, s, "payments", "Payment "+p.ID)
 	v.Pay, v.Error, v.Notice = det, errMsg, notice
@@ -656,6 +658,70 @@ func (d *Dashboard) replaySubmit(w http.ResponseWriter, r *http.Request, s *sess
 		return
 	}
 	http.Redirect(w, r, safeNext(r.PostForm.Get("next"), prefix+"/overview"), http.StatusSeeOther)
+}
+
+// webhookResendSubmit sends one of this payment's past events again to the
+// app's current endpoints, including any added after the event happened.
+func (d *Dashboard) webhookResendSubmit(w http.ResponseWriter, r *http.Request, s *session) {
+	ctx := r.Context()
+	// Custom roles can be granted webhook.replay without payment.read. Never
+	// render payment or customer details to a role that cannot read them.
+	if !s.can(authz.PaymentRead) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	var (
+		p      store.Payment
+		events []store.EventRow
+	)
+	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) {
+		if p, err = store.GetPayment(ctx, q, r.PathValue("id")); err != nil {
+			return err
+		}
+		events, err = store.ListPaymentEvents(ctx, q, p.ID)
+		return err
+	})
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, p.OrgID) || p.Mode != d.mode(r, s)) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	eventID := r.PostForm.Get("event_id")
+	if !slices.ContainsFunc(events, func(e store.EventRow) bool { return e.ID == eventID }) {
+		d.renderPayment(w, r, s, http.StatusBadRequest, "Choose one of this payment's events to send.", "")
+		return
+	}
+	res, err := d.o.Outbound.ResendEvent(ctx, eventID)
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	if err := d.record(ctx, r, s, "webhook.resend", eventID, nil, map[string]any{"payment_id": p.ID, "sent": res.Sent, "skipped": res.Skipped}); err != nil {
+		d.fail(w, err)
+		return
+	}
+	d.renderPayment(w, r, s, http.StatusOK, "", resendNotice(res))
+}
+
+func resendNotice(res outbound.ResendResult) string {
+	var msg string
+	switch res.Sent {
+	case 0:
+		msg = "Nothing was sent."
+	case 1:
+		msg = "Sent to 1 endpoint."
+	default:
+		msg = fmt.Sprintf("Sent to %d endpoints.", res.Sent)
+	}
+	if res.Skipped > 0 {
+		msg += fmt.Sprintf(" Skipped %d with a delivery of this event still in progress.", res.Skipped)
+	} else if res.Sent == 0 {
+		msg += " No enabled endpoint accepts this event."
+	}
+	return msg
 }
 
 // simulatorTarget finds the payment, the captured attempt and the simulator

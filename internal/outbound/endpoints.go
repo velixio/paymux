@@ -32,6 +32,8 @@ type CreateEndpointInput struct {
 	// Mode is "test" or "live" (default live): the endpoint receives only the
 	// events of that mode.
 	Mode string
+	// Secret is the signing secret to use; empty generates one.
+	Secret string
 }
 
 func secretAAD(endpointID string) []byte {
@@ -53,8 +55,9 @@ func validateURL(raw string) error {
 	return nil
 }
 
-// CreateEndpoint creates an enabled endpoint with a fresh signing secret. The
-// returned secret ("whsec_...") is shown once; only its ciphertext is kept.
+// CreateEndpoint creates an enabled endpoint with the given signing secret, or
+// a fresh one. The returned secret ("whsec_...") is shown once; only its
+// ciphertext is kept.
 // The app must exist; the endpoint belongs to the app's org (OrgID may be left
 // empty, and must match when given).
 func (s *Service) CreateEndpoint(ctx context.Context, in CreateEndpointInput) (Endpoint, string, error) {
@@ -86,8 +89,12 @@ func (s *Service) CreateEndpoint(ctx context.Context, in CreateEndpointInput) (E
 		return Endpoint{}, "", fmt.Errorf("outbound: app %q does not belong to org %q", in.AppID, in.OrgID)
 	}
 	in.OrgID = app.OrgID
-	secret, err := stdwebhooks.GenerateSecret()
-	if err != nil {
+	secret := in.Secret
+	if secret == "" {
+		if secret, err = stdwebhooks.GenerateSecret(); err != nil {
+			return Endpoint{}, "", err
+		}
+	} else if err := stdwebhooks.ValidateSecret(secret); err != nil {
 		return Endpoint{}, "", err
 	}
 	id := ids.New("whe")
@@ -141,11 +148,7 @@ func (s *Service) RotateEndpointSecret(ctx context.Context, id string) (string, 
 	if err != nil {
 		return "", err
 	}
-	enc, err := s.box.Seal([]byte(secret), secretAAD(id))
-	if err != nil {
-		return "", err
-	}
-	if err := s.UpdateEndpoint(ctx, id, EndpointUpdate{SigningSecretEnc: &enc}); err != nil {
+	if err := s.storeSecret(ctx, id, secret); err != nil {
 		return "", err
 	}
 	return secret, nil
@@ -154,4 +157,21 @@ func (s *Service) RotateEndpointSecret(ctx context.Context, id string) (string, 
 // DeleteEndpoint stops deliveries and removes the endpoint from configuration.
 func (s *Service) DeleteEndpoint(ctx context.Context, id string) error {
 	return s.db.DeleteEndpoint(ctx, id, s.now())
+}
+
+// SetEndpointSecret replaces an endpoint's signing secret with a chosen one,
+// which must be in the Standard Webhooks format.
+func (s *Service) SetEndpointSecret(ctx context.Context, id, secret string) error {
+	if err := stdwebhooks.ValidateSecret(secret); err != nil {
+		return err
+	}
+	return s.storeSecret(ctx, id, secret)
+}
+
+func (s *Service) storeSecret(ctx context.Context, id, secret string) error {
+	enc, err := s.box.Seal([]byte(secret), secretAAD(id))
+	if err != nil {
+		return err
+	}
+	return s.UpdateEndpoint(ctx, id, EndpointUpdate{SigningSecretEnc: &enc})
 }

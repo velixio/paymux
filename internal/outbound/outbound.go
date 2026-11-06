@@ -362,6 +362,58 @@ func (s *Service) replayTx(ctx context.Context, tx store.Tx, id string) error {
 	return s.enqueue(ctx, tx, id, 0, now)
 }
 
+// ResendResult counts what ResendEvent did: Sent endpoints were queued, Skipped
+// endpoints already had a delivery of the event in progress.
+type ResendResult struct{ Sent, Skipped int }
+
+// ResendEvent sends an existing event again to every enabled endpoint of its
+// app whose mode and event types match, including endpoints added after the
+// event happened. The event keeps its id and data, so the webhook-id is stable.
+func (s *Service) ResendEvent(ctx context.Context, eventID string) (ResendResult, error) {
+	var res ResendResult
+	err := s.db.Write(ctx, func(tx store.Tx) error {
+		res = ResendResult{}
+		e, err := store.GetEventByID(ctx, tx, eventID)
+		if err != nil {
+			return err
+		}
+		eps, err := s.db.ListEnabledEndpoints(ctx, tx, e.AppID)
+		if err != nil {
+			return err
+		}
+		now := s.now()
+		for _, ep := range eps {
+			if !matches(ep.EventTypes, e.Type) || ep.Mode != e.Mode {
+				continue
+			}
+			d, err := s.db.GetDeliveryForEndpointTx(ctx, tx, e.ID, ep.ID)
+			switch {
+			case errors.Is(err, store.ErrNotFound):
+				d = store.DeliveryRow{ID: ids.New("whd"), EventID: e.ID, EndpointID: ep.ID, Status: "pending",
+					NextAttemptAt: now, CreatedAt: now, UpdatedAt: now}
+				if err := s.db.InsertDelivery(ctx, tx, d); err != nil {
+					return err
+				}
+				if err := s.enqueue(ctx, tx, d.ID, 0, now); err != nil {
+					return err
+				}
+			case err != nil:
+				return err
+			case d.Status == "pending":
+				res.Skipped++
+				continue
+			default:
+				if err := s.replayTx(ctx, tx, d.ID); err != nil {
+					return err
+				}
+			}
+			res.Sent++
+		}
+		return nil
+	})
+	return res, err
+}
+
 // ReplayFailedSince replays every failed delivery of the endpoint last
 // updated at or after t and returns how many were queued.
 func (s *Service) ReplayFailedSince(ctx context.Context, endpointID string, t time.Time) (int, error) {

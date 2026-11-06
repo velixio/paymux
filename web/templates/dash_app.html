@@ -55,6 +55,7 @@
 <label><input type="radio" name="event_scope" value="selected"> Selected events</label>
 {{template "webhook_event_choices" .EventChoices}}
 </fieldset>
+<input class="field" name="signing_secret" type="password" autocomplete="off" placeholder="Signing secret, whsec_... (blank = generate one)" aria-label="Signing secret (blank = generate one)">
 <button class="btn" type="submit">Add endpoint</button>
 </form>{{end}}
 {{if .EndpointID}}
@@ -70,6 +71,11 @@
 </fieldset>
 <label><input type="checkbox" name="enabled" value="1"{{if .Enabled}} checked{{end}}> Enabled</label>
 <button class="btn" type="submit">Save endpoint</button>
+</form>
+<form method="post" action="/dashboard/apps/{{$.App.ID}}/endpoints/{{.ID}}/secret" class="stack">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Signing secret<input class="field" name="signing_secret" type="password" autocomplete="off" placeholder="whsec_..." required><small class="muted">Replaces the current secret right away. Update your receiver at the same time, because retries are signed with the new secret.</small></label>
+<button class="btn secondary" type="submit">Save signing secret</button>
 </form>
 <form method="post" action="/dashboard/apps/{{$.App.ID}}/endpoints/{{.ID}}/secret" class="inline">
 <input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn secondary" type="submit">Generate new signing secret</button>

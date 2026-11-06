@@ -1,9 +1,12 @@
 package outbound_test
 
 import (
+	"errors"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/velixio/paymux/internal/outbound"
 	"github.com/velixio/paymux/internal/outbound/stdwebhooks"
@@ -112,6 +115,82 @@ func TestCreateEndpointChecksTheApp(t *testing.T) {
 		row, _ := db.GetEndpoint(ctx, ep.ID)
 		if row.OrgID != "org_1" {
 			t.Fatalf("org %q, want the app's org_1", row.OrgID)
+		}
+	})
+}
+
+const customSecret = "whsec_YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFh" // 24 bytes of "a"
+
+func TestCustomSigningSecretSignsDeliveries(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, true)
+		s := newSink(t, 200)
+		ep, got, err := e.svc.CreateEndpoint(ctx, outbound.CreateEndpointInput{OrgID: "org_1", AppID: "app_1", URL: s.srv.URL, Mode: "test", Secret: customSecret})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != customSecret {
+			t.Fatalf("returned secret %q", got)
+		}
+		e.emit("app_1", "x.y")
+		e.run()
+		verify := func(secret string, hit recorded) error {
+			signer, err := stdwebhooks.NewSigner(secret)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ts, err := strconv.ParseInt(hit.Header.Get(stdwebhooks.HeaderTimestamp), 10, 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := signer.Sign(hit.Header.Get(stdwebhooks.HeaderID), time.Unix(ts, 0), hit.Body)
+			if hit.Header.Get(stdwebhooks.HeaderSignature) != want {
+				return stdwebhooks.ErrBadSignature
+			}
+			return nil
+		}
+		if err := verify(customSecret, s.hits()[0]); err != nil {
+			t.Fatalf("create: delivery not signed with the custom secret: %v", err)
+		}
+
+		const replacement = "whsec_YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJi" // 24 bytes of "b"
+		if err := e.svc.SetEndpointSecret(ctx, ep.ID, replacement); err != nil {
+			t.Fatal(err)
+		}
+		e.emit("app_1", "x.z")
+		e.run()
+		if err := verify(replacement, s.hits()[1]); err != nil {
+			t.Fatalf("set: delivery not signed with the new secret: %v", err)
+		}
+		if err := verify(customSecret, s.hits()[1]); err == nil {
+			t.Fatal("delivery still signed with the old secret")
+		}
+	})
+}
+
+func TestInvalidSigningSecretRejected(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, true)
+		id, original := e.endpoint("app_1", "https://example.com/h")
+		const bad = "not-a-secret"
+		if _, _, err := e.svc.CreateEndpoint(ctx, outbound.CreateEndpointInput{OrgID: "org_1", AppID: "app_1", URL: "https://example.com/h", Secret: bad}); !errors.Is(err, stdwebhooks.ErrInvalidSecret) {
+			t.Fatalf("create: %v", err)
+		}
+		if err := e.svc.SetEndpointSecret(ctx, id, bad); !errors.Is(err, stdwebhooks.ErrInvalidSecret) {
+			t.Fatalf("set: %v", err)
+		}
+		row, err := db.GetEndpoint(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pt, err := e.box.Open(row.SigningSecretEnc, []byte("webhook_endpoints.signing_secret:"+id)); err != nil || string(pt) != original {
+			t.Fatalf("secret changed: %v", err)
+		}
+		if err := e.svc.DeleteEndpoint(ctx, id); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.svc.SetEndpointSecret(ctx, id, customSecret); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("set on deleted endpoint: %v", err)
 		}
 	})
 }

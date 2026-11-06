@@ -31,6 +31,8 @@ var (
 	ErrMissingHeaders = errors.New("stdwebhooks: missing webhook headers")
 	ErrTimestamp      = errors.New("stdwebhooks: timestamp invalid or outside tolerance")
 	ErrBadSignature   = errors.New("stdwebhooks: no matching signature")
+	// ErrInvalidSecret means a supplied signing secret has the wrong format.
+	ErrInvalidSecret = errors.New("stdwebhooks: secret must be whsec_ followed by base64 of 24 to 64 bytes")
 )
 
 // GenerateSecret returns a new random "whsec_<base64>" secret (24 bytes).
@@ -40,6 +42,20 @@ func GenerateSecret() (string, error) {
 		return "", err
 	}
 	return SecretPrefix + base64.StdEncoding.EncodeToString(b), nil
+}
+
+// ValidateSecret checks a supplied secret against the Standard Webhooks format:
+// the whsec_ prefix, then base64 of 24 to 64 bytes.
+func ValidateSecret(secret string) error {
+	encoded, ok := strings.CutPrefix(secret, SecretPrefix)
+	if !ok {
+		return ErrInvalidSecret
+	}
+	key, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || len(key) < 24 || len(key) > 64 {
+		return ErrInvalidSecret
+	}
+	return nil
 }
 
 func decodeSecret(secret string) ([]byte, error) {
