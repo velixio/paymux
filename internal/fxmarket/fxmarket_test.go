@@ -1,10 +1,13 @@
 package fxmarket
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -209,6 +212,39 @@ func TestRefreshFollowsTheSettingWithoutRestart(t *testing.T) {
 		}
 		if *calls != 1 {
 			t.Errorf("%d calls, want 1", *calls)
+		}
+	})
+}
+
+// A host with no outbound access must not fill the logs: a failed fetch is one
+// warning, and the job succeeds so the queue does not retry it; the next hourly
+// run tries again.
+func TestJobTreatsAFailedFetchAsOneWarning(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		bad, calls := frankfurter(t, 503, `down`)
+		var logs bytes.Buffer
+		s := New(Options{DB: db, Providers: providers(bad), Logger: slog.New(slog.NewTextHandler(&logs, nil))})
+		if err := s.runJob(ctx, nil); err != nil {
+			t.Errorf("job failed, the queue would retry it: %v", err)
+		}
+		if *calls != 1 {
+			t.Errorf("%d calls", *calls)
+		}
+		if n := strings.Count(logs.String(), "level=WARN"); n != 1 || strings.Contains(logs.String(), "level=ERROR") {
+			t.Errorf("logs: %s", logs.String())
+		}
+	})
+}
+
+// A database failure is ours, not the provider's: the queue must see it.
+func TestJobReportsADatabaseFailure(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		p, _ := frankfurter(t, 200, `{"base":"EUR","date":"2026-11-05","rates":{"INR":100,"USD":2}}`)
+		s := New(Options{DB: db, Providers: providers(p)})
+		cancelled, cancel := context.WithCancel(ctx)
+		cancel()
+		if err := s.runJob(cancelled, nil); err == nil {
+			t.Error("want an error")
 		}
 	})
 }

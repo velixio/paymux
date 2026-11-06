@@ -365,7 +365,7 @@ func (a *App) Start(ctx context.Context) error {
 	if err := hk.Register(q); err != nil {
 		return err
 	}
-	market := fxmarket.New(fxmarket.Options{DB: db, Providers: map[string]fxmarket.Provider{fxmarket.ProviderFrankfurter: &fxmarket.Frankfurter{}}})
+	market := fxmarket.New(fxmarket.Options{DB: db, Logger: a.log, Providers: map[string]fxmarket.Provider{fxmarket.ProviderFrankfurter: &fxmarket.Frankfurter{}}})
 	if err := market.Register(q); err != nil {
 		return err
 	}

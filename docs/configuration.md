@@ -80,7 +80,7 @@ This is an organisation setting (the dashboard's *Settings* page), not an enviro
 | Setting | Default | Meaning |
 |---|---|---|
 | `default_currency` | `off` (or a currency code such as `USD`) | The currency Overview reports all revenue in, converting other currencies at the stored FX rates. `off` reports each currency separately. |
-| `fx_provider` | `frankfurter` or `off` | Source of the indicative market rates on the dashboard. `frankfurter` makes an outbound request to `api.frankfurter.dev` (no key; no Paymux data is sent) at most every 6 hours. `off` neither fetches nor shows them. Invoices and GST never use these rates. |
+| `fx_provider` | `frankfurter` (or `off`) | Source of the indicative market rates on the dashboard. The default, `frankfurter`, makes an outbound request to `api.frankfurter.dev` (no key; no Paymux data is sent) once the stored rates are 6 hours old, even while `default_currency` is `off`. A failed request logs one warning and is tried again by the next hourly run. Set `off` on a host without outbound access: it neither fetches nor shows rates. Invoices and GST never use these rates. |
 
 ## Dashboard single sign-on
 

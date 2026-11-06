@@ -199,6 +199,10 @@ without the record keeps working for 7 days, then goes back to *pending* with
 an ops alert (`domain.unverified`); it is never deleted, and it becomes active
 again as soon as the record exists.
 
+## Release note: market exchange rates
+
+After this upgrade Paymux makes an outbound request to `api.frankfurter.dev` once its stored market rates are 6 hours old, even while `default_currency` is `off`. It sends no Paymux data and needs no key. The rates appear on the dashboard only; invoices and GST never use them. A failed request logs one warning and is tried again by the next hourly run. To stop the requests, for example on a host without outbound access, set `fx_provider` to `off` under *Settings*, *Reporting*. No other action is needed.
+
 ## Updating from the dashboard
 
 Admins can update a server from **Update** in the dashboard menu (action

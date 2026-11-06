@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"regexp"
@@ -62,6 +63,7 @@ type Options struct {
 	DB        *store.DB
 	Providers map[string]Provider // by fx_provider setting value
 	Clock     func() time.Time    // default time.Now
+	Logger    *slog.Logger        // default slog.Default()
 }
 
 // Service stores the provider's rates.
@@ -72,13 +74,31 @@ func New(o Options) *Service {
 	if o.Clock == nil {
 		o.Clock = time.Now
 	}
+	if o.Logger == nil {
+		o.Logger = slog.Default()
+	}
 	return &Service{o: o}
 }
 
 // Register installs the refresh job and its schedule on q.
 func (s *Service) Register(q *jobs.Queue) error {
-	q.Register(JobRefresh, func(ctx context.Context, _ json.RawMessage) error { return s.Refresh(ctx) })
+	q.Register(JobRefresh, s.runJob)
 	return q.AddSchedule(jobs.Schedule{Name: JobRefresh, Kind: JobRefresh, Every: time.Hour})
+}
+
+// errFetch marks a failure to get rates from the provider.
+var errFetch = errors.New("fetch failed")
+
+// runJob is the job handler. A failed fetch is not a failed job: the rates are
+// only for display and the next hourly run tries again, while queue retries
+// would fill the logs of a host that has no outbound access.
+func (s *Service) runJob(ctx context.Context, _ json.RawMessage) error {
+	err := s.Refresh(ctx)
+	if errors.Is(err, errFetch) {
+		s.o.Logger.Warn("market rates not refreshed", "err", err)
+		return nil
+	}
+	return err
 }
 
 // Selected is the org's fx_provider setting.
@@ -121,7 +141,7 @@ func (s *Service) Refresh(ctx context.Context) error {
 	}
 	quote, err := provider.Fetch(ctx)
 	if err != nil {
-		return fmt.Errorf("fxmarket: %w", err)
+		return fmt.Errorf("fxmarket: %w: %w", errFetch, err)
 	}
 	return s.o.DB.Write(ctx, func(tx store.Tx) error {
 		for currency, rate := range quote.Rates {
