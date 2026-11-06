@@ -99,11 +99,14 @@ func TestOperatorNotificationsAreModeScopedAndSecretsStayEncrypted(t *testing.T)
 		if len(telegramPaths) != 1 || telegramPaths[0] != "/bot"+token+"/sendMessage" {
 			t.Fatalf("telegram paths %q", telegramPaths)
 		}
-		var sent map[string]string
-		if err := json.Unmarshal(telegramBodies[0], &sent); err != nil || sent["chat_id"] != "-100123" ||
-			!strings.Contains(sent["text"], "p123") || !strings.Contains(sent["text"], "118.00 INR") ||
-			!strings.Contains(sent["text"], "buyer@example.com") || !strings.Contains(sent["text"], "🇮🇳 IN") ||
-			strings.Count(sent["text"], "\n") != 2 {
+		var sent struct {
+			ChatID string `json:"chat_id"`
+			Text   string `json:"text"`
+		}
+		if err := json.Unmarshal(telegramBodies[0], &sent); err != nil || sent.ChatID != "-100123" ||
+			!strings.Contains(sent.Text, "p123") || !strings.Contains(sent.Text, "118.00 INR") ||
+			!strings.Contains(sent.Text, "buyer@example.com") || !strings.Contains(sent.Text, "🇮🇳 IN") ||
+			strings.Count(sent.Text, "\n") != 2 {
 			t.Fatalf("telegram body %s: %v", telegramBodies[0], err)
 		}
 		if !strings.Contains(mailer.messages[0].Text, "🇮🇳 India (IN)") {

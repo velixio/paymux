@@ -220,9 +220,9 @@ var sections = []navItem{
 
 // navItems is the full menu; built pages and placeholders interleaved.
 var navItems = []navItem{
-	{"overview", "Overview", prefix + "/overview"}, {"analytics", "Analytics", prefix + "/analytics"}, {"payments", "Payments", prefix + "/payments"}, {"payment-links", "Payment links", prefix + "/payment-links"},
+	{"overview", "Overview", prefix + "/overview"}, {"payments", "Payments", prefix + "/payments"}, {"payment-links", "Payment links", prefix + "/payment-links"},
 	{"subscriptions", "Subscriptions", prefix + "/subscriptions"}, {"invoices", "Invoices", prefix + "/invoices"},
-	{"disputes", "Disputes", prefix + "/disputes"}, {"reconciliation", "Reconciliation", prefix + "/reconciliation"}, {"reports", "Reports", prefix + "/reports"}, {"alerts", "Alerts", prefix + "/alerts"}, {"audit", "Audit", prefix + "/audit"}, {"logs", "Logs", prefix + "/logs"},
+	{"disputes", "Disputes", prefix + "/disputes"}, {"reconciliation", "Reconciliation", prefix + "/reconciliation"}, {"analytics", "Analytics", prefix + "/analytics"}, {"reports", "Reports", prefix + "/reports"}, {"alerts", "Alerts", prefix + "/alerts"}, {"audit", "Audit", prefix + "/audit"}, {"logs", "Logs", prefix + "/logs"},
 	{"apps", "Apps", prefix + "/apps"}, {"providers", "Providers", prefix + "/providers"},
 	{"settings", "Settings", prefix + "/settings"}, {"tax-entities", "Tax entities", prefix + "/tax-entities"}, {"fx", "FX rates", prefix + "/fx"}, {"appearance", "Appearance", prefix + "/appearance"}, {"users", "Users", prefix + "/users"}, {"roles", "Roles", prefix + "/roles"}, {"update", "Update", prefix + "/update"},
 }

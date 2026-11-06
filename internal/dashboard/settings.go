@@ -53,6 +53,29 @@ type notificationView struct {
 	Email, TelegramChatID, Events                             string
 	EmailEnabled, TelegramEnabled, HasTelegramToken, CanWrite bool
 	TelegramDeleteAfterHours                                  int
+	SoundRows                                                 []notificationSoundRow
+	TestScenarios                                             []outbound.TelegramTestScenario
+	TestSent                                                  bool
+}
+
+type notificationSoundRow struct {
+	Event string
+	On    bool
+}
+
+// recommendedNotificationEvents apply when the operator leaves the list blank.
+var recommendedNotificationEvents = []string{"payment.created", "payment.failed", "payment.succeeded", "refund.succeeded", "dispute.opened", "dispute.lost"}
+
+func notificationSoundRows(nc outbound.NotificationConfig) []notificationSoundRow {
+	events := nc.EventTypes
+	if len(events) == 0 {
+		events = recommendedNotificationEvents
+	}
+	rows := make([]notificationSoundRow, len(events))
+	for i, event := range events {
+		rows[i] = notificationSoundRow{Event: event, On: slices.Contains(nc.TelegramSoundEvents, event)}
+	}
+	return rows
 }
 
 func (d *Dashboard) routesSettings() {
@@ -62,6 +85,7 @@ func (d *Dashboard) routesSettings() {
 	m.HandleFunc("GET "+prefix+"/settings/notifications", d.authed(authz.SettingsRead, d.settingsPage))
 	m.HandleFunc("POST "+prefix+"/settings/routing", d.authed(authz.SettingsWrite, d.recent(d.routingSave)))
 	m.HandleFunc("POST "+prefix+"/settings/notifications", d.authed(authz.SettingsWrite, d.recent(d.notificationsSave)))
+	m.HandleFunc("POST "+prefix+"/settings/notifications/test", d.authed(authz.SettingsWrite, d.notificationsTest))
 	m.HandleFunc("POST "+prefix+"/settings/{key}", d.authed(authz.SettingsWrite, d.recent(d.orgSettingSet)))
 }
 
@@ -84,7 +108,7 @@ func (d *Dashboard) renderSettings(w http.ResponseWriter, r *http.Request, s *se
 	switch r.URL.Path {
 	case prefix + "/settings/routing":
 		v.SettingsSection = "routing"
-	case prefix + "/settings/notifications":
+	case prefix + "/settings/notifications", prefix + "/settings/notifications/test":
 		v.SettingsSection = "notifications"
 	}
 
@@ -119,7 +143,9 @@ func (d *Dashboard) renderSettings(w http.ResponseWriter, r *http.Request, s *se
 	v.Notifications = &notificationView{Email: nc.Email, EmailEnabled: nc.EmailEnabled, TelegramChatID: nc.TelegramChatID,
 		TelegramEnabled: nc.TelegramEnabled, HasTelegramToken: nc.HasTelegramToken,
 		TelegramDeleteAfterHours: nc.TelegramDeleteAfterHours,
-		Events:                   strings.Join(nc.EventTypes, ", "), CanWrite: s.can(authz.SettingsWrite)}
+		Events:                   strings.Join(nc.EventTypes, ", "), CanWrite: s.can(authz.SettingsWrite),
+		SoundRows: notificationSoundRows(nc), TestScenarios: outbound.TelegramTestScenarios,
+		TestSent: r.URL.Query().Get("telegram_test") == "sent"}
 
 	var apps []store.App
 	if err := d.o.DB.Read(ctx, func(q store.Querier) (err error) { apps, err = store.ListApps(ctx, q, org); return }); err != nil {
@@ -493,7 +519,7 @@ func (d *Dashboard) notificationsSave(w http.ResponseWriter, r *http.Request, s 
 	}
 	events := splitList(r.PostForm.Get("events"))
 	if len(events) == 0 {
-		events = []string{"payment.created", "payment.failed", "payment.succeeded", "refund.succeeded", "dispute.opened", "dispute.lost"}
+		events = recommendedNotificationEvents
 	}
 	deleteAfterRaw := r.PostForm.Get("telegram_delete_after_hours")
 	if deleteAfterRaw == "" {
@@ -506,18 +532,37 @@ func (d *Dashboard) notificationsSave(w http.ResponseWriter, r *http.Request, s 
 	}
 	cfg := outbound.NotificationConfig{Email: strings.TrimSpace(r.PostForm.Get("email")), EmailEnabled: r.PostForm.Get("email_enabled") != "",
 		TelegramChatID: strings.TrimSpace(r.PostForm.Get("telegram_chat_id")), TelegramEnabled: r.PostForm.Get("telegram_enabled") != "",
-		TelegramDeleteAfterHours: deleteAfter, EventTypes: events}
+		TelegramDeleteAfterHours: deleteAfter, EventTypes: events, TelegramSoundEvents: r.PostForm["telegram_sound"]}
 	if err := d.o.Outbound.SaveNotificationConfig(r.Context(), org, d.mode(r, s), cfg, r.PostForm.Get("telegram_token")); err != nil {
 		d.renderSettings(w, r, s, http.StatusBadRequest, err.Error())
 		return
 	}
 	if err := d.record(r.Context(), r, s, "notifications.update", org+":"+d.mode(r, s), nil,
 		map[string]any{"email_enabled": cfg.EmailEnabled, "telegram_enabled": cfg.TelegramEnabled,
-			"telegram_delete_after_hours": cfg.TelegramDeleteAfterHours, "events": events}); err != nil {
+			"telegram_delete_after_hours": cfg.TelegramDeleteAfterHours, "events": events, "telegram_sound": cfg.TelegramSoundEvents}); err != nil {
 		d.fail(w, err)
 		return
 	}
 	http.Redirect(w, r, prefix+"/settings/notifications", http.StatusSeeOther)
+}
+
+func (d *Dashboard) notificationsTest(w http.ResponseWriter, r *http.Request, s *session) {
+	org, err := d.orgID(r.Context())
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	scenario, sound := r.PostForm.Get("scenario"), r.PostForm.Get("sound") != ""
+	if err := d.o.Outbound.SendTelegramTest(r.Context(), org, d.mode(r, s), scenario, sound); err != nil {
+		d.renderSettings(w, r, s, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := d.record(r.Context(), r, s, "notifications.test", org+":"+d.mode(r, s), nil,
+		map[string]any{"scenario": scenario, "sound": sound}); err != nil {
+		d.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, prefix+"/settings/notifications?telegram_test=sent", http.StatusSeeOther)
 }
 
 func (d *Dashboard) orgSettingSet(w http.ResponseWriter, r *http.Request, s *session) {

@@ -33,9 +33,21 @@
 <label>Delete messages after<input class="field" type="number" name="telegram_delete_after_hours" value="{{.TelegramDeleteAfterHours}}" min="0" max="47" inputmode="numeric"><small class="muted">Hours (1–47). Use 0 to keep messages. Telegram cannot delete messages after 48 hours.</small></label></div>
 </fieldset>
 <fieldset><legend>Events</legend><label>Event names<input class="field" name="events" value="{{.Events}}" placeholder="payment.succeeded, payment.failed"><small class="muted">Comma-separated. Leave blank for the recommended payment, refund and dispute events.</small></label></fieldset>
+<fieldset><legend>Telegram sound</legend><p class="muted">Silent events still appear in the chat, but don't ping anyone. Telegram can't ping on an edit, so a later payment event with sound on posts a new message at the bottom and deletes the old one.</p>
+{{range .SoundRows}}<label class="option-row"><input type="checkbox" name="telegram_sound" value="{{.Event}}"{{if .On}} checked{{end}}><span><strong>{{.Event}}</strong></span></label>
+{{end}}<small class="muted">An event added above starts silent. Save, then tick it here.</small></fieldset>
 <div class="settings-actions"><button class="btn" type="submit">Save notifications</button></div>
 </form>
-{{else}}<dl class="facts"><dt>Email</dt><dd>{{if .EmailEnabled}}{{.Email}}{{else}}Off{{end}}</dd><dt>Telegram</dt><dd>{{if .TelegramEnabled}}{{.TelegramChatID}}{{else}}Off{{end}}</dd><dt>Telegram retention</dt><dd>{{if .TelegramDeleteAfterHours}}{{.TelegramDeleteAfterHours}} hours{{else}}Keep messages{{end}}</dd><dt>Events</dt><dd>{{.Events}}</dd></dl>{{end}}
+<form method="post" action="/dashboard/settings/notifications/test" class="notification-form">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<fieldset><legend>Send a test message</legend><p class="muted">Posts a sample with made-up data to the saved Telegram chat. Save any changes first.</p>
+{{if .TestSent}}<p role="status"><strong>Test message sent.</strong> Check your Telegram chat.</p>{{end}}
+<label>Message<select class="field" name="scenario">{{range .TestScenarios}}<option value="{{.Key}}">{{.Label}}</option>{{end}}</select></label>
+<label class="option-row"><input type="checkbox" name="sound" value="1" checked><span><strong>Play sound</strong><small>Untick to send it silently.</small></span></label>
+</fieldset>
+<div class="settings-actions"><button class="btn" type="submit">Send test message</button></div>
+</form>
+{{else}}<dl class="facts"><dt>Email</dt><dd>{{if .EmailEnabled}}{{.Email}}{{else}}Off{{end}}</dd><dt>Telegram</dt><dd>{{if .TelegramEnabled}}{{.TelegramChatID}}{{else}}Off{{end}}</dd><dt>Telegram retention</dt><dd>{{if .TelegramDeleteAfterHours}}{{.TelegramDeleteAfterHours}} hours{{else}}Keep messages{{end}}</dd><dt>Events</dt><dd>{{.Events}}</dd><dt>Telegram sound</dt><dd>{{range .SoundRows}}{{if .On}}{{.Event}} {{end}}{{end}}</dd></dl>{{end}}
 </section>{{end}}
 {{end}}
 

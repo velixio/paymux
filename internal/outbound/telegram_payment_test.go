@@ -23,6 +23,7 @@ type telegramCall struct {
 	Method    string
 	Text      string
 	MessageID int64
+	Silent    bool
 }
 
 // fakeTelegram answers the Bot API; override, when set, can reject a method.
@@ -39,12 +40,13 @@ func (f *fakeTelegram) RoundTrip(r *http.Request) (*http.Response, error) {
 	var body struct {
 		Text      string `json:"text"`
 		MessageID int64  `json:"message_id"`
+		Silent    bool   `json:"disable_notification"`
 	}
 	_ = json.Unmarshal(raw, &body)
 	method := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls = append(f.calls, telegramCall{method, body.Text, body.MessageID})
+	f.calls = append(f.calls, telegramCall{method, body.Text, body.MessageID, body.Silent})
 	if f.failWith != nil {
 		return nil, f.failWith
 	}
@@ -184,7 +186,7 @@ func TestTelegramPaymentLifecycleEditsOneMessage(t *testing.T) {
 		h := newTelegramHarness(t, db, 47)
 
 		wantCalls(t, h.deliver("payment.created", "created"),
-			telegramCall{Method: "sendMessage", Text: "⏳ " + telegramHead})
+			telegramCall{Method: "sendMessage", Silent: true, Text: "⏳ " + telegramHead})
 
 		h.attempt("a1", "failed", "card_declined", "Insufficient funds", at(16, 7))
 		wantCalls(t, h.deliver("payment.failed", "failed"),
@@ -258,7 +260,7 @@ func TestTelegramPaymentMessageRendering(t *testing.T) {
 			storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 				h := newTelegramHarness(t, db, 0)
 				tc.setup(h)
-				wantCalls(t, h.deliver(tc.typ, tc.status), telegramCall{Method: "sendMessage", Text: tc.want})
+				wantCalls(t, h.deliver(tc.typ, tc.status), telegramCall{Method: "sendMessage", Silent: true, Text: tc.want})
 			})
 		})
 	}
@@ -280,7 +282,7 @@ func TestTelegramPaymentMessageCountsProviderTries(t *testing.T) {
 			return store.UpsertProviderPaymentAttempt(ctx, tx, store.ProviderPaymentAttempt{ProviderAccountID: "pa_1",
 				ProviderPaymentID: "pay_3", AttemptID: "a1", Status: "captured", CreatedAt: at(16, 8), UpdatedAt: at(16, 30)})
 		})
-		wantCalls(t, h.deliver("payment.succeeded", "succeeded"), telegramCall{Method: "sendMessage",
+		wantCalls(t, h.deliver("payment.succeeded", "succeeded"), telegramCall{Method: "sendMessage", Silent: true,
 			Text: "✅ " + telegramHead + "\nPaid 16:09 UTC on attempt 3\n2× Insufficient funds · last 16:07"})
 	})
 }
@@ -298,7 +300,7 @@ func TestTelegramPaymentMessageGoneIsPostedAgain(t *testing.T) {
 		}
 		wantCalls(t, h.deliver("payment.processing", "processing"),
 			telegramCall{Method: "editMessageText", MessageID: 321, Text: "⏳ " + telegramHead},
-			telegramCall{Method: "sendMessage", Text: "⏳ " + telegramHead})
+			telegramCall{Method: "sendMessage", Silent: true, Text: "⏳ " + telegramHead})
 
 		h.tg.override = nil
 		wantCalls(t, h.deliver("payment.failed", "failed"),
@@ -395,7 +397,7 @@ func TestTelegramPaymentLockedMessageMakesTheJobWait(t *testing.T) {
 
 		h.e.clk.Add(2 * time.Hour)
 		h.run(1)
-		wantCalls(t, h.tg.take(), telegramCall{Method: "sendMessage", Text: "⏳ " + telegramHead})
+		wantCalls(t, h.tg.take(), telegramCall{Method: "sendMessage", Silent: true, Text: "⏳ " + telegramHead})
 		if len(h.mailer.messages) != 1 {
 			t.Fatalf("emails after retry = %d", len(h.mailer.messages))
 		}
@@ -480,7 +482,7 @@ func TestTelegramPaymentMessageForgottenAfterRetentionDelete(t *testing.T) {
 		wantCalls(t, h.tg.take(), telegramCall{Method: "deleteMessage", MessageID: 321})
 
 		wantCalls(t, h.deliver("payment.failed", "failed"),
-			telegramCall{Method: "sendMessage", Text: "❌ " + telegramHead + "\nFailed"})
+			telegramCall{Method: "sendMessage", Silent: true, Text: "❌ " + telegramHead + "\nFailed"})
 	})
 }
 
@@ -496,6 +498,6 @@ func TestTelegramNonPaymentEventKeepsItsMessage(t *testing.T) {
 				ObjectType: "dispute", ObjectID: "dp_1", ObjectVersion: 1, Data: map[string]any{"id": "dp_1"}})
 		})
 		h.run(1)
-		wantCalls(t, h.tg.take(), telegramCall{Method: "sendMessage", Text: "[TEST] dispute.opened · dp_1"})
+		wantCalls(t, h.tg.take(), telegramCall{Method: "sendMessage", Silent: true, Text: "[TEST] dispute.opened · dp_1"})
 	})
 }

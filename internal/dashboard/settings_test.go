@@ -373,3 +373,59 @@ func TestRoutingEditorRulesAreCardsWithOrderNumbers(t *testing.T) {
 		}
 	})
 }
+
+func TestNotificationSoundSettingsRenderAndSave(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		admin := e.roleClient("admin")
+		body := e.pageOK(admin, "/dashboard/settings/notifications")
+		has(t, body, `name="telegram_sound" value="payment.succeeded" checked`, `name="telegram_sound" value="payment.created">`)
+		form := url.Values{"csrf": {csrfOf(t, body)}, "events": {"payment.failed, payment.succeeded"}, "telegram_sound": {"payment.failed"}}
+		if r, out := e.post(admin, "/dashboard/settings/notifications", form); r.StatusCode != 303 {
+			t.Fatalf("save: %d\n%s", r.StatusCode, out)
+		}
+		body = e.pageOK(admin, "/dashboard/settings/notifications")
+		has(t, body, `name="telegram_sound" value="payment.failed" checked`, `name="telegram_sound" value="payment.succeeded">`)
+	})
+}
+
+func TestTelegramTestMessageForm(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		admin, viewer := e.roleClient("admin"), e.roleClient("viewer")
+		lacks(t, e.pageOK(viewer, "/dashboard/settings/notifications"), `action="/dashboard/settings/notifications/test"`)
+		body := e.pageOK(admin, "/dashboard/settings/notifications")
+		has(t, body, `action="/dashboard/settings/notifications/test"`, `value="paid_after_failures"`)
+		tok := csrfOf(t, body)
+
+		// Refused without a saved chat, with the reason on the notifications page.
+		r, out := e.post(admin, "/dashboard/settings/notifications/test", url.Values{"csrf": {tok}, "scenario": {"paid"}, "sound": {"1"}})
+		if r.StatusCode != 400 {
+			t.Fatalf("no chat: %d", r.StatusCode)
+		}
+		has(t, out, "save a Telegram bot token and chat ID", "Important payment updates")
+
+		save := url.Values{"csrf": {tok}, "telegram_token": {"123456:ABC_def-789"}, "telegram_chat_id": {"-100123"}}
+		if r, out := e.post(admin, "/dashboard/settings/notifications", save); r.StatusCode != 303 {
+			t.Fatalf("save: %d\n%s", r.StatusCode, out)
+		}
+		r, _ = e.post(admin, "/dashboard/settings/notifications/test", url.Values{"csrf": {tok}, "scenario": {"paid"}})
+		if r.StatusCode != 303 || r.Header.Get("Location") != "/dashboard/settings/notifications?telegram_test=sent" {
+			t.Fatalf("send: %d %q", r.StatusCode, r.Header.Get("Location"))
+		}
+		has(t, e.pageOK(admin, "/dashboard/settings/notifications?telegram_test=sent"), "Test message sent.")
+	})
+}
+
+func TestAnalyticsIsListedUnderOperationsBeforeReports(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		body := e.pageOK(e.roleClient("admin"), "/dashboard/overview")
+		nav := body[strings.Index(body, `id="workspace-nav"`):]
+		nav = nav[:strings.Index(nav, "</nav>")]
+		operations, analytics, reports := strings.Index(nav, ">Operations<"), strings.Index(nav, `href="/dashboard/analytics"`), strings.Index(nav, `href="/dashboard/reports"`)
+		if operations < 0 || analytics < operations || reports < analytics {
+			t.Fatalf("operations %d, analytics %d, reports %d", operations, analytics, reports)
+		}
+	})
+}
