@@ -102,9 +102,12 @@ func TestOperatorNotificationsAreModeScopedAndSecretsStayEncrypted(t *testing.T)
 		var sent map[string]string
 		if err := json.Unmarshal(telegramBodies[0], &sent); err != nil || sent["chat_id"] != "-100123" ||
 			!strings.Contains(sent["text"], "p123") || !strings.Contains(sent["text"], "118.00 INR") ||
-			!strings.Contains(sent["text"], "buyer@example.com") || !strings.Contains(sent["text"], "🇮🇳 India (IN)") ||
-			strings.Count(sent["text"], "\n") > 1 {
+			!strings.Contains(sent["text"], "buyer@example.com") || !strings.Contains(sent["text"], "🇮🇳 IN") ||
+			strings.Count(sent["text"], "\n") != 2 {
 			t.Fatalf("telegram body %s: %v", telegramBodies[0], err)
+		}
+		if !strings.Contains(mailer.messages[0].Text, "🇮🇳 India (IN)") {
+			t.Fatalf("email keeps the full country name: %q", mailer.messages[0].Text)
 		}
 
 		e.clk.Add(47 * time.Hour)
