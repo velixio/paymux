@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { OWNER_EMAIL, OWNER_PASSWORD } from "./global-setup";
 
 test("the payments list badge opens the risk modal", async ({ page }) => {

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 import { OWNER_EMAIL, OWNER_PASSWORD } from "./global-setup";
 
 async function openFailedPayment(page: Page) {
