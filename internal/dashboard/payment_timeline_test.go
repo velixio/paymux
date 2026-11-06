@@ -447,3 +447,12 @@ func TestScoreOnlyRiskHasNoPanel(t *testing.T) {
 		t.Fatalf("glance = %+v", g)
 	}
 }
+
+// Errors stored before delivery errors dropped the URL still name the full one.
+func TestDeliveryErrorHidesEndpointQuery(t *testing.T) {
+	row := tlData().targetRow(outbound.ResendTarget{DeliveryID: "whd_1", URL: "https://x.example/hook?token=s3cret", Status: "failed",
+		LastError: `Post "https://x.example/hook?token=s3cret": dial tcp: connection refused`})
+	if want := `Post "https://x.example/hook": dial tcp: connection refused`; row.Error != want {
+		t.Errorf("error = %q, want %q", row.Error, want)
+	}
+}

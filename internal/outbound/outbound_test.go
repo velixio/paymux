@@ -521,3 +521,22 @@ func TestResendEventUnknownEvent(t *testing.T) {
 		}
 	})
 }
+
+// An endpoint's query string can hold a secret, so a failed request mustn't store it.
+func TestDeliveryErrorLeavesOutTheEndpointQuery(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, true)
+		e.svc.RetrySchedule = func() []time.Duration { return []time.Duration{0} }
+		s := newSink(t, 200)
+		s.srv.Close()
+		e.endpoint("app_1", s.srv.URL+"/hook?token=s3cret")
+		e.emit("app_1", "x.y")
+		e.run()
+		for _, query := range []string{`SELECT last_error FROM webhook_deliveries`, `SELECT error FROM webhook_delivery_attempts`} {
+			got := e.str(query)
+			if got == "" || strings.Contains(got, "s3cret") {
+				t.Errorf("%s = %q", query, got)
+			}
+		}
+	})
+}

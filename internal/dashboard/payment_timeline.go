@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -250,8 +251,11 @@ func endpointLabel(raw string) string {
 	return u.Host + strings.TrimSuffix(u.Path, "/")
 }
 
+// urlQuery matches a URL with its query or fragment, up to where the URL ends.
+var urlQuery = regexp.MustCompile(`(https?://[^\s"'?#]+)[?#][^\s"']*`)
+
 func (in timelineData) targetRow(t outbound.ResendTarget) webhookTarget {
-	row := webhookTarget{DeliveryID: t.DeliveryID, Endpoint: endpointLabel(t.URL), Error: t.LastError, New: t.New, Tone: toneNone}
+	row := webhookTarget{DeliveryID: t.DeliveryID, Endpoint: endpointLabel(t.URL), Error: urlQuery.ReplaceAllString(t.LastError, "$1"), New: t.New, Tone: toneNone}
 	failedBefore := t.LastStatus != 0 || t.LastError != ""
 	switch {
 	case t.New:

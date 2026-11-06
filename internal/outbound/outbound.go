@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -324,6 +325,11 @@ func (s *Service) attempt(ctx context.Context, d store.DeliveryDetail) (out atte
 	req.Header.Set("User-Agent", "Paymux-Webhooks/1")
 	resp, err := s.client.Do(req)
 	if err != nil {
+		// The client's error names the full URL, whose query can hold a secret.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			err = urlErr.Err
+		}
 		out.err = err
 		return
 	}
