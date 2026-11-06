@@ -785,6 +785,8 @@ var (
 	ErrInvalidAmount   = errors.New("money: invalid amount")
 )
 
+func Currencies() []string
+
 func Exponent(currency string) (int, error)
 
 func FormatDecimal(minor int64, currency string) (string, error)

@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/velixio/paymux/internal/alertcenter"
@@ -122,7 +123,8 @@ type Options struct {
 	PaymentLinks *paylinks.Service
 	// Alerts keeps the ops alerts shown on the Alerts page and in the nav badge.
 	Alerts *alertcenter.Service
-	// Location is the time zone of "today" and of date filters (default UTC).
+	// Location is the time zone of "today" and of date filters (default UTC),
+	// unless the time_zone setting picks another.
 	Location *time.Location
 	// PageSize is the number of rows per list page (default 25).
 	PageSize int
@@ -154,6 +156,8 @@ type Dashboard struct {
 
 	orgMu sync.Mutex
 	org   string
+
+	zone atomic.Pointer[zoneChoice] // the time_zone setting; see location
 
 	// roles resolves custom roles from the roles table (short TTL cache).
 	roles *authz.Cache
@@ -289,6 +293,7 @@ func (d *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		limit = maxUploadBytes + 64<<10
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
+	d.refreshZone(r.Context())
 	d.mux.ServeHTTP(w, r)
 }
 

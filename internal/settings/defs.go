@@ -93,6 +93,9 @@ var defs = []Def{
 	// default_currency: the currency Overview reports revenue in, converting the
 	// others at the stored FX rates; "off" reports each currency separately.
 	{"default_currency", `"off"`, LevelOrg, validDefaultCurrency},
+	// time_zone: the zone of the dashboard's dates and date filters; "server"
+	// follows PAYMUX_TZ, so an upgrade changes nothing until one is picked.
+	{"time_zone", `"server"`, LevelOrg, validTimeZone},
 	// fx_provider: where the indicative market rates shown on the dashboard come
 	// from; "off" neither fetches nor shows them. Invoices and GST never use them.
 	{"fx_provider", `"frankfurter"`, LevelOrg, oneOf("frankfurter", "off")},
@@ -248,6 +251,17 @@ func validDefaultCurrency(raw json.RawMessage) error {
 	}
 	if _, err := money.Exponent(s); err != nil {
 		return fmt.Errorf("must be off or a currency code such as USD")
+	}
+	return nil
+}
+
+func validTimeZone(raw json.RawMessage) error {
+	var s string
+	if err := decodeStrict(raw, &s); err != nil {
+		return err
+	}
+	if s != "server" && !slices.Contains(timeZones, s) {
+		return fmt.Errorf("must be server or a time zone from the list, such as Asia/Kolkata")
 	}
 	return nil
 }

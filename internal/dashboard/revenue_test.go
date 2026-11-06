@@ -550,7 +550,7 @@ func TestDefaultCurrencySettingIsEditable(t *testing.T) {
 		e := newEnv(t, db)
 		admin := e.roleClient("admin")
 		body := e.pageOK(admin, "/dashboard/settings")
-		has(t, body, "Default currency", `action="/dashboard/settings/default_currency"`)
+		has(t, body, "Default currency", `action="/dashboard/settings/default_currency"`, `<select class="field" name="value" aria-label="default_currency">`, `<option value="EUR">`)
 		tok := regexpFind(t, `name="csrf" value="([^"]+)"`, body)
 		if r, _ := e.post(admin, "/dashboard/settings/default_currency", url.Values{"csrf": {tok}, "value": {"QQQ"}}); r.StatusCode != 400 {
 			t.Errorf("unknown currency: %d", r.StatusCode)

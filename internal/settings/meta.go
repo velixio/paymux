@@ -1,5 +1,7 @@
 package settings
 
+import "github.com/velixio/paymux/pkg/connector/money"
+
 // Kind says which control suits a setting.
 type Kind string
 
@@ -34,8 +36,10 @@ type Meta struct {
 
 var metas = map[string]Meta{
 	"routing": {Kind: KindJSON, Help: "Which provider accounts take which payments: ordered rules, then a catch-all. Edited on the org Settings page."},
-	"default_currency": {Kind: KindString, Pattern: `^(off|[A-Z]{3})$`,
+	"default_currency": {Kind: KindEnum, Options: append([]string{"off"}, money.Currencies()...),
 		Help: "Currency that Overview reports all revenue in, such as USD, converting other currencies at the stored FX rates. off reports each currency separately."},
+	"time_zone": {Kind: KindEnum, Options: append([]string{"server"}, timeZones...),
+		Help: "Time zone of the dates, times, charts and date filters on the dashboard. server follows the server's PAYMUX_TZ. Scheduled jobs such as reconciliation stay on PAYMUX_TZ, and GST dates stay in IST."},
 	"fx_provider": {Kind: KindEnum, Options: []string{"frankfurter", "off"},
 		Help: "Where indicative market rates come from: frankfurter fetches European Central Bank rates from api.frankfurter.dev, updated once per business day, sending no Paymux data. They fill gaps when Overview converts revenue and are never used for invoices or GST. off neither fetches nor shows them."},
 	"checkout_mode": {Kind: KindEnum, Options: []string{"hosted", "provider_action"},

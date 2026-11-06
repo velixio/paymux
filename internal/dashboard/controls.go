@@ -200,7 +200,7 @@ func settingGroup(key string) string {
 		return "Payment behavior"
 	case "routing":
 		return "Routing"
-	case "default_currency", "fx_provider":
+	case "default_currency", "time_zone", "fx_provider":
 		return "Reporting"
 	case "dunning_schedule", "dunning_final_action", "predebit_lead", "predebit_email", "mandate_headroom", "mandate_afa_limit", "mandate_validity", "upi_execution_windows":
 		return "Subscriptions and recovery"

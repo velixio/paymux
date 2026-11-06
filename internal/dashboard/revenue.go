@@ -189,8 +189,7 @@ type revenueView struct {
 }
 
 // revenue builds the revenue chart data of one org and mode.
-func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode string, rq revenueQuery) (revenueView, error) {
-	loc := d.o.Location
+func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode string, rq revenueQuery, loc *time.Location) (revenueView, error) {
 	v := revenueView{Query: rq, Bucket: rq.Bucket}
 	if v.Bucket == "auto" {
 		v.Bucket = autoBucket(rq.Range, rq.From, rq.To)
@@ -648,7 +647,8 @@ func (d *Dashboard) revenueData(ctx context.Context, r *http.Request, org, mode 
 		if err != nil {
 			return err
 		}
-		rq, perr := parseRevenueQuery(r.URL.Query(), d.o.Now(), d.o.Location, first, hasFirst)
+		loc := d.location() // once, so one view never mixes two zones
+		rq, perr := parseRevenueQuery(r.URL.Query(), d.o.Now(), loc, first, hasFirst)
 		if perr != nil {
 			bad = perr.Error()
 			return nil
@@ -667,7 +667,7 @@ func (d *Dashboard) revenueData(ctx context.Context, r *http.Request, org, mode 
 			bad = "unknown app"
 			return nil
 		}
-		if v, err = d.revenue(ctx, q, org, mode, rq); err != nil {
+		if v, err = d.revenue(ctx, q, org, mode, rq, loc); err != nil {
 			return err
 		}
 		v.Apps = opts

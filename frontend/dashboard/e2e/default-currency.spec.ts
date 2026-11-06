@@ -13,7 +13,7 @@ async function setDefaultCurrency(page: Page, value: string) {
   await page.goto("/dashboard/settings");
   await page.getByRole("tab", { name: "Reporting" }).click();
   const form = page.locator('form[action$="/settings/default_currency"]');
-  await form.locator('input[name="value"]').fill(value);
+  await form.locator('select[name="value"]').selectOption(value);
   await form.getByRole("button", { name: "Save" }).click();
   // Settings changes go through the review dialog before anything is sent.
   const review = page.getByRole("dialog");
@@ -25,7 +25,7 @@ async function setDefaultCurrency(page: Page, value: string) {
     ),
     review.getByRole("button", { name: "Confirm change" }).click(),
   ]);
-  // The stored value, not the text just typed into the input.
+  // The stored value, not what was just picked in the list.
   await page.goto("/dashboard/settings");
   await expect(page.locator("#setting-default_currency .eff")).toHaveText(
     value,
@@ -108,4 +108,34 @@ test("the market rate provider is chosen in Settings, under Reporting", async ({
 
   await choose("off");
   await choose("frankfurter");
+});
+
+test("the time zone is picked from a list in Settings, under Reporting", async ({
+  page,
+}) => {
+  await login(page);
+
+  const choose = async (value: string) => {
+    await page.goto("/dashboard/settings");
+    await page.getByRole("tab", { name: "Reporting" }).click();
+    const form = page.locator('form[action$="/settings/time_zone"]');
+    await form.locator('select[name="value"]').selectOption(value);
+    await form.getByRole("button", { name: "Save" }).click();
+    await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          r.request().method() === "POST" &&
+          r.url().endsWith("/settings/time_zone"),
+      ),
+      page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Confirm change" })
+        .click(),
+    ]);
+    await page.goto("/dashboard/settings");
+    await expect(page.locator("#setting-time_zone .eff")).toHaveText(value);
+  };
+
+  await choose("Asia/Tokyo");
+  await choose("server");
 });
