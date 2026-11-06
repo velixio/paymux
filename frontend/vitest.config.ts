@@ -12,6 +12,7 @@ export default defineConfig({
       "home/src/**/*.spec.{ts,tsx}",
       "dashboard/src/**/*.test.ts",
       "dashboard/src/**/*.test.tsx",
+      "dashboard/e2e/*.test.ts",
     ],
     environment: "happy-dom",
     coverage: {

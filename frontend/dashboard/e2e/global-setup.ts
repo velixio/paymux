@@ -1,9 +1,9 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hubEnv } from "./hub-env";
 
 export const OWNER_EMAIL = "owner@example.com";
 export const OWNER_PASSWORD = "correct horse battery";
@@ -30,17 +30,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   execFileSync("go", ["build", "-o", bin, "./cmd/paymux"], build);
   execFileSync("go", ["build", "-o", seedBin, "./cmd/paymux-e2eseed"], build);
 
-  const env = {
-    ...process.env,
-    PAYMUX_ENV: "development",
-    PAYMUX_BASE_URL: `http://127.0.0.1:${port}`,
-    PAYMUX_LISTEN: `127.0.0.1:${port}`,
-    PAYMUX_INTERNAL_LISTEN: `127.0.0.1:${port + 100}`,
-    PAYMUX_DATA_DIR: dataDir,
-    PAYMUX_MASTER_KEY: randomBytes(32).toString("base64"),
-    PAYMUX_DEV_SKIP_2FA: "true",
-    PAYMUX_TZ: "Asia/Kolkata",
-  };
+  const env = hubEnv(process.env, dataDir, port);
   const run = (cmd: string, args: string[], input?: string) =>
     execFileSync(cmd, args, {
       cwd: root,
