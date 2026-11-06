@@ -341,7 +341,13 @@ func ToSnapshot(s connector.PaymentSnapshot) core.Snapshot {
 	out := core.Snapshot{Amount: s.Amount, Currency: strings.ToUpper(s.Currency), Method: s.Method,
 		MethodDetails:     s.MethodDetails,
 		Risk:              s.Risk,
+		TryID:             s.TryID,
+		RawStatus:         s.RawStatus,
+		ThreeDS:           s.ThreeDS,
 		ProviderPaymentID: s.ProviderPaymentID, ProviderOrderID: s.ProviderOrderID, FailureCode: s.ErrorCode, FailureMessage: s.ErrorMessage}
+	if s.CreatedAt > 0 {
+		out.ProviderCreatedAt = time.UnixMilli(s.CreatedAt)
+	}
 	switch s.Status {
 	case connector.PaymentSucceeded:
 		out.Status = state.AttemptCaptured
@@ -437,7 +443,6 @@ func (s *Service) SyncAttemptLatest(ctx context.Context, attemptID string) (core
 		p, perr := s.o.Core.GetPaymentByID(ctx, a.PaymentID)
 		return core.ApplyResult{Payment: p, Attempt: a}, perr
 	}
-	s.recordProviderPaymentAttempt(ctx, a, snap)
 	res, err := s.o.Core.ApplyAttemptSnapshot(ctx, a.ID, ToSnapshot(snap))
 	if err == nil {
 		s.fetchRiskOnReceipt(ctx, live, res, ref, snap)
@@ -494,7 +499,6 @@ func (s *Service) syncAttempt(ctx context.Context, attemptID string, hint connec
 		p, perr := s.o.Core.GetPaymentByID(ctx, a.PaymentID)
 		return core.ApplyResult{Payment: p, Attempt: a}, perr
 	}
-	s.recordProviderPaymentAttempt(ctx, a, snap)
 	res, err := s.o.Core.ApplyAttemptSnapshot(ctx, a.ID, ToSnapshot(snap))
 	if err == nil {
 		s.fetchRiskOnReceipt(ctx, live, res, ref, snap)
@@ -503,36 +507,26 @@ func (s *Service) syncAttempt(ctx context.Context, attemptID string, hint connec
 }
 
 // recordStoredProviderPaymentAttempt preserves the provider payment already
-// known by Paymux. History is observational: failure to write it must never
-// prevent a payment from being reconciled or booked.
+// known by Paymux, when no try of it has been recorded yet (an attempt from
+// before tries were recorded). History is observational: failure to write it
+// must never prevent a payment from being reconciled or booked.
 func (s *Service) recordStoredProviderPaymentAttempt(ctx context.Context, a store.Attempt) {
 	if a.ProviderPaymentID == "" {
 		return
 	}
-	p := store.ProviderPaymentAttempt{ProviderAccountID: a.ProviderAccountID, ProviderPaymentID: a.ProviderPaymentID,
-		AttemptID: a.ID, ProviderOrderID: a.ProviderOrderID, Status: a.Status, Method: a.Method,
-		FailureCode: a.FailureCode, FailureMessage: a.FailureMessage, Amount: a.AmountReceived,
-		Currency: strings.ToUpper(a.CurrencyReceived), CreatedAt: a.CreatedAt, UpdatedAt: s.o.Now()}
-	s.storeProviderPaymentAttempt(ctx, p)
-}
-
-func (s *Service) recordProviderPaymentAttempt(ctx context.Context, a store.Attempt, snap connector.PaymentSnapshot) {
-	if snap.ProviderPaymentID == "" {
+	var known bool
+	err := s.o.DB.Read(ctx, func(q store.Querier) (err error) {
+		known, err = store.HasTryOfProviderPayment(ctx, q, a.ProviderAccountID, a.ProviderPaymentID)
+		return err
+	})
+	if err != nil || known {
 		return
 	}
-	created := s.o.Now()
-	if snap.CreatedAt > 0 {
-		created = time.UnixMilli(snap.CreatedAt)
-	}
-	status := snap.RawStatus
-	if status == "" {
-		status = string(snap.Status)
-	}
-	p := store.ProviderPaymentAttempt{ProviderAccountID: a.ProviderAccountID, ProviderPaymentID: snap.ProviderPaymentID,
-		AttemptID: a.ID, ProviderOrderID: firstNonEmpty(snap.ProviderOrderID, a.ProviderOrderID), Status: status,
-		Method: snap.Method, FailureCode: snap.ErrorCode, FailureMessage: snap.ErrorMessage, Amount: snap.Amount,
-		Currency: strings.ToUpper(snap.Currency), CreatedAt: created, UpdatedAt: s.o.Now()}
-	s.storeProviderPaymentAttempt(ctx, p)
+	details := connector.PaymentMethodDetails{}
+	_ = json.Unmarshal([]byte(a.MethodDetails), &details)
+	s.o.Core.RecordTry(ctx, a, core.Snapshot{Status: state.AttemptStatus(a.Status), RawStatus: a.Status, ProviderPaymentID: a.ProviderPaymentID,
+		ProviderOrderID: a.ProviderOrderID, Method: a.Method, MethodDetails: details, FailureCode: a.FailureCode, FailureMessage: a.FailureMessage,
+		Amount: a.AmountReceived, Currency: a.CurrencyReceived, ProviderCreatedAt: a.CreatedAt})
 }
 
 // providerPaymentAttemptFetcher is implemented by connectors that can list
@@ -556,15 +550,8 @@ func (s *Service) recordProviderPaymentAttempts(ctx context.Context, a store.Att
 	}
 	for _, snap := range snaps {
 		if snapshotIsOurs(a, snap) {
-			s.recordProviderPaymentAttempt(ctx, a, snap)
+			s.o.Core.RecordTry(ctx, a, ToSnapshot(snap))
 		}
-	}
-}
-
-func (s *Service) storeProviderPaymentAttempt(ctx context.Context, p store.ProviderPaymentAttempt) {
-	if err := s.o.DB.Write(ctx, func(tx store.Tx) error { return store.UpsertProviderPaymentAttempt(ctx, tx, p) }); err != nil {
-		s.o.Logger.Warn("checkout: provider payment attempt history could not be recorded", "attempt", p.AttemptID,
-			"provider_payment", p.ProviderPaymentID, "err", err)
 	}
 }
 

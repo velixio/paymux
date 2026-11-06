@@ -189,6 +189,14 @@ func UpsertProviderPaymentAttempt(ctx context.Context, tx Tx, p ProviderPaymentA
 	return err
 }
 
+// HasTryOfProviderPayment reports whether any try names this provider payment.
+func HasTryOfProviderPayment(ctx context.Context, q Queryer, accountID, providerPaymentID string) (bool, error) {
+	var n int
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM provider_payment_attempts
+		WHERE provider_account_id = ? AND provider_payment_id = ?`, accountID, providerPaymentID).Scan(&n)
+	return n > 0, err
+}
+
 // ListProviderPaymentAttempts returns every provider-side payment of a Paymux
 // payment, oldest first.
 func ListProviderPaymentAttempts(ctx context.Context, q Queryer, paymentID string) ([]ProviderPaymentAttempt, error) {

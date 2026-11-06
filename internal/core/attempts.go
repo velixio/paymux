@@ -82,6 +82,10 @@ type Snapshot struct {
 	Risk                        connector.PaymentRisk
 	ProviderOrderID             string
 	FailureCode, FailureMessage string
+	// TryID, RawStatus, ThreeDS and ProviderCreatedAt describe this go at paying
+	// for the try history. They do not affect the attempt.
+	TryID, RawStatus, ThreeDS string
+	ProviderCreatedAt         time.Time
 }
 
 // ApplyResult reports what ApplyAttemptSnapshot did. Changed is false when
@@ -151,7 +155,8 @@ func safeMethodDetails(in connector.PaymentMethodDetails) connector.PaymentMetho
 		c.Issuer = safeInstrumentText(c.Issuer, 100)
 		c.SubType = safeInstrumentText(c.SubType, 32)
 		c.Country = safeCountry(c.Country)
-		if c.Last4 != "" || c.Network != "" || c.Funding != "" || c.Issuer != "" || c.Country != "" ||
+		c.Name = safeInstrumentText(c.Name, 100)
+		if c.Name != "" || c.Last4 != "" || c.Network != "" || c.Funding != "" || c.Issuer != "" || c.Country != "" ||
 			c.International != nil || c.EMI != nil || c.SubType != "" {
 			out.Card = &c
 		}
@@ -237,6 +242,7 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 	if err := validateSnapshot(&snap); err != nil {
 		return ApplyResult{}, err
 	}
+	s.recordTry(ctx, attemptID, snap)
 	var res ApplyResult
 	var alerts []notify.Alert
 	err := s.db.Write(ctx, func(tx store.Tx) error {

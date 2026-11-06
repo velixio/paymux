@@ -573,6 +573,16 @@ func (s *Service) deferCharge(ctx context.Context, tx store.Tx, sub store.Subscr
 
 // toSnapshot maps a connector payment snapshot to a core attempt snapshot.
 func toSnapshot(ps connector.PaymentSnapshot, amount int64, currency string) core.Snapshot {
+	out := settlementSnapshot(ps, amount, currency)
+	out.TryID, out.RawStatus, out.ThreeDS = ps.TryID, ps.RawStatus, ps.ThreeDS
+	out.MethodDetails, out.Risk = ps.MethodDetails, ps.Risk
+	if ps.CreatedAt > 0 {
+		out.ProviderCreatedAt = time.UnixMilli(ps.CreatedAt)
+	}
+	return out
+}
+
+func settlementSnapshot(ps connector.PaymentSnapshot, amount int64, currency string) core.Snapshot {
 	switch ps.Status {
 	case connector.PaymentSucceeded:
 		// The provider's own amount and currency, never the ones we expected: a
