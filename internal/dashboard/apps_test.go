@@ -472,15 +472,15 @@ func TestAppSettingsTab(t *testing.T) {
 		has(t, sacRow, "998315", "org") // seeded into the org values like every default
 
 		// override
-		if r, _ := e.post(admin, page+"/settings/payment_ttl", url.Values{"value": {"30"}, "csrf": {tok}}); r.StatusCode != 303 {
+		if r, _ := e.post(admin, page+"/settings/payment_ttl", url.Values{"value": {"45"}, "csrf": {tok}}); r.StatusCode != 303 {
 			t.Fatalf("override: %d", r.StatusCode)
 		}
 		v, _ := e.set.Resolve(ctx, app.ID, "payment_ttl")
-		if string(v.Raw) != "30" || v.Source != "app" {
+		if string(v.Raw) != "45" || v.Source != "app" {
 			t.Fatalf("resolved %s %s", v.Raw, v.Source)
 		}
 		row = regexpFind(t, `(?s)(<tr[^>]*id="setting-payment_ttl".*?</tr>)`, e.pageOK(admin, page+"?tab=settings"))
-		has(t, row, `value="30"`, "app", "Reset to org")
+		has(t, row, `value="45"`, "app", "Reset to org")
 
 		// validation always goes through settings
 		for name, c := range map[string]struct{ key, val string }{
@@ -500,7 +500,7 @@ func TestAppSettingsTab(t *testing.T) {
 			}
 		}
 		v, _ = e.set.Resolve(ctx, app.ID, "payment_ttl")
-		if string(v.Raw) != "30" {
+		if string(v.Raw) != "45" {
 			t.Fatalf("invalid write changed the value: %s", v.Raw)
 		}
 

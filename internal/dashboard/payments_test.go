@@ -794,7 +794,7 @@ func TestSendWebhookFromPaymentPage(t *testing.T) {
 }
 
 func TestPaymentDisplayStatusEndsRetryAtExpiry(t *testing.T) {
-	now := time.Now()
+	now := time.Date(2026, time.November, 6, 12, 0, 0, 0, time.UTC)
 	failed := store.Payment{Status: "failed", ExpiresAt: now.Add(time.Minute)}
 	if got, _ := paymentDisplayStatus(failed, now); got != "Ready to retry" {
 		t.Errorf("within the limit: %q", got)
