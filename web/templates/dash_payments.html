@@ -17,10 +17,11 @@
 <thead><tr><th>Payment</th><th>App</th><th>Status</th><th class="money">Amount</th><th>Method</th><th class="num">Attempts</th><th>Customer</th><th>Created</th></tr></thead>
 <tbody>
 {{range .Rows}}<tr>
-<td><a href="/dashboard/payments/{{.ID}}">{{.ID}}</a>{{if .OrderRef}}<br><small class="muted">{{.OrderRef}}</small>{{end}}</td><td>{{.App}}</td><td><span class="status status-{{.StatusClass}}">{{.Status}}</span>{{if .RiskLabel}} <span class="risk-score risk-{{.RiskTone}}">{{.RiskLabel}}</span>{{end}}</td>
+<td><a href="/dashboard/payments/{{.ID}}">{{.ID}}</a>{{if .OrderRef}}<br><small class="muted">{{.OrderRef}}</small>{{end}}</td><td>{{.App}}</td><td><span class="status status-{{.StatusClass}}">{{.Status}}</span>{{with .Risk}} <button type="button" class="risk-score risk-{{.Tone}}" command="show-modal" commandfor="{{.DialogID}}" aria-haspopup="dialog">{{.Score}}</button>{{end}}</td>
 <td class="money">{{.Amount}}</td><td>{{if .Provider}}<span class="payment-method"><span class="provider-logo provider-logo-{{.ProviderKey}}" role="img" tabindex="0" aria-label="{{.Provider}}" title="{{.Provider}}">{{.ProviderMark}}</span>{{if .Method}}<span class="payment-method-copy"><span>{{.Method}}</span>{{if .MethodMeta}}<small class="muted">{{.MethodMeta}}</small>{{end}}</span>{{end}}</span>{{else}}<span class="muted">Not routed</span>{{end}}</td><td class="num">{{.Attempts}}</td><td>{{.Customer}}</td><td>{{.Created}}</td>
 </tr>{{else}}<tr><td colspan="8" class="muted">No payments match. Adjust your filters or create a test payment using the API. <a href="/docs">Open API reference</a></td></tr>{{end}}
 </tbody>
 </table></div>
+{{range .Rows}}{{with .Risk}}{{template "risk_dialog" .}}{{end}}{{end}}
 {{with .NextURL}}<p><a class="next" href="{{.}}">Older payments &rarr;</a></p>{{end}}
 {{template "dash_close" .}}{{end}}

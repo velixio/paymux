@@ -65,7 +65,22 @@ func TestPaymentsListShowsRiskBadge(t *testing.T) {
 	e.seedRiskPayment("pay_none", "")
 	body := e.pageOK(c, "/dashboard/payments")
 	has(t, body, `risk-score risk-high`, "88 High")
-	lacks(t, body, "risk-low", "risk-medium")
+	lacks(t, body, "risk-low", "risk-medium", "risk-review-pay_none")
+}
+
+func TestPaymentsListBadgeOpensThatPaymentsRiskModal(t *testing.T) {
+	e := riskEnv(t)
+	c := e.roleClient("viewer")
+	e.seedRiskPayment("pay_a", `{"score":19,"ip_address":"203.0.113.24"}`)
+	e.seedRiskPayment("pay_b", `{"score":88,"ip_address":"203.0.113.25"}`)
+	body := e.pageOK(c, "/dashboard/payments")
+	has(t, body, `commandfor="risk-review-pay_a"`, `<dialog id="risk-review-pay_a"`, `aria-labelledby="risk-review-pay_a-title"`,
+		`commandfor="risk-review-pay_b"`, `<dialog id="risk-review-pay_b"`)
+	for id, ip := range map[string]string{"pay_a": "203.0.113.24", "pay_b": "203.0.113.25"} {
+		_, after, _ := strings.Cut(body, `<dialog id="risk-review-`+id+`"`)
+		dialog, _, _ := strings.Cut(after, "</dialog>")
+		has(t, dialog, ip)
+	}
 }
 
 func riskEnv(t *testing.T) *env {

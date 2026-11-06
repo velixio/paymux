@@ -29,7 +29,7 @@ type payRow struct {
 	ID, App, Status, StatusClass, Amount, Customer, OrderRef, Created string
 	Provider, ProviderKey, ProviderMark, Method, MethodMeta           string
 	Attempts                                                          int
-	RiskLabel, RiskTone                                               string
+	Risk                                                              *riskView
 }
 
 type payFilter struct{ App, Status, Q, From, To, Currency, Country string }
@@ -217,8 +217,9 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 				row.Provider = connectorName
 			}
 			row.Method, row.MethodMeta = paymentListMethod(selected)
-			if risk := paymentRiskView(selected); risk != nil {
-				row.RiskLabel, row.RiskTone = risk.Score, risk.Tone
+			if row.Risk = paymentRiskView(selected); row.Risk != nil {
+				row.Risk.DialogID = "risk-review-" + p.ID
+				row.Risk.Provider = row.Provider
 			}
 		}
 		if p.CustomerID != "" {
