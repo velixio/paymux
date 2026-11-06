@@ -33,6 +33,12 @@ type ProviderPaymentAttempt struct {
 	Status, Method, FailureCode, FailureMessage, Currency            string
 	Amount                                                           int64
 	CreatedAt, UpdatedAt                                             time.Time
+	// TryID keys the row within its account. Empty means ProviderPaymentID
+	// identifies the try, as it does for every provider but Stripe.
+	TryID string
+	// MethodDetails and RiskDetails are JSON of the display-safe connector
+	// types. ThreeDS is one of the connector.ThreeDS values, or empty.
+	MethodDetails, RiskDetails, ThreeDS string
 }
 
 const attemptCols = `id, org_id, mode, payment_id, provider_account_id, provider_ref, COALESCE(provider_order_id,''),
@@ -157,20 +163,29 @@ func CountProviderPaymentAttemptsForPayments(ctx context.Context, q Queryer, pay
 // UpsertProviderPaymentAttempt records the latest known state of one provider
 // payment without changing the Paymux attempt or its ledger effects.
 func UpsertProviderPaymentAttempt(ctx context.Context, tx Tx, p ProviderPaymentAttempt) error {
+	tryID := p.TryID
+	if tryID == "" {
+		tryID = p.ProviderPaymentID
+	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO provider_payment_attempts
-		(provider_account_id, provider_payment_id, attempt_id, provider_order_id, status, method, failure_code,
-		 failure_message, amount, currency, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (provider_account_id, provider_payment_id) DO UPDATE SET
+		(provider_account_id, try_id, provider_payment_id, attempt_id, provider_order_id, status, method, failure_code,
+		 failure_message, amount, currency, method_details, risk_details, three_d_secure, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (provider_account_id, try_id) DO UPDATE SET
 		attempt_id = excluded.attempt_id, provider_order_id = excluded.provider_order_id, status = excluded.status,
 		method = COALESCE(excluded.method, provider_payment_attempts.method),
 		failure_code = COALESCE(excluded.failure_code, provider_payment_attempts.failure_code),
 		failure_message = COALESCE(excluded.failure_message, provider_payment_attempts.failure_message),
 		amount = CASE WHEN excluded.amount > 0 THEN excluded.amount ELSE provider_payment_attempts.amount END,
-		currency = COALESCE(excluded.currency, provider_payment_attempts.currency), updated_at = excluded.updated_at`,
-		p.ProviderAccountID, p.ProviderPaymentID, p.AttemptID, nullIfEmpty(p.ProviderOrderID), p.Status,
+		currency = COALESCE(excluded.currency, provider_payment_attempts.currency),
+		method_details = COALESCE(excluded.method_details, provider_payment_attempts.method_details),
+		risk_details = COALESCE(excluded.risk_details, provider_payment_attempts.risk_details),
+		three_d_secure = COALESCE(excluded.three_d_secure, provider_payment_attempts.three_d_secure),
+		updated_at = excluded.updated_at`,
+		p.ProviderAccountID, tryID, p.ProviderPaymentID, p.AttemptID, nullIfEmpty(p.ProviderOrderID), p.Status,
 		nullIfEmpty(p.Method), nullIfEmpty(p.FailureCode), nullIfEmpty(p.FailureMessage), p.Amount,
-		nullIfEmpty(p.Currency), ms(p.CreatedAt), ms(p.UpdatedAt))
+		nullIfEmpty(p.Currency), nullIfEmpty(p.MethodDetails), nullIfEmpty(p.RiskDetails), nullIfEmpty(p.ThreeDS),
+		ms(p.CreatedAt), ms(p.UpdatedAt))
 	return err
 }
 
@@ -179,9 +194,10 @@ func UpsertProviderPaymentAttempt(ctx context.Context, tx Tx, p ProviderPaymentA
 func ListProviderPaymentAttempts(ctx context.Context, q Queryer, paymentID string) ([]ProviderPaymentAttempt, error) {
 	rows, err := q.QueryContext(ctx, `SELECT p.provider_account_id, p.provider_payment_id, p.attempt_id,
 		COALESCE(p.provider_order_id,''), p.status, COALESCE(p.method,''), COALESCE(p.failure_code,''),
-		COALESCE(p.failure_message,''), p.amount, COALESCE(p.currency,''), p.created_at, p.updated_at
+		COALESCE(p.failure_message,''), p.amount, COALESCE(p.currency,''), p.created_at, p.updated_at,
+		p.try_id, COALESCE(p.method_details,''), COALESCE(p.risk_details,''), COALESCE(p.three_d_secure,'')
 		FROM provider_payment_attempts p JOIN payment_attempts a ON a.id = p.attempt_id
-		WHERE a.payment_id = ? ORDER BY p.created_at, p.provider_payment_id`, paymentID)
+		WHERE a.payment_id = ? ORDER BY p.created_at, p.try_id`, paymentID)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +207,8 @@ func ListProviderPaymentAttempts(ctx context.Context, q Queryer, paymentID strin
 		var p ProviderPaymentAttempt
 		var created, updated int64
 		if err := rows.Scan(&p.ProviderAccountID, &p.ProviderPaymentID, &p.AttemptID, &p.ProviderOrderID,
-			&p.Status, &p.Method, &p.FailureCode, &p.FailureMessage, &p.Amount, &p.Currency, &created, &updated); err != nil {
+			&p.Status, &p.Method, &p.FailureCode, &p.FailureMessage, &p.Amount, &p.Currency, &created, &updated,
+			&p.TryID, &p.MethodDetails, &p.RiskDetails, &p.ThreeDS); err != nil {
 			return nil, err
 		}
 		p.CreatedAt, p.UpdatedAt = fromMS(created), fromMS(updated)

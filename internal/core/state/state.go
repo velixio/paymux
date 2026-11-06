@@ -2,6 +2,8 @@
 // Refund (spec section 5). Nothing here touches a database or a clock.
 package state
 
+import "strings"
+
 import "slices"
 
 // Action is what the caller must do with a requested transition.
@@ -237,4 +239,18 @@ func RefundNext(from, to RefundStatus) Action {
 		return Apply
 	}
 	return Reject
+}
+
+// TryStatus maps a provider's status text for one try to the public attempt
+// vocabulary. Anything not known to be further along counts as pending.
+func TryStatus(raw string) AttemptStatus {
+	switch strings.ToLower(raw) {
+	case "captured", "succeeded", "success", "paid", "refunded":
+		return AttemptCaptured
+	case "failed", "canceled", "cancelled", "expired", "user_dropped", "void":
+		return AttemptFailed
+	case "authorized", "processing":
+		return AttemptAuthorized
+	}
+	return AttemptPending
 }
