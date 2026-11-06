@@ -820,7 +820,11 @@ func (d *Dashboard) settingRows(ctx context.Context, appID, orgID string, level 
 		if err != nil {
 			return nil, err
 		}
-		rows = append(rows, describe(def, val))
+		row := describe(def, val)
+		if def.Key == "time_zone" && row.Text == "server" {
+			row.Aux = d.o.Location.String()
+		}
+		rows = append(rows, row)
 	}
 	sortSettingRows(rows)
 	return rows, nil

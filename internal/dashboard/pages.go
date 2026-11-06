@@ -192,7 +192,7 @@ func (d *Dashboard) fmtTime(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.In(d.o.Location).Format("2006-01-02 15:04:05")
+	return t.In(d.location()).Format("2006-01-02 15:04:05")
 }
 
 // fmtMoney renders minor units as "100.00 INR".

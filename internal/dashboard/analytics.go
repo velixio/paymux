@@ -121,7 +121,7 @@ func (d *Dashboard) analyticsData(ctx context.Context, r *http.Request, org, mod
 		if err != nil {
 			return err
 		}
-		rq, perr := parseRevenueQuery(r.URL.Query(), d.o.Now(), d.o.Location, first, hasFirst)
+		rq, perr := parseRevenueQuery(r.URL.Query(), d.o.Now(), d.location(), first, hasFirst)
 		if perr != nil {
 			bad = perr.Error()
 			return nil
@@ -187,8 +187,8 @@ func (d *Dashboard) analyticsData(ctx context.Context, r *http.Request, org, mod
 		if bucket == "hour" && aq.To.Sub(aq.From) > 7*24*time.Hour {
 			bucket = "day"
 		}
-		bucket = capBucket(aq.From, aq.To, bucket, d.o.Location)
-		filter := analyticsFilter(org, mode, aq, bucket, d.o.Location)
+		bucket = capBucket(aq.From, aq.To, bucket, d.location())
+		filter := analyticsFilter(org, mode, aq, bucket, d.location())
 		points, err := store.PaymentOutcomeSeries(ctx, q, filter)
 		if err != nil {
 			return err
@@ -229,12 +229,12 @@ func (d *Dashboard) analyticsData(ctx context.Context, r *http.Request, org, mod
 		v.CreatedChange, v.PaidChange, v.FailedChange = pctChange(v.Created, pc), pctChange(v.Paid, pp), pctChange(v.Failed, pf)
 		v.SuccessRate, v.PreviousSuccessRate = analyticsRate(v.Paid, v.Created), analyticsRate(pp, pc)
 		pointIndex := map[int64]int{}
-		for start := bucketStart(aq.From, bucket, d.o.Location); start.Before(aq.To); start = nextBucket(start, bucket) {
+		for start := bucketStart(aq.From, bucket, d.location()); start.Before(aq.To); start = nextBucket(start, bucket) {
 			pointIndex[start.Unix()] = len(v.Points)
 			v.Points = append(v.Points, analyticsPoint{Label: bucketLabel(start, bucket, aq.revenueQuery), StartS: start.Format(time.RFC3339)})
 		}
 		for _, point := range points {
-			start := bucketStart(slotTime(point.Slot, bucket == "hour", filter.OffsetSeconds, d.o.Location), bucket, d.o.Location)
+			start := bucketStart(slotTime(point.Slot, bucket == "hour", filter.OffsetSeconds, d.location()), bucket, d.location())
 			if i, ok := pointIndex[start.Unix()]; ok {
 				p := &v.Points[i]
 				p.Created += point.Created

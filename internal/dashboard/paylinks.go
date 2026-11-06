@@ -163,7 +163,7 @@ func (d *Dashboard) linkCreate(w http.ResponseWriter, r *http.Request, s *sessio
 		*a.dst = n
 	}
 	if form.ExpiresAt != "" {
-		t, err := time.ParseInLocation("2006-01-02T15:04", form.ExpiresAt, d.o.Location)
+		t, err := time.ParseInLocation("2006-01-02T15:04", form.ExpiresAt, d.location())
 		if err != nil {
 			again("The expiry must be a date and time such as 2026-12-31T18:00.")
 			return

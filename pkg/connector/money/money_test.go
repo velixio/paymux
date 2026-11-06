@@ -85,7 +85,7 @@ func TestExponent(t *testing.T) {
 }
 
 func TestRoundTrip(t *testing.T) {
-	for _, cur := range allCurrencies() {
+	for _, cur := range Currencies() {
 		for _, minor := range []int64{0, 1, 99, 123456789} {
 			s, err := FormatDecimal(minor, cur)
 			if err != nil {

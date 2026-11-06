@@ -35,8 +35,8 @@ func set(s string) map[string]bool {
 	return m
 }
 
-// allCurrencies lists every supported code, sorted.
-func allCurrencies() []string {
+// Currencies lists every supported code, sorted.
+func Currencies() []string {
 	var out []string
 	for _, m := range []map[string]bool{zeroDecimal, threeDecimal, twoDecimal} {
 		for c := range m {

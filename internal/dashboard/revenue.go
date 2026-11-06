@@ -190,7 +190,7 @@ type revenueView struct {
 
 // revenue builds the revenue chart data of one org and mode.
 func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode string, rq revenueQuery) (revenueView, error) {
-	loc := d.o.Location
+	loc := d.location()
 	v := revenueView{Query: rq, Bucket: rq.Bucket}
 	if v.Bucket == "auto" {
 		v.Bucket = autoBucket(rq.Range, rq.From, rq.To)
@@ -648,7 +648,7 @@ func (d *Dashboard) revenueData(ctx context.Context, r *http.Request, org, mode 
 		if err != nil {
 			return err
 		}
-		rq, perr := parseRevenueQuery(r.URL.Query(), d.o.Now(), d.o.Location, first, hasFirst)
+		rq, perr := parseRevenueQuery(r.URL.Query(), d.o.Now(), d.location(), first, hasFirst)
 		if perr != nil {
 			bad = perr.Error()
 			return nil
