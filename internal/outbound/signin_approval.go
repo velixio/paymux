@@ -3,9 +3,12 @@ package outbound
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/velixio/paymux/internal/ids"
@@ -28,6 +31,11 @@ const (
 	SigninMaxWrongPINs = 5
 
 	signinTickEvery = 2 * time.Second
+	// signinLease is how long a crashed worker can hold up the others.
+	signinLease = 30 * time.Second
+	// signinTickLeaseKey is the signin_polls row of the tick itself. Bot ids are
+	// numbers, so it cannot be one.
+	signinTickLeaseKey = "tick"
 	// signinPurgeAfter keeps ended requests long enough to recognise late replies:
 	// Telegram holds updates for 24 hours.
 	signinPurgeAfter = 48 * time.Hour
@@ -164,20 +172,20 @@ func (s *Service) BeginSigninApproval(ctx context.Context, in SigninApprovalInpu
 // request stays pending until it runs out of time.
 func (s *Service) handleSigninApprovalTick(ctx context.Context, _ json.RawMessage) error {
 	now := s.now()
-	if err := s.db.ExpireSigninApprovals(ctx, now); err != nil {
+	// Ticks can be due together, here or on another instance. One does the work,
+	// so nothing is sent or deleted twice; the others only keep the chain going.
+	_, mine, err := s.db.ClaimSigninPoll(ctx, signinTickLeaseKey, now, now.Add(signinLease))
+	if err != nil {
 		return err
 	}
-	if err := s.sendSigninNotifications(ctx, now); err != nil {
-		return err
-	}
-	if err := s.readSigninReplies(ctx, now); err != nil {
-		return err
-	}
-	if err := s.clearSigninNotifications(ctx, now); err != nil {
-		return err
-	}
-	if err := s.db.PurgeSigninApprovals(ctx, now.Add(-signinPurgeAfter)); err != nil {
-		return err
+	if mine {
+		err := s.signinApprovalWork(ctx, now)
+		if releaseErr := s.db.ReleaseSigninPoll(context.WithoutCancel(ctx), signinTickLeaseKey, 0); err == nil {
+			err = releaseErr
+		}
+		if err != nil {
+			return err
+		}
 	}
 	open, err := s.db.HasOpenSigninApprovals(ctx)
 	if err != nil || !open {
@@ -190,6 +198,22 @@ func (s *Service) handleSigninApprovalTick(ctx context.Context, _ json.RawMessag
 		return s.q.Enqueue(ctx, tx, jobs.Job{Kind: JobSigninApprovalTick, Payload: struct{}{}, RunAt: next,
 			DedupeKey: fmt.Sprintf("signin_tick:%d", next.UnixMilli()/signinTickEvery.Milliseconds())})
 	})
+}
+
+func (s *Service) signinApprovalWork(ctx context.Context, now time.Time) error {
+	if err := s.db.ExpireSigninApprovals(ctx, now); err != nil {
+		return err
+	}
+	if err := s.sendSigninNotifications(ctx, now); err != nil {
+		return err
+	}
+	if err := s.readSigninReplies(ctx, now); err != nil {
+		return err
+	}
+	if err := s.clearSigninNotifications(ctx, now); err != nil {
+		return err
+	}
+	return s.db.PurgeSigninApprovals(ctx, now.Add(-signinPurgeAfter))
 }
 
 func (s *Service) sendSigninNotifications(ctx context.Context, now time.Time) error {
@@ -233,8 +257,104 @@ func (s *Service) sendSigninNotifications(ctx context.Context, now time.Time) er
 	return nil
 }
 
-// readSigninReplies is filled in by the next change.
-func (s *Service) readSigninReplies(context.Context, time.Time) error { return nil }
+// readSigninReplies reads each bot that has a request waiting. A bot's replies
+// are read by one worker at a time, and only while a request is pending.
+func (s *Service) readSigninReplies(ctx context.Context, now time.Time) error {
+	orgs, err := s.db.PendingSigninOrgs(ctx)
+	if err != nil {
+		return err
+	}
+	for _, orgID := range orgs {
+		_, token, err := s.signinChannel(ctx, orgID)
+		if err != nil {
+			s.log.Warn("sign-in approval: the live Telegram channel cannot be used", "org", orgID, "err", err)
+			continue
+		}
+		botID, _, _ := strings.Cut(token, ":")
+		offset, ok, err := s.db.ClaimSigninPoll(ctx, botID, now, now.Add(signinLease))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			continue
+		}
+		offset, readErr := s.readBotReplies(ctx, token, offset, now)
+		// Saved even when the job is being stopped: otherwise the claim stays taken
+		// and handled replies are read again.
+		if err := s.db.ReleaseSigninPoll(context.WithoutCancel(ctx), botID, offset); err != nil {
+			return err
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
+	return nil
+}
+
+// signinUpdate is what a reply's update holds. Its text is only ever compared.
+type signinUpdate struct {
+	UpdateID int64 `json:"update_id"`
+	Message  *struct {
+		MessageID int64 `json:"message_id"`
+		Chat      struct {
+			ID int64 `json:"id"`
+		} `json:"chat"`
+		Text    string `json:"text"`
+		ReplyTo *struct {
+			MessageID int64 `json:"message_id"`
+		} `json:"reply_to_message"`
+	} `json:"message"`
+}
+
+// readBotReplies handles one batch and returns the offset to continue from: past
+// the last update handled, so a restart loses no reply.
+func (s *Service) readBotReplies(ctx context.Context, token string, offset int64, now time.Time) (int64, error) {
+	var updates []signinUpdate
+	if err := s.telegramResult(ctx, token, "getUpdates", map[string]any{"offset": offset, "timeout": 0, "limit": 100,
+		"allowed_updates": []string{"message"}}, &updates); err != nil {
+		s.log.Warn("sign-in approval: replies not read", "err", err)
+		return offset, nil
+	}
+	for _, u := range updates {
+		if err := s.handleSigninUpdate(ctx, token, u, now); err != nil {
+			return offset, err
+		}
+		offset = u.UpdateID + 1
+	}
+	return offset, nil
+}
+
+// handleSigninUpdate acts only on replies to this feature's notifications. Every
+// such reply is deleted, right or wrong: a wrong one may be a mistyped PIN.
+func (s *Service) handleSigninUpdate(ctx context.Context, token string, u signinUpdate, now time.Time) error {
+	if u.Message == nil || u.Message.ReplyTo == nil {
+		return nil
+	}
+	a, err := s.db.SigninApprovalByNotification(ctx, u.Message.Chat.ID, u.Message.ReplyTo.MessageID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	s.deleteSigninMessage(ctx, token, u.Message.Chat.ID, u.Message.MessageID)
+	if u.Message.Text == "" || a.Status != store.SigninPending || !a.ExpiresAt.After(now) {
+		return nil
+	}
+	user, err := s.db.UserByID(ctx, a.UserID)
+	if err != nil {
+		return err
+	}
+	pin, err := s.box.Open(user.SigninPINEnc, secrets.AADSigninPIN(a.UserID))
+	if err != nil {
+		// Not the sender's fault, so not counted. The request runs out of time.
+		s.log.Warn("sign-in approval: the PIN cannot be opened", "request", a.ID)
+		return nil
+	}
+	correct := subtle.ConstantTimeCompare([]byte(strings.TrimSpace(u.Message.Text)), pin) == 1
+	_, err = s.db.RecordSigninReply(ctx, a.ID, correct, SigninMaxWrongPINs, now)
+	return err
+}
 
 // clearSigninNotifications deletes the notifications of decided requests. Past
 // Telegram's deletion limit a failure stops being worth retrying.
