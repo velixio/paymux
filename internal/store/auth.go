@@ -295,8 +295,11 @@ func (db *DB) DeleteSession(ctx context.Context, id string) error {
 // DeleteUserSessions removes every session of a user.
 func (db *DB) DeleteUserSessions(ctx context.Context, userID string) error {
 	return db.Write(ctx, func(tx Tx) error {
-		_, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, userID)
-		return err
+		if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, userID); err != nil {
+			return err
+		}
+		// A sign-in still on its way to a session is signed out too.
+		return endOpenSignins(ctx, tx, userID, time.Now())
 	})
 }
 
@@ -356,7 +359,7 @@ func (db *DB) DeleteUserSessionsExcept(ctx context.Context, userID, keepID strin
 		}
 		d, _ := res.RowsAffected()
 		n = int(d)
-		return nil
+		return endOpenSignins(ctx, tx, userID, time.Now())
 	})
 	return n, err
 }

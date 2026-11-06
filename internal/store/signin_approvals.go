@@ -41,9 +41,11 @@ func scanSignin(s scanner) (SigninApproval, error) {
 	return a, nil
 }
 
-func endPendingSignins(ctx context.Context, tx Tx, userID string, now time.Time) error {
-	_, err := tx.ExecContext(ctx, `UPDATE signin_approvals SET status = ?, decided_at = ? WHERE user_id = ? AND status = ?`,
-		SigninEnded, ms(now), userID, SigninPending)
+// endOpenSignins ends the user's requests that could still lead to a session,
+// including an approved one its browser has not collected yet.
+func endOpenSignins(ctx context.Context, tx Tx, userID string, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `UPDATE signin_approvals SET status = ?, decided_at = ? WHERE user_id = ? AND status IN (?, ?)`,
+		SigninEnded, ms(now), userID, SigninPending, SigninApproved)
 	return err
 }
 
@@ -56,24 +58,24 @@ func (db *DB) setUserSigninPIN(ctx context.Context, userID string, enc any, now 
 		if n, _ := res.RowsAffected(); n == 0 {
 			return ErrNotFound
 		}
-		return endPendingSignins(ctx, tx, userID, now)
+		return endOpenSignins(ctx, tx, userID, now)
 	})
 }
 
-// SetUserSigninPIN stores the sealed PIN and ends the user's pending requests.
+// SetUserSigninPIN stores the sealed PIN and ends the user's open requests.
 func (db *DB) SetUserSigninPIN(ctx context.Context, userID string, enc []byte, now time.Time) error {
 	return db.setUserSigninPIN(ctx, userID, enc, now)
 }
 
-// ClearUserSigninPIN removes the PIN and ends the user's pending requests.
+// ClearUserSigninPIN removes the PIN and ends the user's open requests.
 func (db *DB) ClearUserSigninPIN(ctx context.Context, userID string, now time.Time) error {
 	return db.setUserSigninPIN(ctx, userID, nil, now)
 }
 
 // InsertSigninApproval stores a new request. A user has one request at a time,
-// so this first ends the user's earlier pending ones.
+// so this first ends the user's earlier open ones.
 func InsertSigninApproval(ctx context.Context, tx Tx, a SigninApproval) error {
-	if err := endPendingSignins(ctx, tx, a.UserID, a.CreatedAt); err != nil {
+	if err := endOpenSignins(ctx, tx, a.UserID, a.CreatedAt); err != nil {
 		return err
 	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO signin_approvals (id, org_id, user_id, browser_hash, ip, status, remember, created_at, expires_at)

@@ -494,3 +494,21 @@ func TestTOTPTicketIsSpentOnceWaiting(t *testing.T) {
 		}
 	})
 }
+
+func TestASecondSignInCancelsAnUncollectedApproval(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		_, secret := e.pinUser("pin@example.com")
+		first, second := e.client(), e.client()
+		msg := e.toWaiting(first, "pin@example.com", secret, false)
+		e.tg.Reply(msg, testPIN)
+		e.signinTick()
+		e.nextCode()
+		e.toWaiting(second, "pin@example.com", secret, false)
+		resp, body := e.get(first, waitingPath)
+		e.wantNoSession(resp)
+		if !strings.Contains(body, endedWords) {
+			t.Fatalf("first browser:\n%s", body)
+		}
+	})
+}

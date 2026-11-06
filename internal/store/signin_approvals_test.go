@@ -259,3 +259,41 @@ func TestSigninApprovalWorkLists(t *testing.T) {
 		}
 	})
 }
+
+// An approval given before one of these must not be collected after it.
+func TestApprovedRequestsEndWithLaterChanges(t *testing.T) {
+	for name, change := range map[string]func(db *store.DB) error{
+		"a newer sign-in": func(db *store.DB) error {
+			return db.Write(ctx, func(tx store.Tx) error {
+				return store.InsertSigninApproval(ctx, tx, store.SigninApproval{ID: "newer", OrgID: "org_1", UserID: "usr_1", BrowserHash: "hash_newer", IP: "x",
+					Status: store.SigninPending, CreatedAt: signinT0, ExpiresAt: signinT0.Add(time.Minute)})
+			})
+		},
+		"a new PIN":        func(db *store.DB) error { return db.SetUserSigninPIN(ctx, "usr_1", []byte("sealed"), signinT0) },
+		"removing the PIN": func(db *store.DB) error { return db.ClearUserSigninPIN(ctx, "usr_1", signinT0) },
+		"signing out other sessions": func(db *store.DB) error {
+			_, err := db.DeleteUserSessionsExcept(ctx, "usr_1", "ses_none")
+			return err
+		},
+		"signing out everywhere": func(db *store.DB) error { return db.DeleteUserSessions(ctx, "usr_1") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+				signinUser(t, db, "usr_1")
+				insertSignin(t, db, "a", "usr_1", signinT0)
+				if _, err := db.RecordSigninReply(ctx, "a", true, 5, signinT0); err != nil {
+					t.Fatal(err)
+				}
+				if err := change(db); err != nil {
+					t.Fatal(err)
+				}
+				if ok, err := db.CollectSigninApproval(ctx, "a", signinT0); err != nil || ok {
+					t.Fatalf("collected: %v %v", ok, err)
+				}
+				if got := signinByHash(t, db, "a"); got.Status != store.SigninEnded {
+					t.Fatalf("status %q", got.Status)
+				}
+			})
+		})
+	}
+}
