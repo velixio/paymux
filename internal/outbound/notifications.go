@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -42,6 +43,8 @@ type NotificationConfig struct {
 	EmailEnabled, TelegramEnabled, HasTelegramToken bool
 	TelegramDeleteAfterHours                        int
 	EventTypes                                      []string
+	// TelegramSoundEvents are the events whose Telegram messages ping the chat.
+	TelegramSoundEvents []string
 }
 
 func (s *Service) NotificationConfig(ctx context.Context, orgID, mode string) (NotificationConfig, error) {
@@ -49,7 +52,7 @@ func (s *Service) NotificationConfig(ctx context.Context, orgID, mode string) (N
 	err := s.db.Read(ctx, func(q store.Querier) (err error) { row, err = store.GetNotificationConfig(ctx, q, orgID, mode); return })
 	return NotificationConfig{Email: row.Email, TelegramChatID: row.TelegramChatID, EmailEnabled: row.EmailEnabled,
 		TelegramEnabled: row.TelegramEnabled, HasTelegramToken: len(row.TelegramTokenEnc) > 0,
-		TelegramDeleteAfterHours: row.TelegramDeleteAfterHours, EventTypes: row.EventTypes}, err
+		TelegramDeleteAfterHours: row.TelegramDeleteAfterHours, EventTypes: row.EventTypes, TelegramSoundEvents: row.TelegramSoundEvents}, err
 }
 
 // SaveNotificationConfig validates and encrypts a replacement configuration.
@@ -89,10 +92,14 @@ func (s *Service) SaveNotificationConfig(ctx context.Context, orgID, mode string
 		return fmt.Errorf("telegram message retention must be 0 (never) or 1–%d hours", MaxTelegramDeleteAfterHours)
 	}
 	c.EventTypes = uniqueEventTypes(c.EventTypes)
+	c.TelegramSoundEvents = uniqueEventTypes(c.TelegramSoundEvents)
+	if len(c.EventTypes) > 0 {
+		c.TelegramSoundEvents = slices.DeleteFunc(c.TelegramSoundEvents, func(typ string) bool { return !slices.Contains(c.EventTypes, typ) })
+	}
 	return s.db.Write(ctx, func(tx store.Tx) error {
 		return store.UpsertNotificationConfig(ctx, tx, store.NotificationConfig{OrgID: orgID, Mode: mode, Email: strings.TrimSpace(c.Email),
 			EmailEnabled: c.EmailEnabled, TelegramChatID: strings.TrimSpace(c.TelegramChatID), TelegramTokenEnc: enc,
-			TelegramEnabled: c.TelegramEnabled, TelegramDeleteAfterHours: c.TelegramDeleteAfterHours, EventTypes: c.EventTypes}, s.now())
+			TelegramEnabled: c.TelegramEnabled, TelegramDeleteAfterHours: c.TelegramDeleteAfterHours, EventTypes: c.EventTypes, TelegramSoundEvents: c.TelegramSoundEvents}, s.now())
 	})
 }
 
@@ -164,13 +171,15 @@ func (s *Service) handleNotification(ctx context.Context, raw json.RawMessage) e
 
 // deliverTelegram posts text, or, with a lock, updates the payment's message.
 // A message Telegram refuses to edit, because it was deleted or is from another
-// bot, is posted again.
+// bot, is posted again. Telegram cannot ping on an edit, so a later event with
+// sound on posts a new message and deletes the old one instead.
 func (s *Service) deliverTelegram(ctx context.Context, ev store.EventRow, cfg store.NotificationConfig, text string, lock *telegramPaymentLock) error {
 	token, err := s.box.Open(cfg.TelegramTokenEnc, secrets.AADNotificationTelegram(ev.OrgID, ev.Mode))
 	if err != nil {
 		return err
 	}
-	paymentID := ""
+	sound := slices.Contains(cfg.TelegramSoundEvents, ev.Type)
+	paymentID, replaced := "", int64(0)
 	if lock != nil {
 		rendered, ok, err := s.telegramPaymentText(ctx, ev)
 		if err != nil {
@@ -178,7 +187,9 @@ func (s *Service) deliverTelegram(ctx context.Context, ev store.EventRow, cfg st
 		}
 		if ok {
 			text, paymentID = rendered, ev.ObjectID
-			if lock.messageID != 0 {
+			if lock.messageID != 0 && sound {
+				replaced = lock.messageID
+			} else if lock.messageID != 0 {
 				status, response, err := s.telegramCall(ctx, string(token), "editMessageText",
 					map[string]any{"chat_id": cfg.TelegramChatID, "message_id": lock.messageID, "text": text})
 				switch {
@@ -192,12 +203,19 @@ func (s *Service) deliverTelegram(ctx context.Context, ev store.EventRow, cfg st
 			}
 		}
 	}
-	status, response, err := s.telegramCall(ctx, string(token), "sendMessage", map[string]any{"chat_id": cfg.TelegramChatID, "text": text})
+	payload := map[string]any{"chat_id": cfg.TelegramChatID, "text": text}
+	if !sound {
+		payload["disable_notification"] = true
+	}
+	status, response, err := s.telegramCall(ctx, string(token), "sendMessage", payload)
 	if err != nil {
 		return err
 	}
 	if status/100 != 2 {
 		return fmt.Errorf("telegram http %d", status)
+	}
+	if replaced != 0 {
+		s.removeReplacedTelegramMessage(ctx, string(token), cfg.TelegramChatID, replaced, ev)
 	}
 	if paymentID == "" && cfg.TelegramDeleteAfterHours == 0 {
 		return nil
@@ -218,6 +236,19 @@ func (s *Service) deliverTelegram(ctx context.Context, ev store.EventRow, cfg st
 		return nil
 	}
 	return s.scheduleTelegramDelete(ctx, ev, cfg, sent.Result.MessageID, paymentID)
+}
+
+// removeReplacedTelegramMessage only logs a failure: the new message is out, and
+// retrying the job would ping the chat again. A message past Telegram's 48-hour
+// deletion limit stays in the chat.
+func (s *Service) removeReplacedTelegramMessage(ctx context.Context, token, chatID string, messageID int64, ev store.EventRow) {
+	status, _, err := s.telegramCall(ctx, token, "deleteMessage", map[string]any{"chat_id": chatID, "message_id": messageID})
+	if err == nil && status/100 != 2 {
+		err = fmt.Errorf("telegram http %d", status)
+	}
+	if err != nil {
+		s.log.Warn("telegram message replaced by a new one could not be deleted", "event_id", ev.ID, "err", err)
+	}
 }
 
 // telegramCall makes one Bot API call. Errors never carry the URL, which holds
@@ -279,11 +310,12 @@ func (s *Service) handleTelegramDelete(ctx context.Context, raw json.RawMessage)
 	if err != nil {
 		return jobs.Permanent(err)
 	}
-	status, _, err := s.telegramCall(ctx, string(token), "deleteMessage", map[string]any{"chat_id": p.ChatID, "message_id": p.MessageID})
+	status, response, err := s.telegramCall(ctx, string(token), "deleteMessage", map[string]any{"chat_id": p.ChatID, "message_id": p.MessageID})
 	if err != nil {
 		return err
 	}
-	if status/100 == 2 {
+	// Already gone is done: a sound re-post may have removed it first.
+	if status/100 == 2 || status == http.StatusBadRequest && bytes.Contains(response, []byte("message to delete not found")) {
 		if p.PaymentID == "" {
 			return nil
 		}

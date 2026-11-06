@@ -415,6 +415,12 @@ main.dash:has(#paymux-react-root) {
   display: block;
   margin: 8px 0;
 }
+.react-content label.option-row {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+}
 .react-content .field {
   margin: 7px 0;
 }

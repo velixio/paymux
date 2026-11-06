@@ -331,7 +331,11 @@ export function RuntimeProvider({
         action.pathname,
       ) ||
       /\/settings(?:\/|$)/.test(action.pathname);
-    if (needsReview) setReview(submission);
+    // A test message changes no setting, so there is nothing to review.
+    const isTestMessage = action.pathname.endsWith(
+      "/settings/notifications/test",
+    );
+    if (needsReview && !isTestMessage) setReview(submission);
     else mutation.mutate(submission);
   }
   async function copy(value: string) {
