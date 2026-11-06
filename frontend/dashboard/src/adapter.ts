@@ -188,6 +188,7 @@ export function attributes(n: ViewNode): Record<string, unknown> {
     enctype: "encType",
     formaction: "formAction",
     accept: "accept",
+    commandfor: "commandFor",
   };
   const booleans = new Set([
     "required",

@@ -45,6 +45,8 @@ Start with the payment ID or your order reference in **Payments**. Inspect:
 4. Application delivery attempts and response outcomes.
 5. Related refunds, invoices, and disputes.
 
+When the provider reports a fraud review, currently Whop, the payment page shows a **Risk review** row with its score and location. Select it to see the buyer IP, the address, postal code, CVV and 3D Secure results, and the authorization code. The Low (below 40), Medium (40-74) and High (75+) labels are Paymux display bands, not a provider verdict. Paymux collects this as soon as a payment arrives, and a background job fills in existing payments at up to 20 a minute without changing their status. If the provider has no score yet, Paymux asks once more about ten minutes later; a score finished after that appears after **Sync from provider**. This data is available in the dashboard only, not the API or application webhooks.
+
 A refund request or replay action is different from provider reconciliation. Use the detail page to confirm the target, review the action, and inspect the final server response. Payment and attempt status are explained in [payments](payments.md).
 
 ## Settings and inheritance

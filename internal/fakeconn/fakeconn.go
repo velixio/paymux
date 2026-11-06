@@ -30,8 +30,10 @@ type State struct {
 	CheckoutFn func(connector.CheckoutRequest) (connector.CheckoutResult, error)
 	// Payments is the provider's view, keyed by provider_ref. FetchPayment
 	// also matches ProviderOrderID and ProviderPaymentID.
-	Payments  map[string]connector.PaymentSnapshot
-	FetchErr  error
+	Payments map[string]connector.PaymentSnapshot
+	FetchErr error
+	// FetchFn, when set, answers FetchPayment in place of Payments.
+	FetchFn   func(connector.PaymentRef) (connector.PaymentSnapshot, error)
 	ReturnErr error
 	// RefundFn answers Refund; the default accepts and returns pending.
 	RefundFn func(connector.RefundRequest) (connector.RefundSnapshot, error)
@@ -99,6 +101,15 @@ func Register(prefix string) *State { return RegisterSchema(prefix, schema) }
 // RegisterSchema is Register with a custom config schema. With a schema other
 // than the default the fake accepts any config object.
 func RegisterSchema(prefix, configSchema string) *State {
+	return register(prefix, configSchema, connector.Info{})
+}
+
+// RegisterRisk is Register for a connector that reports a payment risk review.
+func RegisterRisk(prefix string) *State {
+	return register(prefix, schema, connector.Info{ReportsPaymentRisk: true})
+}
+
+func register(prefix, configSchema string, extra connector.Info) *State {
 	st := &State{Name: fmt.Sprintf("%s%d", prefix, seq.Add(1)), Payments: map[string]connector.PaymentSnapshot{},
 		Refunds: map[string]connector.RefundSnapshot{}, Disputes: map[string]connector.DisputeSnapshot{},
 		Payouts: map[string]connector.PayoutSnapshot{}, Mandates: map[string]connector.MandateSnapshot{}, Subs: map[string]connector.SubscriptionSnapshot{}}
@@ -111,6 +122,8 @@ func RegisterSchema(prefix, configSchema string) *State {
 			connector.CapMandateManager, connector.CapSubscriptionManager, connector.CapPayout},
 		WebhookEvents: []string{"payment.captured", "refund.processed"},
 		RateLimit:     connector.RateLimit{RequestsPerSecond: 100, Burst: 100},
+
+		ReportsPaymentRisk: extra.ReportsPaymentRisk,
 	}
 	connector.Register(st.Name, func(cfg json.RawMessage, deps connector.Deps) (connector.Connector, error) {
 		var c struct {
@@ -241,6 +254,9 @@ func (c *Conn) FetchPayment(_ context.Context, ref connector.PaymentRef) (connec
 	c.st.Fetches = append(c.st.Fetches, ref)
 	if c.st.FetchErr != nil {
 		return connector.PaymentSnapshot{}, c.st.FetchErr
+	}
+	if c.st.FetchFn != nil {
+		return c.st.FetchFn(ref)
 	}
 	for key, snap := range c.st.Payments {
 		if key == ref.ProviderRef && ref.ProviderRef != "" ||

@@ -15,7 +15,8 @@ type Attempt struct {
 	AmountReceived                                             int64
 	CurrencyReceived                                           string
 	MethodDetails                                              string
-	Duplicate                                                  bool // an extra success on an already-succeeded payment
+	RiskDetails                                                string // connector.PaymentRisk as JSON
+	Duplicate                                                  bool   // an extra success on an already-succeeded payment
 	CreatedAt, UpdatedAt                                       time.Time
 	// NextAction is the checkout's connector.NextAction as JSON, kept so a
 	// reload of the pay page can show it again; CheckoutExpiresAt is when the
@@ -36,7 +37,7 @@ type ProviderPaymentAttempt struct {
 
 const attemptCols = `id, org_id, mode, payment_id, provider_account_id, provider_ref, COALESCE(provider_order_id,''),
 	COALESCE(provider_payment_id,''), status, COALESCE(method,''), COALESCE(failure_code,''),
-	COALESCE(failure_message,''), amount_received, COALESCE(currency_received,''), COALESCE(method_details,'{}'), duplicate, created_at, updated_at,
+	COALESCE(failure_message,''), amount_received, COALESCE(currency_received,''), COALESCE(method_details,'{}'), COALESCE(risk_details,'{}'), duplicate, created_at, updated_at,
 	COALESCE(next_action,''), COALESCE(checkout_expires_at,0)`
 
 func scanAttempt(row interface{ Scan(...any) error }) (Attempt, error) {
@@ -45,7 +46,7 @@ func scanAttempt(row interface{ Scan(...any) error }) (Attempt, error) {
 	var created, updated, checkoutExp int64
 	err := row.Scan(&a.ID, &a.OrgID, &a.Mode, &a.PaymentID, &a.ProviderAccountID, &a.ProviderRef, &a.ProviderOrderID,
 		&a.ProviderPaymentID, &a.Status, &a.Method, &a.FailureCode, &a.FailureMessage, &a.AmountReceived,
-		&a.CurrencyReceived, &a.MethodDetails, &dup, &created, &updated, &a.NextAction, &checkoutExp)
+		&a.CurrencyReceived, &a.MethodDetails, &a.RiskDetails, &dup, &created, &updated, &a.NextAction, &checkoutExp)
 	if err != nil {
 		return Attempt{}, notFound(err)
 	}
@@ -61,11 +62,11 @@ func scanAttempt(row interface{ Scan(...any) error }) (Attempt, error) {
 func InsertAttempt(ctx context.Context, tx Tx, a Attempt) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO payment_attempts (id, org_id, mode, payment_id, provider_account_id,
 		provider_ref, provider_order_id, provider_payment_id, status, method, failure_code, failure_message,
-		amount_received, currency_received, method_details, duplicate, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		amount_received, currency_received, method_details, risk_details, duplicate, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		a.ID, a.OrgID, a.Mode, a.PaymentID, a.ProviderAccountID, a.ProviderRef, nullIfEmpty(a.ProviderOrderID),
 		nullIfEmpty(a.ProviderPaymentID), a.Status, nullIfEmpty(a.Method), nullIfEmpty(a.FailureCode),
-		nullIfEmpty(a.FailureMessage), a.AmountReceived, nullIfEmpty(a.CurrencyReceived), nonEmptyJSON(a.MethodDetails), boolInt(a.Duplicate),
+		nullIfEmpty(a.FailureMessage), a.AmountReceived, nullIfEmpty(a.CurrencyReceived), nonEmptyJSON(a.MethodDetails), nonEmptyJSON(a.RiskDetails), boolInt(a.Duplicate),
 		ms(a.CreatedAt), ms(a.UpdatedAt))
 	return err
 }
@@ -204,9 +205,9 @@ func ListProviderPaymentAttempts(ctx context.Context, q Queryer, paymentID strin
 // holds is ErrConflict.
 func UpdateAttempt(ctx context.Context, tx Tx, a Attempt, now time.Time) error {
 	_, err := tx.ExecContext(ctx, `UPDATE payment_attempts SET status = ?, method = ?, failure_code = ?, failure_message = ?,
-		provider_payment_id = ?, provider_order_id = ?, amount_received = ?, currency_received = ?, method_details = ?, duplicate = ?, updated_at = ? WHERE id = ?`,
+		provider_payment_id = ?, provider_order_id = ?, amount_received = ?, currency_received = ?, method_details = ?, risk_details = ?, duplicate = ?, updated_at = ? WHERE id = ?`,
 		a.Status, nullIfEmpty(a.Method), nullIfEmpty(a.FailureCode), nullIfEmpty(a.FailureMessage),
-		nullIfEmpty(a.ProviderPaymentID), nullIfEmpty(a.ProviderOrderID), a.AmountReceived, nullIfEmpty(a.CurrencyReceived), nonEmptyJSON(a.MethodDetails), boolInt(a.Duplicate),
+		nullIfEmpty(a.ProviderPaymentID), nullIfEmpty(a.ProviderOrderID), a.AmountReceived, nullIfEmpty(a.CurrencyReceived), nonEmptyJSON(a.MethodDetails), nonEmptyJSON(a.RiskDetails), boolInt(a.Duplicate),
 		ms(now), a.ID)
 	if IsUniqueViolation(err) {
 		return fmt.Errorf("%w: the provider payment settles another attempt", ErrConflict)
@@ -247,4 +248,45 @@ func SetAttemptCheckout(ctx context.Context, tx Tx, id, providerOrderID, nextAct
 func LatestOpenAttempt(ctx context.Context, q Queryer, paymentID string) (Attempt, error) {
 	return scanAttempt(q.QueryRowContext(ctx, "SELECT "+attemptCols+` FROM payment_attempts WHERE payment_id = ?
 		AND status IN ('created','pending') AND next_action IS NOT NULL ORDER BY created_at DESC, id DESC LIMIT 1`, paymentID))
+}
+
+// RiskCheckItem is a settled attempt the risk backfill has not asked about yet.
+type RiskCheckItem struct{ ID, ProviderPaymentID string }
+
+// ListAttemptsToRiskCheck returns an account's settled attempts, last settled
+// before settledBefore, that have a provider payment and no risk check yet,
+// most recent first.
+func ListAttemptsToRiskCheck(ctx context.Context, q Queryer, accountID string, settledBefore time.Time, limit int) ([]RiskCheckItem, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id, provider_payment_id FROM payment_attempts
+		WHERE provider_account_id = ? AND risk_checked_at = 0 AND updated_at < ? AND status IN ('captured', 'failed')
+		AND provider_payment_id IS NOT NULL AND provider_payment_id <> ''
+		ORDER BY updated_at DESC, id LIMIT ?`, accountID, ms(settledBefore), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RiskCheckItem
+	for rows.Next() {
+		var it RiskCheckItem
+		if err := rows.Scan(&it.ID, &it.ProviderPaymentID); err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
+}
+
+// SetAttemptRiskDetails stores an attempt's risk review, leaving it unchecked
+// unless it already was, and leaves updated_at alone.
+func SetAttemptRiskDetails(ctx context.Context, tx Tx, id, risk string) error {
+	_, err := tx.ExecContext(ctx, "UPDATE payment_attempts SET risk_details = ? WHERE id = ?", nonEmptyJSON(risk), id)
+	return err
+}
+
+// SetAttemptRiskChecked stores an attempt's risk review and marks it checked.
+// It leaves updated_at alone: this is display data, not a change of the attempt.
+func SetAttemptRiskChecked(ctx context.Context, tx Tx, id, risk string, checkedAt time.Time) error {
+	_, err := tx.ExecContext(ctx, "UPDATE payment_attempts SET risk_details = ?, risk_checked_at = ? WHERE id = ?",
+		nonEmptyJSON(risk), ms(checkedAt), id)
+	return err
 }

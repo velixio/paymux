@@ -4,6 +4,7 @@
   --color-line: #d1d5db;
   --color-nav: #f3f4f6;
   --color-ok: #166534;
+  --color-bad: #b42318;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -11,6 +12,7 @@
     --color-line: #374151;
     --color-nav: #111827;
     --color-ok: #86efac;
+    --color-bad: #fda29b;
   }
 }
 /* While the React workspace loads, the server page stays invisible so a reload
@@ -2105,4 +2107,120 @@ table.payments-grid td {
   .route-tester {
     padding: 16px;
   }
+}
+
+/* Risk review: the score badge, the payment page row and its modal. */
+.risk-score {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: rgba(127, 127, 127, 0.2);
+}
+.risk-low {
+  background: color-mix(in srgb, var(--color-ok) 16%, transparent);
+  color: var(--color-ok);
+}
+.risk-medium {
+  background: color-mix(in srgb, var(--color-warn) 16%, transparent);
+  color: var(--color-warn);
+}
+.risk-high {
+  background: color-mix(in srgb, #dc2626 16%, transparent);
+  color: var(--destructive, var(--color-bad));
+}
+button.risk-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  height: auto;
+  max-width: 100%;
+  padding: 6px 12px;
+  white-space: normal;
+  overflow-wrap: normal;
+  text-align: left;
+  font-weight: 400;
+}
+.risk-icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.risk-dialog {
+  margin: auto;
+  width: 100%;
+  max-width: min(27.5rem, calc(100% - 32px));
+  padding: 20px 24px 24px;
+  color: var(--color-fg);
+  background: var(--color-bg, Canvas);
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+}
+.risk-dialog::backdrop {
+  background: rgba(26, 31, 54, 0.45);
+}
+.risk-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.risk-dialog-head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+button.risk-close {
+  width: 44px;
+  height: 44px;
+  margin: -6px -12px -6px auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-muted);
+}
+.risk-dialog .risk-place {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 0;
+  color: var(--color-muted);
+}
+.risk-checks {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 11px 16px;
+  margin: 16px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-line);
+}
+.risk-checks dt {
+  color: var(--color-muted);
+}
+.risk-checks dd {
+  margin: 0;
+  text-align: right;
+  font-feature-settings: "tnum";
+}
+.risk-check-pass {
+  color: var(--color-ok);
+  font-weight: 500;
+}
+.risk-check-fail {
+  color: var(--destructive, var(--color-bad));
+  font-weight: 500;
+}
+.risk-check-none {
+  color: var(--color-muted);
+  font-weight: 500;
+}
+.risk-dialog .risk-source {
+  margin: 16px 0 0;
+  font-size: 12px;
+  color: var(--color-muted);
 }
