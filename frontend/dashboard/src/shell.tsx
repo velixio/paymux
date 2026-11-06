@@ -19,6 +19,7 @@ import {
   type RouterHistory,
 } from "@tanstack/react-router";
 import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
+import { startSigninWait } from "./signin-wait";
 import {
   ArrowUpRight,
   Menu,
@@ -324,6 +325,15 @@ const modeOf = (page: DashboardPage) =>
   page.mode.includes("test") ? "test" : "live";
 
 function AuthLayout({ page }: { page: DashboardPage }) {
+  // A form's answer is fetched, so a refresh in the page's own head never runs.
+  // The full navigation lets the server sign in and load the signed-in app.
+  const { signinWait } = page;
+  useEffect(() => {
+    if (!signinWait) return;
+    return startSigninWait(signinWait, () =>
+      location.assign("/dashboard/login/waiting"),
+    );
+  }, [signinWait]);
   return (
     <RuntimeProvider page={page}>
       <div data-mode={modeOf(page)} className="paymux-react auth-workspace">
