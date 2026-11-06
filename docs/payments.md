@@ -26,6 +26,8 @@ A browser redirect can happen before confirmation or never arrive. It is navigat
 | `canceled` | The payment was canceled before completion. |
 | `needs_review` | The result requires operator review, for example an amount mismatch or success after cancellation. |
 
+**Finding out why a payment failed.** `GET /v1/payments/{id}` returns each attempt with its `tries`: every go at paying that the provider reported, oldest first, kept even if a later try succeeds. A try can include its status, method, card details, `three_d_secure.status` (`passed`, `failed` or `not_verified`), `failure_code` and `failure_message`. Providers differ, so any value the provider did not report is left out, and a missing value does not mean a failure. An attempt's own `failure_code` and `failure_message` describe its current state and clear if it succeeds.
+
 Attempt states include `created`, `pending`, `authorized`, `captured`, and `failed`. The public payment-success event is **`payment.succeeded`**, not `payment.captured`. A simulator's failed attempt may leave the payment payable for another attempt.
 
 **Paying twice.** A second successful attempt on a succeeded payment is flagged `duplicate_success` (and refunded automatically when `duplicate_payment_action` is `auto_refund`). Refunding that *extra* attempt does not touch the sale: `amount_refunded` and the `refunded_*` flags stay as they were, no credit note is issued, and the app gets `payment.duplicate_refunded` (the payment carries the `duplicate_refunded` flag) rather than `refund.succeeded`. A refund of the sale itself still works for the full amount.

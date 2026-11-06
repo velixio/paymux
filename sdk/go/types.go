@@ -166,6 +166,26 @@ type PaymentAttempt struct {
 	FailureCode       string                `json:"failure_code,omitempty"`
 	FailureMessage    string                `json:"failure_message,omitempty"`
 	CreatedAt         time.Time             `json:"created_at"`
+	// Tries is every go at paying the provider reported, oldest first. Which
+	// fields a try carries depends on the provider.
+	Tries []PaymentTry `json:"tries"`
+}
+
+// PaymentTry is one go at paying at the provider.
+type PaymentTry struct {
+	ProviderPaymentID string                `json:"provider_payment_id,omitempty"`
+	Status            string                `json:"status"`
+	Method            string                `json:"method,omitempty"`
+	MethodDetails     *PaymentMethodDetails `json:"method_details,omitempty"`
+	ThreeDSecure      *ThreeDSecure         `json:"three_d_secure,omitempty"`
+	FailureCode       string                `json:"failure_code,omitempty"`
+	FailureMessage    string                `json:"failure_message,omitempty"`
+	CreatedAt         time.Time             `json:"created_at"`
+}
+
+// ThreeDSecure is the outcome of 3D Secure on a try: passed, failed or not_verified.
+type ThreeDSecure struct {
+	Status string `json:"status"`
 }
 
 type PaymentMethodDetails struct {
@@ -184,6 +204,8 @@ type CardDetails struct {
 	International *bool  `json:"international,omitempty"`
 	EMI           *bool  `json:"emi,omitempty"`
 	SubType       string `json:"sub_type,omitempty"`
+	// Name is the name on the card, where the provider reports it.
+	Name string `json:"name,omitempty"`
 }
 
 type UPIDetails struct {

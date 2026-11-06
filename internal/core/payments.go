@@ -223,6 +223,14 @@ func (s *Service) emitPayment(ctx context.Context, tx store.Tx, typ string, p st
 		Data: paymentEventData{PaymentView: ViewPayment(p), Reason: reason, AttemptID: attemptID}})
 }
 
+// emitPaymentFailed is emitPayment for payment.failed, naming the failure that
+// caused it so a merchant need not fetch the payment to learn why.
+func (s *Service) emitPaymentFailed(ctx context.Context, tx store.Tx, p store.Payment, reason, attemptID, failureCode, failureMessage string) error {
+	return s.emitter.Emit(ctx, tx, events.Event{OrgID: p.OrgID, AppID: p.AppID, Mode: p.Mode, Type: "payment.failed",
+		ObjectType: "payment", ObjectID: p.ID, ObjectVersion: p.Version,
+		Data: paymentEventData{PaymentView: ViewPayment(p), Reason: reason, AttemptID: attemptID, FailureCode: failureCode, FailureMessage: failureMessage}})
+}
+
 // GetPayment returns a payment of the scope's app and mode.
 func (s *Service) GetPayment(ctx context.Context, sc Scope, id string) (store.Payment, error) {
 	if err := sc.validate(); err != nil {
@@ -255,6 +263,14 @@ func (s *Service) PaymentAttempts(ctx context.Context, sc Scope, paymentID strin
 		if err != nil {
 			return err
 		}
+		rows, err := store.ListProviderPaymentAttempts(ctx, q, p.ID)
+		if err != nil {
+			return err
+		}
+		tries := map[string][]TryView{}
+		for _, row := range rows {
+			tries[row.AttemptID] = append(tries[row.AttemptID], viewTry(row))
+		}
 		connectors := map[string]string{}
 		for _, a := range attempts {
 			name, ok := connectors[a.ProviderAccountID]
@@ -264,9 +280,13 @@ func (s *Service) PaymentAttempts(ctx context.Context, sc Scope, paymentID strin
 				}
 				connectors[a.ProviderAccountID] = name
 			}
+			attemptTries := tries[a.ID]
+			if attemptTries == nil {
+				attemptTries = []TryView{}
+			}
 			out = append(out, AttemptView{ID: a.ID, Status: a.Status, Provider: name, ProviderPaymentID: a.ProviderPaymentID, Method: a.Method,
 				MethodDetails: methodDetails(a.MethodDetails),
-				FailureCode:   a.FailureCode, FailureMessage: a.FailureMessage, CreatedAt: a.CreatedAt})
+				FailureCode:   a.FailureCode, FailureMessage: a.FailureMessage, CreatedAt: a.CreatedAt, Tries: attemptTries})
 		}
 		return nil
 	})

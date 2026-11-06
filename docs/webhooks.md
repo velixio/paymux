@@ -64,6 +64,8 @@ Deduplicate by `(endpoint/application context, webhook-id)` in durable storage. 
 
 Within your own database transaction, apply the order change and record processing completion together. Expect repeated delivery and out-of-order events. Do not send goods twice because `payment.succeeded` was retried. Ignore unknown event types safely and keep an audit trail.
 
+`payment.failed` also carries `failure_code` and `failure_message` from the attempt that caused it, when the provider gave them. A failed try on a payment that is still open sends no webhook; read those from `tries` on `GET /v1/payments/{id}`.
+
 ## Retries, failure, and replay
 
 The default retry delays before successive attempts are: immediately, 1 minute, 5 minutes, 30 minutes, 2 hours, 6 hours, 12 hours, 24 hours, and 24 hours. The effective `webhook_retry_schedule` setting can change this. Network failures and non-2xx responses are recorded; permanent transport/configuration failures may stop delivery earlier.

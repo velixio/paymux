@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/velixio/paymux/internal/core/state"
 	"github.com/velixio/paymux/internal/store"
 	"github.com/velixio/paymux/pkg/connector"
 )
@@ -80,6 +81,9 @@ type paymentEventData struct {
 	PaymentView
 	Reason    string `json:"reason,omitempty"`
 	AttemptID string `json:"attempt_id,omitempty"`
+	// FailureCode and FailureMessage are set on payment.failed only.
+	FailureCode    string `json:"failure_code,omitempty"`
+	FailureMessage string `json:"failure_message,omitempty"`
 }
 
 // AttemptView is the public JSON shape of a payment attempt: what an app needs
@@ -94,6 +98,36 @@ type AttemptView struct {
 	FailureCode       string                          `json:"failure_code,omitempty"`
 	FailureMessage    string                          `json:"failure_message,omitempty"`
 	CreatedAt         time.Time                       `json:"created_at"`
+	// Tries is every go at paying the provider reported, oldest first. The
+	// attempt's own fields are its current state; history lives here.
+	Tries []TryView `json:"tries"`
+}
+
+// TryView is the public JSON shape of one provider try. A value the provider
+// did not report is left out.
+type TryView struct {
+	ProviderPaymentID string                          `json:"provider_payment_id,omitempty"`
+	Status            string                          `json:"status"`
+	Method            string                          `json:"method,omitempty"`
+	MethodDetails     *connector.PaymentMethodDetails `json:"method_details,omitempty"`
+	ThreeDSecure      *ThreeDSecureView               `json:"three_d_secure,omitempty"`
+	FailureCode       string                          `json:"failure_code,omitempty"`
+	FailureMessage    string                          `json:"failure_message,omitempty"`
+	CreatedAt         time.Time                       `json:"created_at"`
+}
+
+// ThreeDSecureView is the outcome of 3D Secure on a try, never its data.
+type ThreeDSecureView struct {
+	Status string `json:"status"`
+}
+
+func viewTry(p store.ProviderPaymentAttempt) TryView {
+	v := TryView{ProviderPaymentID: p.ProviderPaymentID, Status: string(state.TryStatus(p.Status)), Method: p.Method,
+		MethodDetails: methodDetails(p.MethodDetails), FailureCode: p.FailureCode, FailureMessage: p.FailureMessage, CreatedAt: p.CreatedAt}
+	if p.ThreeDS != "" {
+		v.ThreeDSecure = &ThreeDSecureView{Status: p.ThreeDS}
+	}
+	return v
 }
 
 func methodDetails(raw string) *connector.PaymentMethodDetails {

@@ -432,6 +432,9 @@ func (s *Service) applyPaymentTransition(ctx context.Context, tx store.Tx, p *st
 		*alerts = append(*alerts, notify.Alert{Severity: sev, Kind: "payment.needs_review", Message: msg,
 			Refs: map[string]string{"payment": p.ID, "attempt": attemptID, "app": p.AppID, "reason": po.Reason}})
 	}
+	if p.Status == string(state.PaymentFailed) {
+		return s.emitPaymentFailed(ctx, tx, *p, po.Reason, attemptID, snap.FailureCode, snap.FailureMessage)
+	}
 	return s.emitPayment(ctx, tx, "payment."+p.Status, *p, po.Reason, attemptID)
 }
 
