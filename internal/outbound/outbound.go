@@ -352,19 +352,102 @@ func (s *Service) replayTx(ctx context.Context, tx store.Tx, id string) error {
 	if err != nil {
 		return err
 	}
-	if d.Status == "pending" {
-		return fmt.Errorf("delivery %s is still pending", id)
-	}
 	now := s.now()
+	if d.Status == "pending" {
+		// Waiting for its next retry: this send replaces that retry, so one
+		// delivery never goes out twice. A job a worker holds can't be replaced.
+		cancelled := false
+		for _, key := range deliveryJobKeys(d) {
+			ok, err := store.CancelUnclaimedJob(ctx, tx, key, now)
+			if err != nil {
+				return err
+			}
+			cancelled = cancelled || ok
+		}
+		if !cancelled {
+			return fmt.Errorf("delivery %s: %w", id, ErrDeliveryInFlight)
+		}
+	}
 	if err := s.db.UpdateDelivery(ctx, tx, id, store.DeliveryUpdate{Status: "pending", NextAttemptAt: now}, now); err != nil {
 		return err
 	}
 	return s.enqueue(ctx, tx, id, 0, now)
 }
 
+// ErrDeliveryInFlight means a worker is sending the delivery right now.
+var ErrDeliveryInFlight = errors.New("a send of this delivery is in progress")
+
+// deliveryJobKeys are the dedupe keys a waiting delivery's job can have: the
+// retry scheduled after attempt AttemptCount, or a first send or replay (0).
+func deliveryJobKeys(d store.DeliveryRow) []string {
+	keys := []string{fmt.Sprintf("%s:%s:%d", JobDeliver, d.ID, d.AttemptCount)}
+	if d.AttemptCount != 0 {
+		keys = append(keys, fmt.Sprintf("%s:%s:0", JobDeliver, d.ID))
+	}
+	return keys
+}
+
 // ResendResult counts what ResendEvent did: Sent endpoints were queued, Skipped
-// endpoints already had a delivery of the event in progress.
+// endpoints had a send of the event in progress at that moment.
 type ResendResult struct{ Sent, Skipped int }
+
+// ResendTarget is one endpoint ResendEvent would consider for an event, with
+// where its delivery stands. New means it has never had this event.
+type ResendTarget struct {
+	EndpointID, URL, DeliveryID, Status, LastError string
+	LastStatus                                     int
+	NextAttemptAt                                  time.Time
+	New, InFlight                                  bool
+}
+
+// ResendTargets lists exactly the endpoints ResendEvent would consider: enabled,
+// in the event's mode and subscribed to its type, including ones added later.
+func (s *Service) ResendTargets(ctx context.Context, eventID string) ([]ResendTarget, error) {
+	var out []ResendTarget
+	err := s.db.Read(ctx, func(q store.Querier) error {
+		out = nil
+		e, err := store.GetEventByID(ctx, q, eventID)
+		if err != nil {
+			return err
+		}
+		eps, err := store.ListEnabledEndpointsForRead(ctx, q, e.AppID)
+		if err != nil {
+			return err
+		}
+		deliveries, err := store.ListDeliveriesOfEvent(ctx, q, e.ID)
+		if err != nil {
+			return err
+		}
+		byEndpoint := map[string]store.DeliveryRow{}
+		for _, d := range deliveries {
+			byEndpoint[d.EndpointID] = d
+		}
+		for _, ep := range eps {
+			if !matches(ep.EventTypes, e.Type) || ep.Mode != e.Mode {
+				continue
+			}
+			t := ResendTarget{EndpointID: ep.ID, URL: ep.URL}
+			d, ok := byEndpoint[ep.ID]
+			if !ok {
+				t.New = true
+				out = append(out, t)
+				continue
+			}
+			t.DeliveryID, t.Status, t.LastError, t.LastStatus = d.ID, d.Status, d.LastError, d.LastStatus
+			if d.Status == "pending" {
+				t.NextAttemptAt = d.NextAttemptAt
+				waiting, err := store.HasUnclaimedJob(ctx, q, deliveryJobKeys(d))
+				if err != nil {
+					return err
+				}
+				t.InFlight = !waiting
+			}
+			out = append(out, t)
+		}
+		return nil
+	})
+	return out, err
+}
 
 // ResendEvent sends an existing event again to every enabled endpoint of its
 // app whose mode and event types match, including endpoints added after the
@@ -399,11 +482,13 @@ func (s *Service) ResendEvent(ctx context.Context, eventID string) (ResendResult
 				}
 			case err != nil:
 				return err
-			case d.Status == "pending":
-				res.Skipped++
-				continue
 			default:
-				if err := s.replayTx(ctx, tx, d.ID); err != nil {
+				err := s.replayTx(ctx, tx, d.ID)
+				if errors.Is(err, ErrDeliveryInFlight) {
+					res.Skipped++
+					continue
+				}
+				if err != nil {
 					return err
 				}
 			}

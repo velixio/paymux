@@ -104,6 +104,21 @@ func CancelUnclaimedJob(ctx context.Context, tx Tx, dedupeKey string, now time.T
 	return n > 0, err
 }
 
+// HasUnclaimedJob reports whether a job with one of these dedupe keys is waiting
+// and no worker has claimed it: what CancelUnclaimedJob can cancel.
+func HasUnclaimedJob(ctx context.Context, q Queryer, dedupeKeys []string) (bool, error) {
+	for _, key := range dedupeKeys {
+		var n int
+		if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE dedupe_key = ? AND state = 'pending' AND attempts = 0`, key).Scan(&n); err != nil {
+			return false, err
+		}
+		if n > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // CompleteJob marks the job done, but only if it is still the claim identified
 // by attempts (the claim token). It reports whether a row was updated; false
 // means a newer claim superseded this worker.

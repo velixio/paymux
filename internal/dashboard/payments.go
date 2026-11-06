@@ -651,6 +651,10 @@ func (d *Dashboard) replaySubmit(w http.ResponseWriter, r *http.Request, s *sess
 		return
 	}
 	if err := d.o.Outbound.ReplayDelivery(ctx, id); err != nil {
+		if errors.Is(err, outbound.ErrDeliveryInFlight) {
+			badRequest(w, "This webhook is being sent right now. Try again in a moment.")
+			return
+		}
 		badRequest(w, err.Error())
 		return
 	}
@@ -718,7 +722,7 @@ func resendNotice(res outbound.ResendResult) string {
 		msg = fmt.Sprintf("Sent to %d endpoints.", res.Sent)
 	}
 	if res.Skipped > 0 {
-		msg += fmt.Sprintf(" Skipped %d with a delivery of this event still in progress.", res.Skipped)
+		msg += fmt.Sprintf(" Skipped %d being sent right now.", res.Skipped)
 	} else if res.Sent == 0 {
 		msg += " No enabled endpoint accepts this event."
 	}

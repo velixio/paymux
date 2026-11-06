@@ -57,3 +57,36 @@ func (db *DB) FirstOrgID(ctx context.Context) (string, error) {
 	}
 	return id, err
 }
+
+// ListDeliveriesOfEvent returns the deliveries of one event, one per endpoint.
+func ListDeliveriesOfEvent(ctx context.Context, q Queryer, eventID string) ([]DeliveryRow, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id, event_id, endpoint_id, status, attempt_count, next_attempt_at,
+		last_status, last_error, delivered_at, created_at, updated_at FROM webhook_deliveries WHERE event_id = ?`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DeliveryRow
+	for rows.Next() {
+		var (
+			d                  DeliveryRow
+			next, delivered    sql.NullInt64
+			lastStatus         sql.NullInt64
+			lastErr            sql.NullString
+			created, updatedMS int64
+		)
+		if err := rows.Scan(&d.ID, &d.EventID, &d.EndpointID, &d.Status, &d.AttemptCount, &next, &lastStatus, &lastErr, &delivered, &created, &updatedMS); err != nil {
+			return nil, err
+		}
+		if next.Valid {
+			d.NextAttemptAt = fromMS(next.Int64)
+		}
+		if delivered.Valid {
+			d.DeliveredAt = fromMS(delivered.Int64)
+		}
+		d.LastStatus, d.LastError = int(lastStatus.Int64), lastErr.String
+		d.CreatedAt, d.UpdatedAt = fromMS(created), fromMS(updatedMS)
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}

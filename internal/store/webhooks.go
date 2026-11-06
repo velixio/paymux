@@ -229,6 +229,12 @@ func (db *DB) ListEnabledEndpoints(ctx context.Context, tx Tx, appID string) ([]
 		WHERE app_id = ? AND enabled = 1 AND deleted = 0 ORDER BY created_at, id`, appID))
 }
 
+// ListEnabledEndpointsForRead is ListEnabledEndpoints outside a write transaction.
+func ListEnabledEndpointsForRead(ctx context.Context, q Queryer, appID string) ([]EndpointRow, error) {
+	return collectEndpoints(q.QueryContext(ctx, `SELECT `+endpointCols+` FROM webhook_endpoints
+		WHERE app_id = ? AND enabled = 1 AND deleted = 0 ORDER BY created_at, id`, appID))
+}
+
 // EndpointUpdate carries the fields to change; nil fields are left alone.
 type EndpointUpdate struct {
 	URL              *string
