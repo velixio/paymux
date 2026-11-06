@@ -23,6 +23,7 @@ import (
 	"github.com/velixio/paymux/internal/core"
 	"github.com/velixio/paymux/internal/ids"
 	"github.com/velixio/paymux/internal/outbound"
+	"github.com/velixio/paymux/internal/outbound/stdwebhooks"
 	"github.com/velixio/paymux/internal/settings"
 	"github.com/velixio/paymux/internal/store"
 	"github.com/velixio/paymux/pkg/connector/money"
@@ -462,7 +463,12 @@ func (d *Dashboard) endpointCreate(w http.ResponseWriter, r *http.Request, s *se
 		d.renderApp(w, r, s, app, http.StatusBadRequest, "webhooks", "Select at least one event or choose All events.", nil)
 		return
 	}
-	ep, secret, err := d.o.Outbound.CreateEndpoint(r.Context(), outbound.CreateEndpointInput{OrgID: app.OrgID, AppID: app.ID, URL: raw, EventTypes: types, Mode: mode})
+	ep, secret, err := d.o.Outbound.CreateEndpoint(r.Context(), outbound.CreateEndpointInput{OrgID: app.OrgID, AppID: app.ID, URL: raw, EventTypes: types, Mode: mode,
+		Secret: strings.TrimSpace(r.PostForm.Get("signing_secret"))})
+	if errors.Is(err, stdwebhooks.ErrInvalidSecret) {
+		d.renderApp(w, r, s, app, http.StatusBadRequest, "webhooks", invalidSecretMessage, nil)
+		return
+	}
 	if err != nil {
 		d.fail(w, err)
 		return
@@ -502,6 +508,8 @@ func (d *Dashboard) endpointDisable(w http.ResponseWriter, r *http.Request, s *s
 	}
 	d.appRedirect(w, r, app, "webhooks")
 }
+
+const invalidSecretMessage = "The signing secret must be whsec_ followed by base64 of 24 to 64 bytes. Leave it blank to generate one."
 
 func endpointEventTypes(raw string) []string {
 	var types []string
@@ -566,12 +574,22 @@ func (d *Dashboard) endpointSecretRotate(w http.ResponseWriter, r *http.Request,
 		d.fail(w, err)
 		return
 	}
-	secret, err := d.o.Outbound.RotateEndpointSecret(r.Context(), eid)
+	secret, action, after := strings.TrimSpace(r.PostForm.Get("signing_secret")), "webhook_endpoint.secret_set", map[string]any{"set": true}
+	if secret == "" {
+		secret, err = d.o.Outbound.RotateEndpointSecret(r.Context(), eid)
+		action, after = "webhook_endpoint.secret_rotate", map[string]any{"rotated": true}
+	} else {
+		err = d.o.Outbound.SetEndpointSecret(r.Context(), eid, secret)
+	}
+	if errors.Is(err, stdwebhooks.ErrInvalidSecret) {
+		d.renderApp(w, r, s, app, http.StatusBadRequest, "webhooks", invalidSecretMessage, nil)
+		return
+	}
 	if err != nil {
 		d.fail(w, err)
 		return
 	}
-	if err := d.record(r.Context(), r, s, "webhook_endpoint.secret_rotate", eid, nil, map[string]any{"rotated": true}); err != nil {
+	if err := d.record(r.Context(), r, s, action, eid, nil, after); err != nil {
 		d.fail(w, err)
 		return
 	}

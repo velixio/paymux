@@ -701,3 +701,94 @@ func TestSendCurrentPaymentStatusWebhook(t *testing.T) {
 		}
 	})
 }
+
+func TestSendWebhookFromPaymentPage(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		f := e.detailFixture()
+		path := "/dashboard/payments/" + f.pay.ID
+		action := path + "/webhooks/replay"
+		var eventID string
+		_ = db.Read(ctx, func(q store.Querier) error {
+			evs, err := store.ListPaymentEvents(ctx, q, f.pay.ID)
+			if err != nil || len(evs) != 1 {
+				t.Fatalf("events %v %v", evs, err)
+			}
+			eventID = evs[0].ID
+			return nil
+		})
+
+		// A viewer sees no form and cannot post it.
+		viewer := e.roleClient("viewer")
+		body := e.pageOK(viewer, path)
+		lacks(t, body, `action="`+action+`"`)
+		if r, _ := e.post(viewer, action, url.Values{"csrf": {csrfOf(t, body)}, "event_id": {eventID}}); r.StatusCode != 403 {
+			t.Fatalf("viewer send: %d", r.StatusCode)
+		}
+
+		// An endpoint added after the event receives it, alongside the original one.
+		added := &sink{}
+		added.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			added.mu.Lock()
+			added.hits++
+			added.mu.Unlock()
+			w.WriteHeader(200)
+		}))
+		t.Cleanup(added.srv.Close)
+		if _, _, err := e.out.CreateEndpoint(ctx, outbound.CreateEndpointInput{AppID: f.app.ID, URL: added.srv.URL}); err != nil {
+			t.Fatal(err)
+		}
+		op := e.roleClient("operator")
+		body = e.pageOK(op, path)
+		tok := csrfOf(t, body)
+		has(t, body, `action="`+action+`"`, `value="`+eventID+`"`)
+		r, body := e.post(op, action, url.Values{"csrf": {tok}, "event_id": {eventID}})
+		if r.StatusCode != 200 {
+			t.Fatalf("send: %d\n%s", r.StatusCode, body)
+		}
+		has(t, body, "Sent to 2 endpoints")
+		e.runJobs()
+		if f.sink.count() != 2 || added.count() != 1 {
+			t.Fatalf("original hits=%d, added hits=%d, want 2 and 1", f.sink.count(), added.count())
+		}
+		var aud []store.AuditRow
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "webhook.resend", 10)
+			return
+		})
+		if len(aud) != 1 || aud[0].ActorID != "usr_operator" || aud[0].Target != eventID {
+			t.Fatalf("audit %+v", aud)
+		}
+
+		// An event of another payment cannot be sent through this one.
+		other := e.seedPayment("pay_other", f.app.ID, "live", "succeeded", "ORD-OTHER", 500, e.clk.Now())
+		err := db.Write(ctx, func(tx store.Tx) error {
+			return e.out.Emit(ctx, tx, events.Event{OrgID: store.DefaultOrgID, AppID: f.app.ID, Mode: "live", Type: "payment.succeeded",
+				ObjectType: "payment", ObjectID: other.ID, ObjectVersion: 2, Data: map[string]any{"id": other.ID}})
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.runJobs()
+		var otherEvent string
+		_ = db.Read(ctx, func(q store.Querier) error {
+			evs, err := store.ListPaymentEvents(ctx, q, other.ID)
+			if err != nil || len(evs) != 1 {
+				t.Fatalf("other events %v %v", evs, err)
+			}
+			otherEvent = evs[0].ID
+			return nil
+		})
+		hits := f.sink.count()
+		if r, _ := e.post(op, action, url.Values{"csrf": {tok}, "event_id": {otherEvent}}); r.StatusCode != 400 {
+			t.Fatalf("foreign event: %d", r.StatusCode)
+		}
+		e.runJobs()
+		if f.sink.count() != hits {
+			t.Fatalf("foreign event was sent: hits %d -> %d", hits, f.sink.count())
+		}
+		if r, _ := e.post(op, "/dashboard/payments/pay_nope/webhooks/replay", url.Values{"csrf": {tok}, "event_id": {eventID}}); r.StatusCode != 404 {
+			t.Fatalf("unknown payment: %d", r.StatusCode)
+		}
+	})
+}

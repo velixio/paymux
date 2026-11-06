@@ -3,6 +3,7 @@ package outbound_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -469,6 +470,84 @@ func TestReplayFailedSince(t *testing.T) {
 		}
 		if got := e.count(`SELECT COUNT(*) FROM webhook_deliveries WHERE status = 'failed'`); got != 1 {
 			t.Fatalf("still failed=%d", got)
+		}
+	})
+}
+
+func TestResendEventReachesEndpointsAddedLater(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, true)
+		old, added, filtered, disabled, live := newSink(t, 200), newSink(t, 200), newSink(t, 200), newSink(t, 200), newSink(t, 200)
+		e.endpoint("app_1", old.srv.URL)
+		e.emit("app_1", "x.y")
+		e.run()
+		eventID := e.str(`SELECT id FROM events`)
+
+		e.endpoint("app_1", added.srv.URL)
+		e.endpoint("app_1", filtered.srv.URL, "other.type")
+		disabledID, _ := e.endpoint("app_1", disabled.srv.URL)
+		if err := e.svc.DisableEndpoint(ctx, disabledID); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := e.svc.CreateEndpoint(ctx, outbound.CreateEndpointInput{OrgID: "org_1", AppID: "app_1", URL: live.srv.URL, Mode: "live"}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := e.svc.ResendEvent(ctx, eventID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Sent != 2 || res.Skipped != 0 {
+			t.Fatalf("result %+v, want 2 sent, 0 skipped", res)
+		}
+		e.run()
+		if len(old.hits()) != 2 || len(added.hits()) != 1 {
+			t.Fatalf("old hits=%d, added hits=%d, want 2 and 1", len(old.hits()), len(added.hits()))
+		}
+		if n := len(filtered.hits()) + len(disabled.hits()) + len(live.hits()); n != 0 {
+			t.Fatalf("filtered, disabled or other-mode endpoints got %d hits", n)
+		}
+		if got, want := added.hits()[0].Header.Get("webhook-id"), old.hits()[0].Header.Get("webhook-id"); got == "" || got != want {
+			t.Fatalf("webhook-id %q on the new endpoint, %q on the old one", got, want)
+		}
+
+		// A later resend goes out again, now as a replay on both endpoints.
+		if res, err = e.svc.ResendEvent(ctx, eventID); err != nil || res.Sent != 2 {
+			t.Fatalf("second resend %+v %v", res, err)
+		}
+		e.run()
+		if len(old.hits()) != 3 || len(added.hits()) != 2 {
+			t.Fatalf("after second resend old hits=%d, added hits=%d, want 3 and 2", len(old.hits()), len(added.hits()))
+		}
+	})
+}
+
+func TestResendEventSkipsPendingDelivery(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, true)
+		e.svc.RetrySchedule = func() []time.Duration { return []time.Duration{0, time.Hour} }
+		retrying := newSink(t, 500)
+		e.endpoint("app_1", retrying.srv.URL)
+		e.emit("app_1", "x.y")
+		e.run() // first attempt fails, the retry waits an hour
+		res, err := e.svc.ResendEvent(ctx, e.str(`SELECT id FROM events`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Sent != 0 || res.Skipped != 1 {
+			t.Fatalf("result %+v, want 0 sent, 1 skipped", res)
+		}
+		if st := e.str(`SELECT status FROM webhook_deliveries`); st != "pending" {
+			t.Fatalf("status %s", st)
+		}
+	})
+}
+
+func TestResendEventUnknownEvent(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, true)
+		if _, err := e.svc.ResendEvent(ctx, "evt_missing"); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("err = %v, want ErrNotFound", err)
 		}
 	})
 }

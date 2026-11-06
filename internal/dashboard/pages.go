@@ -123,6 +123,7 @@ func (d *Dashboard) routesPages() {
 	m.HandleFunc("POST "+prefix+"/payments/{id}/refund", d.authed(authz.RefundCreate, d.refundSubmit))
 	m.HandleFunc("POST "+prefix+"/payments/{id}/simulate-dispute", d.authed(authz.DisputeManage, d.simulateDispute))
 	m.HandleFunc("POST "+prefix+"/payments/{id}/simulate-refund", d.authed(authz.DisputeManage, d.simulateProviderRefund))
+	m.HandleFunc("POST "+prefix+"/payments/{id}/webhooks/replay", d.authed(authz.WebhookReplay, d.webhookResendSubmit))
 	m.HandleFunc("POST "+prefix+"/deliveries/{id}/replay", d.authed(authz.WebhookReplay, d.replaySubmit))
 	d.routesApps()
 	d.routesSettings()

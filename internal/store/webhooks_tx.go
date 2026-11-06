@@ -31,6 +31,20 @@ func (db *DB) GetDeliveryTx(ctx context.Context, tx Tx, id string) (DeliveryRow,
 	return d, nil
 }
 
+// GetDeliveryForEndpointTx loads the delivery of an event to an endpoint inside
+// tx, or returns ErrNotFound when the event was never scheduled for it.
+func (db *DB) GetDeliveryForEndpointTx(ctx context.Context, tx Tx, eventID, endpointID string) (DeliveryRow, error) {
+	var id string
+	err := tx.QueryRowContext(ctx, `SELECT id FROM webhook_deliveries WHERE event_id = ? AND endpoint_id = ?`, eventID, endpointID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return DeliveryRow{}, ErrNotFound
+	}
+	if err != nil {
+		return DeliveryRow{}, err
+	}
+	return db.GetDeliveryTx(ctx, tx, id)
+}
+
 // FirstOrgID returns the id of the earliest-created org (Path 1 has exactly
 // one), or ErrNotFound when there is none.
 func (db *DB) FirstOrgID(ctx context.Context) (string, error) {

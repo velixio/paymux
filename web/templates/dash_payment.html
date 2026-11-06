@@ -119,6 +119,16 @@
 </tr>{{else}}<tr><td colspan="7" class="muted">No deliveries.</td></tr>{{end}}
 </tbody>
 </table></div>
+{{if and .CanReplay .Events}}
+<form class="stack" method="post" action="/dashboard/payments/{{.ID}}/webhooks/replay">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Send a past event
+<select class="field" name="event_id" required>{{range .Events}}<option value="{{.ID}}">{{.Type}} - {{.Object}} - {{.At}}</option>{{end}}</select>
+</label>
+<button class="btn" type="submit">Send webhook</button>
+<p class="muted">Sends to every enabled endpoint of this app that accepts the event, including endpoints added later. The event keeps its original webhook-id and data.</p>
+</form>
+{{end}}
 
 <h3>Events</h3>
 <div class="table-scroll"><table class="grid">

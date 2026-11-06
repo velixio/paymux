@@ -21,6 +21,7 @@ import (
 
 	"github.com/velixio/paymux/internal/core"
 	"github.com/velixio/paymux/internal/events"
+	"github.com/velixio/paymux/internal/secrets"
 	"github.com/velixio/paymux/internal/store"
 	"github.com/velixio/paymux/internal/store/storetest"
 )
@@ -560,4 +561,83 @@ func TestEndpointEventSelections(t *testing.T) {
 	if strings.Join(selected, ",") != "refund.created,custom.event" {
 		t.Fatalf("selection lost: %v", selected)
 	}
+}
+
+func TestSetEndpointSigningSecretFromDashboard(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		app := e.seedApp("alpha")
+		admin := e.roleClient("admin")
+		page := "/dashboard/apps/" + app.ID
+		const custom = "whsec_YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFh"
+		const replacement = "whsec_YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJi"
+		tok := csrfOf(t, e.pageOK(admin, page+"?tab=webhooks"))
+		stored := func(id string) string {
+			t.Helper()
+			row, err := db.GetEndpoint(ctx, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pt, err := e.box.Open(row.SigningSecretEnc, secrets.AADEndpointSecret(id))
+			if err != nil {
+				t.Fatal(err)
+			}
+			return string(pt)
+		}
+
+		// on create, a bad secret adds nothing and is not echoed back
+		r, body := e.post(admin, page+"/endpoints", url.Values{"url": {"https://a.example.com/h"}, "signing_secret": {"oops-bad-secret"}, "csrf": {tok}})
+		if r.StatusCode != 400 {
+			t.Fatalf("bad secret on create: %d", r.StatusCode)
+		}
+		lacks(t, body, "oops-bad-secret")
+		if eps, _ := e.out.ListEndpoints(ctx, app.ID); len(eps) != 0 {
+			t.Fatalf("endpoint created with a bad secret: %+v", eps)
+		}
+		if r, _ := e.post(admin, page+"/endpoints", url.Values{"url": {"https://a.example.com/h"}, "signing_secret": {" " + custom + " "}, "csrf": {tok}}); r.StatusCode != 200 {
+			t.Fatalf("create: %d", r.StatusCode)
+		}
+		eps, _ := e.out.ListEndpoints(ctx, app.ID)
+		if len(eps) != 1 || stored(eps[0].ID) != custom {
+			t.Fatalf("custom secret not stored: %+v", eps)
+		}
+		id := eps[0].ID
+		secretPath := page + "/endpoints/" + id + "/secret"
+		has(t, e.pageOK(admin, page+"?tab=webhooks&endpoint="+id), `name="signing_secret"`)
+
+		// on an existing endpoint
+		r, body = e.post(admin, secretPath, url.Values{"signing_secret": {"oops-bad-secret"}, "csrf": {tok}})
+		if r.StatusCode != 400 || stored(id) != custom {
+			t.Fatalf("bad secret on update: %d, stored changed: %v", r.StatusCode, stored(id) != custom)
+		}
+		lacks(t, body, "oops-bad-secret")
+		if r, _ := e.post(admin, secretPath, url.Values{"signing_secret": {replacement}, "csrf": {tok}}); r.StatusCode != 200 {
+			t.Fatalf("set: %d", r.StatusCode)
+		}
+		if stored(id) != replacement {
+			t.Fatal("secret not replaced")
+		}
+		var aud []store.AuditRow
+		_ = db.Read(ctx, func(q store.Querier) (err error) {
+			aud, err = store.ListAudit(ctx, q, store.DefaultOrgID, "webhook_endpoint.secret_set", 10)
+			return
+		})
+		if len(aud) != 1 || aud[0].Target != id || strings.Contains(aud[0].After+aud[0].Before, "whsec_") {
+			t.Fatalf("audit %+v", aud)
+		}
+
+		// blank still generates a fresh one
+		if r, _ := e.post(admin, secretPath, url.Values{"csrf": {tok}}); r.StatusCode != 200 {
+			t.Fatalf("generate: %d", r.StatusCode)
+		}
+		if got := stored(id); got == replacement || !strings.HasPrefix(got, "whsec_") {
+			t.Fatalf("generated secret %q", got)
+		}
+
+		viewer := e.roleClient("viewer")
+		vt := csrfOf(t, e.pageOK(viewer, page+"?tab=webhooks"))
+		if r, _ := e.post(viewer, secretPath, url.Values{"signing_secret": {custom}, "csrf": {vt}}); r.StatusCode != 403 {
+			t.Fatalf("viewer: %d", r.StatusCode)
+		}
+	})
 }
