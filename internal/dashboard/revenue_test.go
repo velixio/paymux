@@ -415,3 +415,299 @@ func TestRevenueCapsPoints(t *testing.T) {
 		}
 	})
 }
+
+func (e *env) setDefaultCurrency(code string) {
+	e.t.Helper()
+	err := e.db.Write(ctx, func(tx store.Tx) error {
+		return store.SetOrgSetting(ctx, tx, store.DefaultOrgID, "default_currency", `"`+code+`"`, e.clk.Now())
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func TestRevenueConvertsToDefaultCurrency(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		e.seedLedger(
+			ledRow{"pay_1", "charge", "USD", 1000, e.d15(13)},
+			ledRow{"pay_1", "refund", "USD", -200, e.d15(13)},
+			ledRow{"pay_1", "charge", "INR", 800000, e.d15(14)},
+			ledRow{"pay_1", "charge", "EUR", 2000, e.d15(12)},
+			ledRow{"pay_1", "charge", "INR", 800000, e.d15(5)}, // previous period
+		)
+		e.seedRates(
+			store.FXRate{Currency: "USD", Date: "2027-01-05", Rate: "80"},
+			store.FXRate{Currency: "USD", Date: "2027-01-12", Rate: "80"},
+			store.FXRate{Currency: "USD", Date: "2027-01-14", Rate: "80"},
+			store.FXRate{Currency: "EUR", Date: "2027-01-12", Rate: "90"},
+		)
+		e.setDefaultCurrency("USD")
+
+		body := e.pageOK(vw, "/dashboard/overview?range=7d")
+		if c, conv := tableAttr(t, body, "data-currency"), tableAttr(t, body, "data-converted"); c != "USD" || conv != "true" {
+			t.Fatalf("currency %s converted %s", c, conv)
+		}
+		pts := revByDay(body)
+		for day, want := range map[string][2]int64{"2027-01-12": {2250, 0}, "2027-01-13": {1000, 200}, "2027-01-14": {10000, 0}} {
+			if got := pts[day]; got.gross != want[0] || got.refunds != want[1] {
+				t.Errorf("%s: %+v want %v", day, got, want)
+			}
+		}
+		if p := pts["2027-01-12"]; p.prevGross != 10000 {
+			t.Errorf("previous period is converted too: %+v", p)
+		}
+		// The headline is the sum in USD; the breakdown stays native.
+		has(t, body, "132.50 USD", "2.00 USD", "130.50 USD", "converted to USD", "Currency details", "8000.00 INR", "20.00 EUR", "All, converted to USD")
+		lacks(t, body, "USD preferred", "Each currency is reported separately", "Not included")
+
+		// The CSV follows the page.
+		_, csv := e.get(vw, "/dashboard/overview/revenue.csv?range=7d")
+		has(t, csv, "USD,100.00,0.00,100.00")
+
+		// Picking a currency is a native view, including the default one.
+		body = e.pageOK(vw, "/dashboard/overview?range=7d&currency=INR")
+		if tableAttr(t, body, "data-currency") != "INR" || tableAttr(t, body, "data-converted") != "false" || revByDay(body)["2027-01-14"].gross != 800000 {
+			t.Errorf("INR view: %s", tableOnly(body))
+		}
+		body = e.pageOK(vw, "/dashboard/overview?range=7d&currency=USD")
+		if tableAttr(t, body, "data-converted") != "false" || revByDay(body)["2027-01-14"].gross != 0 {
+			t.Errorf("native USD view: %s", tableOnly(body))
+		}
+	})
+}
+
+func TestRevenueDefaultCurrencyINRNeedsOnlyTheSourceRate(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		e.seedLedger(ledRow{"pay_1", "charge", "INR", 5000, e.d15(14)}, ledRow{"pay_1", "charge", "USD", 1000, e.d15(14)})
+		e.seedRates(store.FXRate{Currency: "USD", Date: "2027-01-14", Rate: "80"})
+		e.setDefaultCurrency("INR")
+		body := e.pageOK(vw, "/dashboard/overview?range=7d")
+		if tableAttr(t, body, "data-currency") != "INR" || tableAttr(t, body, "data-estimated") != "false" || revByDay(body)["2027-01-14"].gross != 85000 {
+			t.Errorf("INR default: %s", tableOnly(body))
+		}
+	})
+}
+
+func TestRevenueConversionFlagsEstimatesAndExclusions(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		e.seedLedger(
+			ledRow{"pay_1", "charge", "USD", 1000, e.d15(14)},
+			ledRow{"pay_1", "charge", "INR", 800000, e.d15(14)}, // only an earlier USD rate
+			ledRow{"pay_1", "charge", "EUR", 2000, e.d15(13)},   // no EUR rate at all
+		)
+		e.seedRates(store.FXRate{Currency: "USD", Date: "2027-01-10", Rate: "80"})
+		e.setDefaultCurrency("USD")
+		body := e.pageOK(vw, "/dashboard/overview?range=7d")
+		if tableAttr(t, body, "data-estimated") != "true" {
+			t.Errorf("a non-same-day rate is an estimate: %s", tableOnly(body))
+		}
+		pts := revByDay(body)
+		if pts["2027-01-14"].gross != 11000 || pts["2027-01-13"].gross != 0 {
+			t.Errorf("points: %+v", pts)
+		}
+		has(t, body, "estimated conversions", "Not included: 20.00 EUR", `href="/dashboard/fx"`)
+
+		// No rate for the default currency: only its own money can be shown.
+		e.setDefaultCurrency("GBP")
+		body = e.pageOK(vw, "/dashboard/overview?range=7d")
+		if tableAttr(t, body, "data-currency") != "GBP" || revByDay(body)["2027-01-14"].gross != 0 {
+			t.Errorf("GBP default: %s", tableOnly(body))
+		}
+		has(t, body, "Not included:", "20.00 EUR", "8000.00 INR", "10.00 USD")
+	})
+}
+
+func TestRevenueDefaultCurrencyOnlyItsOwnMoneyIsNotConverted(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		e.seedLedger(ledRow{"pay_1", "charge", "USD", 1000, e.d15(14)})
+		e.setDefaultCurrency("USD")
+		body := e.pageOK(vw, "/dashboard/overview?range=7d")
+		if tableAttr(t, body, "data-converted") != "false" || tableAttr(t, body, "data-estimated") != "false" {
+			t.Errorf("nothing to convert: %s", tableOnly(body))
+		}
+		lacks(t, body, "at the stored daily rate", "Not included")
+	})
+}
+
+func TestDefaultCurrencySettingIsEditable(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		admin := e.roleClient("admin")
+		body := e.pageOK(admin, "/dashboard/settings")
+		has(t, body, "Default currency", `action="/dashboard/settings/default_currency"`)
+		tok := regexpFind(t, `name="csrf" value="([^"]+)"`, body)
+		if r, _ := e.post(admin, "/dashboard/settings/default_currency", url.Values{"csrf": {tok}, "value": {"QQQ"}}); r.StatusCode != 400 {
+			t.Errorf("unknown currency: %d", r.StatusCode)
+		}
+		if r, _ := e.post(admin, "/dashboard/settings/default_currency", url.Values{"csrf": {tok}, "value": {"EUR"}}); r.StatusCode != 303 {
+			t.Errorf("save: %d", r.StatusCode)
+		}
+		has(t, e.pageOK(admin, "/dashboard/overview"), `data-currency="EUR"`, "All, converted to EUR")
+	})
+}
+
+func (e *env) seedMarketRates(rates ...store.MarketRate) {
+	e.t.Helper()
+	err := e.db.Write(ctx, func(tx store.Tx) error {
+		for _, r := range rates {
+			if r.Source == "" {
+				r.Source = "frankfurter"
+			}
+			if err := store.UpsertMarketRate(ctx, tx, r, e.clk.Now()); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func TestRevenueConvertsWithMarketRatesWhenNoneStored(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		e.seedLedger(ledRow{"pay_1", "charge", "INR", 800000, e.d15(14)})
+		e.seedMarketRates(store.MarketRate{Currency: "USD", Date: "2027-01-14", Rate: "80"})
+		e.setDefaultCurrency("USD")
+
+		body := e.pageOK(vw, "/dashboard/overview?range=7d")
+		if got := revByDay(body)["2027-01-14"]; got.gross != 10000 {
+			t.Errorf("converted gross %+v", got)
+		}
+		has(t, body, "100.00 USD", "indicative market rates")
+		lacks(t, body, "Not included", "estimated conversions")
+	})
+}
+
+func TestRevenueStoredRateBeatsMarketRateOnTheSameDay(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		e.seedLedger(ledRow{"pay_1", "charge", "INR", 800000, e.d15(14)})
+		e.seedRates(store.FXRate{Currency: "USD", Date: "2027-01-14", Rate: "80"})
+		e.seedMarketRates(store.MarketRate{Currency: "USD", Date: "2027-01-14", Rate: "40"})
+		e.setDefaultCurrency("USD")
+
+		body := e.pageOK(vw, "/dashboard/overview?range=7d")
+		if got := revByDay(body)["2027-01-14"]; got.gross != 10000 {
+			t.Errorf("converted gross %+v, want the stored rate", got)
+		}
+		lacks(t, body, "indicative market rates")
+	})
+}
+
+// A newer market rate is closer to the day than an old stored one.
+func TestRevenueMarketRateBeatsAnOlderStoredRate(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		e.seedLedger(ledRow{"pay_1", "charge", "INR", 800000, e.d15(14)})
+		e.seedRates(store.FXRate{Currency: "USD", Date: "2026-01-14", Rate: "40"})
+		e.seedMarketRates(store.MarketRate{Currency: "USD", Date: "2027-01-14", Rate: "80"})
+		e.setDefaultCurrency("USD")
+
+		body := e.pageOK(vw, "/dashboard/overview?range=7d")
+		if got := revByDay(body)["2027-01-14"]; got.gross != 10000 {
+			t.Errorf("converted gross %+v, want the market rate", got)
+		}
+	})
+}
+
+func TestFXPageShowsLatestMarketRatesApartFromStoredOnes(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
+		lacks(t, e.pageOK(vw, "/dashboard/fx"), "Market rates")
+
+		e.seedMarketRates(
+			store.MarketRate{Currency: "USD", Date: "2027-01-13", Rate: "70.5"},
+			store.MarketRate{Currency: "USD", Date: "2027-01-14", Rate: "80.5"},
+		)
+		body := e.pageOK(vw, "/dashboard/fx")
+		has(t, body, "Market rates", "80.5", "2027-01-14", "frankfurter", "never used for invoices", "No rates yet.")
+		lacks(t, body, "70.5")
+	})
+}
+
+func TestFXProviderOffHidesMarketRates(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		e.seedLedger(ledRow{"pay_1", "charge", "USD", 1000, e.d15(14)})
+		e.seedMarketRates(store.MarketRate{Currency: "USD", Date: "2027-01-14", Rate: "80"})
+		e.setDefaultCurrency("INR")
+		err := e.db.Write(ctx, func(tx store.Tx) error {
+			return store.SetOrgSetting(ctx, tx, store.DefaultOrgID, "fx_provider", `"off"`, e.clk.Now())
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		body := e.pageOK(vw, "/dashboard/overview?range=7d")
+		has(t, body, "Not included: 10.00 USD")
+		lacks(t, body, "indicative market rates")
+		lacks(t, e.pageOK(vw, "/dashboard/fx"), "Market rates")
+	})
+}
+
+func TestFXProviderSettingIsEditable(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		admin := e.roleClient("admin")
+		body := e.pageOK(admin, "/dashboard/settings")
+		has(t, body, "Market rate provider", `action="/dashboard/settings/fx_provider"`)
+		tok := csrfOf(t, body)
+		if r, _ := e.post(admin, "/dashboard/settings/fx_provider", url.Values{"csrf": {tok}, "value": {"google"}}); r.StatusCode != 400 {
+			t.Errorf("bad value: %d", r.StatusCode)
+		}
+		if r, _ := e.post(admin, "/dashboard/settings/fx_provider", url.Values{"csrf": {tok}, "value": {"off"}}); r.StatusCode != 303 {
+			t.Errorf("save: %d", r.StatusCode)
+		}
+	})
+}
+
+// A currency with no rate in the previous period makes the change figures
+// compare against a smaller total, so the page must say so.
+func TestRevenueNamesPreviousPeriodExclusions(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		e.seedLedger(
+			ledRow{"pay_1", "charge", "USD", 1000, e.d15(14)},
+			ledRow{"pay_1", "charge", "EUR", 2000, e.d15(5)}, // previous period, no rate
+		)
+		e.setDefaultCurrency("USD")
+
+		body := e.pageOK(vw, "/dashboard/overview?range=7d")
+		has(t, body, "Previous period leaves out: 20.00 EUR")
+		lacks(t, body, "Not included")
+	})
+}

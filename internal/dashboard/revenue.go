@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"cmp"
 	"context"
 	"encoding/csv"
 	"fmt"
@@ -10,6 +11,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/velixio/paymux/internal/fxmarket"
+	"github.com/velixio/paymux/internal/invoice"
+	"github.com/velixio/paymux/internal/settings"
 	"github.com/velixio/paymux/internal/store"
 	"github.com/velixio/paymux/pkg/connector/money"
 )
@@ -19,7 +23,7 @@ type revenueQuery struct {
 	Range    string // today|7d|30d|3m|6m|12m|ytd|all|custom; default 30d
 	Bucket   string // auto|hour|day|week|month|quarter; default auto
 	App      string
-	Currency string    // "" = default rule (spec §6), else an ISO code
+	Currency string    // "" = the default_currency setting, else the default rule (spec §6); an ISO code is a native view
 	From, To time.Time // resolved, local midnight boundaries; To is exclusive
 }
 
@@ -163,11 +167,15 @@ type revenueCurrencyTotal struct {
 
 type revenueView struct {
 	Query                                 revenueQuery
-	Bucket                                string // the bucket in use (auto resolved)
-	Currency                              string // currency of the amounts shown
-	Exp                                   int    // its minor-unit exponent
-	Converted                             bool   // retained in chart metadata; native views are always false
-	Estimated                             bool   // retained in chart metadata; native views are always false
+	Bucket                                string   // the bucket in use (auto resolved)
+	Currency                              string   // currency of the amounts shown
+	Exp                                   int      // its minor-unit exponent
+	DefaultCurrency                       string   // the default_currency setting; "" when off
+	Converted                             bool     // other currencies were converted into Currency; native views are always false
+	Estimated                             bool     // some conversion used a non-same-day rate
+	MarketRates                           bool     // some conversion used an indicative market rate
+	Excluded                              []string // gross of the currencies left out for want of a rate, formatted
+	PrevExcluded                          []string // the same for the previous period, which the change figures compare against
 	Points                                []revenuePoint
 	Gross, Refunds, Net                   int64
 	GrossS, RefundsS, NetS                string
@@ -210,14 +218,24 @@ func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode stri
 		}
 	}
 
-	// Revenue is kept in its native currency. Adding amounts denominated in
-	// different currencies would make the headline totals depend on a stored
-	// (and potentially stale) FX rate rather than the provider's settlement.
+	// Revenue stays in its native currency unless the org opted into a default
+	// currency and no single currency was asked for. Converted totals depend on
+	// stored (and potentially stale) FX rates rather than the provider's
+	// settlement, so the page says when they are used.
 	present := map[string]bool{}
 	for _, r := range rows {
 		present[r.Currency] = true
 	}
+	target, err := defaultCurrency(ctx, q, org)
+	if err != nil {
+		return v, err
+	}
+	v.DefaultCurrency = target
 	shown := rq.Currency
+	convert := shown == "" && target != ""
+	if convert {
+		shown = target
+	}
 	if shown == "" {
 		if present["USD"] {
 			shown = "USD"
@@ -242,6 +260,28 @@ func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode stri
 		v.Exp = e
 	}
 	cur, prev := native(rows, shown), native(prevRows, shown)
+	if convert {
+		c, err := newFXConverter(ctx, q, org, target, slices.Concat(rows, prevRows), func(slot int64) string {
+			return slotTime(slot, hourly, off, loc).Format("2006-01-02")
+		})
+		if err != nil {
+			return v, err
+		}
+		var excluded, prevExcluded map[string]int64
+		if cur, excluded, err = c.convert(rows); err != nil {
+			return v, err
+		}
+		if prev, prevExcluded, err = c.convert(prevRows); err != nil {
+			return v, err
+		}
+		for _, currency := range sortedKeys(excluded) {
+			v.Excluded = append(v.Excluded, fmtMoney(excluded[currency], currency))
+		}
+		for _, currency := range sortedKeys(prevExcluded) {
+			v.PrevExcluded = append(v.PrevExcluded, fmtMoney(prevExcluded[currency], currency))
+		}
+		v.Converted, v.Estimated, v.MarketRates = c.foreign, c.estimated, c.market
+	}
 
 	// Points.
 	if rq.To.After(rq.From) {
@@ -357,6 +397,142 @@ func native(rows []store.SeriesRow, currency string) []convRow {
 type convRow struct {
 	Slot           int64
 	Gross, Refunds int64
+}
+
+// defaultCurrency is the org's default_currency setting; "" when off.
+func defaultCurrency(ctx context.Context, q store.Querier, org string) (string, error) {
+	val, err := settings.ResolveOrgWith(ctx, q, org, "default_currency")
+	if err != nil {
+		return "", err
+	}
+	var code string
+	if err := val.Decode(&code); err != nil {
+		return "", err
+	}
+	if code == "off" {
+		return "", nil
+	}
+	return code, nil
+}
+
+// marketSource marks a market rate among the rates an fxConverter holds.
+const marketSource = "market"
+
+// fxConverter turns series rows of any currency into one currency, using the
+// rates (INR per unit) of each row's day: the org's stored rate, else the
+// indicative market rate. This is display only; invoices read fx_rates alone.
+type fxConverter struct {
+	to        string
+	rates     map[string][]store.FXRate // by currency, oldest date first
+	slotDate  func(slot int64) string
+	foreign   bool // some row was in another currency
+	estimated bool // some conversion used a non-same-day rate
+	market    bool // some conversion used a market rate
+}
+
+// newFXConverter loads the rates needed to convert rows into to.
+func newFXConverter(ctx context.Context, q store.Querier, org, to string, rows []store.SeriesRow, slotDate func(int64) string) (*fxConverter, error) {
+	c := &fxConverter{to: to, rates: map[string][]store.FXRate{}, slotDate: slotDate}
+	provider, err := fxmarket.Selected(ctx, q, org)
+	if err != nil {
+		return nil, err
+	}
+	useMarket := provider != fxmarket.Off
+	load := func(currency string) error {
+		if _, ok := c.rates[currency]; ok || currency == "INR" {
+			return nil
+		}
+		stored, err := store.ListFXRatesFor(ctx, q, org, currency)
+		if err != nil {
+			return err
+		}
+		var market []store.MarketRate
+		if useMarket {
+			if market, err = store.ListMarketRatesFor(ctx, q, currency); err != nil {
+				return err
+			}
+		}
+		c.rates[currency] = mergeRates(stored, market)
+		return nil
+	}
+	if err := load(to); err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		if err := load(r.Currency); err != nil {
+			return nil, err
+		}
+	}
+	return c, nil
+}
+
+// mergeRates combines one currency's rates, oldest date first. A stored rate
+// wins over a market rate of the same day.
+func mergeRates(stored []store.FXRate, market []store.MarketRate) []store.FXRate {
+	out := slices.Clone(stored)
+	for _, m := range market {
+		if !slices.ContainsFunc(stored, func(r store.FXRate) bool { return r.Date == m.Date }) {
+			out = append(out, store.FXRate{Currency: m.Currency, Date: m.Date, Rate: m.Rate, Source: marketSource})
+		}
+	}
+	slices.SortFunc(out, func(a, b store.FXRate) int { return cmp.Compare(a.Date, b.Date) })
+	return out
+}
+
+// rate finds a currency's rate for date: that day's, else the latest earlier
+// one, else the earliest later one. The last two are estimates. ok is false
+// when the currency cannot be converted at all.
+func (c *fxConverter) rate(currency, date string) (rate store.FXRate, exact, ok bool) {
+	if currency == "INR" {
+		return store.FXRate{}, true, true
+	}
+	if _, err := money.Exponent(currency); err != nil {
+		return store.FXRate{}, false, false
+	}
+	rates := c.rates[currency]
+	if len(rates) == 0 {
+		return store.FXRate{}, false, false
+	}
+	i, found := slices.BinarySearchFunc(rates, date, func(r store.FXRate, d string) int { return cmp.Compare(r.Date, d) })
+	switch {
+	case found:
+		return rates[i], true, true
+	case i > 0:
+		return rates[i-1], false, true
+	}
+	return rates[0], false, true
+}
+
+// convert turns rows into the target currency. Currencies with no usable rate
+// are left out and reported in excluded (their gross).
+func (c *fxConverter) convert(rows []store.SeriesRow) (out []convRow, excluded map[string]int64, err error) {
+	excluded = map[string]int64{}
+	for _, r := range rows {
+		if r.Currency == c.to {
+			out = append(out, convRow{Slot: r.Slot, Gross: r.Gross, Refunds: r.Refunds})
+			continue
+		}
+		c.foreign = true
+		date := c.slotDate(r.Slot)
+		fromRate, fromExact, fromOK := c.rate(r.Currency, date)
+		toRate, toExact, toOK := c.rate(c.to, date)
+		if !fromOK || !toOK {
+			excluded[r.Currency] += r.Gross
+			continue
+		}
+		gross, err := invoice.ConvertMinor(r.Gross, r.Currency, fromRate.Rate, c.to, toRate.Rate)
+		if err != nil {
+			return nil, nil, err
+		}
+		refunds, err := invoice.ConvertMinor(r.Refunds, r.Currency, fromRate.Rate, c.to, toRate.Rate)
+		if err != nil {
+			return nil, nil, err
+		}
+		c.estimated = c.estimated || !fromExact || !toExact
+		c.market = c.market || fromRate.Source == marketSource || toRate.Source == marketSource
+		out = append(out, convRow{Slot: r.Slot, Gross: gross, Refunds: refunds})
+	}
+	return out, excluded, nil
 }
 
 // slotTime is the local start of a LedgerSeries slot.

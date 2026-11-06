@@ -100,6 +100,7 @@ type Page struct {
 	TaxForm   *taxEntForm
 	Warnings  []string
 	FXRates   []fxRow
+	FXMarket  []fxRow // indicative provider rates, latest of each currency
 	FXPending []fxPendingRow
 	FXDate    string
 

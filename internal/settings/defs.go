@@ -10,6 +10,7 @@ import (
 
 	"github.com/velixio/paymux/internal/invoice/irp"
 	"github.com/velixio/paymux/internal/routing"
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // Level says where a setting may be set (spec section 8a, "Level" column).
@@ -88,6 +89,12 @@ const defaultRouting = `{"rules":[` +
 //     subscriptions service, which knows the mandate method.
 var defs = []Def{
 	{"routing", defaultRouting, orgApp, validRouting},
+	// default_currency: the currency Overview reports revenue in, converting the
+	// others at the stored FX rates; "off" reports each currency separately.
+	{"default_currency", `"off"`, LevelOrg, validDefaultCurrency},
+	// fx_provider: where the indicative market rates shown on the dashboard come
+	// from; "off" neither fetches nor shows them. Invoices and GST never use them.
+	{"fx_provider", `"frankfurter"`, LevelOrg, oneOf("frankfurter", "off")},
 	{"checkout_mode", `"hosted"`, LevelApp, oneOf("hosted", "provider_action")},
 	{"duplicate_payment_action", `"review"`, orgApp, oneOf("review", "auto_refund")},
 	{"billing_details", `"state_required"`, orgApp, oneOf("off", "state_required", "optional", "required")},
@@ -223,6 +230,20 @@ func matches(pattern string) func(json.RawMessage) error {
 		}
 		return nil
 	}
+}
+
+func validDefaultCurrency(raw json.RawMessage) error {
+	var s string
+	if err := decodeStrict(raw, &s); err != nil {
+		return err
+	}
+	if s == "off" {
+		return nil
+	}
+	if _, err := money.Exponent(s); err != nil {
+		return fmt.Errorf("must be off or a currency code such as USD")
+	}
+	return nil
 }
 
 func intRange(lo, hi int64) func(json.RawMessage) error {
