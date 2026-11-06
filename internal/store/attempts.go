@@ -168,7 +168,9 @@ func CountProviderPaymentAttemptsForPayments(ctx context.Context, q Queryer, pay
 
 // UpsertProviderPaymentAttempt records the latest known state of one provider
 // payment without changing the Paymux attempt or its ledger effects. A try stays
-// with the attempt it first belonged to, and a finished try doesn't reopen.
+// with the attempt it first belonged to, and a finished try doesn't reopen. It
+// keeps the earliest time known: one with no provider time is dated when first
+// seen, which a later event or fetch can only improve on.
 func UpsertProviderPaymentAttempt(ctx context.Context, tx Tx, p ProviderPaymentAttempt) error {
 	tryID := p.TryID
 	if tryID == "" {
@@ -180,6 +182,9 @@ func UpsertProviderPaymentAttempt(ctx context.Context, tx Tx, p ProviderPaymentA
 		standIn := `DELETE FROM provider_payment_attempts WHERE provider_account_id = ? AND try_id = ? AND provider_payment_id = ?`
 		if p.FailureCode == "" && p.FailureMessage == "" {
 			standIn += ` AND COALESCE(failure_code,'') = '' AND COALESCE(failure_message,'') = ''`
+		}
+		if p.Status != "captured" {
+			standIn += ` AND status <> 'captured'` // only a capture replaces the record of one
 		}
 		if _, err := tx.ExecContext(ctx, standIn, p.ProviderAccountID, p.ProviderPaymentID, p.ProviderPaymentID); err != nil {
 			return err
@@ -209,6 +214,8 @@ func UpsertProviderPaymentAttempt(ctx context.Context, tx Tx, p ProviderPaymentA
 		method_details = COALESCE(excluded.method_details, provider_payment_attempts.method_details),
 		risk_details = COALESCE(excluded.risk_details, provider_payment_attempts.risk_details),
 		three_d_secure = COALESCE(excluded.three_d_secure, provider_payment_attempts.three_d_secure),
+		created_at = CASE WHEN excluded.created_at < provider_payment_attempts.created_at
+			THEN excluded.created_at ELSE provider_payment_attempts.created_at END,
 		updated_at = excluded.updated_at`,
 		p.ProviderAccountID, tryID, p.ProviderPaymentID, p.AttemptID, nullIfEmpty(p.ProviderOrderID), p.Status,
 		nullIfEmpty(p.Method), nullIfEmpty(p.FailureCode), nullIfEmpty(p.FailureMessage), p.Amount,

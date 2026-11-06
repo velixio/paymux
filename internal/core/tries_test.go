@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/velixio/paymux/internal/core"
 	"github.com/velixio/paymux/internal/core/state"
@@ -273,6 +274,58 @@ func TestCapturedStandInWithFailureIsNotPaidTwice(t *testing.T) {
 			}
 			if try.Status != want {
 				t.Errorf("try %s status = %s, want %s", try.TryID, try.Status, want)
+			}
+		}
+	})
+}
+
+// A keyed try that isn't a capture says nothing about whether the payment was
+// paid, so the row recording that it was stays.
+func TestCapturedStandInSurvivesOtherKeyedTries(t *testing.T) {
+	for _, keyed := range []store.ProviderPaymentAttempt{
+		{TryID: "ch_1", Status: "failed", FailureCode: "card_declined"},
+		{TryID: "ch_1", Status: "open/unpaid"},
+	} {
+		storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+			e := newEnv(t, db)
+			p := e.payment(50000)
+			a := e.attempt(p.ID)
+			upsertTry(t, e, store.ProviderPaymentAttempt{ProviderAccountID: a.ProviderAccountID, ProviderPaymentID: "pi_1", AttemptID: a.ID, Status: "captured"})
+			keyed.ProviderAccountID, keyed.ProviderPaymentID, keyed.AttemptID = a.ProviderAccountID, "pi_1", a.ID
+			upsertTry(t, e, keyed)
+			got := triesOf(t, e, p.ID)
+			if len(got) != 2 {
+				t.Fatalf("%s: tries = %+v", keyed.Status, got)
+			}
+			for _, try := range got {
+				if try.TryID == "pi_1" && try.Status != "captured" {
+					t.Errorf("%s: stand-in = %+v", keyed.Status, try)
+				}
+			}
+		})
+	}
+}
+
+// With no provider time a try is dated when it was first seen, which is never
+// before it happened. So the earliest time known for a try is the best one.
+func TestTryKeepsItsEarliestKnownTime(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		p := e.payment(50000)
+		a := e.attempt(p.ID)
+		polled := time.UnixMilli(1760000900000)
+		try := store.ProviderPaymentAttempt{ProviderAccountID: a.ProviderAccountID, ProviderPaymentID: "pi_1", TryID: "pi_1:pm_1:card_declined", AttemptID: a.ID, Status: "failed", CreatedAt: polled}
+		upsertTry(t, e, try)
+		for _, step := range []struct {
+			at, want time.Time
+		}{
+			{time.UnixMilli(1760000100000), time.UnixMilli(1760000100000)},
+			{time.UnixMilli(1760000500000), time.UnixMilli(1760000100000)},
+		} {
+			try.CreatedAt = step.at
+			upsertTry(t, e, try)
+			if got := triesOf(t, e, p.ID); len(got) != 1 || !got[0].CreatedAt.Equal(step.want) {
+				t.Fatalf("after %v: tries = %+v", step.at, got)
 			}
 		}
 	})
