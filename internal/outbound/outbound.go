@@ -99,6 +99,7 @@ func (s *Service) Register() {
 	s.q.Register(JobDeliver, s.handleDeliver)
 	s.q.Register(JobNotify, s.handleNotification)
 	s.q.Register(JobDeleteTelegram, s.handleTelegramDelete)
+	s.q.Register(JobSigninApprovalTick, s.handleSigninApprovalTick)
 }
 
 func (s *Service) schedule() []time.Duration {
