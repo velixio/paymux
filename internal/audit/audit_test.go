@@ -80,3 +80,10 @@ func TestRedact(t *testing.T) {
 		t.Error("nil must redact to empty")
 	}
 }
+
+func TestRedactHidesSigninPINButNotLookalikes(t *testing.T) {
+	got := audit.Redact(map[string]string{"signin_pin": "123456", "pin": "123456", "shipping": "kept", "mapping": "kept"})
+	if strings.Contains(got, "123456") || !strings.Contains(got, `"shipping":"kept"`) || !strings.Contains(got, `"mapping":"kept"`) {
+		t.Fatal(got)
+	}
+}

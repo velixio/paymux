@@ -158,6 +158,7 @@ func (d *Dashboard) renderAccount(w http.ResponseWriter, r *http.Request, s *ses
 		v.Sessions = append(v.Sessions, sessionRow{ID: x.ID, Created: d.fmtTime(x.CreatedAt), LastSeen: d.fmtTime(x.LastSeenAt), Expires: d.fmtTime(x.ExpiresAt),
 			Network: x.IPHint, Device: ua, Remembered: x.Remember, Current: x.ID == s.ID})
 	}
+	v.HasSigninPIN = s.User.SigninPINEnc != nil
 	v.OrgThemeName = d.orgDashboardTheme(r.Context())
 	own := d.userTheme(r.Context(), s.User.ID)
 	for _, ti := range d.installedThemes() {
@@ -197,9 +198,11 @@ func (d *Dashboard) accountThemeSet(w http.ResponseWriter, r *http.Request, s *s
 }
 
 var accountNotices = map[string]string{
-	"revoked": "That session was signed out.",
-	"others":  "Every other session was signed out.",
-	"theme":   "Your theme was saved.",
+	"revoked":     "That session was signed out.",
+	"others":      "Every other session was signed out.",
+	"theme":       "Your theme was saved.",
+	"pin":         "Your sign-in PIN was saved.",
+	"pin_removed": "Your sign-in PIN was removed.",
 }
 
 func (d *Dashboard) sessionRevoke(w http.ResponseWriter, r *http.Request, s *session) {
@@ -324,6 +327,8 @@ func (d *Dashboard) accountRoutes() {
 	m.HandleFunc("GET "+prefix+"/account", d.authed(selfOnly, d.accountPage))
 	m.HandleFunc("POST "+prefix+"/account/theme", d.authed(selfOnly, d.accountThemeSet))
 	m.HandleFunc("POST "+prefix+"/account/password", d.authed(selfOnly, d.passwordChange))
+	m.HandleFunc("POST "+prefix+"/account/signin-pin", d.authed(selfOnly, d.recent(d.signinPINSet)))
+	m.HandleFunc("POST "+prefix+"/account/signin-pin/remove", d.authed(selfOnly, d.recent(d.signinPINRemove)))
 	m.HandleFunc("POST "+prefix+"/account/sessions/revoke-others", d.authed(selfOnly, d.sessionsRevokeOthers))
 	m.HandleFunc("POST "+prefix+"/account/sessions/{id}/revoke", d.authed(selfOnly, d.sessionRevoke))
 	m.HandleFunc("GET "+prefix+"/reauth", d.authed(selfOnly, d.reauthPage))

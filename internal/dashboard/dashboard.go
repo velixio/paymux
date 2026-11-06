@@ -243,6 +243,8 @@ func (d *Dashboard) routes() {
 	m.HandleFunc("GET "+prefix+"/login/oidc/callback", d.ssoCallback)
 	m.HandleFunc("GET "+prefix+"/login/totp", d.totpPage)
 	m.HandleFunc("POST "+prefix+"/login/totp", d.totpSubmit)
+	m.HandleFunc("GET "+signinWaitPath, d.signinWaitPage)
+	m.HandleFunc("GET "+signinWaitPath+"/status", d.signinWaitStatus)
 	m.HandleFunc("POST "+prefix+"/logout", d.authed(authz.PaymentRead, d.logout))
 	m.HandleFunc("POST "+prefix+"/mode", d.authed(authz.PaymentRead, d.setMode))
 
@@ -307,6 +309,7 @@ type view struct {
 	Next         string // where the confirmation page returns to
 	NeedCode     bool   // the confirmation page asks for an authenticator code too
 	Unsaved      bool   // the confirmation page was reached by a write that was refused, which is not replayed
+	SigninEnded  bool   // the waiting page says the sign-in request is over
 	StyleNonce   string
 	// DashboardTheme names the theme the React dashboard wears; see effectiveDashboardTheme.
 	DashboardTheme string
@@ -319,6 +322,8 @@ type view struct {
 	OrgThemeName string
 	ThemeChoices []themeChoice
 	UserHasTheme bool // the user's own choice is set and still usable
+	// HasSigninPIN: the account page offers to remove the sign-in PIN.
+	HasSigninPIN bool
 
 	AppName, LogoURL, Accent string
 

@@ -148,6 +148,21 @@ describe("existing Go page contract", () => {
   });
 });
 
+test("the waiting page says where to ask for the outcome", () => {
+  const parse = (body: string) =>
+    parseDashboard(
+      new win.DOMParser().parseFromString(
+        `<title>t</title><div id="paymux-server-page">${body}</div>`,
+        "text/html",
+      ) as unknown as Document,
+      "/dashboard/login/waiting",
+    );
+  const waiting = parse('<section data-signin-wait="/x"><h3>w</h3></section>');
+  expect(waiting.auth).toBe(true);
+  expect(waiting.signinWait).toBe("/x");
+  expect(parse("<h3>ended</h3>").signinWait).toBe(null);
+});
+
 test("binary and export endpoints keep native downloads", () => {
   for (const path of [
     "/dashboard/invoices/inv_1/pdf",

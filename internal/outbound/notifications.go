@@ -254,6 +254,11 @@ func (s *Service) removeReplacedTelegramMessage(ctx context.Context, token, chat
 // telegramCall makes one Bot API call. Errors never carry the URL, which holds
 // the token.
 func (s *Service) telegramCall(ctx context.Context, token, method string, payload map[string]any) (int, []byte, error) {
+	return s.telegramCallCapped(ctx, token, method, payload, 64<<10)
+}
+
+// telegramCallCapped reads at most maxResponse bytes of the answer.
+func (s *Service) telegramCallCapped(ctx context.Context, token, method string, payload map[string]any, maxResponse int64) (int, []byte, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return 0, nil, err
@@ -272,7 +277,7 @@ func (s *Service) telegramCall(ctx context.Context, token, method string, payloa
 		return 0, nil, fmt.Errorf("telegram request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	response, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	response, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponse))
 	return resp.StatusCode, response, nil
 }
 

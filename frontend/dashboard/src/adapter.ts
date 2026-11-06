@@ -19,6 +19,8 @@ export type DashboardPage = {
   auth: boolean;
   /** The page shows a one-time secret: never keep it mounted or cached. */
   once: boolean;
+  /** The sign-in waiting page: where to ask whether the wait is over. */
+  signinWait: string | null;
   theme: string | null;
   /** The dashboard theme this page is drawn in (data-dashboard-theme on the react root). */
   dashboardTheme: string | null;
@@ -113,6 +115,9 @@ export function parseDashboard(doc: Document, href: string): DashboardPage {
       !doc.querySelector(".dash-head") ||
       new URL(href, "http://x").pathname === "/dashboard/reauth",
     once: !!main.querySelector("[data-once]"),
+    signinWait:
+      main.querySelector("[data-signin-wait]")?.getAttribute("data-signin-wait") ??
+      null,
     theme:
       doc.querySelector('link[href^="/theme/"]')?.getAttribute("href") || null,
     dashboardTheme:

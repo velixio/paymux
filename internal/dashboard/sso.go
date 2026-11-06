@@ -135,11 +135,7 @@ func (d *Dashboard) ssoCallback(w http.ResponseWriter, r *http.Request) {
 		d.ssoFailed(w, r, http.StatusForbidden)
 		return
 	}
-	if err := d.createSession(r.Context(), w, r, u, remember); err != nil {
-		d.fail(w, err)
-		return
-	}
-	http.Redirect(w, r, prefix+"/", http.StatusSeeOther)
+	d.finishSignIn(w, r, u, remember)
 }
 
 var errSSORefused = errors.New("not allowed to sign in")

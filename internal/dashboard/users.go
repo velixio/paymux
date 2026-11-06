@@ -121,3 +121,13 @@ func (u Users) ResetTOTP(ctx context.Context, email string) error {
 	}
 	return u.DB.DeleteUserSessions(ctx, row.ID)
 }
+
+// RemoveSigninPIN turns off a user's sign-in approval and cancels their pending
+// requests. It leaves the second factor and the sessions alone.
+func (u Users) RemoveSigninPIN(ctx context.Context, email string) error {
+	row, err := u.DB.UserByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+	return u.DB.ClearUserSigninPIN(ctx, row.ID, u.now())
+}

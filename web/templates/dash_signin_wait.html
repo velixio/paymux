@@ -1,0 +1,9 @@
+{{define "title"}}{{.Title}} - Paymux{{end}}
+{{define "head"}}<link rel="stylesheet" href="/assets/css/dash.css">{{if not .SigninEnded}}<noscript><meta http-equiv="refresh" content="3"></noscript>{{end}}{{end}}
+{{define "content"}}{{template "dash_open" .}}
+{{if .SigninEnded}}<h3>This sign-in request ended.</h3>
+<p class="muted"><a href="/dashboard/login">Sign in again</a></p>
+{{else}}<section data-signin-wait="/dashboard/login/waiting/status">
+<h3>Waiting for external auth</h3>
+</section>
+{{end}}{{template "dash_close" .}}{{end}}

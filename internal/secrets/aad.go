@@ -25,6 +25,9 @@ func AADProviderConfig(accountID string) []byte {
 // AADTOTP is the additional data of a user's TOTP secret.
 func AADTOTP(userID string) []byte { return []byte("users.totp_secret:" + userID) }
 
+// AADSigninPIN is the additional data of a user's sign-in approval PIN.
+func AADSigninPIN(userID string) []byte { return []byte("users.signin_pin:" + userID) }
+
 // AADBeneficiary is the additional data of a payout's beneficiary details.
 func AADBeneficiary(payoutID string) []byte { return []byte("payouts.beneficiary:" + payoutID) }
 

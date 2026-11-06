@@ -63,6 +63,7 @@ type Service struct {
 	now          func() time.Time
 	mailer       notify.Mailer
 	notifyClient *http.Client
+	signinBudget time.Duration
 
 	// RetrySchedule returns the delay before each attempt; the settings lane
 	// can point it at the webhook_retry_schedule setting. Nil or empty means
@@ -75,7 +76,7 @@ var _ events.Emitter = (*Service)(nil)
 // New builds a Service.
 func New(o Options) *Service {
 	s := &Service{db: o.DB, q: o.Queue, box: o.Box, client: o.Client, log: o.Logger, now: o.Now,
-		mailer: o.Mailer, notifyClient: o.NotificationClient}
+		mailer: o.Mailer, notifyClient: o.NotificationClient, signinBudget: signinWorkBudget}
 	if s.client == nil {
 		s.client = newHTTPClient(o.AllowPrivate, nil)
 	}
@@ -99,6 +100,7 @@ func (s *Service) Register() {
 	s.q.Register(JobDeliver, s.handleDeliver)
 	s.q.Register(JobNotify, s.handleNotification)
 	s.q.Register(JobDeleteTelegram, s.handleTelegramDelete)
+	s.q.Register(JobSigninApprovalTick, s.handleSigninApprovalTick)
 }
 
 func (s *Service) schedule() []time.Duration {

@@ -84,13 +84,14 @@ func seedSealed(t *testing.T, db *store.DB, box *secrets.Box) {
 		t.Fatal(err)
 	}
 	u := store.UserRow{ID: "usr_1", Email: "a@example.com", PasswordHash: "h", TOTPLastStep: 5, Role: "admin", CreatedAt: t0,
-		TOTPSecretEnc: seal(t, box, "JBSWY3DP", secrets.AADTOTP("usr_1"))}
+		TOTPSecretEnc: seal(t, box, "JBSWY3DP", secrets.AADTOTP("usr_1")),
+		SigninPINEnc:  seal(t, box, "482913", secrets.AADSigninPIN("usr_1"))}
 	if err := db.InsertUser(ctx, u); err != nil {
 		t.Fatal(err)
 	}
 }
 
-const kinds = 7 // provider config, endpoint secret, payout beneficiary, DSC, connector KV, idempotent response, TOTP secret
+const kinds = 8 // provider config, endpoint secret, payout beneficiary, DSC, connector KV, idempotent response, TOTP secret, sign-in PIN
 
 func items(t *testing.T, db *store.DB) []store.SealedItem {
 	t.Helper()

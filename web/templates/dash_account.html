@@ -45,4 +45,17 @@
 <label>New password again<input class="field" name="confirm_password" type="password" autocomplete="new-password" minlength="12" required></label>
 <button class="btn" type="submit">Change password</button>
 </form>
+
+<h2>Sign-in approval</h2>
+<p class="muted">Each sign-in must also be approved by replying to a Telegram message with this PIN. Anyone in that chat can see a PIN until Paymux removes it.</p>
+<form method="post" action="/dashboard/account/signin-pin" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<label>PIN (6 to 12 digits)<input class="field" name="pin" type="password" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{6,12}" minlength="6" maxlength="12" required></label>
+<label>PIN again<input class="field" name="confirm_pin" type="password" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{6,12}" minlength="6" maxlength="12" required></label>
+<button class="btn" type="submit">{{if .HasSigninPIN}}Change PIN{{else}}Turn on{{end}}</button>
+</form>
+{{if .HasSigninPIN}}<form method="post" action="/dashboard/account/signin-pin/remove">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<button class="btn" type="submit">Remove PIN</button>
+</form>{{end}}
 {{template "dash_close" .}}{{end}}
