@@ -113,6 +113,10 @@ func allTries(in timelineData) []store.ProviderPaymentAttempt {
 			AttemptID: a.ID, ProviderOrderID: a.ProviderOrderID, Status: a.Status, Method: a.Method, FailureCode: a.FailureCode,
 			FailureMessage: a.FailureMessage, CreatedAt: at, MethodDetails: a.MethodDetails, RiskDetails: a.RiskDetails})
 	}
+	// The table keeps some providers' own wording; everything here reads meaning.
+	for i := range out {
+		out[i].Status = string(state.TryStatus(out[i].Status))
+	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
 	return out
 }

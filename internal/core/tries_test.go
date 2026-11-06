@@ -111,6 +111,21 @@ func TestOpenFailureStoredAsFailed(t *testing.T) {
 	})
 }
 
+// Analytics counts status = 'captured': a paid try must not depend on the
+// provider's spelling of it.
+func TestPaidTryStoredAsCaptured(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		p := e.payment(50000)
+		a := e.attempt(p.ID)
+		e.apply(a.ID, core.Snapshot{Status: state.AttemptCaptured, ProviderPaymentID: "pi_1", TryID: "ch_1", RawStatus: "complete/paid", Amount: 50000, Currency: "INR"})
+		got := triesOf(t, e, p.ID)
+		if len(got) != 1 || got[0].Status != "captured" {
+			t.Fatalf("tries = %+v", got)
+		}
+	})
+}
+
 func TestTryWriteFailureDoesNotBlockApply(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)

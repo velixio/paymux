@@ -105,6 +105,11 @@ understands, not every event the provider can send.
 Publish that same explicit set in `Info.WebhookEvents`; the provider page shows
 it as the authoritative checklist when an operator uses the manual fallback.
 
+An existing account does not pick up a newly added event by itself. Stripe's
+`payment_intent.payment_failed` is one: a Stripe account set up before tries were
+recorded must press **Configure webhook** once more, or add the event by hand, or
+declined tries reach Paymux only when the session ends or on a sync.
+
 Return a provider-generated signing secret only when the provider reveals a
 new one. Paymux immediately merges it into the encrypted account config as
 `webhook_secret` and never renders it. Mark that config property with

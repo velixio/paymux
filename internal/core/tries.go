@@ -40,7 +40,10 @@ func (s *Service) RecordTry(ctx context.Context, a store.Attempt, snap Snapshot)
 	if status == "" {
 		status = string(snap.Status)
 	}
-	if snap.Status != state.AttemptCaptured && (snap.FailureCode != "" || snap.FailureMessage != "") {
+	switch {
+	case snap.Status == state.AttemptCaptured:
+		status = string(state.AttemptCaptured)
+	case snap.FailureCode != "" || snap.FailureMessage != "":
 		status = string(state.AttemptFailed)
 	}
 	now := s.nowUTC()

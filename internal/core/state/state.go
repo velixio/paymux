@@ -244,7 +244,18 @@ func RefundNext(from, to RefundStatus) Action {
 // TryStatus maps a provider's status text for one try to the public attempt
 // vocabulary. Anything not known to be further along counts as pending.
 func TryStatus(raw string) AttemptStatus {
-	switch strings.ToLower(raw) {
+	raw = strings.ToLower(raw)
+	// Stripe's session snapshots report "<session status>/<payment status>".
+	if session, payment, ok := strings.Cut(raw, "/"); ok {
+		switch {
+		case payment == "paid" || payment == "no_payment_required":
+			return AttemptCaptured
+		case session == "expired":
+			return AttemptFailed
+		}
+		return AttemptPending
+	}
+	switch raw {
 	case "captured", "succeeded", "success", "paid", "refunded":
 		return AttemptCaptured
 	case "failed", "canceled", "cancelled", "expired", "user_dropped", "void":

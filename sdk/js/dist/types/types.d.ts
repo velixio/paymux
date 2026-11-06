@@ -41,6 +41,7 @@ export interface CardDetails {
     international?: boolean;
     emi?: boolean;
     sub_type?: string;
+    name?: string;
 }
 export interface UPIDetails {
     payer_account_type?: string;
@@ -50,6 +51,19 @@ export interface PaymentMethodDetails {
     bank?: string;
     wallet?: string;
     upi?: UPIDetails;
+}
+export interface ThreeDSecure {
+    status: "passed" | "failed" | "not_verified";
+}
+export interface PaymentTry {
+    provider_payment_id?: string;
+    status: string;
+    method?: string;
+    method_details?: PaymentMethodDetails;
+    three_d_secure?: ThreeDSecure;
+    failure_code?: string;
+    failure_message?: string;
+    created_at: string;
 }
 export interface PaymentAttempt {
     id: string;
@@ -61,6 +75,7 @@ export interface PaymentAttempt {
     failure_code?: string;
     failure_message?: string;
     created_at: string;
+    tries: PaymentTry[];
 }
 export type CheckoutMode = "hosted" | "provider_action";
 export interface ProviderAction {

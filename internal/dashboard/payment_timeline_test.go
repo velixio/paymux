@@ -159,6 +159,23 @@ func TestPaidAttemptWithoutTryStillShows(t *testing.T) {
 	}
 }
 
+// Rows stored before statuses were normalized keep the provider's own text.
+func TestRawProviderStatusesReadAsTheirMeaning(t *testing.T) {
+	in := tlData()
+	in.Payment.Status = "succeeded"
+	in.Tries = []store.ProviderPaymentAttempt{
+		{ProviderPaymentID: "p1", AttemptID: "att_1", Status: "complete/paid", CreatedAt: tlAt(2)},
+		{ProviderPaymentID: "p2", AttemptID: "att_1", Status: "expired/unpaid", CreatedAt: tlAt(1), RiskDetails: `{"cvv_check":"match"}`},
+	}
+	items := buildTimeline(in)
+	if items[1].Title != "Payment failed" || items[2].Title != "Paid" || items[2].Tone != "pass" {
+		t.Fatalf("items = %+v", items)
+	}
+	if g := buildGlance(in); g.Tries != "1 failed, 1 paid" || g.TriesTone != "pass" || g.RiskText != "Not scored" {
+		t.Fatalf("glance = %+v", g)
+	}
+}
+
 func TestNoTriesHasOnlyCreated(t *testing.T) {
 	in := tlData()
 	items := buildTimeline(in)
