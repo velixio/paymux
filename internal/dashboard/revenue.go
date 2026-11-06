@@ -174,7 +174,7 @@ type revenueView struct {
 	Converted                             bool     // other currencies were converted into Currency; native views are always false
 	Estimated                             bool     // some conversion used a non-same-day rate
 	MarketRates                           bool     // some conversion used an indicative market rate
-	Excluded                              []string // gross of the currencies left out for want of a rate, formatted
+	Excluded                              []string // what the currencies left out for want of a rate amounted to, formatted
 	PrevExcluded                          []string // the same for the previous period, which the change figures compare against
 	Points                                []revenuePoint
 	Gross, Refunds, Net                   int64
@@ -267,7 +267,7 @@ func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode stri
 		if err != nil {
 			return v, err
 		}
-		var excluded, prevExcluded map[string]int64
+		var excluded, prevExcluded map[string]convRow
 		if cur, excluded, err = c.convert(rows); err != nil {
 			return v, err
 		}
@@ -275,10 +275,10 @@ func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode stri
 			return v, err
 		}
 		for _, currency := range sortedKeys(excluded) {
-			v.Excluded = append(v.Excluded, fmtMoney(excluded[currency], currency))
+			v.Excluded = append(v.Excluded, fmtExcluded(excluded[currency], currency))
 		}
 		for _, currency := range sortedKeys(prevExcluded) {
-			v.PrevExcluded = append(v.PrevExcluded, fmtMoney(prevExcluded[currency], currency))
+			v.PrevExcluded = append(v.PrevExcluded, fmtExcluded(prevExcluded[currency], currency))
 		}
 		v.Converted, v.Estimated, v.MarketRates = c.foreign, c.estimated, c.market
 	}
@@ -504,9 +504,9 @@ func (c *fxConverter) rate(currency, date string) (rate store.FXRate, exact, ok 
 }
 
 // convert turns rows into the target currency. Currencies with no usable rate
-// are left out and reported in excluded (their gross).
-func (c *fxConverter) convert(rows []store.SeriesRow) (out []convRow, excluded map[string]int64, err error) {
-	excluded = map[string]int64{}
+// are left out and reported in excluded (their gross and refunds).
+func (c *fxConverter) convert(rows []store.SeriesRow) (out []convRow, excluded map[string]convRow, err error) {
+	excluded = map[string]convRow{}
 	for _, r := range rows {
 		if r.Currency == c.to {
 			out = append(out, convRow{Slot: r.Slot, Gross: r.Gross, Refunds: r.Refunds})
@@ -517,7 +517,10 @@ func (c *fxConverter) convert(rows []store.SeriesRow) (out []convRow, excluded m
 		fromRate, fromExact, fromOK := c.rate(r.Currency, date)
 		toRate, toExact, toOK := c.rate(c.to, date)
 		if !fromOK || !toOK {
-			excluded[r.Currency] += r.Gross
+			x := excluded[r.Currency]
+			x.Gross += r.Gross
+			x.Refunds += r.Refunds
+			excluded[r.Currency] = x
 			continue
 		}
 		gross, err := invoice.ConvertMinor(r.Gross, r.Currency, fromRate.Rate, c.to, toRate.Rate)
@@ -533,6 +536,17 @@ func (c *fxConverter) convert(rows []store.SeriesRow) (out []convRow, excluded m
 		out = append(out, convRow{Slot: r.Slot, Gross: gross, Refunds: refunds})
 	}
 	return out, excluded, nil
+}
+
+// fmtExcluded describes what a left-out currency amounted to.
+func fmtExcluded(x convRow, currency string) string {
+	switch {
+	case x.Refunds == 0:
+		return fmtMoney(x.Gross, currency)
+	case x.Gross == 0:
+		return fmtMoney(x.Refunds, currency) + " refunded"
+	}
+	return fmtMoney(x.Gross, currency) + " (" + fmtMoney(x.Refunds, currency) + " refunded)"
 }
 
 // slotTime is the local start of a LedgerSeries slot.
