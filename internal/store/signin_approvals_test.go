@@ -139,7 +139,7 @@ func TestClaimSigninPollIsExclusivePerBot(t *testing.T) {
 		if _, ok, err := db.ClaimSigninPoll(ctx, "1", until, until.Add(time.Second)); err != nil || !ok {
 			t.Fatalf("claim after the lease: %v %v", ok, err)
 		}
-		if err := db.ReleaseSigninPoll(ctx, "1", 42); err != nil {
+		if err := db.ReleaseSigninPoll(ctx, "1", until.Add(time.Second), 42); err != nil {
 			t.Fatal(err)
 		}
 		if off, ok, err := db.ClaimSigninPoll(ctx, "1", until, until.Add(time.Second)); err != nil || !ok || off != 42 {
@@ -196,8 +196,12 @@ func TestSigninApprovalWorkLists(t *testing.T) {
 		if err != nil || len(send) != 1 || send[0].ID != "a" {
 			t.Fatalf("to send: %+v %v", send, err)
 		}
-		if err := db.SetSigninNotification(ctx, "a", -100123, 77); err != nil {
-			t.Fatal(err)
+		if won, err := db.SetSigninNotification(ctx, "a", -100123, 77); err != nil || !won {
+			t.Fatalf("first notification: %v %v", won, err)
+		}
+		// A second worker's message must not replace the one replies are matched to.
+		if won, err := db.SetSigninNotification(ctx, "a", -100123, 88); err != nil || won {
+			t.Fatalf("second notification: %v %v", won, err)
 		}
 		if send, err = db.SigninApprovalsToSend(ctx, signinT0); err != nil || len(send) != 0 {
 			t.Fatalf("sent already: %+v %v", send, err)
@@ -296,4 +300,31 @@ func TestApprovedRequestsEndWithLaterChanges(t *testing.T) {
 			})
 		})
 	}
+}
+
+// A holder that outlived its lease cannot free the new holder's lease or move the
+// reading position backward.
+func TestAnExpiredPollHolderCannotDisturbTheNextOne(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		first, second := signinT0.Add(30*time.Second), signinT0.Add(60*time.Second)
+		if _, ok, err := db.ClaimSigninPoll(ctx, "1", signinT0, first); err != nil || !ok {
+			t.Fatalf("first claim: %v %v", ok, err)
+		}
+		if _, ok, err := db.ClaimSigninPoll(ctx, "1", first, second); err != nil || !ok {
+			t.Fatalf("second claim: %v %v", ok, err)
+		}
+		if err := db.ReleaseSigninPoll(ctx, "1", first, 42); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok, err := db.ClaimSigninPoll(ctx, "1", first.Add(time.Second), second.Add(time.Minute)); err != nil || ok {
+			t.Fatalf("the old holder freed the new lease: %v %v", ok, err)
+		}
+		if err := db.ReleaseSigninPoll(ctx, "1", second, 30); err != nil {
+			t.Fatal(err)
+		}
+		off, ok, err := db.ClaimSigninPoll(ctx, "1", second, second.Add(time.Minute))
+		if err != nil || !ok || off != 42 {
+			t.Fatalf("after both released: offset %d, %v %v", off, ok, err)
+		}
+	})
 }

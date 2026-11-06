@@ -43,6 +43,7 @@ type Fake struct {
 	nextMsg   int64
 	nextReply int64
 	nextUpd   int64
+	before    map[string]func(*http.Request)
 }
 
 // New returns a Fake with a supergroup chat -100123 where the bot may delete.
@@ -81,6 +82,16 @@ func (f *Fake) Fail(method string, status int) {
 		return
 	}
 	f.failures[method] = status
+}
+
+// Before runs fn when a method is called, before it is answered. Nil clears it.
+func (f *Fake) Before(method string, fn func(*http.Request)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.before == nil {
+		f.before = map[string]func(*http.Request){}
+	}
+	f.before[method] = fn
 }
 
 // Reply queues a reply in the chat. Empty text means a message without text.
@@ -139,6 +150,15 @@ func (f *Fake) RoundTrip(r *http.Request) (*http.Response, error) {
 		_ = json.Unmarshal(raw, &body)
 	}
 	method := path.Base(r.URL.Path)
+	f.mu.Lock()
+	before := f.before[method]
+	f.mu.Unlock()
+	if before != nil {
+		before(r)
+		if err := r.Context().Err(); err != nil {
+			return nil, err
+		}
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls[method]++

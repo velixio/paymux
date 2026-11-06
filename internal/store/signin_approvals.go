@@ -171,12 +171,20 @@ func (db *DB) SigninApprovalsToSend(ctx context.Context, now time.Time) ([]Signi
 	return db.listSignins(ctx, `status = ? AND message_id = 0 AND expires_at > ?`, SigninPending, ms(now))
 }
 
-// SetSigninNotification records the message that asks for approval.
-func (db *DB) SetSigninNotification(ctx context.Context, id string, chatID, messageID int64) error {
-	return db.Write(ctx, func(tx Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE signin_approvals SET chat_id = ?, message_id = ? WHERE id = ?`, chatID, messageID, id)
-		return err
+// SetSigninNotification records the message that asks for approval. The first
+// message recorded stays, because replies are matched to it; recorded is false
+// when one was there already.
+func (db *DB) SetSigninNotification(ctx context.Context, id string, chatID, messageID int64) (recorded bool, err error) {
+	err = db.Write(ctx, func(tx Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE signin_approvals SET chat_id = ?, message_id = ? WHERE id = ? AND message_id = 0`, chatID, messageID, id)
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		recorded = n > 0
+		return nil
 	})
+	return recorded, err
 }
 
 // SigninApprovalsToClear lists the decided requests whose notification is still
@@ -242,10 +250,15 @@ func (db *DB) ClaimSigninPoll(ctx context.Context, botID string, now, until time
 	return offset, ok, err
 }
 
-// ReleaseSigninPoll saves how far a bot's replies were read and gives up the claim.
-func (db *DB) ReleaseSigninPoll(ctx context.Context, botID string, offset int64) error {
+// ReleaseSigninPoll saves how far a bot's replies were read and gives up the claim
+// that was taken with until. The position only moves forward, and a claim someone
+// else has taken since stays theirs.
+func (db *DB) ReleaseSigninPoll(ctx context.Context, botID string, until time.Time, offset int64) error {
 	return db.Write(ctx, func(tx Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE signin_polls SET update_offset = ?, lease_until = 0 WHERE bot_id = ?`, offset, botID)
+		_, err := tx.ExecContext(ctx, `UPDATE signin_polls SET
+			update_offset = CASE WHEN update_offset < ? THEN ? ELSE update_offset END,
+			lease_until = CASE WHEN lease_until = ? THEN 0 ELSE lease_until END
+			WHERE bot_id = ?`, offset, offset, ms(until), botID)
 		return err
 	})
 }

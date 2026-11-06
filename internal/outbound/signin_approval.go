@@ -34,6 +34,8 @@ const (
 	// signinClearRetryEvery is the pace once only a stuck notification is left, as
 	// when the channel was turned off after it was sent.
 	signinClearRetryEvery = 5 * time.Minute
+	// signinWorkBudget ends a tick's work before its lease can run out.
+	signinWorkBudget = 25 * time.Second
 	// A group's ordinary messages reach an admin bot too, so a backlog can be long:
 	// up to signinBatchSize*signinBatchesPerTick updates a tick, each batch read
 	// with room for the largest messages Telegram allows.
@@ -187,13 +189,22 @@ func (s *Service) handleSigninApprovalTick(ctx context.Context, _ json.RawMessag
 	now := s.now()
 	// Ticks can be due together, here or on another instance. One does the work,
 	// so nothing is sent or deleted twice; the others only keep the chain going.
-	_, mine, err := s.db.ClaimSigninPoll(ctx, signinTickLeaseKey, now, now.Add(signinLease))
+	until := now.Add(signinLease)
+	_, mine, err := s.db.ClaimSigninPoll(ctx, signinTickLeaseKey, now, until)
 	if err != nil {
 		return err
 	}
 	if mine {
-		err := s.signinApprovalWork(ctx, now)
-		if releaseErr := s.db.ReleaseSigninPoll(context.WithoutCancel(ctx), signinTickLeaseKey, 0); err == nil {
+		// The work stops before the lease can run out, so the next holder never
+		// overlaps it. What is left is done by the next tick.
+		workCtx, cancel := context.WithTimeout(ctx, s.signinBudget)
+		err := s.signinApprovalWork(workCtx, now)
+		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			s.log.Warn("sign-in approval: the tick ran out of time")
+			err = nil
+		}
+		cancel()
+		if releaseErr := s.db.ReleaseSigninPoll(context.WithoutCancel(ctx), signinTickLeaseKey, until, 0); err == nil {
 			err = releaseErr
 		}
 		if err != nil {
@@ -271,8 +282,14 @@ func (s *Service) sendSigninNotifications(ctx context.Context, now time.Time) er
 		}
 		// Replies carry the chat's number, which the configured id may not be (it can
 		// be @name), so the number Telegram answered with is what they match.
-		if err := s.db.SetSigninNotification(ctx, a.ID, sent.Chat.ID, sent.MessageID); err != nil {
+		// Saved even when time has just run out: the message is in the chat now.
+		stopless := context.WithoutCancel(ctx)
+		recorded, err := s.db.SetSigninNotification(stopless, a.ID, sent.Chat.ID, sent.MessageID)
+		if err != nil {
 			return err
+		}
+		if !recorded {
+			s.deleteSigninMessage(stopless, token, sent.Chat.ID, sent.MessageID)
 		}
 	}
 	return nil
@@ -292,7 +309,8 @@ func (s *Service) readSigninReplies(ctx context.Context, now time.Time) error {
 			continue
 		}
 		botID, _, _ := strings.Cut(token, ":")
-		offset, ok, err := s.db.ClaimSigninPoll(ctx, botID, now, now.Add(signinLease))
+		until := now.Add(signinLease)
+		offset, ok, err := s.db.ClaimSigninPoll(ctx, botID, now, until)
 		if err != nil {
 			return err
 		}
@@ -302,7 +320,7 @@ func (s *Service) readSigninReplies(ctx context.Context, now time.Time) error {
 		offset, readErr := s.readBotReplies(ctx, token, offset, now)
 		// Saved even when the job is being stopped: otherwise the claim stays taken
 		// and handled replies are read again.
-		if err := s.db.ReleaseSigninPoll(context.WithoutCancel(ctx), botID, offset); err != nil {
+		if err := s.db.ReleaseSigninPoll(context.WithoutCancel(ctx), botID, until, offset); err != nil {
 			return err
 		}
 		if readErr != nil {
@@ -369,6 +387,10 @@ func (s *Service) handleSigninUpdate(ctx context.Context, token string, u signin
 		return err
 	}
 	s.deleteSigninMessage(ctx, token, u.Message.Chat.ID, u.Message.MessageID)
+	// Cut off by the time limit: the next tick reads this reply again.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if u.Message.Text == "" || a.Status != store.SigninPending || !a.ExpiresAt.After(now) {
 		return nil
 	}

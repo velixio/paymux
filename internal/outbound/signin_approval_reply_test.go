@@ -202,7 +202,7 @@ func TestOverlappingPollsDoNotDoubleCount(t *testing.T) {
 		if n := h.tick(); n != 1 {
 			t.Fatalf("no next tick: %d", n)
 		}
-		if err := db.ReleaseSigninPoll(ctx, "123456", 0); err != nil {
+		if err := db.ReleaseSigninPoll(ctx, "123456", now.Add(time.Minute), 0); err != nil {
 			t.Fatal(err)
 		}
 		h.tick()
