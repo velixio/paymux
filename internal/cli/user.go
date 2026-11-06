@@ -23,12 +23,13 @@ import (
 var Stdin io.Reader = os.Stdin
 
 const userUsage = "usage: paymux user create --email <email> [--role <role>] [--password-stdin]\n" +
-	"       paymux user reset-2fa --email <email>"
+	"       paymux user reset-2fa --email <email>\n" +
+	"       paymux user remove-pin --email <email>"
 
 // runUser handles "paymux user ...". Like migrate, it opens the database
 // directly, so with SQLite it cannot run while "paymux serve" holds the lock.
 func runUser(ctx context.Context, args []string, env func(string) (string, bool), stdout, stderr io.Writer) int {
-	if len(args) == 0 || (args[0] != "create" && args[0] != "reset-2fa") {
+	if len(args) == 0 || (args[0] != "create" && args[0] != "reset-2fa" && args[0] != "remove-pin") {
 		fmt.Fprintln(stderr, userUsage)
 		return 2
 	}
@@ -89,6 +90,16 @@ func runUser(ctx context.Context, args []string, env func(string) (string, bool)
 		}
 		fmt.Fprintf(stdout, "created %s %s (%s)\nEnrolment code (shown once; give it to them with the password): %s\n"+
 			"At first login they enter it to set up two-factor authentication. It works once, for 7 days.\n", u.Role, u.Email, u.ID, token)
+		return 0
+	}
+	if cmd == "remove-pin" {
+		clean := strings.ToLower(strings.TrimSpace(*email))
+		if err := users.RemoveSigninPIN(ctx, *email); errors.Is(err, store.ErrNotFound) {
+			return fail(fmt.Errorf("no user with email %s", clean))
+		} else if err != nil {
+			return fail(err)
+		}
+		fmt.Fprintf(stdout, "sign-in PIN removed for %s; their pending approval requests were cancelled.\n", clean)
 		return 0
 	}
 	if err := users.ResetTOTP(ctx, *email); errors.Is(err, store.ErrNotFound) {

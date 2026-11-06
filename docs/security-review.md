@@ -415,6 +415,13 @@ paragraph under the same headings; the numbers continue from F28.
 - **F48.** The memory figure is the process's heap, not the script's, so it is an approximation under heavy load.
   Hooks are code the operator wrote; a container memory limit remains the hard bound.
 
+- **Sign-in approval PIN.** Accepted with the design (`docs/superpowers/specs/2026-11-06-telegram-sign-in-approval-design.md`).
+  The PIN is encrypted rather than hashed, so anyone holding the master key can read it. In a group chat everyone can
+  see a PIN until the bot deletes it, it may stay in phone notifications, and everyone sees each sign-in's email and IP
+  address. Anyone in the chat who knows a user's PIN can approve that user's sign-in. If the bot stops working, users
+  with a PIN are locked out until it is fixed or `paymux user remove-pin` is run. If the bot cannot delete a reply,
+  the sign-in still succeeds and the PIN stays in the chat, with a warning logged.
+
 ### Reviewed, not issues (fifth batch)
 
 - An automated review said the dashboard's per-account limiter keys used the raw e-mail. They do not: the login
