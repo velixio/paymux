@@ -203,6 +203,12 @@ again as soon as the record exists.
 
 After this upgrade Paymux makes an outbound request to `api.frankfurter.dev` once its stored market rates are 6 hours old, even while `default_currency` is `off`. It sends no Paymux data and needs no key. The rates appear on the dashboard only; invoices and GST never use them. A failed request logs one warning and is tried again by the next hourly run. To stop the requests, for example on a host without outbound access, set `fx_provider` to `off` under *Settings*, *Reporting*. No other action is needed.
 
+## Release note: attempt time limit
+
+A started attempt now holds its payment open for the new `attempt_ttl` setting (15 minutes by default), not the full 72 hours. No action is needed for this to apply: attempts made before the upgrade keep the 72-hour window, so their payments clear on their own, and Paymux keeps polling providers for late successes.
+
+The default `payment_ttl` is now 30 minutes, for new installations only. An existing installation keeps its stored value, so to use the new default, set **Settings → Payment behavior → Payment expiry** to 30 and check any app overrides. Only payments created after that change use it.
+
 ## Updating from the dashboard
 
 Admins can update a server from **Update** in the dashboard menu (action

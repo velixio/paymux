@@ -12,10 +12,11 @@ import (
 const openAttemptWindow = 72 * 60 * 60 * 1000 // milliseconds
 
 // ExpireDue moves up to limit payments past expires_at to expired. A payment
-// is skipped while it has an open attempt: pending or authorized, or created
-// and already at the provider, within the 72h polling window. A late success
-// on an expired payment is still accepted by ApplyAttemptSnapshot. It returns
-// how many payments it expired.
+// is skipped while it has an open attempt: authorized within the 72h polling
+// window, or pending (or created and already at the provider) until the
+// attempt's finish_by. Polling goes on after that, and a late success on an
+// expired payment is still accepted by ApplyAttemptSnapshot. It returns how
+// many payments it expired.
 func (s *Service) ExpireDue(ctx context.Context, limit int) (int, error) {
 	now := s.nowUTC()
 	var ids []string

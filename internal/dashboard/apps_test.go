@@ -467,7 +467,7 @@ func TestAppSettingsTab(t *testing.T) {
 		has(t, checkoutRow, `value="hosted"`, `value="provider_action"`)
 		lacks(t, body, "mandate_afa_limit", "recon_time", "webhook_retry_schedule")
 		row := regexpFind(t, `(?s)(<tr[^>]*id="setting-payment_ttl".*?</tr>)`, body)
-		has(t, row, `value="60"`, "org") // inherited from the org
+		has(t, row, `value="30"`, "org") // inherited from the org
 		sacRow := regexpFind(t, `(?s)(<tr[^>]*id="setting-sac_code".*?</tr>)`, body)
 		has(t, sacRow, "998315", "org") // seeded into the org values like every default
 
@@ -509,7 +509,7 @@ func TestAppSettingsTab(t *testing.T) {
 			t.Fatalf("reset: %d", r.StatusCode)
 		}
 		v, _ = e.set.Resolve(ctx, app.ID, "payment_ttl")
-		if string(v.Raw) != "60" || v.Source != "org" {
+		if string(v.Raw) != "30" || v.Source != "org" {
 			t.Fatalf("after reset %s %s", v.Raw, v.Source)
 		}
 

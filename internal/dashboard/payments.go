@@ -199,7 +199,7 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 		rows = rows[:d.o.PageSize]
 	}
 	for _, p := range rows {
-		status, statusClass := paymentDisplayStatus(p)
+		status, statusClass := paymentDisplayStatus(p, d.o.Now())
 		row := payRow{ID: p.ID, App: names[p.AppID], Status: status, StatusClass: statusClass, Amount: fmtMoney(p.Amount, p.Currency), OrderRef: p.OrderRef,
 			Created: d.fmtTime(p.CreatedAt)}
 		paymentAttempts := attemptsByPayment[p.ID]
@@ -387,7 +387,7 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 		provider[a.ID] = a.Name + " (" + a.Connector + ")"
 		connectorOf[a.ID] = a.Connector
 	}
-	displayStatus, statusClass := paymentDisplayStatus(p)
+	displayStatus, statusClass := paymentDisplayStatus(p, d.o.Now())
 	det := &payDetail{ID: p.ID, App: app.Name, AppID: app.ID, Mode: p.Mode, Status: displayStatus, StatusClass: statusClass, Currency: p.Currency,
 		Amount: fmtMoney(p.Amount, p.Currency), Received: fmtMoney(p.AmountReceived, p.Currency), Refunded: fmtMoney(p.AmountRefunded, p.Currency),
 		OrderRef: p.OrderRef, Description: p.Description, Created: d.fmtTime(p.CreatedAt), Flags: p.Flags,
@@ -411,7 +411,7 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 			name = a.ProviderAccountID
 		}
 		methodSummary, methodMeta := paymentMethodSummary(a)
-		det.Attempts = append(det.Attempts, attemptRow{ID: a.ID, Status: a.Status, Provider: name, ProviderRef: a.ProviderRef,
+		det.Attempts = append(det.Attempts, attemptRow{ID: a.ID, Status: attemptDisplayStatus(a, p), Provider: name, ProviderRef: a.ProviderRef,
 			OrderID: a.ProviderOrderID, PaymentID: a.ProviderPaymentID, Method: a.Method, FailureCode: a.FailureCode,
 			FailureMessage: a.FailureMessage, Created: d.fmtTime(a.CreatedAt), Duplicate: a.Duplicate,
 			MethodSummary: methodSummary, MethodMeta: methodMeta})
@@ -535,7 +535,7 @@ func (d *Dashboard) paymentSyncSubmit(w http.ResponseWriter, r *http.Request, s 
 // paymentDisplayStatus keeps the payment lifecycle state unchanged while
 // making its financial outcome obvious in the dashboard. A succeeded charge
 // remains succeeded in the API; successful refunds are separate resources.
-func paymentDisplayStatus(p store.Payment) (label, class string) {
+func paymentDisplayStatus(p store.Payment, now time.Time) (label, class string) {
 	switch {
 	case p.HasFlag(core.FlagRefundedFull):
 		return "refunded", "refunded"
@@ -546,10 +546,29 @@ func paymentDisplayStatus(p store.Payment) (label, class string) {
 	case p.Status == string(state.PaymentCreated):
 		return "Created", p.Status
 	case p.Status == string(state.PaymentFailed):
+		// The pay page refuses a payment past its expiry, so no retry is coming.
+		if now.After(p.ExpiresAt) {
+			return "Failed", p.Status
+		}
 		return "Ready to retry", p.Status
 	default:
 		return p.Status, p.Status
 	}
+}
+
+// attemptDisplayStatus shows an unfinished attempt of a payment that has moved
+// on as expired. The attempt itself stays open, so polling can still catch a
+// late success.
+func attemptDisplayStatus(a store.Attempt, p store.Payment) string {
+	switch state.AttemptStatus(a.Status) {
+	case state.AttemptCreated, state.AttemptPending:
+		switch state.PaymentStatus(p.Status) {
+		case state.PaymentCreated, state.PaymentRequiresAction, state.PaymentProcessing:
+		default:
+			return "expired"
+		}
+	}
+	return a.Status
 }
 
 func paymentMethodSummary(a store.Attempt) (string, string) {
