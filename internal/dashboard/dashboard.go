@@ -322,6 +322,8 @@ type view struct {
 	OrgThemeName string
 	ThemeChoices []themeChoice
 	UserHasTheme bool // the user's own choice is set and still usable
+	// HasSigninPIN: the account page offers to remove the sign-in PIN.
+	HasSigninPIN bool
 
 	AppName, LogoURL, Accent string
 

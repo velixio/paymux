@@ -4,10 +4,12 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/velixio/paymux/internal/auth"
 	"github.com/velixio/paymux/internal/outbound"
+	"github.com/velixio/paymux/internal/secrets"
 	"github.com/velixio/paymux/internal/store"
 )
 
@@ -142,4 +144,56 @@ func (d *Dashboard) signinWaitStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = io.WriteString(w, state)
+}
+
+var signinPINPattern = regexp.MustCompile(`^[0-9]{6,12}$`)
+
+// signinPINSet turns on the approval step, or changes the PIN. The channel is
+// checked first: a PIN it cannot serve would lock the user out at next sign-in.
+func (d *Dashboard) signinPINSet(w http.ResponseWriter, r *http.Request, s *session) {
+	ctx := r.Context()
+	pin := r.PostForm.Get("pin")
+	if !signinPINPattern.MatchString(pin) {
+		d.renderAccount(w, r, s, http.StatusBadRequest, "The PIN must be 6 to 12 digits.")
+		return
+	}
+	if pin != r.PostForm.Get("confirm_pin") {
+		d.renderAccount(w, r, s, http.StatusBadRequest, "The two PINs differ.")
+		return
+	}
+	org, err := d.orgID(ctx)
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	if err := d.o.Outbound.CheckSigninApprovalChannel(ctx, org); err != nil {
+		d.renderAccount(w, r, s, http.StatusBadRequest, err.Error())
+		return
+	}
+	enc, err := d.o.Box.Seal([]byte(pin), secrets.AADSigninPIN(s.User.ID))
+	if err != nil {
+		d.fail(w, err)
+		return
+	}
+	if err := d.o.DB.SetUserSigninPIN(ctx, s.User.ID, enc, d.o.Now()); err != nil {
+		d.fail(w, err)
+		return
+	}
+	if err := d.record(ctx, r, s, "user.signin_pin_set", s.User.ID, nil, nil); err != nil {
+		d.o.Logger.Warn("dashboard: audit of sign-in PIN", "err", err)
+	}
+	http.Redirect(w, r, prefix+"/account?n=pin", http.StatusSeeOther)
+}
+
+// signinPINRemove turns the approval step off.
+func (d *Dashboard) signinPINRemove(w http.ResponseWriter, r *http.Request, s *session) {
+	ctx := r.Context()
+	if err := d.o.DB.ClearUserSigninPIN(ctx, s.User.ID, d.o.Now()); err != nil {
+		d.fail(w, err)
+		return
+	}
+	if err := d.record(ctx, r, s, "user.signin_pin_removed", s.User.ID, nil, nil); err != nil {
+		d.o.Logger.Warn("dashboard: audit of sign-in PIN", "err", err)
+	}
+	http.Redirect(w, r, prefix+"/account?n=pin_removed", http.StatusSeeOther)
 }
