@@ -115,6 +115,9 @@ func isPIIName(key string) bool {
 		if piiWords[w] {
 			return true
 		}
+		if w == "name" && i+2 < len(ws) && ws[i+1] == "on" && ws[i+2] == "card" { // PayU's name_on_card
+			return true
+		}
 		if w == "contact" && !idLike {
 			return true
 		}
