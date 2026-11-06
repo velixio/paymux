@@ -177,8 +177,12 @@ func (f *Fake) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 		offset, _ := body["offset"].(float64)
 		f.offset = int64(offset)
+		limit, hasLimit := body["limit"].(float64)
 		var out []string
 		for _, u := range f.updates {
+			if hasLimit && len(out) >= int(limit) {
+				break
+			}
 			if u.id >= f.offset {
 				out = append(out, u.json())
 			}

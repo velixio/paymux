@@ -31,6 +31,15 @@ const (
 	SigninMaxWrongPINs = 5
 
 	signinTickEvery = 2 * time.Second
+	// signinClearRetryEvery is the pace once only a stuck notification is left, as
+	// when the channel was turned off after it was sent.
+	signinClearRetryEvery = 5 * time.Minute
+	// A group's ordinary messages reach an admin bot too, so a backlog can be long:
+	// up to signinBatchSize*signinBatchesPerTick updates a tick, each batch read
+	// with room for the largest messages Telegram allows.
+	signinBatchSize      = 100
+	signinBatchesPerTick = 10
+	signinBatchMaxBytes  = 8 << 20
 	// signinLease is how long a crashed worker can hold up the others.
 	signinLease = 30 * time.Second
 	// signinTickLeaseKey is the signin_polls row of the tick itself. Bot ids are
@@ -82,6 +91,10 @@ func (s *Service) telegramResult(ctx context.Context, token, method string, payl
 	if err != nil {
 		return err
 	}
+	return decodeTelegramResult(method, status, body, result)
+}
+
+func decodeTelegramResult(method string, status int, body []byte, result any) error {
 	if status/100 != 2 {
 		return fmt.Errorf("telegram %s: http %d", method, status)
 	}
@@ -191,12 +204,20 @@ func (s *Service) handleSigninApprovalTick(ctx context.Context, _ json.RawMessag
 	if err != nil || !open {
 		return err
 	}
+	every := signinClearRetryEvery
+	pending, err := s.db.PendingSigninOrgs(ctx)
+	if err != nil {
+		return err
+	}
+	if len(pending) > 0 {
+		every = signinTickEvery
+	}
 	// A running job keeps its own key taken, and several chains may be alive, so
 	// the next run's key names its time slot: chains meeting there become one.
-	next := now.Add(signinTickEvery)
+	next := now.Add(every)
 	return s.db.Write(ctx, func(tx store.Tx) error {
 		return s.q.Enqueue(ctx, tx, jobs.Job{Kind: JobSigninApprovalTick, Payload: struct{}{}, RunAt: next,
-			DedupeKey: fmt.Sprintf("signin_tick:%d", next.UnixMilli()/signinTickEvery.Milliseconds())})
+			DedupeKey: fmt.Sprintf("signin_tick:%d:%d", every.Milliseconds(), next.UnixMilli()/every.Milliseconds())})
 	})
 }
 
@@ -306,20 +327,30 @@ type signinUpdate struct {
 	} `json:"message"`
 }
 
-// readBotReplies handles one batch and returns the offset to continue from: past
-// the last update handled, so a restart loses no reply.
+// readBotReplies handles what is waiting, a bounded amount per tick, and returns
+// the offset to continue from: past the last update handled, so a restart loses
+// no reply.
 func (s *Service) readBotReplies(ctx context.Context, token string, offset int64, now time.Time) (int64, error) {
-	var updates []signinUpdate
-	if err := s.telegramResult(ctx, token, "getUpdates", map[string]any{"offset": offset, "timeout": 0, "limit": 100,
-		"allowed_updates": []string{"message"}}, &updates); err != nil {
-		s.log.Warn("sign-in approval: replies not read", "err", err)
-		return offset, nil
-	}
-	for _, u := range updates {
-		if err := s.handleSigninUpdate(ctx, token, u, now); err != nil {
-			return offset, err
+	for range signinBatchesPerTick {
+		status, body, err := s.telegramCallCapped(ctx, token, "getUpdates", map[string]any{"offset": offset, "timeout": 0,
+			"limit": signinBatchSize, "allowed_updates": []string{"message"}}, signinBatchMaxBytes)
+		var updates []signinUpdate
+		if err == nil {
+			err = decodeTelegramResult("getUpdates", status, body, &updates)
 		}
-		offset = u.UpdateID + 1
+		if err != nil {
+			s.log.Warn("sign-in approval: replies not read", "err", err)
+			return offset, nil
+		}
+		for _, u := range updates {
+			if err := s.handleSigninUpdate(ctx, token, u, now); err != nil {
+				return offset, err
+			}
+			offset = u.UpdateID + 1
+		}
+		if len(updates) < signinBatchSize {
+			break
+		}
 	}
 	return offset, nil
 }
