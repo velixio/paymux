@@ -38,6 +38,8 @@ type paymentEntity struct {
 	SubscriptionID   string `json:"subscription_id"`
 	ErrorCode        string `json:"error_code"`
 	ErrorDescription string `json:"error_description"`
+	ErrorStep        string `json:"error_step"`
+	ErrorReason      string `json:"error_reason"`
 	Amount           int64  `json:"amount"`
 	Fee              int64  `json:"fee"`
 	Tax              int64  `json:"tax"`
@@ -120,7 +122,13 @@ func (p paymentEntity) snapshot() connector.PaymentSnapshot {
 	if p.UPI != nil && p.UPI.PayerAccountType != "" {
 		details.UPI = &connector.UPIDetails{PayerAccountType: p.UPI.PayerAccountType}
 	}
+	threeDS := ""
+	// Razorpay reports the stage that failed. On a card, authentication is 3D Secure.
+	if p.Method == "card" && p.ErrorStep == "payment_authentication" {
+		threeDS = connector.ThreeDSFailed
+	}
 	return connector.PaymentSnapshot{
+		ThreeDS:         threeDS,
 		ProviderOrderID: p.OrderID, ProviderPaymentID: p.ID, SubscriptionID: p.SubscriptionID,
 		Status: mapPaymentStatus(p.Status), RawStatus: p.Status,
 		Amount: p.Amount, Currency: p.Currency, Method: p.Method, MethodDetails: details,

@@ -405,10 +405,20 @@ func (p paymentEntity) snapshot() (connector.PaymentSnapshot, error) {
 	if (p.PaymentMethod == "" || strings.EqualFold(p.PaymentMethod, "card")) && (brand != "" || last4 != "") {
 		details.Card = &connector.CardDetails{Network: brand, Last4: last4}
 	}
+	risk := p.risk()
+	threeDS := ""
+	if risk.ThreeDSecure != nil {
+		// Whop's flag says whether it was verified, not that verifying failed.
+		threeDS = connector.ThreeDSNotVerified
+		if *risk.ThreeDSecure {
+			threeDS = connector.ThreeDSPassed
+		}
+	}
 	return connector.PaymentSnapshot{
+		ThreeDS:     threeDS,
 		ProviderRef: p.Metadata["ref"], ProviderOrderID: p.CheckoutConfig, ProviderPaymentID: p.ID,
 		Status: mapPaymentStatus(p.Status, p.Substatus), RawStatus: firstNonEmpty(p.Substatus, p.Status),
-		Amount: amt, Currency: cur, Method: p.PaymentMethod, MethodDetails: details, Risk: p.risk(), AmountRefunded: ref,
+		Amount: amt, Currency: cur, Method: p.PaymentMethod, MethodDetails: details, Risk: risk, AmountRefunded: ref,
 		ErrorMessage: p.FailureMessage, CreatedAt: parseTime(p.CreatedAt),
 	}, nil
 }
