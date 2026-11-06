@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/velixio/paymux/internal/authz"
+	"github.com/velixio/paymux/internal/fxmarket"
 	"github.com/velixio/paymux/internal/ids"
 	"github.com/velixio/paymux/internal/invoice"
 	"github.com/velixio/paymux/internal/store"
@@ -621,10 +622,20 @@ func (d *Dashboard) renderFX(w http.ResponseWriter, r *http.Request, s *session,
 		return
 	}
 	var rates []store.FXRate
+	var market []store.MarketRate
 	var pending []store.Invoice
 	err = d.o.DB.Read(ctx, func(q store.Querier) (err error) {
 		if rates, err = store.ListFXRates(ctx, q, org, 60); err != nil {
 			return err
+		}
+		provider, err := fxmarket.Selected(ctx, q, org)
+		if err != nil {
+			return err
+		}
+		if provider != fxmarket.Off {
+			if market, err = store.LatestMarketRates(ctx, q); err != nil {
+				return err
+			}
 		}
 		pending, err = store.AllInvoicesPendingFX(ctx, q, org)
 		return err
@@ -637,6 +648,9 @@ func (d *Dashboard) renderFX(w http.ResponseWriter, r *http.Request, s *session,
 	v.Error, v.CanManage, v.FXDate = errMsg, s.can(authz.SettingsWrite), d.today()
 	for _, fr := range rates {
 		v.FXRates = append(v.FXRates, fxRow{Currency: fr.Currency, Date: fr.Date, Rate: fr.Rate, Source: fr.Source})
+	}
+	for _, m := range market {
+		v.FXMarket = append(v.FXMarket, fxRow{Currency: m.Currency, Date: m.Date, Rate: m.Rate, Source: m.Source})
 	}
 	counts := map[[2]string]int{}
 	var order [][2]string

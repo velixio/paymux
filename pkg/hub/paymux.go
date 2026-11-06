@@ -30,6 +30,7 @@ import (
 	"github.com/velixio/paymux/internal/disputes"
 	"github.com/velixio/paymux/internal/domains"
 	"github.com/velixio/paymux/internal/events"
+	"github.com/velixio/paymux/internal/fxmarket"
 	"github.com/velixio/paymux/internal/housekeeping"
 	"github.com/velixio/paymux/internal/httpapi"
 	"github.com/velixio/paymux/internal/inbound"
@@ -362,6 +363,10 @@ func (a *App) Start(ctx context.Context) error {
 			Fetch: housekeeping.DefaultFetch(a.cfg.Env == config.EnvDevelopment)}),
 		Silence: housekeeping.NewSilenceDetector(housekeeping.SilenceOptions{DB: db, Alerts: alerts, Logger: a.log})})
 	if err := hk.Register(q); err != nil {
+		return err
+	}
+	market := fxmarket.New(fxmarket.Options{DB: db, Providers: map[string]fxmarket.Provider{fxmarket.ProviderFrankfurter: &fxmarket.Frankfurter{}}})
+	if err := market.Register(q); err != nil {
 		return err
 	}
 	if dbl != nil {

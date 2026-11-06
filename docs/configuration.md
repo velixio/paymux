@@ -73,6 +73,15 @@ These are organisation settings (the dashboard's *Settings* page), not environme
 | `session_max_days` | `7` (1 to 90) | A session ends this many days after sign-in, however active. |
 | `session_remember_days` | `30` (0 to 90) | With *Remember me* ticked, both limits become this many days. `0` removes the checkbox; sessions already remembered fall back to the two limits above. |
 
+## Revenue reporting
+
+This is an organisation setting (the dashboard's *Settings* page), not an environment variable.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `default_currency` | `off` (or a currency code such as `USD`) | The currency Overview reports all revenue in, converting other currencies at the stored FX rates. `off` reports each currency separately. |
+| `fx_provider` | `frankfurter` or `off` | Source of the indicative market rates on the dashboard. `frankfurter` makes an outbound request to `api.frankfurter.dev` (no key; no Paymux data is sent) at most every 6 hours. `off` neither fetches nor shows them. Invoices and GST never use these rates. |
+
 ## Dashboard single sign-on
 
 | Variable | Default | Meaning |

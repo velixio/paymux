@@ -188,7 +188,7 @@ func settingJSON(key string, posted []string) json.RawMessage {
 
 // Labels and groups are presentation metadata; validation remains in settings.
 func settingLabel(key string) string {
-	labels := map[string]string{"checkout_mode": "Checkout mode", "payment_ttl": "Payment expiry", "duplicate_payment_action": "Duplicate payments", "billing_details": "Customer billing details", "pay_page_retry_buttons": "Checkout retry options", "gst_rate_bp": "GST rate", "sac_code": "SAC code", "issue_invoices": "GST invoicing", "b2cl_threshold": "B2CL reporting threshold", "mandate_afa_limit": "Mandate authentication limit", "upi_execution_windows": "UPI execution exclusions"}
+	labels := map[string]string{"fx_provider": "Market rate provider", "checkout_mode": "Checkout mode", "payment_ttl": "Payment expiry", "duplicate_payment_action": "Duplicate payments", "billing_details": "Customer billing details", "pay_page_retry_buttons": "Checkout retry options", "gst_rate_bp": "GST rate", "sac_code": "SAC code", "issue_invoices": "GST invoicing", "b2cl_threshold": "B2CL reporting threshold", "mandate_afa_limit": "Mandate authentication limit", "upi_execution_windows": "UPI execution exclusions"}
 	if label, ok := labels[key]; ok {
 		return label
 	}
@@ -200,6 +200,8 @@ func settingGroup(key string) string {
 		return "Payment behavior"
 	case "routing":
 		return "Routing"
+	case "default_currency", "fx_provider":
+		return "Reporting"
 	case "dunning_schedule", "dunning_final_action", "predebit_lead", "predebit_email", "mandate_headroom", "mandate_afa_limit", "mandate_validity", "upi_execution_windows":
 		return "Subscriptions and recovery"
 	case "theme", "customer_language":
@@ -213,6 +215,6 @@ func settingGroup(key string) string {
 	}
 }
 func sortSettingRows(rows []settingRow) {
-	order := map[string]int{"Payment behavior": 0, "Routing": 1, "Subscriptions and recovery": 2, "Invoices and tax": 3, "Delivery and retention": 4, "Appearance and language": 5, "Sign-in sessions": 6}
+	order := map[string]int{"Payment behavior": 0, "Routing": 1, "Subscriptions and recovery": 2, "Invoices and tax": 3, "Reporting": 4, "Delivery and retention": 5, "Appearance and language": 6, "Sign-in sessions": 7}
 	sort.SliceStable(rows, func(i, j int) bool { return order[rows[i].Group] < order[rows[j].Group] })
 }

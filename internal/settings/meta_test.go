@@ -135,3 +135,36 @@ func TestStringPatternsMatchTheirValidators(t *testing.T) {
 		ok(t, d, fmt.Sprintf("%q", c[1]), false)
 	}
 }
+
+func TestDefaultCurrencySetting(t *testing.T) {
+	d, found := Lookup("default_currency")
+	if !found {
+		t.Fatal("default_currency is not a setting")
+	}
+	if d.Levels != LevelOrg {
+		t.Errorf("levels %v: it describes the whole org's reporting", d.Levels)
+	}
+	if d.Default != `"off"` {
+		t.Errorf("default %s: conversion must be opt-in", d.Default)
+	}
+	for raw, want := range map[string]bool{`"off"`: true, `"USD"`: true, `"INR"`: true, `"JPY"`: true,
+		`"usd"`: false, `"QQQ"`: false, `""`: false, `"USDX"`: false, `1`: false} {
+		ok(t, d, raw, want)
+	}
+}
+
+func TestFXProviderSetting(t *testing.T) {
+	d, found := Lookup("fx_provider")
+	if !found {
+		t.Fatal("fx_provider is not a setting")
+	}
+	if d.Levels != LevelOrg {
+		t.Errorf("levels %v", d.Levels)
+	}
+	if d.Default != `"frankfurter"` {
+		t.Errorf("default %s", d.Default)
+	}
+	for raw, want := range map[string]bool{`"frankfurter"`: true, `"off"`: true, `"google"`: false, `""`: false, `1`: false} {
+		ok(t, d, raw, want)
+	}
+}

@@ -51,6 +51,54 @@ func ToINR(minor int64, currency, rate string) (int64, error) {
 	return n.Int64(), nil
 }
 
+// ConvertMinor converts minor units between two currencies through INR, the
+// base of the stored rates. fromRate and toRate are INR per 1 unit; INR itself
+// needs no rate. The result rounds half away from zero.
+func ConvertMinor(minor int64, from, fromRate, to, toRate string) (int64, error) {
+	if from == to {
+		return minor, nil
+	}
+	fromExp, err := money.Exponent(from)
+	if err != nil {
+		return 0, err
+	}
+	toExp, err := money.Exponent(to)
+	if err != nil {
+		return 0, err
+	}
+	pow10 := func(exp int) *big.Rat {
+		return new(big.Rat).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(exp)), nil))
+	}
+	v := new(big.Rat).SetInt64(minor)
+	v.Quo(v, pow10(fromExp))
+	if from != "INR" {
+		r, err := parseRate(fromRate)
+		if err != nil {
+			return 0, err
+		}
+		v.Mul(v, r)
+	}
+	if to != "INR" {
+		r, err := parseRate(toRate)
+		if err != nil {
+			return 0, err
+		}
+		v.Quo(v, r)
+	}
+	v.Mul(v, pow10(toExp))
+	n := new(big.Int).Abs(v.Num())
+	n.Mul(n, big.NewInt(2))
+	n.Add(n, v.Denom())
+	n.Quo(n, new(big.Int).Mul(v.Denom(), big.NewInt(2)))
+	if v.Sign() < 0 {
+		n.Neg(n)
+	}
+	if !n.IsInt64() {
+		return 0, fmt.Errorf("invoice: converted value out of range")
+	}
+	return n.Int64(), nil
+}
+
 // inrAmounts converts a document's amounts to paise. ok is false while the
 // FX rate is pending.
 func inrAmounts(a tax.Amounts, currency, rate string) (tax.Amounts, bool, error) {
