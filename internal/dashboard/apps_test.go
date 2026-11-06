@@ -21,6 +21,7 @@ import (
 
 	"github.com/velixio/paymux/internal/core"
 	"github.com/velixio/paymux/internal/events"
+	"github.com/velixio/paymux/internal/outbound"
 	"github.com/velixio/paymux/internal/secrets"
 	"github.com/velixio/paymux/internal/store"
 	"github.com/velixio/paymux/internal/store/storetest"
@@ -639,5 +640,27 @@ func TestSetEndpointSigningSecretFromDashboard(t *testing.T) {
 		if r, _ := e.post(viewer, secretPath, url.Values{"signing_secret": {custom}, "csrf": {vt}}); r.StatusCode != 403 {
 			t.Fatalf("viewer: %d", r.StatusCode)
 		}
+	})
+}
+
+// A saved dashboard login must not land in the webhook forms: browsers ignore
+// autocomplete="off" on password fields, and treat the field before one as the
+// username.
+func TestWebhookFormsDoNotInviteLoginAutofill(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		app := e.seedApp("alpha")
+		admin := e.roleClient("admin")
+		page := "/dashboard/apps/" + app.ID
+
+		add := e.pageOK(admin, page+"?tab=webhooks")
+		has(t, add, `name="url" type="url" autocomplete="off"`, `name="signing_secret" type="password" autocomplete="new-password"`)
+
+		ep, _, err := e.out.CreateEndpoint(ctx, outbound.CreateEndpointInput{AppID: app.ID, URL: "https://a.example.com/h"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		edit := e.pageOK(admin, page+"?tab=webhooks&endpoint="+ep.ID)
+		has(t, edit, `name="url" type="url" autocomplete="off"`, `name="signing_secret" type="password" autocomplete="new-password"`)
 	})
 }
