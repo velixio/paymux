@@ -196,3 +196,37 @@ func TestTelegramTestMessageErrors(t *testing.T) {
 		}
 	})
 }
+
+// Telegram message IDs are per chat, so two chats can share one.
+func TestTelegramTestMessagesInTwoChatsWithOneMessageIDBothGetDeleted(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		h := newTelegramHarness(t, db, 1)
+		cfg := outbound.NotificationConfig{TelegramChatID: "-100999", TelegramEnabled: true, TelegramDeleteAfterHours: 1, EventTypes: lifecycleEvents}
+		if err := h.svc.SaveNotificationConfig(ctx, "org_1", "live", cfg, "123456:ABC_def-789"); err != nil {
+			t.Fatal(err)
+		}
+		h.tg.override = func(method string) (int, string, bool) {
+			if method == "sendMessage" {
+				return http.StatusOK, `{"ok":true,"result":{"message_id":500}}`, true
+			}
+			return 0, "", false
+		}
+		for _, mode := range []string{"test", "live"} {
+			if err := h.svc.SendTelegramTest(ctx, "org_1", mode, "paid", false); err != nil {
+				t.Fatal(err)
+			}
+		}
+		h.tg.take()
+		h.e.clk.Add(time.Hour)
+		h.run(2)
+		wantDeletes := 0
+		for _, c := range h.tg.take() {
+			if c.Method == "deleteMessage" && c.MessageID == 500 {
+				wantDeletes++
+			}
+		}
+		if wantDeletes != 2 {
+			t.Fatalf("deleted %d test messages, want 2", wantDeletes)
+		}
+	})
+}

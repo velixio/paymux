@@ -74,7 +74,9 @@ func (s *Service) SendTelegramTest(ctx context.Context, orgID, mode, scenario st
 	if cfg.TelegramDeleteAfterHours == 0 || reply.Result.MessageID == 0 {
 		return nil
 	}
-	ev := store.EventRow{ID: "test_message_" + strconv.FormatInt(reply.Result.MessageID, 10), OrgID: orgID, Mode: mode}
+	// A message ID is unique only within its chat, and this ID names the delete job.
+	id := strings.Join([]string{"test_message", orgID, mode, cfg.TelegramChatID, strconv.FormatInt(reply.Result.MessageID, 10)}, "_")
+	ev := store.EventRow{ID: id, OrgID: orgID, Mode: mode}
 	return s.scheduleTelegramDelete(ctx, ev, cfg, reply.Result.MessageID, "")
 }
 
