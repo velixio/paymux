@@ -23,9 +23,15 @@ func (d *Dashboard) location() *time.Location {
 	return d.o.Location
 }
 
+// zoneRefreshWait bounds refreshZone, so a busy connection pool cannot hold up
+// a request over a setting that rarely changes.
+const zoneRefreshWait = time.Second
+
 // refreshZone picks up the time_zone setting at the start of a request. The
 // setting's cache makes this cheap. If it cannot be read, the last zone stays.
 func (d *Dashboard) refreshZone(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, zoneRefreshWait)
+	defer cancel()
 	org, err := d.orgID(ctx)
 	if err != nil {
 		return

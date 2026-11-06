@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"context"
 	"net/url"
 	"strings"
 	"testing"
@@ -9,6 +10,25 @@ import (
 	"github.com/velixio/paymux/internal/store"
 	"github.com/velixio/paymux/internal/store/storetest"
 )
+
+func TestTimeZoneRefreshKeepsLastZoneOnFailure(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		admin := e.roleClient("admin")
+		tok := regexpFind(t, `name="csrf" value="([^"]+)"`, e.pageOK(admin, "/dashboard/settings"))
+		if r, _ := e.post(admin, "/dashboard/settings/time_zone", url.Values{"csrf": {tok}, "value": {"Asia/Tokyo"}}); r.StatusCode != 303 {
+			t.Fatalf("save: %d", r.StatusCode)
+		}
+		e.d.refreshZone(context.Background())
+		e.set.SetCacheTTL(0) // every refresh now has to read the database
+		cancelled, cancel := context.WithCancel(context.Background())
+		cancel()
+		e.d.refreshZone(cancelled)
+		if got := e.d.location().String(); got != "Asia/Tokyo" {
+			t.Errorf("zone after a failed read: %s", got)
+		}
+	})
+}
 
 func TestTimeZoneSettingMovesDashboardDates(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
