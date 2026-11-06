@@ -75,7 +75,12 @@ func TestPaymentsListBadgeOpensThatPaymentsRiskModal(t *testing.T) {
 	e.seedRiskPayment("pay_b", `{"score":88,"ip_address":"203.0.113.25"}`)
 	body := e.pageOK(c, "/dashboard/payments")
 	has(t, body, `commandfor="risk-review-pay_a"`, `<dialog id="risk-review-pay_a"`, `aria-labelledby="risk-review-pay_a-title"`,
-		`commandfor="risk-review-pay_b"`, `<dialog id="risk-review-pay_b"`, "203.0.113.24", "203.0.113.25")
+		`commandfor="risk-review-pay_b"`, `<dialog id="risk-review-pay_b"`)
+	for id, ip := range map[string]string{"pay_a": "203.0.113.24", "pay_b": "203.0.113.25"} {
+		_, after, _ := strings.Cut(body, `<dialog id="risk-review-`+id+`"`)
+		dialog, _, _ := strings.Cut(after, "</dialog>")
+		has(t, dialog, ip)
+	}
 }
 
 func riskEnv(t *testing.T) *env {
