@@ -34,23 +34,11 @@ type payRow struct {
 
 type payFilter struct{ App, Status, Q, From, To, Currency, Country string }
 
-type attemptRow struct {
-	ID, Status, Provider, ProviderRef, OrderID, PaymentID, Method, FailureCode, FailureMessage, Created string
-	MethodSummary, MethodMeta                                                                           string
-	Duplicate                                                                                           bool
-}
-
-type providerAttemptRow struct {
-	PaymentID, AttemptID, Status, Provider, OrderID, Method, Failure, Amount, Created string
-}
-
 type customerDetail struct {
 	ExternalRef, Name, Email, Phone                                      string
 	LegalName, GSTIN, Line1, Line2, City, StateCode, PostalCode, Country string
 	HasBilling                                                           bool
 }
-
-type ledgerRow struct{ Kind, Amount, At string }
 
 type refundRow struct{ ID, Amount, Status, Reason, InitiatedBy, Actor, Created string }
 
@@ -59,35 +47,25 @@ type deliveryRow struct {
 	Attempts, LastStatus                           int
 }
 
-type eventRow struct {
-	ID, Type, Object string
-	Version          int64
-	At               string
-}
-
 type attemptOpt struct{ ID, Label string }
 
 type payDetail struct {
 	ID, App, AppID, Mode, Status, StatusClass, Amount, Received, Refunded, OrderRef, Description, Created string
 	Currency                                                                                              string
 	Customer                                                                                              *customerDetail
-	Risk                                                                                                  *riskView
+	Glance                                                                                                glanceView
+	Timeline                                                                                              []timelineItem
+	RiskPanel                                                                                             *riskView
+	NoTries                                                                                               bool
 	Flags                                                                                                 []string
-	Attempts                                                                                              []attemptRow
-	ProviderAttempts                                                                                      []providerAttemptRow
-	Ledger                                                                                                []ledgerRow
-	Refunds                                                                                               []refundRow
-	Deliveries                                                                                            []deliveryRow
-	Events                                                                                                []eventRow
 	Pickable                                                                                              []attemptOpt
 	CanRefund, CanReplay, CanSync                                                                         bool
 	// RefundNonce is the single-use key of the refund form on this page.
 	RefundNonce string
 	// SimAttempts are the captured attempts on a test-mode simulator account,
 	// the ones a dispute can be simulated on.
-	SimAttempts  []attemptOpt
-	CanSimulate  bool
-	AttemptCount int
+	SimAttempts []attemptOpt
+	CanSimulate bool
 }
 
 // parseDay parses YYYY-MM-DD in the dashboard's time zone.
@@ -384,14 +362,17 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	provider := map[string]string{}
 	connectorOf := map[string]string{}
 	for _, a := range accounts {
-		provider[a.ID] = a.Name + " (" + a.Connector + ")"
+		provider[a.ID] = a.Name
+		if !strings.Contains(strings.ToLower(a.Name), strings.ToLower(a.Connector)) {
+			provider[a.ID] += " (" + a.Connector + ")"
+		}
 		connectorOf[a.ID] = a.Connector
 	}
 	displayStatus, statusClass := paymentDisplayStatus(p, d.o.Now())
 	det := &payDetail{ID: p.ID, App: app.Name, AppID: app.ID, Mode: p.Mode, Status: displayStatus, StatusClass: statusClass, Currency: p.Currency,
 		Amount: fmtMoney(p.Amount, p.Currency), Received: fmtMoney(p.AmountReceived, p.Currency), Refunded: fmtMoney(p.AmountRefunded, p.Currency),
 		OrderRef: p.OrderRef, Description: p.Description, Created: d.fmtTime(p.CreatedAt), Flags: p.Flags,
-		CanReplay: s.can(authz.WebhookReplay), AttemptCount: len(providerAttempts)}
+		CanReplay: s.can(authz.WebhookReplay)}
 	if cust.ID != "" {
 		det.Customer = &customerDetail{ExternalRef: cust.ExternalRef, Name: cust.Name, Email: cust.Email, Phone: cust.Phone,
 			LegalName: cust.Billing.LegalName, GSTIN: cust.Billing.GSTIN, Line1: cust.Billing.Line1, Line2: cust.Billing.Line2,
@@ -410,11 +391,6 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 		if name == "" {
 			name = a.ProviderAccountID
 		}
-		methodSummary, methodMeta := paymentMethodSummary(a)
-		det.Attempts = append(det.Attempts, attemptRow{ID: a.ID, Status: attemptDisplayStatus(a, p), Provider: name, ProviderRef: a.ProviderRef,
-			OrderID: a.ProviderOrderID, PaymentID: a.ProviderPaymentID, Method: a.Method, FailureCode: a.FailureCode,
-			FailureMessage: a.FailureMessage, Created: d.fmtTime(a.CreatedAt), Duplicate: a.Duplicate,
-			MethodSummary: methodSummary, MethodMeta: methodMeta})
 		remaining := max(a.AmountReceived-activeRefunds[a.ID], 0)
 		minimum := int64(1)
 		if _, info, ok := connector.Lookup(connectorOf[a.ProviderAccountID]); ok {
@@ -427,53 +403,37 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 			det.SimAttempts = append(det.SimAttempts, attemptOpt{ID: a.ID, Label: a.ID + " - " + fmtMoney(a.AmountReceived, a.CurrencyReceived)})
 		}
 	}
-	for _, a := range providerAttempts {
-		name := provider[a.ProviderAccountID]
-		if name == "" {
-			name = a.ProviderAccountID
-		}
-		failure := a.FailureCode
-		if a.FailureMessage != "" {
-			if failure != "" {
-				failure += ": "
-			}
-			failure += a.FailureMessage
-		}
-		amount := ""
-		if a.Currency != "" {
-			amount = fmtMoney(a.Amount, a.Currency)
-		}
-		det.ProviderAttempts = append(det.ProviderAttempts, providerAttemptRow{PaymentID: a.ProviderPaymentID,
-			AttemptID: a.AttemptID, Status: a.Status, Provider: name, OrderID: a.ProviderOrderID, Method: a.Method,
-			Failure: failure, Amount: amount, Created: d.fmtTime(a.CreatedAt)})
-	}
-	if selected, ok := paymentListAttempt(p, attempts); ok {
-		if det.Risk = paymentRiskView(selected); det.Risk != nil {
-			det.Risk.Provider = connectorOf[selected.ProviderAccountID]
-			if _, info, found := connector.Lookup(det.Risk.Provider); found {
-				det.Risk.Provider = info.DisplayName
-			}
-		}
-	}
 	det.CanRefund = s.can(authz.RefundCreate) && len(det.Pickable) > 0
 	det.CanSync = s.can(authz.PaymentCancel) && d.o.PaymentSync != nil && len(attempts) > 0
 	if det.CanRefund {
 		det.RefundNonce = refundNonce(s, p.ID)
 	}
 	det.CanSimulate = s.can(authz.DisputeManage) && len(det.SimAttempts) > 0
-	for _, l := range ledger {
-		det.Ledger = append(det.Ledger, ledgerRow{Kind: l.Kind, Amount: fmtMoney(l.Amount, l.Currency), At: d.fmtTime(l.OccurredAt)})
-	}
-	for _, rf := range refunds {
-		det.Refunds = append(det.Refunds, refundRow{ID: rf.ID, Amount: fmtMoney(rf.Amount, rf.Currency), Status: rf.Status, Reason: rf.Reason,
-			InitiatedBy: rf.InitiatedBy, Actor: rf.Actor, Created: d.fmtTime(rf.CreatedAt)})
-	}
-	for _, dl := range dels {
-		det.Deliveries = append(det.Deliveries, deliveryRow{ID: dl.DeliveryID, EventType: dl.EventType, Endpoint: dl.EndpointURL,
-			Status: dl.Status, Attempts: dl.AttemptCount, LastStatus: dl.LastStatus, LastError: dl.LastError, At: d.fmtTime(dl.UpdatedAt)})
-	}
+	targets := make(map[string][]outbound.ResendTarget, len(events))
 	for _, ev := range events {
-		det.Events = append(det.Events, eventRow{ID: ev.ID, Type: ev.Type, Object: ev.ObjectType + " " + ev.ObjectID, Version: ev.ObjectVersion, At: d.fmtTime(ev.CreatedAt)})
+		eventTargets, err := d.o.Outbound.ResendTargets(ctx, ev.ID)
+		if err != nil {
+			d.fail(w, err)
+			return
+		}
+		// An endpoint this event never went to is only of use to someone who
+		// can send to it. Its URL isn't payment data.
+		for _, t := range eventTargets {
+			if !t.New || det.CanReplay {
+				targets[ev.ID] = append(targets[ev.ID], t)
+			}
+		}
+	}
+	timeline := timelineData{Payment: p, Attempts: attempts, Tries: providerAttempts, Ledger: ledger, Refunds: refunds,
+		Events: events, Deliveries: dels, Targets: targets, Provider: provider, FmtTime: d.fmtTimeShort}
+	det.Glance, det.Timeline = buildGlance(timeline), buildTimeline(timeline)
+	det.RiskPanel, det.NoTries = buildRiskPanel(timeline), noTries(timeline)
+	if det.RiskPanel != nil {
+		_, account := latestRisk(timeline)
+		det.RiskPanel.Provider = connectorOf[account]
+		if _, info, found := connector.Lookup(det.RiskPanel.Provider); found {
+			det.RiskPanel.Provider = info.DisplayName
+		}
 	}
 	v := d.shell(r, s, "payments", "Payment "+p.ID)
 	v.Pay, v.Error, v.Notice = det, errMsg, notice
@@ -670,6 +630,10 @@ func (d *Dashboard) replaySubmit(w http.ResponseWriter, r *http.Request, s *sess
 		return
 	}
 	if err := d.o.Outbound.ReplayDelivery(ctx, id); err != nil {
+		if errors.Is(err, outbound.ErrDeliveryInFlight) {
+			badRequest(w, "This webhook is being sent right now. Try again in a moment.")
+			return
+		}
 		badRequest(w, err.Error())
 		return
 	}
@@ -737,7 +701,7 @@ func resendNotice(res outbound.ResendResult) string {
 		msg = fmt.Sprintf("Sent to %d endpoints.", res.Sent)
 	}
 	if res.Skipped > 0 {
-		msg += fmt.Sprintf(" Skipped %d with a delivery of this event still in progress.", res.Skipped)
+		msg += fmt.Sprintf(" Skipped %d being sent right now.", res.Skipped)
 	} else if res.Sent == 0 {
 		msg += " No enabled endpoint accepts this event."
 	}

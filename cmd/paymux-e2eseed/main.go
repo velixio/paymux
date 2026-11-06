@@ -103,6 +103,82 @@ func run(ctx context.Context, dataDir string) error {
 			RiskDetails: `{"score":19,"ip_address":"203.0.113.24","city":"Testville","region":"Sample State","country":"US","address_check":"no_match","postal_check":"match","cvv_check":"match","three_d_secure":false,"authorization_code":"A1B2C3"}`}); err != nil {
 			return err
 		}
-		return add(now.Add(-3*time.Hour), "test", "INR", 77_700, 0)
+		if err := add(now.Add(-3*time.Hour), "test", "INR", 77_700, 0); err != nil {
+			return err
+		}
+		// A payment that failed twice, for the payment page.
+		at := now.Add(-4 * time.Hour)
+		if err := store.InsertPayment(ctx, tx, store.Payment{ID: "pay_e2e_tries", OrgID: store.DefaultOrgID, AppID: app.ID, Mode: "live", Kind: "one_time",
+			Amount: 9_900, Currency: "USD", Status: "failed", OrderRef: "ORD-TRIES", Metadata: map[string]string{}, ClientSecretHash: "h",
+			ExpiresAt: at.Add(time.Hour), Version: 1, Flags: []string{}, CreatedAt: at, UpdatedAt: at}); err != nil {
+			return err
+		}
+		if err := store.InsertAttempt(ctx, tx, store.Attempt{ID: "att_e2e_tries", OrgID: store.DefaultOrgID, Mode: "live", PaymentID: "pay_e2e_tries",
+			ProviderAccountID: "pa_e2e_whop", ProviderRef: "pr_e2e_tries", Status: "failed", CreatedAt: at, UpdatedAt: at}); err != nil {
+			return err
+		}
+		if err := store.InsertLedgerEntry(ctx, tx, store.LedgerEntry{ID: "led_e2e_tries", OrgID: store.DefaultOrgID, Mode: "live", Kind: "fee", Amount: 0,
+			Currency: "USD", PaymentID: "pay_e2e_tries", OccurredAt: at}); err != nil {
+			return err
+		}
+		for i, try := range []store.ProviderPaymentAttempt{
+			{ProviderPaymentID: "pi_e2e", TryID: "ch_e2e_declined", ThreeDS: "passed", FailureCode: "insufficient_funds",
+				FailureMessage: "Your card has insufficient funds.", Method: "card",
+				MethodDetails: `{"card":{"network":"visa","last4":"4242","issuer":"Sample Bank","name":"S CUSTOMER"}}`,
+				RiskDetails:   `{"score":62,"address_check":"no_match","postal_check":"match","cvv_check":"match"}`},
+			{ProviderPaymentID: "pi_e2e", TryID: "ch_e2e_3ds", ThreeDS: "failed", FailureCode: "authentication_failed", Method: "card",
+				MethodDetails: `{"card":{"network":"mastercard","last4":"8210"}}`,
+				RiskDetails:   `{"score":62,"address_check":"no_match","postal_check":"match","cvv_check":"match"}`},
+		} {
+			when := at.Add(time.Duration(i+1) * time.Minute)
+			try.ProviderAccountID, try.AttemptID, try.Status, try.Amount, try.Currency, try.CreatedAt, try.UpdatedAt = "pa_e2e_whop", "att_e2e_tries", "failed", 9_900, "USD", when, when
+			if err := store.UpsertProviderPaymentAttempt(ctx, tx, try); err != nil {
+				return err
+			}
+		}
+		// Who paid, and where the failure webhook went: one endpoint took it, one
+		// is failing, and one was added since. Nothing here can really be sent.
+		customerID, err := store.UpsertCustomer(ctx, tx, store.Customer{ID: "cus_e2e_tries", OrgID: store.DefaultOrgID, AppID: app.ID, Mode: "live",
+			ExternalRef: "cust-42", Name: "Sample Customer", Email: "customer@example.com", Phone: "+15550100",
+			Billing: store.Billing{Line1: "1 Example St", City: "Austin", StateCode: "TX", PostalCode: "78701", Country: "US"}}, at)
+		if err != nil {
+			return err
+		}
+		if err := store.SetPaymentCustomer(ctx, tx, "pay_e2e_tries", customerID, at); err != nil {
+			return err
+		}
+		if err := db.InsertEvent(ctx, tx, store.EventRow{ID: "evt_e2e_tries", OrgID: store.DefaultOrgID, AppID: app.ID, Mode: "live", Type: "payment.failed",
+			ObjectType: "payment", ObjectID: "pay_e2e_tries", ObjectVersion: 1, Data: []byte(`{}`), CreatedAt: at.Add(3 * time.Minute)}); err != nil {
+			return err
+		}
+		for i, url := range []string{"https://api.example.com/hooks", "https://hooks.example.com/paymux", "https://crm.example.com/in"} {
+			endpoint := fmt.Sprintf("ep_e2e_%d", i)
+			if err := db.InsertEndpoint(ctx, tx, store.EndpointRow{ID: endpoint, OrgID: store.DefaultOrgID, AppID: app.ID, URL: url, SigningSecretEnc: []byte("x"),
+				EventTypes: []string{"payment.failed"}, Enabled: true, Mode: "live", CreatedAt: at, UpdatedAt: at}); err != nil {
+				return err
+			}
+			delivery := store.DeliveryRow{ID: fmt.Sprintf("whd_e2e_%d", i), EventID: "evt_e2e_tries", EndpointID: endpoint, AttemptCount: 1, CreatedAt: at, UpdatedAt: at}
+			switch i {
+			case 0:
+				delivery.Status, delivery.LastStatus, delivery.DeliveredAt = "delivered", 200, at
+			case 1:
+				delivery.Status, delivery.LastStatus, delivery.LastError = "failed", 500, "http 500"
+			default:
+				continue
+			}
+			if err := db.InsertDelivery(ctx, tx, delivery); err != nil {
+				return err
+			}
+		}
+		// A provider that sends almost nothing, and a payment nobody has tried.
+		for _, p := range []struct{ id, status, order string }{{"pay_e2e_sparse", "failed", "ORD-SPARSE"}, {"pay_e2e_untried", "requires_payment_method", "ORD-UNTRIED"}} {
+			if err := store.InsertPayment(ctx, tx, store.Payment{ID: p.id, OrgID: store.DefaultOrgID, AppID: app.ID, Mode: "live", Kind: "one_time",
+				Amount: 9_900, Currency: "USD", Status: p.status, OrderRef: p.order, Metadata: map[string]string{}, ClientSecretHash: "h",
+				ExpiresAt: at.Add(time.Hour), Version: 1, Flags: []string{}, CreatedAt: at, UpdatedAt: at}); err != nil {
+				return err
+			}
+		}
+		return store.InsertAttempt(ctx, tx, store.Attempt{ID: "att_e2e_sparse", OrgID: store.DefaultOrgID, Mode: "live", PaymentID: "pay_e2e_sparse",
+			ProviderAccountID: "pa_e2e_whop", ProviderRef: "pr_e2e_sparse", Status: "failed", Method: "card", FailureCode: "failed", CreatedAt: at, UpdatedAt: at})
 	})
 }

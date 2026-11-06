@@ -71,3 +71,16 @@ func TestTimeZoneSettingMovesDashboardDates(t *testing.T) {
 		}
 	})
 }
+
+func TestShortTimeUsesTheChosenZone(t *testing.T) {
+	tokyo, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := &Dashboard{}
+	d.o.Location = time.UTC
+	d.zone.Store(&zoneChoice{name: "Asia/Tokyo", loc: tokyo})
+	if got, want := d.fmtTimeShort(time.Date(2026, 11, 6, 16, 0, 0, 0, time.UTC)), "Nov 7, 01:00"; got != want {
+		t.Errorf("time = %q, want %q", got, want)
+	}
+}

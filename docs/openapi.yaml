@@ -1078,7 +1078,7 @@ components:
     PaymentAttempt:
       type: object
       description: One try at paying, on one provider account. Useful for finding out why a payment failed.
-      required: [id, status, provider, created_at]
+      required: [id, status, provider, created_at, tries]
       properties:
         id: { type: string, pattern: "^att_[0-9a-z]{26}$" }
         status: { type: string, enum: [created, pending, authorized, captured, failed] }
@@ -1087,12 +1087,35 @@ components:
         method: { type: string, description: "For example upi, card, netbanking." }
         method_details:
           $ref: "#/components/schemas/PaymentMethodDetails"
+        failure_code: { type: string, description: "The attempt's current failure. Cleared if the attempt later succeeds; see `tries` for history." }
+        failure_message: { type: string, description: "The attempt's current failure message. Cleared if the attempt later succeeds; see `tries` for history." }
+        created_at: { type: string, format: date-time }
+        tries:
+          type: array
+          description: Every go at paying the provider reported, oldest first. Empty if the attempt never reached the provider.
+          items: { $ref: "#/components/schemas/PaymentTry" }
+    PaymentTry:
+      type: object
+      description: One go at paying at the provider, kept even if a later try succeeds. Providers differ, so any field the provider did not report is left out.
+      required: [status, created_at]
+      properties:
+        provider_payment_id: { type: string }
+        status: { type: string, enum: [pending, authorized, captured, failed] }
+        method: { type: string, description: "For example upi, card, netbanking." }
+        method_details:
+          $ref: "#/components/schemas/PaymentMethodDetails"
+        three_d_secure:
+          type: object
+          description: The outcome of 3D Secure, never its data. Left out if the provider reported nothing, which is not a failure.
+          required: [status]
+          properties:
+            status: { type: string, enum: [passed, failed, not_verified] }
         failure_code: { type: string }
         failure_message: { type: string }
         created_at: { type: string, format: date-time }
     PaymentMethodDetails:
       type: object
-      description: Display-safe payment instrument information. Full card numbers, expiry, CVV, authentication data, fingerprints and reusable tokens are never returned.
+      description: Display-safe payment instrument information. Full card numbers, expiry, CVV, authentication data, fingerprints and reusable tokens are never returned. The name on the card is returned where the provider reports it, to keys that can read payments.
       properties:
         card:
           $ref: "#/components/schemas/CardDetails"
@@ -1116,6 +1139,7 @@ components:
         international: { type: boolean }
         emi: { type: boolean }
         sub_type: { type: string, examples: [consumer, business] }
+        name: { type: string, description: The name on the card, where the provider reports it. }
       additionalProperties: false
     PaymentDetail:
       allOf:

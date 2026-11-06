@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 import { OWNER_EMAIL, OWNER_PASSWORD } from "./global-setup";
 
 async function login(page: Page) {

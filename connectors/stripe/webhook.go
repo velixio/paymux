@@ -187,6 +187,19 @@ func (s *stripe) ParseWebhook(_ context.Context, req connector.WebhookRequest) (
 			return nil, nil
 		}
 		n.Kind, n.Payment = connector.NotifyPayment, &snap
+	case ev.Type == "payment_intent.payment_failed":
+		var pi paymentIntent
+		if err := json.Unmarshal(obj, &pi); err != nil {
+			return nil, fmt.Errorf("stripe: %s object: %w", ev.Type, err)
+		}
+		if pi.Metadata[metaRef] == "" {
+			return nil, nil // not a Paymux checkout, such as a provider-managed invoice
+		}
+		snap := pi.snapshot()
+		if snap.CreatedAt == 0 {
+			snap.CreatedAt = n.OccurredAt
+		}
+		n.Kind, n.Payment = connector.NotifyPayment, &snap
 	case ev.Type == "refund.created" || ev.Type == "refund.updated" || ev.Type == "refund.failed" || ev.Type == "charge.refund.updated":
 		var w refundWire
 		if err := json.Unmarshal(obj, &w); err != nil {

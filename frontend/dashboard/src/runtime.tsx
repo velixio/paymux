@@ -335,8 +335,12 @@ export function RuntimeProvider({
     const isTestMessage = action.pathname.endsWith(
       "/settings/notifications/test",
     );
-    if (needsReview && !isTestMessage) setReview(submission);
-    else mutation.mutate(submission);
+    if (needsReview && !isTestMessage) {
+      // A native modal sits in the top layer, over the review step and blocking
+      // it. Its form keeps what was typed if the review is cancelled.
+      form.closest("dialog")?.close();
+      setReview(submission);
+    } else mutation.mutate(submission);
   }
   async function copy(value: string) {
     try {

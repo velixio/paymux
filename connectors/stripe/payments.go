@@ -42,23 +42,59 @@ type paymentIntent struct {
 }
 
 type paymentError struct {
-	Code        string `json:"code"`
-	DeclineCode string `json:"decline_code"`
-	Message     string `json:"message"`
+	Code          string              `json:"code"`
+	DeclineCode   string              `json:"decline_code"`
+	Message       string              `json:"message"`
+	Charge        string              `json:"charge"`
+	PaymentMethod *errorPaymentMethod `json:"payment_method"`
+}
+
+// errorPaymentMethod is the card a failed go used. Its billing details are not
+// read: a billing name is not the name on the card.
+type errorPaymentMethod struct {
+	ID   string    `json:"id"`
+	Card *cardWire `json:"card"`
+}
+
+type cardWire struct {
+	Brand   string `json:"brand"`
+	Country string `json:"country"`
+	Funding string `json:"funding"`
+	Last4   string `json:"last4"`
+	Network string `json:"network"`
+	Issuer  string `json:"issuer"`
+	Checks  *struct {
+		AddressLine1 string `json:"address_line1_check"`
+		PostalCode   string `json:"address_postal_code_check"`
+		CVC          string `json:"cvc_check"`
+	} `json:"checks"`
+	ThreeDSecure *struct {
+		Result string `json:"result"`
+	} `json:"three_d_secure"`
+}
+
+func (c *cardWire) details() connector.PaymentMethodDetails {
+	return connector.PaymentMethodDetails{Card: &connector.CardDetails{Last4: c.Last4, Network: firstNonEmpty(c.Network, c.Brand),
+		Funding: c.Funding, Issuer: c.Issuer, Country: strings.ToUpper(c.Country)}}
 }
 
 type charge struct {
-	ID                   string `json:"id"`
-	AmountRefunded       int64  `json:"amount_refunded"`
+	ID             string               `json:"id"`
+	PaymentIntent  expandable[struct{}] `json:"payment_intent"`
+	Status         string               `json:"status"`
+	Amount         int64                `json:"amount"`
+	Currency       string               `json:"currency"`
+	Created        int64                `json:"created"`
+	AmountRefunded int64                `json:"amount_refunded"`
+	FailureCode    string               `json:"failure_code"`
+	FailureMessage string               `json:"failure_message"`
+	Outcome        *struct {
+		Reason    string `json:"reason"`
+		RiskScore *int   `json:"risk_score"`
+	} `json:"outcome"`
 	PaymentMethodDetails struct {
-		Type string `json:"type"`
-		Card *struct {
-			Brand   string `json:"brand"`
-			Country string `json:"country"`
-			Funding string `json:"funding"`
-			Last4   string `json:"last4"`
-			Network string `json:"network"`
-		} `json:"card"`
+		Type string    `json:"type"`
+		Card *cardWire `json:"card"`
 	} `json:"payment_method_details"`
 }
 
@@ -66,9 +102,92 @@ func methodDetailsOf(c *charge) connector.PaymentMethodDetails {
 	if c == nil || c.PaymentMethodDetails.Card == nil {
 		return connector.PaymentMethodDetails{}
 	}
-	card := c.PaymentMethodDetails.Card
-	return connector.PaymentMethodDetails{Card: &connector.CardDetails{Last4: card.Last4, Network: firstNonEmpty(card.Network, card.Brand),
-		Funding: card.Funding, Country: strings.ToUpper(card.Country)}}
+	return c.PaymentMethodDetails.Card.details()
+}
+
+// stripeCheck maps a card check. "unavailable" and "unchecked" say nothing, so
+// they are not a result: only a real answer can show a tick or a cross.
+func stripeCheck(result string) string {
+	switch result {
+	case "pass":
+		return connector.CheckMatch
+	case "fail":
+		return connector.CheckNoMatch
+	}
+	return ""
+}
+
+func chargeRisk(c *charge) connector.PaymentRisk {
+	var out connector.PaymentRisk
+	if c == nil {
+		return out
+	}
+	if c.Outcome != nil {
+		out.Score = c.Outcome.RiskScore
+	}
+	if card := c.PaymentMethodDetails.Card; card != nil && card.Checks != nil {
+		out.AddressCheck = stripeCheck(card.Checks.AddressLine1)
+		out.PostalCheck = stripeCheck(card.Checks.PostalCode)
+		out.CVVCheck = stripeCheck(card.Checks.CVC)
+	}
+	return out
+}
+
+func chargeThreeDS(c *charge) string {
+	if c == nil || c.PaymentMethodDetails.Card == nil || c.PaymentMethodDetails.Card.ThreeDSecure == nil {
+		return ""
+	}
+	switch c.PaymentMethodDetails.Card.ThreeDSecure.Result {
+	case "authenticated", "attempt_acknowledged":
+		return connector.ThreeDSPassed
+	case "failed":
+		return connector.ThreeDSFailed
+	}
+	return connector.ThreeDSNotVerified
+}
+
+// authFailureCode is Stripe's error when 3D Secure failed; it can leave no charge.
+const authFailureCode = "payment_intent_authentication_failure"
+
+// tryID names one go at paying within a PaymentIntent, which keeps its id across
+// retries. A go that left no charge is named by its card and error, so the event
+// and a later fetch of the same failure agree.
+func (pi paymentIntent) tryID() string {
+	if e := pi.LastPayError; e != nil && pi.Status != "succeeded" {
+		if e.Charge != "" {
+			return e.Charge
+		}
+		method := ""
+		if e.PaymentMethod != nil {
+			method = e.PaymentMethod.ID
+		}
+		return pi.ID + ":" + method + ":" + e.Code
+	}
+	return pi.LatestCharge.ID
+}
+
+// addTry fills what a snapshot says about the customer's latest go.
+func (pi paymentIntent) addTry(snap *connector.PaymentSnapshot) {
+	snap.TryID = pi.tryID()
+	c := chargeOf(&pi)
+	switch {
+	case snap.TryID == "": // no go at paying yet: the row only stands in
+	case c != nil && c.ID == snap.TryID && c.Created > 0:
+		snap.CreatedAt = ms(c.Created)
+	default:
+		snap.CreatedAt = 0 // the intent's own time would date every retry at its start
+	}
+	snap.Risk = chargeRisk(c)
+	snap.ThreeDS = chargeThreeDS(c)
+	if e := pi.LastPayError; e != nil && pi.Status != "succeeded" {
+		if e.Code == authFailureCode {
+			snap.ThreeDS = connector.ThreeDSFailed
+		}
+		if snap.MethodDetails.Empty() && e.PaymentMethod != nil && e.PaymentMethod.Card != nil {
+			snap.MethodDetails = e.PaymentMethod.Card.details()
+			snap.Method = "card"
+		}
+	}
 }
 
 type refundWire struct {
@@ -133,7 +252,7 @@ func (s session) snapshot() connector.PaymentSnapshot {
 		Status: mapSession(s), RawStatus: s.Status + "/" + s.PaymentStatus, Amount: fromStripe(s.AmountTotal, s.Currency),
 		Currency: upper(s.Currency), CreatedAt: ms(s.Created)}
 	if pi := s.PaymentIntent.Obj; pi != nil {
-		if pi.LastPayError != nil && snap.Status == connector.PaymentRequiresAction {
+		if pi.LastPayError != nil && snap.Status != connector.PaymentSucceeded {
 			snap.ErrorCode, snap.ErrorMessage = firstNonEmpty(pi.LastPayError.DeclineCode, pi.LastPayError.Code), pi.LastPayError.Message
 		}
 		if c := chargeOf(pi); c != nil {
@@ -141,6 +260,7 @@ func (s session) snapshot() connector.PaymentSnapshot {
 			snap.MethodDetails = methodDetailsOf(c)
 			snap.AmountRefunded = fromStripe(c.AmountRefunded, s.Currency)
 		}
+		pi.addTry(&snap)
 	}
 	return snap
 }
@@ -156,6 +276,7 @@ func (pi paymentIntent) snapshot() connector.PaymentSnapshot {
 		snap.MethodDetails = methodDetailsOf(c)
 		snap.AmountRefunded = fromStripe(c.AmountRefunded, pi.Currency)
 	}
+	pi.addTry(&snap)
 	return snap
 }
 
@@ -218,6 +339,66 @@ func (s *stripe) FetchPayment(ctx context.Context, ref connector.PaymentRef) (co
 		return snap, nil
 	}
 	return connector.PaymentSnapshot{}, errors.New("stripe: PaymentRef needs the checkout session id (payments are never searched for)")
+}
+
+// FetchPaymentAttempts returns every charge of the attempt's PaymentIntent, one
+// per go at paying that reached the card network. A go that failed before a
+// charge existed only appears in its payment_intent.payment_failed event.
+func (s *stripe) FetchPaymentAttempts(ctx context.Context, ref connector.PaymentRef) ([]connector.PaymentSnapshot, error) {
+	if !strings.HasPrefix(ref.ProviderOrderID, "cs_") {
+		return nil, errors.New("stripe: payment attempt history requires the checkout session id")
+	}
+	sess, err := s.getSession(ctx, ref.ProviderOrderID)
+	if err != nil {
+		return nil, err
+	}
+	if ref.ProviderRef != "" && sess.ClientReferenceID != ref.ProviderRef {
+		return nil, fmt.Errorf("%w: session %s belongs to another payment", connector.ErrNotFound, sess.ID)
+	}
+	if sess.PaymentIntent.ID == "" {
+		return nil, nil
+	}
+	var charges []charge
+	q := url.Values{"payment_intent": {sess.PaymentIntent.ID}, "limit": {strconv.Itoa(listPageSize)}}
+	for {
+		var l list[charge]
+		if err := s.api.do(ctx, "GET", "/v1/charges", q, nil, &l, ""); err != nil {
+			return nil, err
+		}
+		charges = append(charges, l.Data...)
+		if !l.HasMore || len(l.Data) == 0 {
+			break
+		}
+		q.Set("starting_after", l.Data[len(l.Data)-1].ID)
+	}
+	out := make([]connector.PaymentSnapshot, 0, len(charges))
+	for i := range charges {
+		c := &charges[i]
+		if c.PaymentIntent.ID != sess.PaymentIntent.ID {
+			continue // a list filter is not proof of ownership
+		}
+		snap := connector.PaymentSnapshot{ProviderRef: sess.ClientReferenceID, ProviderOrderID: sess.ID, ProviderPaymentID: sess.PaymentIntent.ID, TryID: c.ID,
+			Status: mapCharge(c.Status), RawStatus: c.Status, Amount: fromStripe(c.Amount, c.Currency), Currency: upper(c.Currency), Method: c.PaymentMethodDetails.Type,
+			MethodDetails: methodDetailsOf(c), Risk: chargeRisk(c), ThreeDS: chargeThreeDS(c), CreatedAt: ms(c.Created)}
+		if c.Status == "failed" {
+			snap.ErrorCode, snap.ErrorMessage = c.FailureCode, c.FailureMessage
+			if c.Outcome != nil && c.Outcome.Reason != "" {
+				snap.ErrorCode = c.Outcome.Reason // the same code the event's decline_code gives
+			}
+		}
+		out = append(out, snap)
+	}
+	return out, nil
+}
+
+func mapCharge(status string) connector.PaymentStatus {
+	switch status {
+	case "succeeded":
+		return connector.PaymentSucceeded
+	case "failed":
+		return connector.PaymentFailed
+	}
+	return connector.PaymentProcessing
 }
 
 // ---- refunds ----

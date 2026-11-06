@@ -39,13 +39,18 @@ Register that exact account URL in the provider dashboard. A provider account's 
 
 Start with the payment ID or your order reference in **Payments**. Inspect:
 
-1. Requested amount/currency, received/refunded totals, status, and flags.
-2. Provider attempts and any failure codes.
-3. Ledger records and events.
-4. Application delivery attempts and response outcomes.
-5. Related refunds, invoices, and disputes.
+The payment page is one screen. The tiles at the top give the last failure, the tries, the risk score, webhook health and the amount received. Below them:
 
-When the provider reports a fraud review, currently Whop, the payment page shows a **Risk review** row with its score and location. Select it to see the buyer IP, the address, postal code, CVV and 3D Secure results, and the authorization code. The Low (below 40), Medium (40-74) and High (75+) labels are Paymux display bands, not a provider verdict. Paymux collects this as soon as a payment arrives, and a background job fills in existing payments at up to 20 a minute without changing their status. If the provider has no score yet, Paymux asks once more about ten minutes later; a score finished after that appears after **Sync from provider**. This data is available in the dashboard only, not the API or application webhooks.
+1. **Timeline**: created, checkout started, each try with its error, card, bank, name on card and 3D Secure result, refunds and webhooks, in time order. **Provider IDs and logs** opens within a try. **All events** adds ledger records and events with no webhook endpoints to the same list.
+2. **Customer**: name, email, phone and address, and the merchant reference, legal name and GSTIN if present.
+3. **Risk**: the provider's checks as ticks and crosses, for the latest try that has them.
+4. **Payment**: app, refunded total, order reference, description and flags, then **Sync from provider**, **Refund**, **Send status webhook** and the payment's logs.
+
+Anything a provider didn't send is left out, and is never shown as a failed check. Simulator payments also have **Test tools**.
+
+Related invoices and disputes have their own pages.
+
+When a provider reports a fraud review, the top tile shows its score and the **Risk** panel shows the address, ZIP or postal code, CVV and 3D Secure results, then the location, buyer IP and authorization code. The Low (below 40), Medium (40-74) and High (75+) labels are Paymux display bands, not a provider verdict. Paymux collects this as soon as a payment arrives, and a background job fills in existing payments at up to 20 a minute without changing their status. If the provider has no score yet, Paymux asks once more about ten minutes later; a score finished after that appears after **Sync from provider**. This data is available in the dashboard only, not the API or application webhooks.
 
 A refund request or replay action is different from provider reconciliation. Use the detail page to confirm the target, review the action, and inspect the final server response. Payment and attempt status are explained in [payments](payments.md).
 

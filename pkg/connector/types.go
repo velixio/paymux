@@ -372,7 +372,21 @@ type PaymentSnapshot struct {
 	ErrorCode      string               `json:"error_code,omitempty"`
 	ErrorMessage   string               `json:"error_message,omitempty"`
 	CreatedAt      int64                `json:"created_at,omitempty"` // unix ms
+	// TryID identifies one go at paying when a provider retries within one
+	// provider payment id. Empty means ProviderPaymentID identifies the try.
+	TryID string `json:"try_id,omitempty"`
+	// ThreeDS is the outcome of 3D Secure, one of the ThreeDS values. Empty
+	// means the provider reported nothing, which is not a failure.
+	ThreeDS string `json:"three_d_secure_status,omitempty"`
 }
+
+// Outcomes of 3D Secure on a try. NotVerified means the provider says it was
+// not verified without saying it failed.
+const (
+	ThreeDSPassed      = "passed"
+	ThreeDSFailed      = "failed"
+	ThreeDSNotVerified = "not_verified"
+)
 
 // PaymentMethodDetails is the non-sensitive payment instrument information a
 // provider exposes. It deliberately excludes full account numbers, card
@@ -453,6 +467,9 @@ type CardDetails struct {
 	International *bool  `json:"international,omitempty"`
 	EMI           *bool  `json:"emi,omitempty"`
 	SubType       string `json:"sub_type,omitempty"`
+	// Name is the name on the card, only where the provider reports exactly
+	// that. It is personal data and must stay out of logs.
+	Name string `json:"name,omitempty"`
 }
 
 // UPIDetails avoids retaining a payer's VPA while preserving useful routing

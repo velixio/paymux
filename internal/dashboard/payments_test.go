@@ -344,15 +344,15 @@ func TestPaymentDetailShowsTimeline(t *testing.T) {
 			"merchant-customer-1", "Asha Rao", "asha@example.com", "919876543210", "10 Market Road", "Mumbai", "400001", "27ABCDE1234F1Z5",
 			// attempts
 			"att_fail", "failed", "card_declined", "Your card was declined", "order_F1", "American Express", "•••• 5000", "credit · AMEX · consumer · domestic",
-			"att_ok", "captured", "pay_RZP_OK", "order_OK", "upi", "Razorpay main", "razorpay",
+			"att_ok", "captured", "pay_RZP_OK", "order_OK", "upi", "Razorpay main",
 			// every provider-side payment on the shared order
-			"Provider payment attempts", "pay_RZP_FAILED", "BAD_REQUEST_ERROR", "Payment failed",
+			"pay_RZP_FAILED", "BAD_REQUEST_ERROR", "Payment failed",
 			// ledger
-			"charge", "100.00 INR",
+			"Charge", "100.00 INR",
 			// refunds
 			"ref_old", "15.00 INR", "goodwill", "api",
 			// events and deliveries
-			"payment.succeeded", f.sink.srv.URL, "delivered")
+			"payment.succeeded", strings.TrimPrefix(f.sink.srv.URL, "http://"), "1 delivered")
 		// viewers get neither the refund form nor replay buttons
 		lacks(t, body, `action="/dashboard/payments/pay_d1/refund"`, "/replay")
 
@@ -616,7 +616,9 @@ func TestReplayDeliveryFromDashboard(t *testing.T) {
 		op := e.roleClient("operator")
 		body := e.pageOK(op, "/dashboard/payments/"+f.pay.ID)
 		tok := csrfOf(t, body)
-		has(t, body, `action="/dashboard/deliveries/`+delID+`/replay"`)
+		// A delivered webhook goes again through Redeliver; Retry is for failed ones.
+		has(t, body, `/webhooks/replay"`)
+		lacks(t, body, `action="/dashboard/deliveries/`+delID+`/replay"`)
 		r, _ := e.post(op, "/dashboard/deliveries/"+delID+"/replay", url.Values{"csrf": {tok}, "next": {"/dashboard/payments/" + f.pay.ID}})
 		if r.StatusCode != 303 || r.Header.Get("Location") != "/dashboard/payments/"+f.pay.ID {
 			t.Fatalf("replay: %d %s", r.StatusCode, r.Header.Get("Location"))

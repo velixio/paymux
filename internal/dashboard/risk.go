@@ -36,14 +36,44 @@ func riskBand(score int) (label, tone string) {
 
 // paymentRiskView returns nil when the attempt has no risk data to show.
 func paymentRiskView(a store.Attempt) *riskView {
+	return riskViewFromJSON(a.RiskDetails, a.Status)
+}
+
+// tryRiskView is riskViewFromJSON for a try, whose 3D Secure result is more
+// exact than the provider's verified flag: it can say the check failed.
+func tryRiskView(raw, status, threeDS string) *riskView {
+	v := riskViewFromJSON(raw, status)
+	if v == nil || threeDS == "" {
+		return v
+	}
+	check := riskCheck{Label: "3D Secure", Text: "Not verified", Tone: "none", Mark: "–"}
+	switch threeDS {
+	case connector.ThreeDSPassed:
+		check.Text, check.Tone, check.Mark = "Verified", "pass", "✓"
+	case connector.ThreeDSFailed:
+		check.Text, check.Tone, check.Mark = "Failed", "fail", "✕"
+	}
+	for i := range v.Checks {
+		if v.Checks[i].Label == check.Label {
+			v.Checks[i] = check
+			return v
+		}
+	}
+	v.Checks = append(v.Checks, check)
+	return v
+}
+
+// riskViewFromJSON maps stored risk JSON of an attempt or try in the given
+// status. It returns nil when there is nothing to show.
+func riskViewFromJSON(raw, status string) *riskView {
 	var r connector.PaymentRisk
-	if a.RiskDetails == "" || json.Unmarshal([]byte(a.RiskDetails), &r) != nil || r.Empty() {
+	if raw == "" || json.Unmarshal([]byte(raw), &r) != nil || r.Empty() {
 		return nil
 	}
 	v := &riskView{DialogID: "risk-review", Tone: "none", Score: "Pending", IPAddress: r.IPAddress, AuthorizationCode: r.AuthorizationCode}
 	if r.Score != nil {
 		v.Score, v.Tone = riskBand(*r.Score)
-	} else if a.Status == string(state.AttemptFailed) {
+	} else if status == string(state.AttemptFailed) {
 		v.Score = "Not scored"
 	}
 	location := make([]string, 0, 3)
@@ -54,7 +84,7 @@ func paymentRiskView(a store.Attempt) *riskView {
 	}
 	v.Location = strings.Join(location, ", ")
 	for _, c := range []struct{ label, result string }{
-		{"Billing address", r.AddressCheck}, {"Postal code", r.PostalCheck}, {"CVV", r.CVVCheck},
+		{"Address", r.AddressCheck}, {"ZIP / postal", r.PostalCheck}, {"CVV", r.CVVCheck},
 	} {
 		if c.result != "" {
 			v.Checks = append(v.Checks, verificationCheck(c.label, c.result))

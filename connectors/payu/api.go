@@ -141,6 +141,33 @@ type txnDetail struct {
 	ErrorMessage   flexStr `json:"error_Message"`
 	AddedOn        flexStr `json:"addedon"`
 	PaymentSource  flexStr `json:"payment_source"` // "sist" when the registration created a mandate
+	CardNo         flexStr `json:"card_no"`        // masked: XXXXXXXXXXXX2346
+	CardType       flexStr `json:"card_type"`
+	IssuingBank    flexStr `json:"issuing_bank"`
+	NameOnCard     flexStr `json:"name_on_card"`
+}
+
+// cardDetails reads the masked card PayU reports on a card payment. Only the
+// last four digits of the masked number are kept.
+func (d txnDetail) cardDetails() connector.PaymentMethodDetails {
+	last4 := string(d.CardNo)
+	if len(last4) < 4 {
+		last4 = ""
+	} else {
+		last4 = last4[len(last4)-4:]
+	}
+	return connector.PaymentMethodDetails{Card: &connector.CardDetails{Last4: last4, Network: string(d.CardType),
+		Issuer: placeholderless(d.IssuingBank), Name: placeholderless(d.NameOnCard)}}
+}
+
+// placeholderless drops PayU's stand-ins for a value it does not have.
+func placeholderless(v flexStr) string {
+	s := strings.TrimSpace(string(v))
+	switch strings.ToLower(s) {
+	case "", "na", "n/a", "null":
+		return ""
+	}
+	return s
 }
 
 func (d txnDetail) snapshot(txnid string) (connector.PaymentSnapshot, error) {
@@ -162,6 +189,9 @@ func (d txnDetail) snapshot(txnid string) (connector.PaymentSnapshot, error) {
 	}
 	if tax, err := money.ParseDecimal(string(d.ServiceTax), "INR"); err == nil {
 		snap.Tax = tax
+	}
+	if snap.Method == "card" {
+		snap.MethodDetails = d.cardDetails()
 	}
 	if snap.ProviderPaymentID == "Not Found" {
 		snap.ProviderPaymentID = "" // PayU's placeholder for a txnid it has no payment for

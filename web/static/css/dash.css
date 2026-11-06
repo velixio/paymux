@@ -2237,3 +2237,312 @@ button.risk-close {
   font-size: 12px;
   color: var(--color-muted);
 }
+
+/* Payment page: one timeline, no tabs. Sized by its own width, not the
+   window's, because the peek pane shows the same page in a narrow column. */
+.pt-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  overflow-wrap: anywhere;
+}
+.pt-amount {
+  margin-left: auto;
+  font-feature-settings: "tnum";
+}
+.payment-timeline {
+  container-type: inline-size;
+  display: block;
+  margin-top: 12px;
+}
+.pt-tiles {
+  display: grid;
+  grid-template-columns: 1.7fr repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.pt-tile {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--surface, transparent);
+}
+.pt-tile dt {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.pt-tile dd {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.pt-tile-alert {
+  border-color: var(--destructive, var(--color-bad));
+  background: color-mix(in srgb, var(--destructive, var(--color-bad)) 14%, transparent);
+}
+.pt-tone-pass {
+  color: var(--status-ok-fg, var(--color-ok));
+}
+.pt-tone-fail {
+  color: var(--destructive, var(--color-bad));
+}
+.pt-tone-none,
+.pt-risk-none {
+  color: var(--color-muted);
+}
+.pt-risk-low {
+  color: var(--status-ok-fg, var(--color-ok));
+}
+.pt-risk-medium {
+  color: var(--status-warn-fg, var(--color-warn));
+}
+.pt-risk-high {
+  color: var(--destructive, var(--color-bad));
+}
+.pt-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.pt-panel {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--surface, transparent);
+}
+.payment-timeline .pt-panel h2,
+.app-shell .react-content .payment-timeline .pt-panel h2 {
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.payment-timeline .pt-panel p,
+.app-shell .react-content .payment-timeline .pt-panel p {
+  margin: 2px 0;
+  overflow-wrap: anywhere;
+}
+.pt-panel .risk-checks {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  gap: 6px 12px;
+}
+.pt-panel .risk-source {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.pt-customer-name {
+  font-weight: 500;
+}
+.pt-side {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.pt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.pt-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+}
+.pt-facts dt {
+  color: var(--color-muted);
+}
+.pt-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.pt-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pt-item {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.pt-system {
+  display: none;
+}
+.pt-main:has(.pt-all[open]) .pt-system {
+  display: grid;
+}
+.pt-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.pt-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-muted);
+}
+.pt-dot-pass {
+  background: var(--status-ok-fg, var(--color-ok));
+}
+.pt-dot-fail {
+  background: var(--destructive, var(--color-bad));
+}
+.pt-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pt-when {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-muted);
+  text-align: right;
+}
+.pt-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin-left: 19px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+}
+.payment-timeline .pt-card p,
+.app-shell .react-content .payment-timeline .pt-card p {
+  margin: 0;
+}
+.pt-card .risk-checks {
+  margin-top: 8px;
+}
+.pt-instrument > span + span::before {
+  content: " · ";
+  color: var(--color-muted);
+}
+.pt-instrument span {
+  color: var(--color-muted);
+}
+.pt-instrument .pt-card-name {
+  font-weight: 500;
+  color: var(--color-fg);
+}
+.pt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.pt-chips code {
+  font-size: 12px;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+.pt-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--color-muted);
+  background: rgba(127, 127, 127, 0.14);
+}
+.pt-chip-pass {
+  color: var(--status-ok-fg, var(--color-ok));
+  background: var(--status-ok-bg, color-mix(in srgb, var(--color-ok) 16%, transparent));
+}
+.pt-chip-fail {
+  color: var(--destructive, var(--color-bad));
+  background: color-mix(in srgb, var(--destructive, var(--color-bad)) 14%, transparent);
+}
+.pt-more > summary,
+.pt-all > summary,
+.pt-hook > summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+.pt-more > summary,
+.pt-all > summary {
+  color: var(--color-muted);
+}
+.pt-more[open] > summary {
+  margin-bottom: 6px;
+}
+.pt-all {
+  margin-top: 10px;
+}
+.pt-hook > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.pt-event {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.pt-redeliver {
+  display: block;
+  margin-top: 8px;
+}
+.pt-targets {
+  display: grid;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.pt-targets li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--color-line);
+}
+.pt-endpoint {
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.pt-target-result {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.pt-target-result .pt-when {
+  margin-left: 0;
+}
+.pt-empty {
+  margin-top: 10px;
+  color: var(--color-muted);
+}
+@container (max-width: 720px) {
+  .pt-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pt-tile-wide {
+    grid-column: 1 / -1;
+  }
+  .pt-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

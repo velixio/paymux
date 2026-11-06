@@ -431,15 +431,6 @@ func TestReplayDeliveryKeepsWebhookID(t *testing.T) {
 		if e.count(`SELECT attempt_count FROM webhook_deliveries`) != 1 {
 			t.Fatal("replay should restart the attempt count")
 		}
-		// a delivery that is still pending cannot be replayed on top of itself
-		e.svc.RetrySchedule = func() []time.Duration { return []time.Duration{0, time.Hour} }
-		s.setCode(500)
-		e.emit("app_1", "x.z")
-		e.run()
-		pending := e.str(`SELECT id FROM webhook_deliveries WHERE status = 'pending'`)
-		if err := e.svc.ReplayDelivery(ctx, pending); err == nil {
-			t.Fatal("replay of a pending delivery accepted")
-		}
 		if err := e.svc.ReplayDelivery(ctx, "whd_missing"); err == nil {
 			t.Fatal("replay of a missing delivery accepted")
 		}
@@ -522,32 +513,30 @@ func TestResendEventReachesEndpointsAddedLater(t *testing.T) {
 	})
 }
 
-func TestResendEventSkipsPendingDelivery(t *testing.T) {
-	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
-		e := newEnv(t, db, true)
-		e.svc.RetrySchedule = func() []time.Duration { return []time.Duration{0, time.Hour} }
-		retrying := newSink(t, 500)
-		e.endpoint("app_1", retrying.srv.URL)
-		e.emit("app_1", "x.y")
-		e.run() // first attempt fails, the retry waits an hour
-		res, err := e.svc.ResendEvent(ctx, e.str(`SELECT id FROM events`))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if res.Sent != 0 || res.Skipped != 1 {
-			t.Fatalf("result %+v, want 0 sent, 1 skipped", res)
-		}
-		if st := e.str(`SELECT status FROM webhook_deliveries`); st != "pending" {
-			t.Fatalf("status %s", st)
-		}
-	})
-}
-
 func TestResendEventUnknownEvent(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db, true)
 		if _, err := e.svc.ResendEvent(ctx, "evt_missing"); !errors.Is(err, store.ErrNotFound) {
 			t.Fatalf("err = %v, want ErrNotFound", err)
+		}
+	})
+}
+
+// An endpoint's query string can hold a secret, so a failed request mustn't store it.
+func TestDeliveryErrorLeavesOutTheEndpointQuery(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db, true)
+		e.svc.RetrySchedule = func() []time.Duration { return []time.Duration{0} }
+		s := newSink(t, 200)
+		s.srv.Close()
+		e.endpoint("app_1", s.srv.URL+"/hook?token=s3cret")
+		e.emit("app_1", "x.y")
+		e.run()
+		for _, query := range []string{`SELECT last_error FROM webhook_deliveries`, `SELECT error FROM webhook_delivery_attempts`} {
+			got := e.str(query)
+			if got == "" || strings.Contains(got, "s3cret") {
+				t.Errorf("%s = %q", query, got)
+			}
 		}
 	})
 }

@@ -126,6 +126,26 @@ func (s *Service) markProcessed(ctx context.Context, id, errText string) {
 	}
 }
 
+// recordNotifiedTry keeps what a signed event says about a failed try. Fetching
+// only shows a provider's latest go, so a failure the customer has moved past
+// would be lost. An unsigned event is a hint, never history.
+func (s *Service) recordNotifiedTry(ctx context.Context, ev store.ProviderEventRow, a store.Attempt, ps connector.PaymentSnapshot) {
+	failed := ps.ErrorCode != "" || ps.ErrorMessage != "" || ps.Status == connector.PaymentFailed
+	if !ev.Verified || !failed {
+		return
+	}
+	if snapshotIsOurs(a, ps) && (ps.TryID != "" || ps.ProviderPaymentID != "") {
+		s.o.Core.RecordTry(ctx, a, ToSnapshot(ps))
+	}
+	live, err := s.o.Conns.Get(ctx, a.ProviderAccountID)
+	if err != nil {
+		s.o.Logger.Warn("checkout: provider try history could not be fetched", "attempt", a.ID, "err", err)
+		return
+	}
+	s.recordProviderPaymentAttempts(ctx, a, live.Connector, connector.PaymentRef{ProviderRef: a.ProviderRef,
+		ProviderOrderID: firstNonEmpty(a.ProviderOrderID, ps.ProviderOrderID), ProviderPaymentID: firstNonEmpty(ps.ProviderPaymentID, a.ProviderPaymentID)})
+}
+
 func (s *Service) handleNotification(ctx context.Context, ev store.ProviderEventRow, n connector.Notification) error {
 	account := ev.ProviderAccountID
 	switch {
@@ -142,6 +162,7 @@ func (s *Service) handleNotification(ctx context.Context, ev store.ProviderEvent
 		if err != nil {
 			return err
 		}
+		s.recordNotifiedTry(ctx, ev, a, *ps)
 		res, err := s.syncAttempt(ctx, a.ID, connector.PaymentRef{ProviderOrderID: ps.ProviderOrderID, ProviderPaymentID: ps.ProviderPaymentID})
 		if err == nil && s.o.Subs != nil {
 			err = s.o.Subs.ReconcilePayment(ctx, res.Payment.ID) // a renewal moves its subscription
