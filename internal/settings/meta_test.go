@@ -3,8 +3,13 @@ package settings
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
+	"time"
+	_ "time/tzdata"
+
+	"github.com/velixio/paymux/pkg/connector/money"
 )
 
 // The UI draws its controls from Meta. These tests pin every Meta to the
@@ -150,6 +155,49 @@ func TestDefaultCurrencySetting(t *testing.T) {
 	for raw, want := range map[string]bool{`"off"`: true, `"USD"`: true, `"INR"`: true, `"JPY"`: true,
 		`"usd"`: false, `"QQQ"`: false, `""`: false, `"USDX"`: false, `1`: false} {
 		ok(t, d, raw, want)
+	}
+}
+
+// A currency is picked from a list that holds exactly what the validator takes.
+func TestDefaultCurrencyIsAList(t *testing.T) {
+	m, _ := MetaFor("default_currency")
+	if m.Kind != KindEnum {
+		t.Fatalf("kind %q: a currency must not be typed", m.Kind)
+	}
+	if !slices.Contains(m.Options, "off") || !slices.Contains(m.Options, "USD") || !slices.Contains(m.Options, "JPY") {
+		t.Errorf("options %v", m.Options)
+	}
+	if want := len(money.Currencies()) + 1; len(m.Options) != want {
+		t.Errorf("%d options, want %d", len(m.Options), want)
+	}
+}
+
+func TestTimeZoneSetting(t *testing.T) {
+	d, found := Lookup("time_zone")
+	if !found {
+		t.Fatal("time_zone is not a setting")
+	}
+	if d.Levels != LevelOrg {
+		t.Errorf("levels %v", d.Levels)
+	}
+	if d.Default != `"server"` {
+		t.Errorf("default %s: an upgrade must keep following PAYMUX_TZ", d.Default)
+	}
+	m, _ := MetaFor("time_zone")
+	if m.Kind != KindEnum {
+		t.Fatalf("kind %q: a time zone must not be typed", m.Kind)
+	}
+	for raw, want := range map[string]bool{`"server"`: true, `"UTC"`: true, `"Asia/Kolkata"`: true, `"America/New_York"`: true,
+		`"Mars/Base"`: false, `"asia/kolkata"`: false, `""`: false, `1`: false} {
+		ok(t, d, raw, want)
+	}
+	for _, o := range m.Options {
+		if o == "server" {
+			continue
+		}
+		if _, err := time.LoadLocation(o); err != nil {
+			t.Errorf("%s: %v", o, err)
+		}
 	}
 }
 

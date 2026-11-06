@@ -331,7 +331,11 @@ export function RuntimeProvider({
         action.pathname,
       ) ||
       /\/settings(?:\/|$)/.test(action.pathname);
-    if (needsReview) {
+    // A test message changes no setting, so there is nothing to review.
+    const isTestMessage = action.pathname.endsWith(
+      "/settings/notifications/test",
+    );
+    if (needsReview && !isTestMessage) {
       // A native modal sits in the top layer, over the review step and blocking
       // it. Its form keeps what was typed if the review is cancelled.
       form.closest("dialog")?.close();

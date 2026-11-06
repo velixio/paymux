@@ -97,7 +97,8 @@ func newEnv(t *testing.T, db *store.DB, opts ...envOpt) *env {
 		t.Fatal(err)
 	}
 	q := jobs.New(db, jobs.Options{Clock: clk.Now, Logger: slog.New(slog.DiscardHandler)})
-	out := outbound.New(outbound.Options{DB: db, Queue: q, Box: box, AllowPrivate: true, Now: clk.Now, Logger: slog.New(slog.DiscardHandler)})
+	out := outbound.New(outbound.Options{DB: db, Queue: q, Box: box, AllowPrivate: true, Now: clk.Now, Logger: slog.New(slog.DiscardHandler),
+		NotificationClient: &http.Client{Transport: telegramOK{}}})
 	out.Register()
 	core.RegisterJobs(q)
 	rec := &recMailer{}
@@ -827,4 +828,12 @@ func (e *env) enterEnrolmentCode(c *http.Client, userID string) {
 	if r, body := e.post(c, "/dashboard/login/totp", url.Values{"enrol_code": {code}, "csrf": {csrfOf(e.t, page)}}); r.StatusCode != 200 || !strings.Contains(body, "totp-secret") {
 		e.t.Fatalf("enrolment code: %d\n%s", r.StatusCode, body)
 	}
+}
+
+// telegramOK answers Bot API calls, so no test reaches the real Telegram.
+type telegramOK struct{}
+
+func (telegramOK) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header),
+		Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{"message_id":1}}`))}, nil
 }

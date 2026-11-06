@@ -125,12 +125,12 @@ const hrefOf = (loc: { pathname: string; searchStr: string }) =>
 const sections = [
   {
     name: "Workspace",
-    keys: ["overview", "analytics", "payments", "payment-links"],
+    keys: ["overview", "payments", "payment-links"],
   },
   { name: "Billing", keys: ["subscriptions", "invoices"] },
   {
     name: "Operations",
-    keys: ["disputes", "reconciliation", "reports", "alerts", "audit", "logs"],
+    keys: ["disputes", "reconciliation", "analytics", "reports", "alerts", "audit", "logs"],
   },
   { name: "Connections", keys: ["apps", "providers"] },
   {

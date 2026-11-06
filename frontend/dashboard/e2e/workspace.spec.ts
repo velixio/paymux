@@ -204,3 +204,35 @@ test("organization settings stay usable at phone width", async ({ page }) => {
   );
   expect(overflow).toBeLessThanOrEqual(1);
 });
+
+test("Analytics sits with Reports under Operations, not under Workspace", async ({ page }) => {
+  await page.goto("/dashboard/login");
+  await page.getByLabel("Email address").fill(OWNER_EMAIL);
+  await page.getByLabel("Password").fill(OWNER_PASSWORD);
+  await page.getByRole("button", { name: /sign in|log in|continue/i }).click();
+  await page.waitForURL(/\/dashboard\/(overview)?$/);
+  const links = await page.locator("aside a[href^='/dashboard/']").evaluateAll((all) =>
+    all.map((a) => a.getAttribute("href")),
+  );
+  const at = (href: string) => links.indexOf(href);
+  expect(at("/dashboard/analytics")).toBeGreaterThan(at("/dashboard/reconciliation"));
+  expect(at("/dashboard/analytics")).toBeLessThan(at("/dashboard/reports"));
+});
+
+test("a Telegram test message sends without a review dialog and reports its result", async ({ page }) => {
+  await page.goto("/dashboard/login");
+  await page.getByLabel("Email address").fill(OWNER_EMAIL);
+  await page.getByLabel("Password").fill(OWNER_PASSWORD);
+  await page.getByRole("button", { name: /sign in|log in|continue/i }).click();
+  await page.waitForURL(/\/dashboard\/(overview)?$/);
+  await page.goto("/dashboard/settings/notifications");
+  const row = page.locator("label.option-row").filter({ hasText: "Play sound" });
+  await expect(row).toHaveCSS("display", "grid");
+  const box = await row.locator("input").boundingBox();
+  const text = await row.getByText("Play sound").boundingBox();
+  expect(text!.y).toBeLessThan(box!.y + box!.height);
+  await page.getByRole("button", { name: "Send test message" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "save a Telegram bot token" })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Send test message" })).toBeVisible();
+});

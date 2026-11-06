@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"slices"
 	"time"
 )
 
@@ -16,27 +17,36 @@ type NotificationConfig struct {
 	TelegramTokenEnc                   []byte
 	TelegramDeleteAfterHours           int
 	EventTypes                         []string
+	TelegramSoundEvents                []string
 	UpdatedAt                          time.Time
 }
+
+// DefaultTelegramSoundEvents ping the chat until the operator chooses otherwise.
+// Migration 0051 holds the same list for channels saved before it.
+var DefaultTelegramSoundEvents = []string{"payment.succeeded", "refund.succeeded", "dispute.opened", "dispute.lost"}
 
 func GetNotificationConfig(ctx context.Context, q Queryer, orgID, mode string) (NotificationConfig, error) {
 	var c NotificationConfig
 	var emailOn, telegramOn int
-	var events string
+	var events, sound string
 	var updated int64
 	err := q.QueryRowContext(ctx, `SELECT org_id, mode, COALESCE(email,''), email_enabled,
 		COALESCE(telegram_chat_id,''), telegram_token_enc, telegram_enabled, telegram_delete_after_hours,
-		event_types, updated_at
+		event_types, telegram_sound_events, updated_at
 		FROM notification_channels WHERE org_id = ? AND mode = ?`, orgID, mode).
 		Scan(&c.OrgID, &c.Mode, &c.Email, &emailOn, &c.TelegramChatID, &c.TelegramTokenEnc, &telegramOn,
-			&c.TelegramDeleteAfterHours, &events, &updated)
+			&c.TelegramDeleteAfterHours, &events, &sound, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
-		return NotificationConfig{OrgID: orgID, Mode: mode, TelegramDeleteAfterHours: 47}, nil
+		return NotificationConfig{OrgID: orgID, Mode: mode, TelegramDeleteAfterHours: 47,
+			TelegramSoundEvents: slices.Clone(DefaultTelegramSoundEvents)}, nil
 	}
 	if err != nil {
 		return c, err
 	}
 	if err := json.Unmarshal([]byte(events), &c.EventTypes); err != nil {
+		return c, err
+	}
+	if err := json.Unmarshal([]byte(sound), &c.TelegramSoundEvents); err != nil {
 		return c, err
 	}
 	c.EmailEnabled, c.TelegramEnabled, c.UpdatedAt = emailOn != 0, telegramOn != 0, fromMS(updated)
@@ -48,16 +58,20 @@ func UpsertNotificationConfig(ctx context.Context, tx Tx, c NotificationConfig, 
 	if err != nil {
 		return err
 	}
+	sound, err := json.Marshal(nonNilSlice(c.TelegramSoundEvents))
+	if err != nil {
+		return err
+	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO notification_channels
 		(org_id, mode, email, email_enabled, telegram_chat_id, telegram_token_enc, telegram_enabled,
-		 telegram_delete_after_hours, event_types, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 telegram_delete_after_hours, event_types, telegram_sound_events, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (org_id, mode) DO UPDATE SET email = excluded.email, email_enabled = excluded.email_enabled,
 		telegram_chat_id = excluded.telegram_chat_id, telegram_token_enc = excluded.telegram_token_enc,
 		telegram_enabled = excluded.telegram_enabled, telegram_delete_after_hours = excluded.telegram_delete_after_hours,
-		event_types = excluded.event_types, updated_at = excluded.updated_at`,
+		event_types = excluded.event_types, telegram_sound_events = excluded.telegram_sound_events, updated_at = excluded.updated_at`,
 		c.OrgID, c.Mode, nullIfEmpty(c.Email), b2i(c.EmailEnabled), nullIfEmpty(c.TelegramChatID), c.TelegramTokenEnc,
-		b2i(c.TelegramEnabled), c.TelegramDeleteAfterHours, string(events), ms(now))
+		b2i(c.TelegramEnabled), c.TelegramDeleteAfterHours, string(events), string(sound), ms(now))
 	return err
 }
 

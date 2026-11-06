@@ -70,7 +70,7 @@ type payDetail struct {
 
 // parseDay parses YYYY-MM-DD in the dashboard's time zone.
 func (d *Dashboard) parseDay(s string) (time.Time, error) {
-	return time.ParseInLocation("2006-01-02", s, d.o.Location)
+	return time.ParseInLocation("2006-01-02", s, d.location())
 }
 
 func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *session) {

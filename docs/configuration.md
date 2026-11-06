@@ -23,7 +23,7 @@ Configuration examples below use placeholder domains and credentials. Copy `.env
 | `PAYMUX_MASTER_KEY_FILE` | Exactly one key source required | File containing the same base64 key; alternative to the direct variable. |
 | `PAYMUX_MASTER_KEY_OLD` | none | Earlier master keys, base64, comma separated. Only for a key rotation: values sealed under them can still be read. See the runbook, *Rotating the master key*. |
 | `PAYMUX_MASTER_KEY_OLD_FILE` | none | A file with earlier master keys (separated by commas or new lines); combined with the variable above. |
-| `PAYMUX_TZ` | `Asia/Kolkata` | Date boundaries, scheduling, and date filters. Use an IANA time-zone name. |
+| `PAYMUX_TZ` | `Asia/Kolkata` | Date boundaries, scheduling, and date filters. Use an IANA time-zone name. The `time_zone` setting can override it for the dashboard. |
 | `PAYMUX_TRUSTED_PROXIES` | Local network | Comma-separated trusted proxy addresses or CIDRs, or `none`. Unset, any address on the local network (loopback, 10/8, 172.16/12, 192.168/16, link-local, fc00::/7) is believed, so a reverse proxy on the LAN needs no setting; a host on those networks can then set the client address Paymux records. A `/0` network is rejected. |
 | `PAYMUX_CUSTOMER_RATE` | `60` | Requests a minute one client address may make to each customer route family (`/pay/`, `/return/`, `/l/`, `/s/`, `/i/`), with a burst of 20; past it the page answers 429 with `Retry-After`. `0` turns the limit off. The address is the connection's, or the `X-Forwarded-For` client when the connection comes from a trusted proxy; an IPv6 client is limited per /64 (every address in one /64 shares a bucket). Behind a reverse proxy, `PAYMUX_TRUSTED_PROXIES` must name it, or all customers share the proxy's bucket. Webhooks and `/v1` have their own limits. |
 | `PAYMUX_ENV_FILE` | `.env` | Optional dotenv file loaded by CLI commands. |
@@ -91,6 +91,7 @@ This is an organisation setting (the dashboard's *Settings* page), not an enviro
 | Setting | Default | Meaning |
 |---|---|---|
 | `default_currency` | `off` (or a currency code such as `USD`) | The currency Overview reports all revenue in, converting other currencies at the stored FX rates. `off` reports each currency separately. |
+| `time_zone` | `server` (or a zone such as `Asia/Tokyo`) | The time zone of the dates, times, charts and date filters on the dashboard. `server` follows `PAYMUX_TZ`. Scheduled jobs such as reconciliation stay on `PAYMUX_TZ`, and GST dates stay in IST. |
 | `fx_provider` | `frankfurter` (or `off`) | Source of the indicative market rates on the dashboard. The default, `frankfurter`, makes an outbound request to `api.frankfurter.dev` (no key; no Paymux data is sent) once the stored rates are 6 hours old, even while `default_currency` is `off`. A failed request logs one warning and is tried again by the next hourly run. Set `off` on a host without outbound access: it neither fetches nor shows rates. Invoices and GST never use these rates. |
 
 ## Dashboard single sign-on

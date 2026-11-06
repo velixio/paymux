@@ -36,6 +36,8 @@ The same script runs one group at a time, which is how GitHub runs it, as parall
 | `scripts/ci.sh website` | the public website browser tests (GitHub runs them as the `public-browser` job) |
 | `scripts/ci.sh shards [M]` | prints which package runs in which shard |
 
+The dashboard browser tests ignore your Paymux settings, from the shell and from `.env`. They always run against a throw-away SQLite data directory, so they are safe to run from a checkout set up for development.
+
 **Shards.** The race suite is the long pole, so it is split by package into three shards that run in parallel, each with its own PostgreSQL service container (`PAYMUX_TEST_POSTGRES_URL`, `PAYMUX_REQUIRE_PG=1`), so every shard exercises both databases. The split is deterministic, heaviest package first onto the lightest shard, using the measured seconds in `scripts/ci-shards.txt` (a package that is not listed counts as one second). The `checks` group fails if a package would be in no shard or in two, so a new package cannot go untested. When the balance drifts, re-measure (`go test -race -json ./...`, the per-package `Elapsed`), update `scripts/ci-shards.txt` and look at `scripts/ci.sh shards`.
 
 **The `ci` job and why its name matters.** Branch protection on `main` requires the status checks `ci` and `public-browser`. The gate is several jobs, so `ci` in `.github/workflows/ci.yml` is an aggregator: it `needs` all of them, runs `if: always()`, and fails unless every needed job's result is `success`. Do not rename `ci` or `public-browser` (a renamed required check is never reported and blocks every merge), and add any new job of the gate to the `needs` list of `ci`. `release.yml` calls the whole workflow before it builds anything.
