@@ -279,17 +279,11 @@ func (s *Service) handleTelegramDelete(ctx context.Context, raw json.RawMessage)
 	if err != nil {
 		return jobs.Permanent(err)
 	}
-	body, _ := json.Marshal(map[string]any{"chat_id": p.ChatID, "message_id": p.MessageID})
-	target := "https://api.telegram.org/bot" + string(token) + "/deleteMessage"
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := s.notifyClient.Do(req)
+	status, _, err := s.telegramCall(ctx, string(token), "deleteMessage", map[string]any{"chat_id": p.ChatID, "message_id": p.MessageID})
 	if err != nil {
-		return fmt.Errorf("telegram delete request failed: %w", err)
+		return err
 	}
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
-	resp.Body.Close()
-	if resp.StatusCode/100 == 2 {
+	if status/100 == 2 {
 		if p.PaymentID == "" {
 			return nil
 		}
@@ -298,8 +292,8 @@ func (s *Service) handleTelegramDelete(ctx context.Context, raw json.RawMessage)
 				store.TelegramPaymentMessageKey{OrgID: p.OrgID, Mode: p.Mode, ChatID: p.ChatID, PaymentID: p.PaymentID}, p.MessageID)
 		})
 	}
-	err = fmt.Errorf("telegram delete http %d", resp.StatusCode)
-	if resp.StatusCode/100 == 4 && resp.StatusCode != http.StatusTooManyRequests {
+	err = fmt.Errorf("telegram delete http %d", status)
+	if status/100 == 4 && status != http.StatusTooManyRequests {
 		return jobs.Permanent(err)
 	}
 	return err

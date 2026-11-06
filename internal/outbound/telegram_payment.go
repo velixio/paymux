@@ -35,14 +35,16 @@ func updatesTelegramPaymentMessage(ev store.EventRow) bool {
 type telegramPaymentLock struct {
 	key       store.TelegramPaymentMessageKey
 	messageID int64
+	until     time.Time
 }
 
 func (s *Service) lockTelegramPaymentMessage(ctx context.Context, ev store.EventRow, chatID string) (*telegramPaymentLock, error) {
 	lock := &telegramPaymentLock{key: store.TelegramPaymentMessageKey{OrgID: ev.OrgID, Mode: ev.Mode, ChatID: chatID, PaymentID: ev.ObjectID}}
 	var locked bool
 	now := s.now()
+	lock.until = now.Add(telegramPaymentLockFor)
 	err := s.db.Write(ctx, func(tx store.Tx) (err error) {
-		lock.messageID, locked, err = store.LockTelegramPaymentMessage(ctx, tx, lock.key, now, now.Add(telegramPaymentLockFor))
+		lock.messageID, locked, err = store.LockTelegramPaymentMessage(ctx, tx, lock.key, now, lock.until)
 		return err
 	})
 	if err != nil {
@@ -57,7 +59,7 @@ func (s *Service) lockTelegramPaymentMessage(ctx context.Context, ev store.Event
 func (s *Service) unlockTelegramPaymentMessage(ctx context.Context, lock *telegramPaymentLock) {
 	ctx = context.WithoutCancel(ctx)
 	if err := s.db.Write(ctx, func(tx store.Tx) error {
-		return store.UnlockTelegramPaymentMessage(ctx, tx, lock.key, lock.messageID)
+		return store.UnlockTelegramPaymentMessage(ctx, tx, lock.key, lock.messageID, lock.until)
 	}); err != nil {
 		s.log.Warn("telegram payment message could not be unlocked", "payment_id", lock.key.PaymentID, "err", err)
 	}

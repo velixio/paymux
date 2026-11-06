@@ -2,6 +2,7 @@ package outbound_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -30,6 +31,7 @@ type fakeTelegram struct {
 	calls    []telegramCall
 	nextID   int64
 	override func(method string) (int, string, bool)
+	failWith error
 }
 
 func (f *fakeTelegram) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -43,6 +45,9 @@ func (f *fakeTelegram) RoundTrip(r *http.Request) (*http.Response, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, telegramCall{method, body.Text, body.MessageID})
+	if f.failWith != nil {
+		return nil, f.failWith
+	}
 	status, response := http.StatusOK, `{"ok":true,"result":true}`
 	if method == "sendMessage" {
 		f.nextID++
@@ -342,7 +347,9 @@ func TestTelegramPaymentConcurrentEventsPostOneMessage(t *testing.T) {
 		h.run(2)
 
 		h.e.clk.Add(time.Hour) // past the waiting job's backoff and any lock
-		h.q.RunOnce(ctx)
+		if _, err := h.q.RunOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
 
 		var sends int
 		for _, c := range h.tg.take() {
@@ -352,6 +359,100 @@ func TestTelegramPaymentConcurrentEventsPostOneMessage(t *testing.T) {
 		}
 		if sends != 1 {
 			t.Fatalf("sendMessage calls = %d, want 1", sends)
+		}
+	})
+}
+
+// A job that finds the message locked waits: it sends nothing, so its retry
+// cannot repeat the email.
+func TestTelegramPaymentLockedMessageMakesTheJobWait(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		h := newTelegramHarness(t, db, 0)
+		key := store.TelegramPaymentMessageKey{OrgID: "org_1", Mode: "test", ChatID: "-100123", PaymentID: "p123"}
+		now := h.e.clk.Now()
+		h.write(func(tx store.Tx) error {
+			_, locked, err := store.LockTelegramPaymentMessage(ctx, tx, key, now, now.Add(time.Hour))
+			if err == nil && !locked {
+				t.Fatal("first lock refused")
+			}
+			return err
+		})
+
+		h.emit("payment.created", "created")
+		h.run(1)
+		if calls := h.tg.take(); len(calls) != 0 || len(h.mailer.messages) != 0 {
+			t.Fatalf("locked job sent: telegram %+v, email %d", calls, len(h.mailer.messages))
+		}
+		var lastError string
+		if err := db.Read(ctx, func(q store.Querier) error {
+			return q.QueryRowContext(ctx, `SELECT COALESCE(last_error,'') FROM jobs WHERE kind = ?`, outbound.JobNotify).Scan(&lastError)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(lastError, "another job") {
+			t.Fatalf("job error = %q", lastError)
+		}
+
+		h.e.clk.Add(2 * time.Hour)
+		h.run(1)
+		wantCalls(t, h.tg.take(), telegramCall{Method: "sendMessage", Text: "⏳ " + telegramHead})
+		if len(h.mailer.messages) != 1 {
+			t.Fatalf("emails after retry = %d", len(h.mailer.messages))
+		}
+	})
+}
+
+// A job that outlived its lock must not free or overwrite the next job's.
+func TestTelegramPaymentExpiredLockCannotUnlockTheNextOne(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		h := newTelegramHarness(t, db, 0)
+		key := store.TelegramPaymentMessageKey{OrgID: "org_1", Mode: "test", ChatID: "-100123", PaymentID: "p123"}
+		lock := func(now time.Time) (int64, bool) {
+			var id int64
+			var locked bool
+			h.write(func(tx store.Tx) (err error) {
+				id, locked, err = store.LockTelegramPaymentMessage(ctx, tx, key, now, now.Add(2*time.Minute))
+				return err
+			})
+			return id, locked
+		}
+		first := at(16, 0)
+		lock(first)
+		second := first.Add(3 * time.Minute)
+		if _, locked := lock(second); !locked {
+			t.Fatal("expired lock was not taken over")
+		}
+		h.write(func(tx store.Tx) error {
+			return store.UnlockTelegramPaymentMessage(ctx, tx, key, 999, first.Add(2*time.Minute))
+		})
+		if _, locked := lock(second.Add(time.Second)); locked {
+			t.Fatal("the stale unlock freed the second job's lock")
+		}
+		h.write(func(tx store.Tx) error {
+			return store.UnlockTelegramPaymentMessage(ctx, tx, key, 777, second.Add(2*time.Minute))
+		})
+		if id, locked := lock(second.Add(time.Second)); !locked || id != 777 {
+			t.Fatalf("after the real unlock: id %d, locked %v", id, locked)
+		}
+	})
+}
+
+// The request URL holds the bot token, and job errors are logged and stored.
+func TestTelegramDeleteFailureKeepsTheTokenOutOfTheJobError(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		h := newTelegramHarness(t, db, 1)
+		h.deliver("payment.created", "created")
+		h.tg.failWith = errors.New("connection refused")
+		h.e.clk.Add(time.Hour)
+		h.run(1)
+		var lastError string
+		if err := db.Read(ctx, func(q store.Querier) error {
+			return q.QueryRowContext(ctx, `SELECT COALESCE(last_error,'') FROM jobs WHERE kind = ?`, outbound.JobDeleteTelegram).Scan(&lastError)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(lastError, "connection refused") || strings.Contains(lastError, "ABC_def-789") {
+			t.Fatalf("job error = %q", lastError)
 		}
 	})
 }

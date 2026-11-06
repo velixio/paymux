@@ -86,10 +86,12 @@ func LockTelegramPaymentMessage(ctx context.Context, tx Tx, k TelegramPaymentMes
 }
 
 // UnlockTelegramPaymentMessage records the message now showing the payment and
-// releases the lock.
-func UnlockTelegramPaymentMessage(ctx context.Context, tx Tx, k TelegramPaymentMessageKey, messageID int64) error {
+// releases the lock taken until until. A lock that expired and was taken over
+// is left alone.
+func UnlockTelegramPaymentMessage(ctx context.Context, tx Tx, k TelegramPaymentMessageKey, messageID int64, until time.Time) error {
 	_, err := tx.ExecContext(ctx, `UPDATE telegram_payment_messages SET message_id = ?, locked_until = 0
-		WHERE org_id = ? AND mode = ? AND chat_id = ? AND payment_id = ?`, messageID, k.OrgID, k.Mode, k.ChatID, k.PaymentID)
+		WHERE org_id = ? AND mode = ? AND chat_id = ? AND payment_id = ? AND locked_until = ?`,
+		messageID, k.OrgID, k.Mode, k.ChatID, k.PaymentID, ms(until))
 	return err
 }
 
