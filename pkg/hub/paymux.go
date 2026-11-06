@@ -110,7 +110,8 @@ func cancelDashboardStreamOnShutdown(ctx context.Context, next http.Handler) htt
 type App struct {
 	cfg     config.Config
 	log     *slog.Logger
-	emitter events.Emitter // nil means the outbound service
+	term    *logging.Terminal // the default logger's switches; nil with WithLogger
+	emitter events.Emitter    // nil means the outbound service
 
 	verifiers inbound.VerifierFunc
 	connHTTP  func(store.ProviderAccount, connector.Info, []string) *http.Client
@@ -161,7 +162,8 @@ func New(cfg config.Config, opts ...Option) (*App, error) {
 		o(a)
 	}
 	if a.log == nil {
-		a.log = logging.New(os.Stderr, slog.LevelInfo)
+		a.term = logging.NewTerminal(os.Stderr)
+		a.log = a.term.Logger()
 	}
 	return a, nil
 }
@@ -240,7 +242,7 @@ func (a *App) Start(ctx context.Context) error {
 		return err
 	}
 	// Warnings and errors are also kept in the database for later review. From
-	// here on a.log writes to both stdout and that log.
+	// here on a.log writes to both stderr and that log.
 	dbl := a.openDBLogs(ctx, db)
 	defer dbl.close()
 
@@ -248,6 +250,7 @@ func (a *App) Start(ctx context.Context) error {
 	if _, err := core.Bootstrap(ctx, db, set); err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
+	defer a.followTerminalSettings(ctx, set)()
 	box, err := secrets.NewBox(a.cfg.MasterKey, a.cfg.OldMasterKeys...)
 	if err != nil {
 		return fmt.Errorf("master key: %w", err)

@@ -188,7 +188,7 @@ func settingJSON(key string, posted []string) json.RawMessage {
 
 // Labels and groups are presentation metadata; validation remains in settings.
 func settingLabel(key string) string {
-	labels := map[string]string{"fx_provider": "Market rate provider", "checkout_mode": "Checkout mode", "payment_ttl": "Payment expiry", "duplicate_payment_action": "Duplicate payments", "billing_details": "Customer billing details", "pay_page_retry_buttons": "Checkout retry options", "gst_rate_bp": "GST rate", "sac_code": "SAC code", "issue_invoices": "GST invoicing", "b2cl_threshold": "B2CL reporting threshold", "mandate_afa_limit": "Mandate authentication limit", "upi_execution_windows": "UPI execution exclusions"}
+	labels := map[string]string{"fx_provider": "Market rate provider", "checkout_mode": "Checkout mode", "payment_ttl": "Payment expiry", "duplicate_payment_action": "Duplicate payments", "billing_details": "Customer billing details", "pay_page_retry_buttons": "Checkout retry options", "gst_rate_bp": "GST rate", "sac_code": "SAC code", "issue_invoices": "GST invoicing", "b2cl_threshold": "B2CL reporting threshold", "mandate_afa_limit": "Mandate authentication limit", "upi_execution_windows": "UPI execution exclusions", "terminal_log_level": "Terminal log level", "terminal_log_requests": "Log HTTP requests to terminal"}
 	if label, ok := labels[key]; ok {
 		return label
 	}
@@ -210,11 +210,13 @@ func settingGroup(key string) string {
 		return "Delivery and retention"
 	case "session_idle_hours", "session_max_days", "session_remember_days":
 		return "Sign-in sessions"
+	case "terminal_log_level", "terminal_log_requests":
+		return "Terminal logging"
 	default:
 		return "Invoices and tax"
 	}
 }
 func sortSettingRows(rows []settingRow) {
-	order := map[string]int{"Payment behavior": 0, "Routing": 1, "Subscriptions and recovery": 2, "Invoices and tax": 3, "Reporting": 4, "Delivery and retention": 5, "Appearance and language": 6, "Sign-in sessions": 7}
+	order := map[string]int{"Payment behavior": 0, "Routing": 1, "Subscriptions and recovery": 2, "Invoices and tax": 3, "Reporting": 4, "Delivery and retention": 5, "Appearance and language": 6, "Sign-in sessions": 7, "Terminal logging": 8}
 	sort.SliceStable(rows, func(i, j int) bool { return order[rows[i].Group] < order[rows[j].Group] })
 }
