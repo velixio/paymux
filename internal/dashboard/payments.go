@@ -72,6 +72,10 @@ type payDetail struct {
 	Currency                                                                                              string
 	Customer                                                                                              *customerDetail
 	Risk                                                                                                  *riskView
+	Glance                                                                                                glanceView
+	Timeline                                                                                              []timelineItem
+	RiskPanel                                                                                             *riskView
+	NoTries                                                                                               bool
 	Flags                                                                                                 []string
 	Attempts                                                                                              []attemptRow
 	ProviderAttempts                                                                                      []providerAttemptRow
@@ -475,6 +479,25 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	for _, ev := range events {
 		det.Events = append(det.Events, eventRow{ID: ev.ID, Type: ev.Type, Object: ev.ObjectType + " " + ev.ObjectID, Version: ev.ObjectVersion, At: d.fmtTime(ev.CreatedAt)})
 	}
+	targets := make(map[string][]outbound.ResendTarget, len(events))
+	for _, ev := range events {
+		eventTargets, err := d.o.Outbound.ResendTargets(ctx, ev.ID)
+		if err != nil {
+			d.fail(w, err)
+			return
+		}
+		// An endpoint this event never went to is only of use to someone who
+		// can send to it. Its URL isn't payment data.
+		for _, t := range eventTargets {
+			if !t.New || det.CanReplay {
+				targets[ev.ID] = append(targets[ev.ID], t)
+			}
+		}
+	}
+	timeline := timelineData{Payment: p, Attempts: attempts, Tries: providerAttempts, Ledger: ledger, Refunds: refunds,
+		Events: events, Deliveries: dels, Targets: targets, Provider: provider, FmtTime: d.fmtTime}
+	det.Glance, det.Timeline = buildGlance(timeline), buildTimeline(timeline)
+	det.RiskPanel, det.NoTries = buildRiskPanel(timeline), noTries(timeline)
 	v := d.shell(r, s, "payments", "Payment "+p.ID)
 	v.Pay, v.Error, v.Notice = det, errMsg, notice
 	d.render(w, status, "dash_payment", v)
