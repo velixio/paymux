@@ -73,6 +73,17 @@ These are organisation settings (the dashboard's *Settings* page), not environme
 | `session_max_days` | `7` (1 to 90) | A session ends this many days after sign-in, however active. |
 | `session_remember_days` | `30` (0 to 90) | With *Remember me* ticked, both limits become this many days. `0` removes the checkbox; sessions already remembered fall back to the two limits above. |
 
+## Terminal logging
+
+These are organisation settings (the dashboard's *Settings* page, under *Terminal logging*), not environment variables. Only an admin can change them, and a change applies within a few seconds without a restart.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `terminal_log_level` | `info` (`error`, `warn`, `info` or `debug`) | The lowest level the server prints to its terminal (stderr, so also journald and `docker logs`). Request lines are `info`, so `warn` and `error` hide them all, failed ones included. `error` also hides warnings about the logs themselves, such as dropped rows or failed OTLP shipping; `paymux_logs_dropped_total` still counts dropped rows. |
+| `terminal_log_requests` | on | Print a line for each successful HTTP request, dashboard pages included. Off still prints failed requests (status 400 and up) while the level is `info` or `debug`. |
+
+They apply to the whole server: with more than one organisation, the first organisation's values are used. Lines printed before the database opens at startup are always at `info`. They do not change what the Logs page keeps (`PAYMUX_DB_LOG_LEVEL`). A program that embeds the hub and passes its own logger with `WithLogger` controls its own output, and these settings have no effect on it.
+
 ## Revenue reporting
 
 This is an organisation setting (the dashboard's *Settings* page), not an environment variable.

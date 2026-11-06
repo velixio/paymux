@@ -226,7 +226,7 @@ A live provider account whose stored config is a sandbox one (a sandbox or test 
 
 ## Logs
 
-*Logs* in the dashboard (menu: Operations) is where to look when something failed: it keeps the **errors and warnings** of the hub, so you can review and fix them later. Info and debug lines still go only to stdout and journald. It needs the `logs.read` permission: admins have it, and a custom role can be given it under *Roles*.
+*Logs* in the dashboard (menu: Operations) is where to look when something failed: it keeps the **errors and warnings** of the hub, so you can review and fix them later. Info and debug lines still go only to stderr and journald; what is printed there is set under *Settings*, *Terminal logging* ([configuration](configuration.md#terminal-logging)). It needs the `logs.read` permission: admins have it, and a custom role can be given it under *Roles*.
 
 **What is kept**
 
@@ -251,7 +251,7 @@ A live provider account whose stored config is a sandbox one (a sandbox or test 
 | `PAYMUX_OTLP_LOGS_ENDPOINT` | unset | When set, the same redacted rows are also posted to an OpenTelemetry collector over OTLP/HTTP (JSON), for example `http://collector:4318/v1/logs`. The address may be private. Unset means off. |
 | `PAYMUX_OTLP_LOGS_HEADERS` | unset | `Name=value,Name=value` sent with every OTLP request (an auth token). Treated as a secret. |
 
-Rows are written in batches by a queue. If the queue is ever full (a very slow disk), rows are dropped and counted: `paymux_logs_dropped_total` on `/metrics`, and a line "log rows dropped" on stdout every minute. `paymux_logs_stored_total`, `paymux_logs_write_failures_total` and `paymux_logs_queue_depth` complete the picture.
+Rows are written in batches by a queue. If the queue is ever full (a very slow disk), rows are dropped and counted: `paymux_logs_dropped_total` on `/metrics`, and a warning "log rows dropped" on stderr every minute (hidden while `terminal_log_level` is `error`, so watch the metric). `paymux_logs_stored_total`, `paymux_logs_write_failures_total` and `paymux_logs_queue_depth` complete the picture.
 
 ## Themes and languages
 

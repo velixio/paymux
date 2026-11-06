@@ -24,7 +24,7 @@ func TestAuditH3AdminOnlySettings(t *testing.T) {
 		tok := csrfOf(t, e.pageOK(c, "/dashboard/settings"))
 
 		for key, val := range map[string]string{"session_idle_hours": "720", "session_max_days": "90", "session_remember_days": "90",
-			"einvoice_irp_keys": "[]"} {
+			"einvoice_irp_keys": "[]", "terminal_log_level": "debug", "terminal_log_requests": "false"} {
 			if r, _ := e.post(c, "/dashboard/settings/"+key, url.Values{"csrf": {tok}, "value": {val}}); r.StatusCode != 403 {
 				t.Errorf("custom role setting %s: %d, want 403", key, r.StatusCode)
 			}

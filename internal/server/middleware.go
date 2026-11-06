@@ -15,6 +15,7 @@ import (
 
 	"github.com/velixio/paymux/internal/ids"
 	"github.com/velixio/paymux/internal/logctx"
+	"github.com/velixio/paymux/internal/logging"
 	"github.com/velixio/paymux/internal/metrics"
 )
 
@@ -186,7 +187,7 @@ func accessLog(next http.Handler, log *slog.Logger, requests *metrics.CounterVec
 		if routineStaticRequest(r, sw.status) {
 			return
 		}
-		log.LogAttrs(r.Context(), slog.LevelInfo, "http request",
+		log.LogAttrs(r.Context(), slog.LevelInfo, logging.HTTPRequestMsg,
 			slog.String("request_id", RequestID(r.Context())),
 			slog.String("method", r.Method),
 			slog.String("route", route),

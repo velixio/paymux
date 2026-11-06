@@ -31,9 +31,10 @@ type Def struct {
 }
 
 // adminOnlyKeys are the settings only the built-in admin may change: they set
-// how long a stolen session lives and which keys vouch for an e-invoice, so a
-// custom role holding settings.write must not reach them.
-var adminOnlyKeys = []string{"session_idle_hours", "session_max_days", "session_remember_days", "einvoice_irp_keys"}
+// how long a stolen session lives, which keys vouch for an e-invoice and what
+// the whole server prints to its terminal, so a custom role holding
+// settings.write must not reach them.
+var adminOnlyKeys = []string{"session_idle_hours", "session_max_days", "session_remember_days", "einvoice_irp_keys", "terminal_log_level", "terminal_log_requests"}
 
 // AdminOnly reports whether key may be changed by an admin only.
 func AdminOnly(key string) bool { return slices.Contains(adminOnlyKeys, key) }
@@ -168,6 +169,10 @@ var defs = []Def{
 	{"session_idle_hours", `12`, LevelOrg, intRange(1, 720)},
 	{"session_max_days", `7`, LevelOrg, intRange(1, 90)},
 	{"session_remember_days", `30`, LevelOrg, intRange(0, 90)},
+	// What the server prints to its terminal (stderr). The Logs page does not
+	// follow these: it has PAYMUX_DB_LOG_LEVEL.
+	{"terminal_log_level", `"info"`, LevelOrg, oneOf("error", "warn", "info", "debug")},
+	{"terminal_log_requests", `true`, LevelOrg, isBool},
 }
 
 var clockRE = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)

@@ -108,6 +108,10 @@ var metas = map[string]Meta{
 		Help: "A dashboard sign-in ends this many days after it began, however active (unless Remember me was ticked)."},
 	"session_remember_days": {Kind: KindInt, Unit: "days", Min: 1, Max: 90, ZeroOK: true,
 		Help: "With Remember me ticked, a sign-in lasts this many days from the sign-in and ends after this many days without a request. 0 removes the checkbox."},
+	"terminal_log_level": {Kind: KindEnum, Options: []string{"error", "warn", "info", "debug"},
+		Help: "The lowest level the server prints to its terminal, for the whole server. Request lines are info, so warn and error hide them all. The Logs page is not affected."},
+	"terminal_log_requests": {Kind: KindBool,
+		Help: "Print a line to the terminal for each successful HTTP request, dashboard pages included. Failed requests (status 400 and up) still print. The Logs page is not affected."},
 	"audit_retention_days": {Kind: KindInt, Unit: "days", Min: 365, ZeroOK: true,
 		Help: "How long audit log entries are kept. 0 keeps them forever; otherwise at least 365 days (PCI DSS 10.5.1)."},
 }
