@@ -24,6 +24,7 @@
 </dl>
 {{if .Converted}}<p class="muted">Amounts in other currencies are converted to {{.Currency}} at the stored daily rate.{{if .MarketRates}} Some use indicative market rates, not your RBI / FBIL rates.{{end}}{{if .Estimated}} Includes estimated conversions (no rate stored for some days). <a href="/dashboard/fx">FX rates</a>{{end}}</p>{{end}}
 {{if .Excluded}}<p class="muted">Not included: {{range $i, $x := .Excluded}}{{if $i}}, {{end}}{{$x}}{{end}} &mdash; no exchange rate stored. <a href="/dashboard/fx">Add rates</a>.</p>{{end}}
+{{if .PrevExcluded}}<p class="muted">Previous period leaves out: {{range $i, $x := .PrevExcluded}}{{if $i}}, {{end}}{{$x}}{{end}} &mdash; no exchange rate stored, so the change figures compare against less. <a href="/dashboard/fx">Add rates</a>.</p>{{end}}
 <div class="table-scroll"><table id="revenue-data" class="grid" data-currency="{{.Currency}}" data-exp="{{.Exp}}" data-bucket="{{.Bucket}}" data-converted="{{.Converted}}" data-estimated="{{.Estimated}}">
 <thead><tr><th>Period</th><th>Gross</th><th>Refunds</th><th>Net</th></tr></thead>
 <tbody>{{range .Points}}<tr data-start="{{.StartS}}" data-gross="{{.Gross}}" data-refunds="{{.Refunds}}" data-prev-gross="{{.PrevGross}}" data-prev-refunds="{{.PrevRefunds}}"><td>{{.Label}}</td><td>{{.GrossS}}</td><td>{{.RefundsS}}</td><td>{{.NetS}}</td></tr>{{else}}<tr><td colspan="4" class="muted">No activity in this range.</td></tr>{{end}}</tbody>

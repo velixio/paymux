@@ -691,3 +691,23 @@ func TestFXProviderSettingIsEditable(t *testing.T) {
 		}
 	})
 }
+
+// A currency with no rate in the previous period makes the change figures
+// compare against a smaller total, so the page must say so.
+func TestRevenueNamesPreviousPeriodExclusions(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		vw := e.roleClient("viewer")
+		app := e.seedApp("alpha")
+		e.seedPayment("pay_1", app.ID, "live", "succeeded", "", 1, e.d15(10))
+		e.seedLedger(
+			ledRow{"pay_1", "charge", "USD", 1000, e.d15(14)},
+			ledRow{"pay_1", "charge", "EUR", 2000, e.d15(5)}, // previous period, no rate
+		)
+		e.setDefaultCurrency("USD")
+
+		body := e.pageOK(vw, "/dashboard/overview?range=7d")
+		has(t, body, "Previous period leaves out: 20.00 EUR")
+		lacks(t, body, "Not included")
+	})
+}

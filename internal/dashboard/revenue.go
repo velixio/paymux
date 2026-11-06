@@ -175,6 +175,7 @@ type revenueView struct {
 	Estimated                             bool     // some conversion used a non-same-day rate
 	MarketRates                           bool     // some conversion used an indicative market rate
 	Excluded                              []string // gross of the currencies left out for want of a rate, formatted
+	PrevExcluded                          []string // the same for the previous period, which the change figures compare against
 	Points                                []revenuePoint
 	Gross, Refunds, Net                   int64
 	GrossS, RefundsS, NetS                string
@@ -266,15 +267,18 @@ func (d *Dashboard) revenue(ctx context.Context, q store.Querier, org, mode stri
 		if err != nil {
 			return v, err
 		}
-		var excluded map[string]int64
+		var excluded, prevExcluded map[string]int64
 		if cur, excluded, err = c.convert(rows); err != nil {
 			return v, err
 		}
-		if prev, _, err = c.convert(prevRows); err != nil {
+		if prev, prevExcluded, err = c.convert(prevRows); err != nil {
 			return v, err
 		}
 		for _, currency := range sortedKeys(excluded) {
 			v.Excluded = append(v.Excluded, fmtMoney(excluded[currency], currency))
+		}
+		for _, currency := range sortedKeys(prevExcluded) {
+			v.PrevExcluded = append(v.PrevExcluded, fmtMoney(prevExcluded[currency], currency))
 		}
 		v.Converted, v.Estimated, v.MarketRates = c.foreign, c.estimated, c.market
 	}
