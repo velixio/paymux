@@ -196,6 +196,9 @@ func (s *stripe) ParseWebhook(_ context.Context, req connector.WebhookRequest) (
 			return nil, nil // not a Paymux checkout, such as a provider-managed invoice
 		}
 		snap := pi.snapshot()
+		if snap.CreatedAt == 0 {
+			snap.CreatedAt = n.OccurredAt
+		}
 		n.Kind, n.Payment = connector.NotifyPayment, &snap
 	case ev.Type == "refund.created" || ev.Type == "refund.updated" || ev.Type == "refund.failed" || ev.Type == "charge.refund.updated":
 		var w refundWire

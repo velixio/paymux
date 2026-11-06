@@ -184,6 +184,14 @@ func UpsertProviderPaymentAttempt(ctx context.Context, tx Tx, p ProviderPaymentA
 		if _, err := tx.ExecContext(ctx, standIn, p.ProviderAccountID, p.ProviderPaymentID, p.ProviderPaymentID); err != nil {
 			return err
 		}
+		if p.Status == "captured" {
+			// The capture now has its own row, so what stays only records the failure.
+			if _, err := tx.ExecContext(ctx, `UPDATE provider_payment_attempts SET status = 'failed'
+				WHERE provider_account_id = ? AND try_id = ? AND provider_payment_id = ? AND status = 'captured'`,
+				p.ProviderAccountID, p.ProviderPaymentID, p.ProviderPaymentID); err != nil {
+				return err
+			}
+		}
 	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO provider_payment_attempts
 		(provider_account_id, try_id, provider_payment_id, attempt_id, provider_order_id, status, method, failure_code,

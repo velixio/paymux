@@ -253,3 +253,27 @@ func TestRecordTryKeepsNameInBounds(t *testing.T) {
 		}
 	})
 }
+
+// A stand-in kept for its failure can't also stand for the capture that followed.
+func TestCapturedStandInWithFailureIsNotPaidTwice(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		p := e.payment(50000)
+		a := e.attempt(p.ID)
+		upsertTry(t, e, store.ProviderPaymentAttempt{ProviderAccountID: a.ProviderAccountID, ProviderPaymentID: "pi_1", AttemptID: a.ID, Status: "captured", FailureCode: "card_declined"})
+		upsertTry(t, e, store.ProviderPaymentAttempt{ProviderAccountID: a.ProviderAccountID, ProviderPaymentID: "pi_1", TryID: "ch_2", AttemptID: a.ID, Status: "captured"})
+		got := triesOf(t, e, p.ID)
+		if len(got) != 2 {
+			t.Fatalf("tries = %+v", got)
+		}
+		for _, try := range got {
+			want := "failed"
+			if try.TryID == "ch_2" {
+				want = "captured"
+			}
+			if try.Status != want {
+				t.Errorf("try %s status = %s, want %s", try.TryID, try.Status, want)
+			}
+		}
+	})
+}

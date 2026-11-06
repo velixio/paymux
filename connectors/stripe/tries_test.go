@@ -199,3 +199,67 @@ func TestSessionSnapshotCarriesTryDetails(t *testing.T) {
 		t.Fatalf("snap = %+v", snap)
 	}
 }
+
+// Stripe lists newest first, so stopping at one page would lose the oldest tries.
+func TestFetchPaymentAttemptsReadsEveryPage(t *testing.T) {
+	f := newFake()
+	f.reply("GET /v1/checkout/sessions/cs_test_1", 200, sessionJSON("cs_test_1", "pay_ref_01", "open", "unpaid", intentJSON("pi_3A1", "requires_payment_method", "pay_ref_01", nil)))
+	f.on("GET /v1/charges", func(w http.ResponseWriter, c call) {
+		page := map[string]any{"has_more": true, "data": []any{map[string]any{"id": "ch_new", "payment_intent": "pi_3A1", "status": "failed"}}}
+		if c.Query.Get("starting_after") == "ch_new" {
+			page = map[string]any{"has_more": false, "data": []any{map[string]any{"id": "ch_old", "payment_intent": "pi_3A1", "status": "failed"}}}
+		}
+		_ = json.NewEncoder(w).Encode(page)
+	})
+	got, err := newConn(t, f).FetchPaymentAttempts(bg, connector.PaymentRef{ProviderOrderID: "cs_test_1", ProviderRef: "pay_ref_01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].TryID != "ch_new" || got[1].TryID != "ch_old" {
+		t.Fatalf("got = %+v", got)
+	}
+}
+
+// The first snapshot of a try fixes its time, and the intent's creation time
+// would put every retry at the start of the payment.
+func TestTryTimeIsNotTheIntents(t *testing.T) {
+	const created, charged = int64(1760000000), int64(1760000900)
+	t.Run("the charge of the try", func(t *testing.T) {
+		pi := paymentIntent{ID: "pi_1", Status: "succeeded", Created: created, LatestCharge: expandable[charge]{ID: "ch_1", Obj: &charge{ID: "ch_1", Created: charged}}}
+		if got := pi.snapshot().CreatedAt; got != charged*1000 {
+			t.Errorf("CreatedAt = %d", got)
+		}
+	})
+	t.Run("a try with no charge to read", func(t *testing.T) {
+		pi := paymentIntent{ID: "pi_1", Status: "requires_payment_method", Created: created, LastPayError: &paymentError{Code: "card_declined", PaymentMethod: &errorPaymentMethod{ID: "pm_1"}}}
+		if got := pi.snapshot().CreatedAt; got != 0 {
+			t.Errorf("CreatedAt = %d, want it left unknown", got)
+		}
+	})
+	t.Run("no try yet", func(t *testing.T) {
+		pi := paymentIntent{ID: "pi_1", Status: "requires_payment_method", Created: created}
+		if got := pi.snapshot().CreatedAt; got != created*1000 {
+			t.Errorf("CreatedAt = %d", got)
+		}
+	})
+}
+
+func TestFailureEventDatesItsTry(t *testing.T) {
+	var ev map[string]any
+	if err := json.Unmarshal(fixture(t, "event_payment_intent_failed"), &ev); err != nil {
+		t.Fatal(err)
+	}
+	ev["created"] = nowUnix
+	ev["data"].(map[string]any)["object"].(map[string]any)["latest_charge"] = nil
+	body, err := json.Marshal(ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ns, err := newConn(t, newFake()).ParseWebhook(bg, hook(body, testSecret, nowUnix))
+	if err != nil || len(ns) != 1 {
+		t.Fatalf("ns = %+v err = %v", ns, err)
+	}
+	if got := ns[0].Payment.CreatedAt; got != int64(nowUnix)*1000 {
+		t.Errorf("CreatedAt = %d", got)
+	}
+}

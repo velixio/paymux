@@ -170,6 +170,13 @@ func (pi paymentIntent) tryID() string {
 func (pi paymentIntent) addTry(snap *connector.PaymentSnapshot) {
 	snap.TryID = pi.tryID()
 	c := chargeOf(&pi)
+	switch {
+	case snap.TryID == "": // no go at paying yet: the row only stands in
+	case c != nil && c.ID == snap.TryID && c.Created > 0:
+		snap.CreatedAt = ms(c.Created)
+	default:
+		snap.CreatedAt = 0 // the intent's own time would date every retry at its start
+	}
 	snap.Risk = chargeRisk(c)
 	snap.ThreeDS = chargeThreeDS(c)
 	if e := pi.LastPayError; e != nil && pi.Status != "succeeded" {
@@ -351,14 +358,22 @@ func (s *stripe) FetchPaymentAttempts(ctx context.Context, ref connector.Payment
 	if sess.PaymentIntent.ID == "" {
 		return nil, nil
 	}
-	var l list[charge]
-	q := url.Values{"payment_intent": {sess.PaymentIntent.ID}, "limit": {"100"}}
-	if err := s.api.do(ctx, "GET", "/v1/charges", q, nil, &l, ""); err != nil {
-		return nil, err
+	var charges []charge
+	q := url.Values{"payment_intent": {sess.PaymentIntent.ID}, "limit": {strconv.Itoa(listPageSize)}}
+	for {
+		var l list[charge]
+		if err := s.api.do(ctx, "GET", "/v1/charges", q, nil, &l, ""); err != nil {
+			return nil, err
+		}
+		charges = append(charges, l.Data...)
+		if !l.HasMore || len(l.Data) == 0 {
+			break
+		}
+		q.Set("starting_after", l.Data[len(l.Data)-1].ID)
 	}
-	out := make([]connector.PaymentSnapshot, 0, len(l.Data))
-	for i := range l.Data {
-		c := &l.Data[i]
+	out := make([]connector.PaymentSnapshot, 0, len(charges))
+	for i := range charges {
+		c := &charges[i]
 		if c.PaymentIntent.ID != sess.PaymentIntent.ID {
 			continue // a list filter is not proof of ownership
 		}
