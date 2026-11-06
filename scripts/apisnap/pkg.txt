@@ -12,6 +12,12 @@ const (
 )
 
 const (
+	ThreeDSPassed      = "passed"
+	ThreeDSFailed      = "failed"
+	ThreeDSNotVerified = "not_verified"
+)
+
+const (
 	CheckMatch   = "match"
 	CheckNoMatch = "no_match"
 )
@@ -121,6 +127,7 @@ type CardDetails struct {
 	International *bool  `json:"international,omitempty"`
 	EMI           *bool  `json:"emi,omitempty"`
 	SubType       string `json:"sub_type,omitempty"`
+	Name          string `json:"name,omitempty"`
 }
 
 type ChargeRequest struct {
@@ -478,6 +485,8 @@ type PaymentSnapshot struct {
 	ErrorCode         string               `json:"error_code,omitempty"`
 	ErrorMessage      string               `json:"error_message,omitempty"`
 	CreatedAt         int64                `json:"created_at,omitempty"`
+	TryID             string               `json:"try_id,omitempty"`
+	ThreeDS           string               `json:"three_d_secure_status,omitempty"`
 }
 
 type PaymentStatus string
