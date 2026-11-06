@@ -23,6 +23,9 @@ type Attempt struct {
 	// checkout stops being worth showing. Both are set by SetAttemptCheckout.
 	NextAction        string
 	CheckoutExpiresAt time.Time
+	// FinishBy is when a started attempt stops holding its payment open. Zero
+	// for a renewal or an older attempt, which keep the 72h polling window.
+	FinishBy time.Time
 }
 
 // ProviderPaymentAttempt is one provider-side payment made against a Paymux
@@ -44,15 +47,15 @@ type ProviderPaymentAttempt struct {
 const attemptCols = `id, org_id, mode, payment_id, provider_account_id, provider_ref, COALESCE(provider_order_id,''),
 	COALESCE(provider_payment_id,''), status, COALESCE(method,''), COALESCE(failure_code,''),
 	COALESCE(failure_message,''), amount_received, COALESCE(currency_received,''), COALESCE(method_details,'{}'), COALESCE(risk_details,'{}'), duplicate, created_at, updated_at,
-	COALESCE(next_action,''), COALESCE(checkout_expires_at,0)`
+	COALESCE(next_action,''), COALESCE(checkout_expires_at,0), COALESCE(finish_by,0)`
 
 func scanAttempt(row interface{ Scan(...any) error }) (Attempt, error) {
 	var a Attempt
 	var dup int
-	var created, updated, checkoutExp int64
+	var created, updated, checkoutExp, finishBy int64
 	err := row.Scan(&a.ID, &a.OrgID, &a.Mode, &a.PaymentID, &a.ProviderAccountID, &a.ProviderRef, &a.ProviderOrderID,
 		&a.ProviderPaymentID, &a.Status, &a.Method, &a.FailureCode, &a.FailureMessage, &a.AmountReceived,
-		&a.CurrencyReceived, &a.MethodDetails, &a.RiskDetails, &dup, &created, &updated, &a.NextAction, &checkoutExp)
+		&a.CurrencyReceived, &a.MethodDetails, &a.RiskDetails, &dup, &created, &updated, &a.NextAction, &checkoutExp, &finishBy)
 	if err != nil {
 		return Attempt{}, notFound(err)
 	}
@@ -61,6 +64,9 @@ func scanAttempt(row interface{ Scan(...any) error }) (Attempt, error) {
 	if checkoutExp != 0 {
 		a.CheckoutExpiresAt = fromMS(checkoutExp)
 	}
+	if finishBy != 0 {
+		a.FinishBy = fromMS(finishBy)
+	}
 	return a, nil
 }
 
@@ -68,12 +74,12 @@ func scanAttempt(row interface{ Scan(...any) error }) (Attempt, error) {
 func InsertAttempt(ctx context.Context, tx Tx, a Attempt) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO payment_attempts (id, org_id, mode, payment_id, provider_account_id,
 		provider_ref, provider_order_id, provider_payment_id, status, method, failure_code, failure_message,
-		amount_received, currency_received, method_details, risk_details, duplicate, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		amount_received, currency_received, method_details, risk_details, duplicate, created_at, updated_at, finish_by)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		a.ID, a.OrgID, a.Mode, a.PaymentID, a.ProviderAccountID, a.ProviderRef, nullIfEmpty(a.ProviderOrderID),
 		nullIfEmpty(a.ProviderPaymentID), a.Status, nullIfEmpty(a.Method), nullIfEmpty(a.FailureCode),
 		nullIfEmpty(a.FailureMessage), a.AmountReceived, nullIfEmpty(a.CurrencyReceived), nonEmptyJSON(a.MethodDetails), nonEmptyJSON(a.RiskDetails), boolInt(a.Duplicate),
-		ms(a.CreatedAt), ms(a.UpdatedAt))
+		ms(a.CreatedAt), ms(a.UpdatedAt), zeroMS(a.FinishBy))
 	return err
 }
 

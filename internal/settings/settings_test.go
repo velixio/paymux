@@ -49,7 +49,7 @@ func TestResolveFallsBackToBuiltInDefault(t *testing.T) {
 			t.Fatalf("got %+v", v)
 		}
 		var ttl int
-		if err := resolve(t, s, app, "payment_ttl").Decode(&ttl); err != nil || ttl != 60 {
+		if err := resolve(t, s, app, "payment_ttl").Decode(&ttl); err != nil || ttl != 30 {
 			t.Fatalf("payment_ttl=%d err=%v", ttl, err)
 		}
 	})
@@ -61,7 +61,7 @@ func TestResolveOrder(t *testing.T) {
 		if err := s.SeedOrg(ctx, store.DefaultOrgID); err != nil {
 			t.Fatal(err)
 		}
-		if v := resolve(t, s, app, "payment_ttl"); v.Source != settings.SourceOrg || string(v.Raw) != "60" {
+		if v := resolve(t, s, app, "payment_ttl"); v.Source != settings.SourceOrg || string(v.Raw) != "30" {
 			t.Fatalf("seeded: %+v", v)
 		}
 		if err := s.SetOrg(ctx, admin, store.DefaultOrgID, "payment_ttl", json.RawMessage(`120`)); err != nil {
@@ -227,9 +227,9 @@ func TestSetWritesAuditEntry(t *testing.T) {
 		if len(rows) != 3 {
 			t.Fatalf("rows=%+v", rows)
 		}
-		// Newest first: reset, update 45->50, first update (before is the inherited org value 60).
+		// Newest first: reset, update 45->50, first update (before is the inherited org value 30).
 		want := []struct{ action, before, after string }{
-			{"setting.reset", "50", ""}, {"setting.update", "45", "50"}, {"setting.update", "60", "45"},
+			{"setting.reset", "50", ""}, {"setting.update", "45", "50"}, {"setting.update", "30", "45"},
 		}
 		for i, w := range want {
 			r := rows[i]

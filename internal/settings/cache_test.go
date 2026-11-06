@@ -55,15 +55,15 @@ func TestResolveIsCachedUntilTheTTLPasses(t *testing.T) {
 		s.SetClock(func() time.Time { return now })
 		s.SetCacheTTL(5 * time.Second)
 
-		if got := ttlOf(t, s, app); got != 60 {
+		if got := ttlOf(t, s, app); got != 30 {
 			t.Fatalf("default payment_ttl %d", got)
 		}
 		writeBehind(t, db, "payment_ttl", "90")
-		if got := ttlOf(t, s, app); got != 60 {
+		if got := ttlOf(t, s, app); got != 30 {
 			t.Errorf("a write behind the cache's back showed through inside the TTL: %d", got)
 		}
 		now = now.Add(4 * time.Second)
-		if got := ttlOf(t, s, app); got != 60 {
+		if got := ttlOf(t, s, app); got != 30 {
 			t.Errorf("still inside the TTL: %d", got)
 		}
 		now = now.Add(2 * time.Second)
@@ -77,7 +77,7 @@ func TestSettingChangesInvalidateTheCache(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		s, app := setup(t, db)
 		s.SetCacheTTL(time.Hour)
-		if got := ttlOf(t, s, app); got != 60 {
+		if got := ttlOf(t, s, app); got != 30 {
 			t.Fatal(got)
 		}
 		// An org change is visible at once, for the org and for the app.
@@ -116,7 +116,7 @@ func TestCachedResolveWithUsesTheCallersReader(t *testing.T) {
 				return err
 			}
 			var n int
-			if err := v.Decode(&n); err != nil || n != 60 {
+			if err := v.Decode(&n); err != nil || n != 30 {
 				t.Errorf("miss: %d %v", n, err)
 			}
 			return nil
@@ -135,7 +135,7 @@ func TestCachedResolveWithUsesTheCallersReader(t *testing.T) {
 			t.Fatalf("a hit must not query: %d queries, %v", calls, err)
 		}
 		var n int
-		if v.Decode(&n) != nil || n != 60 {
+		if v.Decode(&n) != nil || n != 30 {
 			t.Errorf("hit: %d", n)
 		}
 		// Uncached resolution still sees a transaction's own writes.
@@ -180,7 +180,7 @@ func TestCacheErrorsAreNotCached(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := ttlOf(t, s, "app_missing"); got != 60 {
+		if got := ttlOf(t, s, "app_missing"); got != 30 {
 			t.Errorf("after the app exists: %d", got)
 		}
 	})

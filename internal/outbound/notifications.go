@@ -138,6 +138,16 @@ func (s *Service) handleNotification(ctx context.Context, raw json.RawMessage) e
 	if second != "" {
 		text += "\n" + second
 	}
+	// Lock before anything is sent: a job that has to wait is retried, and must
+	// not have sent its email by then.
+	var lock *telegramPaymentLock
+	if cfg.TelegramEnabled && updatesTelegramPaymentMessage(ev) {
+		lock, err = s.lockTelegramPaymentMessage(ctx, ev, cfg.TelegramChatID)
+		if err != nil {
+			return err
+		}
+		defer s.unlockTelegramPaymentMessage(ctx, lock)
+	}
 	var errs []error
 	if cfg.EmailEnabled {
 		if err := s.mailer.Send(ctx, notify.Message{To: []string{cfg.Email}, Subject: "[Paymux] " + ev.Type, Text: text + "\n"}); err != nil {
@@ -145,42 +155,94 @@ func (s *Service) handleNotification(ctx context.Context, raw json.RawMessage) e
 		}
 	}
 	if cfg.TelegramEnabled {
-		token, err := s.box.Open(cfg.TelegramTokenEnc, secrets.AADNotificationTelegram(ev.OrgID, ev.Mode))
-		if err != nil {
+		if err := s.deliverTelegram(ctx, ev, cfg, text, lock); err != nil {
 			errs = append(errs, err)
-		} else {
-			body, _ := json.Marshal(map[string]string{"chat_id": cfg.TelegramChatID, "text": text})
-			target := "https://api.telegram.org/bot" + string(token) + "/sendMessage"
-			req, _ := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
-			req.Header.Set("Content-Type", "application/json")
-			resp, err := s.notifyClient.Do(req)
-			if err != nil {
-				var urlErr *url.Error
-				if errors.As(err, &urlErr) {
-					err = urlErr.Err
-				}
-				errs = append(errs, fmt.Errorf("telegram request failed: %w", err))
-			} else {
-				responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-				resp.Body.Close()
-				if resp.StatusCode/100 != 2 {
-					errs = append(errs, fmt.Errorf("telegram http %d", resp.StatusCode))
-				} else if cfg.TelegramDeleteAfterHours > 0 {
-					var sent struct {
-						Result struct {
-							MessageID int64 `json:"message_id"`
-						} `json:"result"`
-					}
-					if json.Unmarshal(responseBody, &sent) != nil || sent.Result.MessageID == 0 {
-						s.log.Warn("telegram response lacked message id; automatic deletion was not scheduled", "event_id", ev.ID)
-					} else if err := s.scheduleTelegramDelete(ctx, ev, cfg, sent.Result.MessageID); err != nil {
-						errs = append(errs, err)
-					}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// deliverTelegram posts text, or, with a lock, updates the payment's message.
+// A message Telegram refuses to edit, because it was deleted or is from another
+// bot, is posted again.
+func (s *Service) deliverTelegram(ctx context.Context, ev store.EventRow, cfg store.NotificationConfig, text string, lock *telegramPaymentLock) error {
+	token, err := s.box.Open(cfg.TelegramTokenEnc, secrets.AADNotificationTelegram(ev.OrgID, ev.Mode))
+	if err != nil {
+		return err
+	}
+	paymentID := ""
+	if lock != nil {
+		rendered, ok, err := s.telegramPaymentText(ctx, ev)
+		if err != nil {
+			return err
+		}
+		if ok {
+			text, paymentID = rendered, ev.ObjectID
+			if lock.messageID != 0 {
+				status, response, err := s.telegramCall(ctx, string(token), "editMessageText",
+					map[string]any{"chat_id": cfg.TelegramChatID, "message_id": lock.messageID, "text": text})
+				switch {
+				case err != nil:
+					return err
+				case status/100 == 2, status == http.StatusBadRequest && bytes.Contains(response, []byte("message is not modified")):
+					return nil
+				case status != http.StatusBadRequest:
+					return fmt.Errorf("telegram http %d", status)
 				}
 			}
 		}
 	}
-	return errors.Join(errs...)
+	status, response, err := s.telegramCall(ctx, string(token), "sendMessage", map[string]any{"chat_id": cfg.TelegramChatID, "text": text})
+	if err != nil {
+		return err
+	}
+	if status/100 != 2 {
+		return fmt.Errorf("telegram http %d", status)
+	}
+	if paymentID == "" && cfg.TelegramDeleteAfterHours == 0 {
+		return nil
+	}
+	var sent struct {
+		Result struct {
+			MessageID int64 `json:"message_id"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(response, &sent) != nil || sent.Result.MessageID == 0 {
+		s.log.Warn("telegram response lacked message id; the message cannot be updated or deleted later", "event_id", ev.ID)
+		return nil
+	}
+	if paymentID != "" {
+		lock.messageID = sent.Result.MessageID
+	}
+	if cfg.TelegramDeleteAfterHours == 0 {
+		return nil
+	}
+	return s.scheduleTelegramDelete(ctx, ev, cfg, sent.Result.MessageID, paymentID)
+}
+
+// telegramCall makes one Bot API call. Errors never carry the URL, which holds
+// the token.
+func (s *Service) telegramCall(ctx context.Context, token, method string, payload map[string]any) (int, []byte, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return 0, nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.telegram.org/bot"+token+"/"+method, bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, errors.New("telegram request could not be built")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.notifyClient.Do(req)
+	if err != nil {
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			err = urlErr.Err
+		}
+		return 0, nil, fmt.Errorf("telegram request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	response, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	return resp.StatusCode, response, nil
 }
 
 type telegramDeletePayload struct {
@@ -188,10 +250,12 @@ type telegramDeletePayload struct {
 	Mode      string `json:"mode"`
 	ChatID    string `json:"chat_id"`
 	MessageID int64  `json:"message_id"`
+	// PaymentID is set when the message is a payment's one message.
+	PaymentID string `json:"payment_id,omitempty"`
 }
 
-func (s *Service) scheduleTelegramDelete(ctx context.Context, ev store.EventRow, cfg store.NotificationConfig, messageID int64) error {
-	p := telegramDeletePayload{OrgID: ev.OrgID, Mode: ev.Mode, ChatID: cfg.TelegramChatID, MessageID: messageID}
+func (s *Service) scheduleTelegramDelete(ctx context.Context, ev store.EventRow, cfg store.NotificationConfig, messageID int64, paymentID string) error {
+	p := telegramDeletePayload{OrgID: ev.OrgID, Mode: ev.Mode, ChatID: cfg.TelegramChatID, MessageID: messageID, PaymentID: paymentID}
 	return s.db.Write(ctx, func(tx store.Tx) error {
 		return s.q.Enqueue(ctx, tx, jobs.Job{Kind: JobDeleteTelegram, Payload: p,
 			RunAt:     s.now().Add(time.Duration(cfg.TelegramDeleteAfterHours) * time.Hour),
@@ -215,33 +279,33 @@ func (s *Service) handleTelegramDelete(ctx context.Context, raw json.RawMessage)
 	if err != nil {
 		return jobs.Permanent(err)
 	}
-	body, _ := json.Marshal(map[string]any{"chat_id": p.ChatID, "message_id": p.MessageID})
-	target := "https://api.telegram.org/bot" + string(token) + "/deleteMessage"
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := s.notifyClient.Do(req)
+	status, _, err := s.telegramCall(ctx, string(token), "deleteMessage", map[string]any{"chat_id": p.ChatID, "message_id": p.MessageID})
 	if err != nil {
-		return fmt.Errorf("telegram delete request failed: %w", err)
+		return err
 	}
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
-	resp.Body.Close()
-	if resp.StatusCode/100 == 2 {
-		return nil
+	if status/100 == 2 {
+		if p.PaymentID == "" {
+			return nil
+		}
+		return s.db.Write(ctx, func(tx store.Tx) error {
+			return store.ForgetTelegramPaymentMessage(ctx, tx,
+				store.TelegramPaymentMessageKey{OrgID: p.OrgID, Mode: p.Mode, ChatID: p.ChatID, PaymentID: p.PaymentID}, p.MessageID)
+		})
 	}
-	err = fmt.Errorf("telegram delete http %d", resp.StatusCode)
-	if resp.StatusCode/100 == 4 && resp.StatusCode != http.StatusTooManyRequests {
+	err = fmt.Errorf("telegram delete http %d", status)
+	if status/100 == 4 && status != http.StatusTooManyRequests {
 		return jobs.Permanent(err)
 	}
 	return err
 }
 
-func (s *Service) notificationDetails(ctx context.Context, ev store.EventRow) (string, string) {
+// notificationPayment loads the event's payment and customer. ok is false when
+// the payment is missing or belongs to another organization or mode.
+func (s *Service) notificationPayment(ctx context.Context, ev store.EventRow) (payment store.Payment, customer store.Customer, ok bool, err error) {
 	if ev.ObjectType != "payment" {
-		return "", ""
+		return payment, customer, false, nil
 	}
-	var payment store.Payment
-	var customer store.Customer
-	err := s.db.Read(ctx, func(q store.Querier) (err error) {
+	err = s.db.Read(ctx, func(q store.Querier) (err error) {
 		payment, err = store.GetPayment(ctx, q, ev.ObjectID)
 		if err != nil || payment.OrgID != ev.OrgID || payment.Mode != ev.Mode {
 			return err
@@ -259,41 +323,70 @@ func (s *Service) notificationDetails(ctx context.Context, ev store.EventRow) (s
 		}
 		return nil
 	})
-	if err != nil || payment.OrgID != ev.OrgID || payment.Mode != ev.Mode {
+	if errors.Is(err, store.ErrNotFound) {
+		return payment, customer, false, nil
+	}
+	if err != nil {
+		return payment, customer, false, err
+	}
+	return payment, customer, payment.OrgID == ev.OrgID && payment.Mode == ev.Mode, nil
+}
+
+func notificationAmount(p store.Payment) string {
+	amount, err := money.FormatDecimal(p.Amount, p.Currency)
+	if err != nil {
+		amount = strconv.FormatInt(p.Amount, 10)
+	}
+	return amount + " " + p.Currency
+}
+
+// notificationCountry returns the payment's valid two-letter country, if any.
+func notificationCountry(p store.Payment, c store.Customer) string {
+	code := c.Billing.Country
+	if code == "" {
+		code = p.Country
+	}
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if len(code) != 2 || code[0] < 'A' || code[0] > 'Z' || code[1] < 'A' || code[1] > 'Z' {
+		return ""
+	}
+	if _, err := language.ParseRegion(code); err != nil {
+		return ""
+	}
+	return code
+}
+
+func (s *Service) notificationDetails(ctx context.Context, ev store.EventRow) (string, string) {
+	payment, customer, ok, err := s.notificationPayment(ctx, ev)
+	if err != nil || !ok {
 		return "", ""
 	}
-	amount, err := money.FormatDecimal(payment.Amount, payment.Currency)
-	if err != nil {
-		amount = strconv.FormatInt(payment.Amount, 10)
-	}
-	first := " · " + amount + " " + payment.Currency
 	var second []string
+	if label := countryLabel(notificationCountry(payment, customer)); label != "" {
+		second = append(second, label)
+	}
 	if customer.Email != "" {
 		second = append(second, customer.Email)
 	}
-	country := customer.Billing.Country
-	if country == "" {
-		country = payment.Country
-	}
-	if label := countryLabel(country); label != "" {
-		second = append([]string{label}, second...)
-	}
-	return first, strings.Join(second, " · ")
+	return " · " + notificationAmount(payment), strings.Join(second, " · ")
 }
 
+func countryFlag(code string) string {
+	return string([]rune{rune(0x1F1E6) + rune(code[0]-'A'), rune(0x1F1E6) + rune(code[1]-'A')})
+}
+
+// countryLabel names a code from notificationCountry; "" stays "".
 func countryLabel(code string) string {
-	code = strings.ToUpper(strings.TrimSpace(code))
-	if len(code) != 2 || code[0] < 'A' || code[0] > 'Z' || code[1] < 'A' || code[1] > 'Z' {
+	if code == "" {
 		return ""
 	}
 	region, err := language.ParseRegion(code)
 	if err != nil {
 		return ""
 	}
-	flag := string([]rune{rune(0x1F1E6) + rune(code[0]-'A'), rune(0x1F1E6) + rune(code[1]-'A')})
 	name := display.English.Regions().Name(region)
 	if name == "" || strings.EqualFold(name, code) {
-		return flag + " " + code
+		return countryFlag(code) + " " + code
 	}
-	return flag + " " + name + " (" + code + ")"
+	return countryFlag(code) + " " + name + " (" + code + ")"
 }

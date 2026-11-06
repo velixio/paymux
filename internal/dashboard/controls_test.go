@@ -25,7 +25,7 @@ func TestSettingsRenderTypedControls(t *testing.T) {
 
 		// integer: a number input with the validator's bounds, a unit, help and the default
 		row := settingRowHTML(t, org, "payment_ttl")
-		has(t, row, `type="number"`, `min="10"`, `max="10080"`, `value="60"`, "minutes", "Default: 60 minutes", "stays payable")
+		has(t, row, `type="number"`, `min="10"`, `max="10080"`, `value="30"`, "minutes", "Default: 30 minutes", "stays payable")
 		lacks(t, row, "<textarea")
 
 		// enum: a select with the current option chosen
@@ -67,7 +67,7 @@ func TestSettingsRenderTypedControls(t *testing.T) {
 		// read-only users get values, not controls
 		viewer := e.roleClient("viewer")
 		vrow := settingRowHTML(t, e.pageOK(viewer, "/dashboard/settings"), "payment_ttl")
-		has(t, vrow, "60", "minutes")
+		has(t, vrow, "30", "minutes")
 		lacks(t, vrow, `<input`, `<select`, `<textarea`)
 	})
 }

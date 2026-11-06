@@ -158,7 +158,7 @@ Good to know:
 A payment link is a page you can send to a customer (`https://pay.example.com/l/<slug>`, or on the app's custom domain) without writing any code: they enter their name, email and optionally phone, and Paymux creates a normal payment and takes them to the usual payment page, where the billing details the GST rules ask for are collected as always. Create links in the dashboard under *Payment links* (operators and admins), or with `POST /v1/payment_links`.
 
 - **Price.** A fixed amount, or "the customer chooses" between a minimum and an optional maximum.
-- **Reusable or single-use.** A reusable link takes any number of payments. A single-use link is *held* by the first visitor while their payment is open (60 minutes by default, the `payment_ttl` setting): a second visitor is asked to try again later, and the first visitor can come back with the same browser. The first **successful** payment switches the link off (`payment_link.deactivated`, reason `used`). A payment that is abandoned frees the link when its time is up.
+- **Reusable or single-use.** A reusable link takes any number of payments. A single-use link is *held* by the first visitor while their payment is open (30 minutes by default, the `payment_ttl` setting): a second visitor is asked to try again later, and the first visitor can come back with the same browser. The first **successful** payment switches the link off (`payment_link.deactivated`, reason `used`). A payment that is abandoned frees the link when its time is up.
 - **Expiry and switching off.** An expired or deactivated link shows a notice and creates nothing. Deactivating is permanent and does not affect payments already started.
 - **Your records.** Every payment from a link carries `metadata.payment_link_id` (plus the link's own metadata) and `order_ref` set to the link id, so webhooks, the dashboard and exports can tell where it came from. Events: `payment_link.created`, `payment_link.deactivated`.
 - **Limits.** Anyone can open a link, so each link allows at most 60 new payments a minute (a "please wait" page after that) and the form is protected against cross-site posting. The page uses the app's theme and `customer_language`.
@@ -226,7 +226,7 @@ A live provider account whose stored config is a sandbox one (a sandbox or test 
 
 ## Logs
 
-*Logs* in the dashboard (menu: Operations) is where to look when something failed: it keeps the **errors and warnings** of the hub, so you can review and fix them later. Info and debug lines still go only to stdout and journald. It needs the `logs.read` permission: admins have it, and a custom role can be given it under *Roles*.
+*Logs* in the dashboard (menu: Operations) is where to look when something failed: it keeps the **errors and warnings** of the hub, so you can review and fix them later. Info and debug lines still go only to stderr and journald; what is printed there is set under *Settings*, *Terminal logging* ([configuration](configuration.md#terminal-logging)). It needs the `logs.read` permission: admins have it, and a custom role can be given it under *Roles*.
 
 **What is kept**
 
@@ -251,7 +251,7 @@ A live provider account whose stored config is a sandbox one (a sandbox or test 
 | `PAYMUX_OTLP_LOGS_ENDPOINT` | unset | When set, the same redacted rows are also posted to an OpenTelemetry collector over OTLP/HTTP (JSON), for example `http://collector:4318/v1/logs`. The address may be private. Unset means off. |
 | `PAYMUX_OTLP_LOGS_HEADERS` | unset | `Name=value,Name=value` sent with every OTLP request (an auth token). Treated as a secret. |
 
-Rows are written in batches by a queue. If the queue is ever full (a very slow disk), rows are dropped and counted: `paymux_logs_dropped_total` on `/metrics`, and a line "log rows dropped" on stdout every minute. `paymux_logs_stored_total`, `paymux_logs_write_failures_total` and `paymux_logs_queue_depth` complete the picture.
+Rows are written in batches by a queue. If the queue is ever full (a very slow disk), rows are dropped and counted: `paymux_logs_dropped_total` on `/metrics`, and a warning "log rows dropped" on stderr every minute (hidden while `terminal_log_level` is `error`, so watch the metric). `paymux_logs_stored_total`, `paymux_logs_write_failures_total` and `paymux_logs_queue_depth` complete the picture.
 
 ## Themes and languages
 

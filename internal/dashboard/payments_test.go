@@ -497,7 +497,7 @@ func TestPaymentDisplayStatusShowsRefundOutcome(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, class := paymentDisplayStatus(store.Payment{Status: tt.status, Flags: tt.flags})
+			got, class := paymentDisplayStatus(store.Payment{Status: tt.status, Flags: tt.flags}, time.Time{})
 			if got != tt.want || class != tt.class {
 				t.Fatalf("paymentDisplayStatus() = %q, %q; want %q, %q", got, class, tt.want, tt.class)
 			}
@@ -793,4 +793,36 @@ func TestSendWebhookFromPaymentPage(t *testing.T) {
 			t.Fatalf("unknown payment: %d", r.StatusCode)
 		}
 	})
+}
+
+func TestPaymentDisplayStatusEndsRetryAtExpiry(t *testing.T) {
+	now := time.Now()
+	failed := store.Payment{Status: "failed", ExpiresAt: now.Add(time.Minute)}
+	if got, _ := paymentDisplayStatus(failed, now); got != "Ready to retry" {
+		t.Errorf("within the limit: %q", got)
+	}
+	failed.ExpiresAt = now.Add(-time.Minute)
+	if got, class := paymentDisplayStatus(failed, now); got != "Failed" || class != "failed" {
+		t.Errorf("past the limit: %q, %q", got, class)
+	}
+}
+
+func TestAttemptDisplayStatus(t *testing.T) {
+	tests := []struct{ attempt, payment, want string }{
+		{"pending", "requires_action", "pending"},
+		{"created", "created", "created"},
+		{"pending", "processing", "pending"},
+		{"pending", "expired", "expired"},
+		{"created", "expired", "expired"},
+		{"pending", "failed", "expired"},
+		{"pending", "succeeded", "expired"},
+		{"authorized", "expired", "authorized"},
+		{"failed", "expired", "failed"},
+		{"captured", "succeeded", "captured"},
+	}
+	for _, tt := range tests {
+		if got := attemptDisplayStatus(store.Attempt{Status: tt.attempt}, store.Payment{Status: tt.payment}); got != tt.want {
+			t.Errorf("attempt %s on payment %s: %q, want %q", tt.attempt, tt.payment, got, tt.want)
+		}
+	}
 }

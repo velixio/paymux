@@ -31,9 +31,10 @@ type Def struct {
 }
 
 // adminOnlyKeys are the settings only the built-in admin may change: they set
-// how long a stolen session lives and which keys vouch for an e-invoice, so a
-// custom role holding settings.write must not reach them.
-var adminOnlyKeys = []string{"session_idle_hours", "session_max_days", "session_remember_days", "einvoice_irp_keys"}
+// how long a stolen session lives, which keys vouch for an e-invoice and what
+// the whole server prints to its terminal, so a custom role holding
+// settings.write must not reach them.
+var adminOnlyKeys = []string{"session_idle_hours", "session_max_days", "session_remember_days", "einvoice_irp_keys", "terminal_log_level", "terminal_log_requests"}
 
 // AdminOnly reports whether key may be changed by an admin only.
 func AdminOnly(key string) bool { return slices.Contains(adminOnlyKeys, key) }
@@ -98,7 +99,8 @@ var defs = []Def{
 	{"checkout_mode", `"hosted"`, LevelApp, oneOf("hosted", "provider_action")},
 	{"duplicate_payment_action", `"review"`, orgApp, oneOf("review", "auto_refund")},
 	{"billing_details", `"state_required"`, orgApp, oneOf("off", "state_required", "optional", "required")},
-	{"payment_ttl", `60`, orgApp, intRange(10, 7*24*60)}, // minutes
+	{"payment_ttl", `30`, orgApp, intRange(10, 7*24*60)}, // minutes
+	{"attempt_ttl", `15`, orgApp, intRange(5, 24*60)},    // minutes
 	{"pay_page_retry_buttons", `{"try_again":true,"pay_another_way":true}`, orgApp, validRetryButtons},
 	{"invoice_delivery", `"app"`, orgApp, oneOf("app", "paymux", "both")},
 	{"issue_invoices", `true`, LevelApp, isBool},
@@ -168,6 +170,10 @@ var defs = []Def{
 	{"session_idle_hours", `12`, LevelOrg, intRange(1, 720)},
 	{"session_max_days", `7`, LevelOrg, intRange(1, 90)},
 	{"session_remember_days", `30`, LevelOrg, intRange(0, 90)},
+	// What the server prints to its terminal (stderr). The Logs page does not
+	// follow these: it has PAYMUX_DB_LOG_LEVEL.
+	{"terminal_log_level", `"info"`, LevelOrg, oneOf("error", "warn", "info", "debug")},
+	{"terminal_log_requests", `true`, LevelOrg, isBool},
 }
 
 var clockRE = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
