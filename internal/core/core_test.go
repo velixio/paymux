@@ -186,8 +186,8 @@ func TestCreatePayment(t *testing.T) {
 			p.Metadata["plan"] != "pro" || p.CustomerID == "" {
 			t.Fatalf("payment %+v", p)
 		}
-		if d := p.ExpiresAt.Sub(before); d < 59*time.Minute || d > 61*time.Minute {
-			t.Errorf("expires_at %v is not about 60m ahead", d)
+		if d := p.ExpiresAt.Sub(before); d < 29*time.Minute || d > 31*time.Minute {
+			t.Errorf("expires_at %v is not about 30m ahead", d)
 		}
 		if res.ClientSecret == "" || p.ClientSecretHash == "" || p.ClientSecretHash == res.ClientSecret {
 			t.Errorf("secret handling: secret=%q hash=%q", res.ClientSecret, p.ClientSecretHash)

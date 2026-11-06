@@ -542,7 +542,7 @@ All routing is **data, edited in the dashboard**. Nothing is hard-coded except t
 | **Routing** (rules, catch-all) | INR → razorpay, zoho, payu; BDT → razorpay, whop; catch-all → razorpay, whop | Any rules; catch-all may `reject` | org + app | §8 |
 | `duplicate_payment_action` | `review` | `review` \| `auto_refund` | org + app | §5 |
 | `billing_details` | `state_required` (India) when invoicing is on, else `off` | `off` \| `state_required` \| `optional` \| `required` (a full address is always required at ≥ ₹50,000, see §10) | org + app | §6.2 |
-| `payment_ttl` | 60 min | 10 min – 7 days | org + app | §6.1 |
+| `payment_ttl` | 30 min | 10 min – 7 days | org + app | §6.1 |
 | `pay_page_retry_buttons` | try again: on; pay another way: on | on/off each | org + app | §6.2 |
 | `invoice_delivery` | `app` | `app` \| `paymux` \| `both` | org + app | §10 |
 | `issue_invoices` | on (off for merchant-of-record connectors regardless) | on/off | app | §10 |

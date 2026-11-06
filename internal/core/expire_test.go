@@ -121,3 +121,72 @@ func TestExpireDueRespectsLimitAndIgnoresStaleAttempts(t *testing.T) {
 		}
 	})
 }
+
+// setFinishBy moves an attempt's time limit, relative to now.
+func (e *env) setFinishBy(id string, in time.Duration) {
+	e.t.Helper()
+	err := e.db.Write(ctx, func(tx store.Tx) error {
+		_, err := tx.ExecContext(ctx, "UPDATE payment_attempts SET finish_by = ? WHERE id = ?", time.Now().Add(in).UnixMilli(), id)
+		return err
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func TestCreateAttemptStampsTimeLimit(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		a := e.attempt(e.payment(100).ID)
+		want := a.CreatedAt.Add(15 * time.Minute)
+		if !a.FinishBy.Equal(want) {
+			t.Fatalf("finish_by %v, want %v (attempt_ttl default of 15 minutes)", a.FinishBy, want)
+		}
+	})
+}
+
+func TestExpireDueHonoursAttemptTimeLimit(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		// Each started attempt is at the provider, so only its limit can hold the payment.
+		pendingAt := func(limit time.Duration) store.Payment {
+			p := e.payment(100)
+			a := e.attempt(p.ID)
+			e.apply(a.ID, core.Snapshot{Status: state.AttemptPending})
+			e.setFinishBy(a.ID, limit)
+			e.backdate(p.ID, time.Minute)
+			return p
+		}
+		within := pendingAt(5 * time.Minute)
+		past := pendingAt(-time.Minute)
+
+		// An attempt with no limit (a renewal, or one made before the setting)
+		// keeps the 72h window.
+		legacy := e.payment(100)
+		la := e.attempt(legacy.ID)
+		e.apply(la.ID, core.Snapshot{Status: state.AttemptPending})
+		err := e.db.Write(ctx, func(tx store.Tx) error {
+			_, err := tx.ExecContext(ctx, "UPDATE payment_attempts SET finish_by = NULL WHERE id = ?", la.ID)
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.backdate(legacy.ID, time.Minute)
+
+		// The provider is working on this one: the clock does not apply.
+		processing := e.payment(100)
+		pa := e.attempt(processing.ID)
+		e.apply(pa.ID, core.Snapshot{Status: state.AttemptAuthorized})
+		e.setFinishBy(pa.ID, -time.Minute)
+		e.backdate(processing.ID, time.Minute)
+
+		if n, err := e.svc.ExpireDue(ctx, 100); err != nil || n != 1 {
+			t.Fatalf("expired %d, err %v (want only the attempt past its limit)", n, err)
+		}
+		for id, want := range map[string]string{within.ID: "requires_action", past.ID: "expired",
+			legacy.ID: "requires_action", processing.ID: "processing"} {
+			if got := e.get(id).Status; got != want {
+				t.Errorf("%s: %s, want %s", id, got, want)
+			}
+		}
+	})
+}

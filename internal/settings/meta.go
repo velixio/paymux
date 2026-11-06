@@ -46,6 +46,8 @@ var metas = map[string]Meta{
 		Help: "Billing details asked on the pay page: none, only the State, optional, or required (address and GSTIN)."},
 	"payment_ttl": {Kind: KindInt, Unit: "minutes", Min: 10, Max: 7 * 24 * 60,
 		Help: "How long a payment stays payable before it expires."},
+	"attempt_ttl": {Kind: KindInt, Unit: "minutes", Min: 5, Max: 24 * 60,
+		Help: "How long a customer has to finish an attempt they started. A payment past its expiry waits for this limit. Once the provider reports processing, the payment waits for the provider's result instead."},
 	"pay_page_retry_buttons": {Kind: KindJSON, Help: `Buttons on the failed-payment screen: {"try_again": true, "pay_another_way": true}.`},
 	"invoice_delivery": {Kind: KindEnum, Options: []string{"app", "paymux", "both"},
 		Help: "Who emails invoices: your app (Paymux only produces them), Paymux, or both."},

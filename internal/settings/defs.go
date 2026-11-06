@@ -99,7 +99,8 @@ var defs = []Def{
 	{"checkout_mode", `"hosted"`, LevelApp, oneOf("hosted", "provider_action")},
 	{"duplicate_payment_action", `"review"`, orgApp, oneOf("review", "auto_refund")},
 	{"billing_details", `"state_required"`, orgApp, oneOf("off", "state_required", "optional", "required")},
-	{"payment_ttl", `60`, orgApp, intRange(10, 7*24*60)}, // minutes
+	{"payment_ttl", `30`, orgApp, intRange(10, 7*24*60)}, // minutes
+	{"attempt_ttl", `15`, orgApp, intRange(5, 24*60)},    // minutes
 	{"pay_page_retry_buttons", `{"try_again":true,"pay_another_way":true}`, orgApp, validRetryButtons},
 	{"invoice_delivery", `"app"`, orgApp, oneOf("app", "paymux", "both")},
 	{"issue_invoices", `true`, LevelApp, isBool},

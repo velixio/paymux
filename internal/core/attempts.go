@@ -62,9 +62,18 @@ func (s *Service) CreateAttempt(ctx context.Context, paymentID, providerAccountI
 		if pa.Mode != p.Mode || pa.OrgID != p.OrgID {
 			return newErr(ErrInvalid, "provider account is in another mode")
 		}
+		ttl, err := s.policy(ctx, tx, p.AppID, "attempt_ttl")
+		if err != nil {
+			return err
+		}
+		var minutes int64
+		if err := ttl.Decode(&minutes); err != nil {
+			return err
+		}
 		now := s.nowUTC()
 		a = store.Attempt{ID: ids.New("att"), OrgID: p.OrgID, Mode: p.Mode, PaymentID: p.ID, ProviderAccountID: pa.ID,
-			ProviderRef: ids.ProviderRef(), Status: string(state.AttemptCreated), CreatedAt: now, UpdatedAt: now}
+			ProviderRef: ids.ProviderRef(), Status: string(state.AttemptCreated), FinishBy: now.Add(time.Duration(minutes) * time.Minute),
+			CreatedAt: now, UpdatedAt: now}
 		return store.InsertAttempt(ctx, tx, a)
 	})
 	return a, err
