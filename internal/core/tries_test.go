@@ -126,6 +126,103 @@ func TestPaidTryStoredAsCaptured(t *testing.T) {
 	})
 }
 
+func upsertTry(t *testing.T, e *env, try store.ProviderPaymentAttempt) {
+	t.Helper()
+	if err := e.db.Write(ctx, func(tx store.Tx) error { return store.UpsertProviderPaymentAttempt(ctx, tx, try) }); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A customer's next go can report the failed charge as the latest one, still open.
+func TestFinishedTryDoesNotGoBackToOpen(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		p := e.payment(50000)
+		a := e.attempt(p.ID)
+		for _, finished := range []string{"failed", "captured"} {
+			try := store.ProviderPaymentAttempt{ProviderAccountID: a.ProviderAccountID, ProviderPaymentID: "pi_1", TryID: "ch_" + finished, AttemptID: a.ID, Status: finished}
+			upsertTry(t, e, try)
+			try.Status = "open/unpaid"
+			upsertTry(t, e, try)
+		}
+		for _, got := range triesOf(t, e, p.ID) {
+			if got.Status == "open/unpaid" {
+				t.Fatalf("tries = %+v", got)
+			}
+		}
+	})
+}
+
+// A row keyed by the provider payment stands in for tries not yet told apart:
+// from before tries were kept, or from a sync that has only the attempt.
+func TestKeyedTryReplacesStandIn(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		p := e.payment(50000)
+		a := e.attempt(p.ID)
+		base := store.ProviderPaymentAttempt{ProviderAccountID: a.ProviderAccountID, ProviderPaymentID: "pi_1", AttemptID: a.ID, Status: "captured"}
+		upsertTry(t, e, base)
+		keyed := base
+		keyed.TryID = "ch_1"
+		upsertTry(t, e, keyed)
+		got := triesOf(t, e, p.ID)
+		if len(got) != 1 || got[0].TryID != "ch_1" {
+			t.Fatalf("tries = %+v", got)
+		}
+	})
+}
+
+// A recorded failure is never erased, even by a later success on the same intent.
+func TestFailedStandInSurvivesKeyedSuccess(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		p := e.payment(50000)
+		a := e.attempt(p.ID)
+		base := store.ProviderPaymentAttempt{ProviderAccountID: a.ProviderAccountID, ProviderPaymentID: "pi_1", AttemptID: a.ID, Status: "failed", FailureCode: "card_declined"}
+		upsertTry(t, e, base)
+		keyed := store.ProviderPaymentAttempt{ProviderAccountID: a.ProviderAccountID, ProviderPaymentID: "pi_1", TryID: "ch_2", AttemptID: a.ID, Status: "captured"}
+		upsertTry(t, e, keyed)
+		if got := triesOf(t, e, p.ID); len(got) != 2 {
+			t.Fatalf("tries = %+v", got)
+		}
+	})
+}
+
+func TestTryStoresSnapshotMeaningOverRawWording(t *testing.T) {
+	for _, c := range []struct {
+		status state.AttemptStatus
+		raw    string
+	}{{state.AttemptFailed, "failure"}, {state.AttemptAuthorized, "requires_capture"}} {
+		storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+			e := newEnv(t, db)
+			p := e.payment(50000)
+			a := e.attempt(p.ID)
+			e.apply(a.ID, core.Snapshot{Status: c.status, ProviderPaymentID: "pi_1", RawStatus: c.raw, Amount: 50000, Currency: "INR"})
+			got := triesOf(t, e, p.ID)
+			if len(got) != 1 || got[0].Status != string(c.status) {
+				t.Errorf("%s: tries = %+v", c.raw, got)
+			}
+		})
+	}
+}
+
+// A snapshot that turns out to be another attempt's must not take its try away.
+func TestTryStaysWithItsAttempt(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		p := e.payment(50000)
+		a := e.attempt(p.ID)
+		other := e.attempt(p.ID)
+		try := store.ProviderPaymentAttempt{ProviderAccountID: a.ProviderAccountID, ProviderPaymentID: "pi_1", AttemptID: a.ID, Status: "captured"}
+		upsertTry(t, e, try)
+		try.AttemptID = other.ID
+		upsertTry(t, e, try)
+		if got := triesOf(t, e, p.ID); len(got) != 1 || got[0].AttemptID != a.ID {
+			t.Fatalf("tries = %+v, want attempt %s", got, a.ID)
+		}
+	})
+}
+
 func TestTryWriteFailureDoesNotBlockApply(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		e := newEnv(t, db)

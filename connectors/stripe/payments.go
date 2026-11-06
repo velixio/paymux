@@ -79,14 +79,15 @@ func (c *cardWire) details() connector.PaymentMethodDetails {
 }
 
 type charge struct {
-	ID             string `json:"id"`
-	Status         string `json:"status"`
-	Amount         int64  `json:"amount"`
-	Currency       string `json:"currency"`
-	Created        int64  `json:"created"`
-	AmountRefunded int64  `json:"amount_refunded"`
-	FailureCode    string `json:"failure_code"`
-	FailureMessage string `json:"failure_message"`
+	ID             string               `json:"id"`
+	PaymentIntent  expandable[struct{}] `json:"payment_intent"`
+	Status         string               `json:"status"`
+	Amount         int64                `json:"amount"`
+	Currency       string               `json:"currency"`
+	Created        int64                `json:"created"`
+	AmountRefunded int64                `json:"amount_refunded"`
+	FailureCode    string               `json:"failure_code"`
+	FailureMessage string               `json:"failure_message"`
 	Outcome        *struct {
 		Reason    string `json:"reason"`
 		RiskScore *int   `json:"risk_score"`
@@ -358,6 +359,9 @@ func (s *stripe) FetchPaymentAttempts(ctx context.Context, ref connector.Payment
 	out := make([]connector.PaymentSnapshot, 0, len(l.Data))
 	for i := range l.Data {
 		c := &l.Data[i]
+		if c.PaymentIntent.ID != sess.PaymentIntent.ID {
+			continue // a list filter is not proof of ownership
+		}
 		snap := connector.PaymentSnapshot{ProviderRef: sess.ClientReferenceID, ProviderOrderID: sess.ID, ProviderPaymentID: sess.PaymentIntent.ID, TryID: c.ID,
 			Status: mapCharge(c.Status), RawStatus: c.Status, Amount: fromStripe(c.Amount, c.Currency), Currency: upper(c.Currency), Method: c.PaymentMethodDetails.Type,
 			MethodDetails: methodDetailsOf(c), Risk: chargeRisk(c), ThreeDS: chargeThreeDS(c), CreatedAt: ms(c.Created)}

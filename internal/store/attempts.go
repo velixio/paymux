@@ -167,18 +167,32 @@ func CountProviderPaymentAttemptsForPayments(ctx context.Context, q Queryer, pay
 }
 
 // UpsertProviderPaymentAttempt records the latest known state of one provider
-// payment without changing the Paymux attempt or its ledger effects.
+// payment without changing the Paymux attempt or its ledger effects. A try stays
+// with the attempt it first belonged to, and a finished try doesn't reopen.
 func UpsertProviderPaymentAttempt(ctx context.Context, tx Tx, p ProviderPaymentAttempt) error {
 	tryID := p.TryID
 	if tryID == "" {
 		tryID = p.ProviderPaymentID
+	}
+	if tryID != p.ProviderPaymentID {
+		// A row keyed by the provider payment stood in until tries could be told
+		// apart. A failure it holds is kept unless this try reports one too.
+		standIn := `DELETE FROM provider_payment_attempts WHERE provider_account_id = ? AND try_id = ? AND provider_payment_id = ?`
+		if p.FailureCode == "" && p.FailureMessage == "" {
+			standIn += ` AND COALESCE(failure_code,'') = '' AND COALESCE(failure_message,'') = ''`
+		}
+		if _, err := tx.ExecContext(ctx, standIn, p.ProviderAccountID, p.ProviderPaymentID, p.ProviderPaymentID); err != nil {
+			return err
+		}
 	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO provider_payment_attempts
 		(provider_account_id, try_id, provider_payment_id, attempt_id, provider_order_id, status, method, failure_code,
 		 failure_message, amount, currency, method_details, risk_details, three_d_secure, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (provider_account_id, try_id) DO UPDATE SET
-		attempt_id = excluded.attempt_id, provider_order_id = excluded.provider_order_id, status = excluded.status,
+		provider_order_id = excluded.provider_order_id,
+		status = CASE WHEN provider_payment_attempts.status IN ('failed', 'captured') AND excluded.status NOT IN ('failed', 'captured')
+			THEN provider_payment_attempts.status ELSE excluded.status END,
 		method = COALESCE(excluded.method, provider_payment_attempts.method),
 		failure_code = COALESCE(excluded.failure_code, provider_payment_attempts.failure_code),
 		failure_message = COALESCE(excluded.failure_message, provider_payment_attempts.failure_message),

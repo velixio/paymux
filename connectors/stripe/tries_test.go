@@ -109,6 +109,22 @@ func TestFetchPaymentAttemptsListsCharges(t *testing.T) {
 	}
 }
 
+// A list filter is not proof: a charge naming another intent isn't this payment's.
+func TestFetchPaymentAttemptsSkipsOtherIntents(t *testing.T) {
+	f := newFake()
+	f.reply("GET /v1/checkout/sessions/cs_test_1", 200, sessionJSON("cs_test_1", "pay_ref_01", "open", "unpaid", intentJSON("pi_3A1", "requires_payment_method", "pay_ref_01", nil)))
+	f.on("GET /v1/charges", func(w http.ResponseWriter, _ call) {
+		_, _ = w.Write([]byte(`{"data":[{"id":"ch_ours","payment_intent":"pi_3A1","status":"failed"},{"id":"ch_theirs","payment_intent":"pi_other","status":"failed"}]}`))
+	})
+	got, err := newConn(t, f).FetchPaymentAttempts(bg, connector.PaymentRef{ProviderOrderID: "cs_test_1", ProviderRef: "pay_ref_01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].TryID != "ch_ours" {
+		t.Fatalf("got = %+v", got)
+	}
+}
+
 func TestChargeMapsChecks(t *testing.T) {
 	var l list[charge]
 	if err := json.Unmarshal(fixture(t, "charges_of_intent"), &l); err != nil {

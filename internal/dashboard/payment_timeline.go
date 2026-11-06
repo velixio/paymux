@@ -234,6 +234,9 @@ func (in timelineData) tryItem(t store.ProviderPaymentAttempt) timelineItem {
 		item.Title, item.Tone = "Authorized", tonePass
 	default:
 		item.Title = "In progress"
+		if attemptDisplayStatus(store.Attempt{Status: t.Status}, in.Payment) == "expired" {
+			item.Title, row.Status = "Expired", "expired"
+		}
 	}
 	return item
 }
@@ -410,7 +413,7 @@ func buildGlance(in timelineData) glanceView {
 		g.RiskText, g.RiskTone = v.Score, v.Tone
 	}
 
-	var failed, paid, waiting int
+	var failed, paid, waiting, expired int
 	lastStatus := ""
 	for _, t := range allTries(in) {
 		lastStatus = t.Status
@@ -421,7 +424,11 @@ func buildGlance(in timelineData) glanceView {
 		case string(state.AttemptCaptured):
 			paid++
 		default:
-			waiting++
+			if attemptDisplayStatus(store.Attempt{Status: t.Status}, p) == "expired" {
+				expired++
+			} else {
+				waiting++
+			}
 		}
 	}
 	g.LastFailureTone = toneNone
@@ -437,6 +444,9 @@ func buildGlance(in timelineData) glanceView {
 	}
 	if waiting > 0 {
 		parts = append(parts, fmt.Sprintf("%d in progress", waiting))
+	}
+	if expired > 0 {
+		parts = append(parts, fmt.Sprintf("%d expired", expired))
 	}
 	g.Tries, g.TriesTone = strings.Join(parts, ", "), toneNone
 	switch {

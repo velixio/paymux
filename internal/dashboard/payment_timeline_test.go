@@ -14,7 +14,7 @@ func tlAt(minute int) time.Time { return tlStart.Add(time.Duration(minute) * tim
 
 func tlData() timelineData {
 	return timelineData{
-		Payment:  store.Payment{ID: "pay_1", CreatedAt: tlAt(0)},
+		Payment:  store.Payment{ID: "pay_1", Status: "created", CreatedAt: tlAt(0)},
 		Provider: map[string]string{"acc_1": "Main (stripe)"},
 		FmtTime:  func(t time.Time) string { return t.Format("15:04") },
 	}
@@ -172,6 +172,20 @@ func TestRawProviderStatusesReadAsTheirMeaning(t *testing.T) {
 		t.Fatalf("items = %+v", items)
 	}
 	if g := buildGlance(in); g.Tries != "1 failed, 1 paid" || g.TriesTone != "pass" || g.RiskText != "Not scored" {
+		t.Fatalf("glance = %+v", g)
+	}
+}
+
+// An unfinished try of a payment that has moved on will not finish.
+func TestOpenTryOfFinishedPaymentReadsExpired(t *testing.T) {
+	in := tlData()
+	in.Payment.Status = "expired"
+	in.Tries = []store.ProviderPaymentAttempt{{ProviderPaymentID: "p1", AttemptID: "att_1", Status: "pending", CreatedAt: tlAt(1)}}
+	item := buildTimeline(in)[1]
+	if item.Title != "Expired" || item.Try.Status != "expired" || item.Tone != "none" {
+		t.Fatalf("item = %+v, try = %+v", item, item.Try)
+	}
+	if g := buildGlance(in); g.Tries != "1 expired" {
 		t.Fatalf("glance = %+v", g)
 	}
 }
