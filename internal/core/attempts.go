@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"slices"
 	"strings"
 	"time"
@@ -78,6 +79,7 @@ type Snapshot struct {
 	Currency                    string
 	Method, ProviderPaymentID   string
 	MethodDetails               connector.PaymentMethodDetails
+	Risk                        connector.PaymentRisk
 	ProviderOrderID             string
 	FailureCode, FailureMessage string
 }
@@ -118,6 +120,7 @@ func addFlag(p *store.Payment, f string) {
 
 func validateSnapshot(snap *Snapshot) error {
 	snap.MethodDetails = safeMethodDetails(snap.MethodDetails)
+	snap.Risk = safeRisk(snap.Risk)
 	if !slices.Contains(state.AllAttemptStatuses, snap.Status) {
 		return newErr(ErrInvalid, "unknown attempt status %q", snap.Status)
 	}
@@ -147,16 +150,63 @@ func safeMethodDetails(in connector.PaymentMethodDetails) connector.PaymentMetho
 		c.Funding = safeInstrumentText(c.Funding, 32)
 		c.Issuer = safeInstrumentText(c.Issuer, 100)
 		c.SubType = safeInstrumentText(c.SubType, 32)
-		c.Country = strings.ToUpper(strings.TrimSpace(c.Country))
-		if len(c.Country) != 2 || c.Country[0] < 'A' || c.Country[0] > 'Z' || c.Country[1] < 'A' || c.Country[1] > 'Z' {
-			c.Country = ""
-		}
+		c.Country = safeCountry(c.Country)
 		if c.Last4 != "" || c.Network != "" || c.Funding != "" || c.Issuer != "" || c.Country != "" ||
 			c.International != nil || c.EMI != nil || c.SubType != "" {
 			out.Card = &c
 		}
 	}
 	return out
+}
+
+// safeRisk drops any risk value that is out of range or malformed.
+func safeRisk(in connector.PaymentRisk) connector.PaymentRisk {
+	out := connector.PaymentRisk{
+		City:              safeInstrumentText(in.City, 100),
+		Region:            safeInstrumentText(in.Region, 100),
+		Country:           safeCountry(in.Country),
+		AddressCheck:      safeInstrumentText(in.AddressCheck, 32),
+		PostalCheck:       safeInstrumentText(in.PostalCheck, 32),
+		CVVCheck:          safeInstrumentText(in.CVVCheck, 32),
+		ThreeDSecure:      in.ThreeDSecure,
+		AuthorizationCode: safeInstrumentText(in.AuthorizationCode, 32),
+	}
+	if in.Score != nil && *in.Score >= 0 && *in.Score <= 100 {
+		out.Score = in.Score
+	}
+	if addr, err := netip.ParseAddr(strings.TrimSpace(in.IPAddress)); err == nil {
+		out.IPAddress = addr.String()
+	}
+	return out
+}
+
+// mergedRisk folds next into the stored risk JSON. changed is false when that
+// would write nothing new.
+func mergedRisk(stored string, next connector.PaymentRisk) (raw string, changed bool) {
+	var current connector.PaymentRisk
+	if stored != "" {
+		if err := json.Unmarshal([]byte(stored), &current); err != nil {
+			current = connector.PaymentRisk{}
+		}
+	}
+	merged := current.Merge(next)
+	if merged.Empty() {
+		return stored, false
+	}
+	before, errBefore := json.Marshal(current)
+	after, errAfter := json.Marshal(merged)
+	if errBefore != nil || errAfter != nil || string(before) == string(after) {
+		return stored, false
+	}
+	return string(after), true
+}
+
+func safeCountry(value string) string {
+	value = strings.ToUpper(strings.TrimSpace(value))
+	if len(value) != 2 || value[0] < 'A' || value[0] > 'Z' || value[1] < 'A' || value[1] > 'Z' {
+		return ""
+	}
+	return value
 }
 
 func safeInstrumentText(value string, max int) string {
@@ -210,8 +260,10 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 			return newErr(ErrInvalidState, "attempt cannot move from %s to %s", a.Status, snap.Status)
 		case state.Ignore:
 			// A repeated provider snapshot may be richer than the webhook that
-			// first settled the attempt. Enrich display-safe method details without
-			// replaying ledger entries, events or payment transitions.
+			// first settled the attempt, and a risk score often arrives after it.
+			// Enrich display-safe details without replaying ledger entries, events
+			// or payment transitions.
+			enriched := false
 			if (a.MethodDetails == "" || a.MethodDetails == "{}") && !snap.MethodDetails.Empty() {
 				raw, marshalErr := json.Marshal(snap.MethodDetails)
 				if marshalErr != nil {
@@ -219,7 +271,17 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 				}
 				a.MethodDetails = string(raw)
 				a.Method = firstNonEmpty(snap.Method, a.Method)
+				enriched = true
+			}
+			if raw, changed := mergedRisk(a.RiskDetails, snap.Risk); changed {
+				a.RiskDetails = raw
+				enriched = true
+			}
+			if enriched {
 				if err := store.UpdateAttempt(ctx, tx, a, s.nowUTC()); err != nil {
+					return err
+				}
+				if err := s.markRiskCheckedIfScored(ctx, tx, a); err != nil {
 					return err
 				}
 				res.Attempt, res.Changed = a, true
@@ -247,6 +309,9 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 			if raw, err := json.Marshal(snap.MethodDetails); err == nil {
 				a.MethodDetails = string(raw)
 			}
+		}
+		if raw, changed := mergedRisk(a.RiskDetails, snap.Risk); changed {
+			a.RiskDetails = raw
 		}
 		a.ProviderPaymentID = firstNonEmpty(snap.ProviderPaymentID, a.ProviderPaymentID)
 		a.ProviderOrderID = firstNonEmpty(snap.ProviderOrderID, a.ProviderOrderID)
@@ -282,6 +347,9 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 			if errors.Is(err, store.ErrConflict) {
 				return errProviderPaymentBound
 			}
+			return err
+		}
+		if err := s.markRiskCheckedIfScored(ctx, tx, a); err != nil {
 			return err
 		}
 		if s.onPaymentSucceeded != nil && prevStatus != string(state.PaymentSucceeded) &&
@@ -392,4 +460,50 @@ func (s *Service) handleDuplicate(ctx context.Context, tx store.Tx, p *store.Pay
 		Message: fmt.Sprintf("Payment %s was paid twice (extra %d %s). Refund the extra attempt from the dashboard.", p.ID, snap.Amount, snap.Currency),
 		Refs:    map[string]string{"payment": p.ID, "attempt": extra.ID, "app": p.AppID}})
 	return s.emitPayment(ctx, tx, "payment.needs_review", *p, FlagDuplicateSuccess, extra.ID)
+}
+
+// RecordAttemptRisk saves a risk review fetched for an attempt and marks the
+// attempt checked, even when the review is empty. It touches nothing else: no
+// status, ledger entry, event or payment transition.
+func (s *Service) RecordAttemptRisk(ctx context.Context, attemptID string, risk connector.PaymentRisk) error {
+	return s.db.Write(ctx, func(tx store.Tx) error {
+		a, err := store.GetAttempt(ctx, tx, attemptID)
+		if err != nil {
+			return mapStoreErr(err, "attempt")
+		}
+		if raw, changed := mergedRisk(a.RiskDetails, safeRisk(risk)); changed {
+			a.RiskDetails = raw
+		}
+		return store.SetAttemptRiskChecked(ctx, tx, a.ID, a.RiskDetails, s.nowUTC())
+	})
+}
+
+// SaveAttemptRisk saves a review fetched when a payment arrives. Without a score
+// the attempt stays unchecked, so the backfill asks the provider again later.
+func (s *Service) SaveAttemptRisk(ctx context.Context, attemptID string, risk connector.PaymentRisk) error {
+	return s.db.Write(ctx, func(tx store.Tx) error {
+		a, err := store.GetAttempt(ctx, tx, attemptID)
+		if err != nil {
+			return mapStoreErr(err, "attempt")
+		}
+		raw, changed := mergedRisk(a.RiskDetails, safeRisk(risk))
+		if !changed {
+			return nil
+		}
+		a.RiskDetails = raw
+		if err := s.markRiskCheckedIfScored(ctx, tx, a); err != nil {
+			return err
+		}
+		return store.SetAttemptRiskDetails(ctx, tx, a.ID, a.RiskDetails)
+	})
+}
+
+// markRiskCheckedIfScored spares the backfill a fetch: the provider has already
+// finished scoring this attempt.
+func (s *Service) markRiskCheckedIfScored(ctx context.Context, tx store.Tx, a store.Attempt) error {
+	var r connector.PaymentRisk
+	if err := json.Unmarshal([]byte(a.RiskDetails), &r); err != nil || r.Score == nil {
+		return nil
+	}
+	return store.SetAttemptRiskChecked(ctx, tx, a.ID, a.RiskDetails, s.nowUTC())
 }

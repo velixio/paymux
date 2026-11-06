@@ -87,6 +87,9 @@ type Info struct {
 	Version      string       `json:"version"`
 	DisplayName  string       `json:"display_name"`
 	Capabilities []Capability `json:"capabilities"`
+	// ReportsPaymentRisk says FetchPayment fills PaymentSnapshot.Risk, so Paymux
+	// fetches each settled payment once to collect it.
+	ReportsPaymentRisk bool `json:"reports_payment_risk,omitempty"`
 	// WebhookEvents is the exact provider event set the connector consumes.
 	// The dashboard shows it for manual setup, and a WebhookConfigurator should
 	// subscribe to the same set.
@@ -362,6 +365,7 @@ type PaymentSnapshot struct {
 	Currency       string               `json:"currency"`
 	Method         string               `json:"method,omitempty"`
 	MethodDetails  PaymentMethodDetails `json:"method_details,omitempty"`
+	Risk           PaymentRisk          `json:"risk,omitempty"`
 	Fee            int64                `json:"fee,omitempty"`
 	Tax            int64                `json:"tax,omitempty"`
 	AmountRefunded int64                `json:"amount_refunded,omitempty"`
@@ -383,6 +387,60 @@ type PaymentMethodDetails struct {
 // Empty reports whether the provider supplied any safe instrument details.
 func (d PaymentMethodDetails) Empty() bool {
 	return d.Card == nil && d.Bank == "" && d.Wallet == "" && d.UPI == nil
+}
+
+// Results of a PaymentRisk check. A provider's other results are kept as text.
+const (
+	CheckMatch   = "match"
+	CheckNoMatch = "no_match"
+)
+
+// PaymentRisk is the provider's fraud review of one payment, for display to
+// the merchant. A check holds the outcome only, never the value checked: no
+// CVV, and no card or authentication data.
+type PaymentRisk struct {
+	Score             *int   `json:"score,omitempty"` // 0 (safest) to 100, nil until scored
+	IPAddress         string `json:"ip_address,omitempty"`
+	City              string `json:"city,omitempty"`
+	Region            string `json:"region,omitempty"`
+	Country           string `json:"country,omitempty"`
+	AddressCheck      string `json:"address_check,omitempty"`
+	PostalCheck       string `json:"postal_check,omitempty"`
+	CVVCheck          string `json:"cvv_check,omitempty"`
+	ThreeDSecure      *bool  `json:"three_d_secure,omitempty"`
+	AuthorizationCode string `json:"authorization_code,omitempty"`
+}
+
+// Empty reports whether r holds nothing worth showing. An unverified 3-D Secure
+// flag alone does not count: providers send it for every payment.
+func (r PaymentRisk) Empty() bool {
+	return r.Score == nil && r.IPAddress == "" && r.City == "" && r.Region == "" && r.Country == "" &&
+		r.AddressCheck == "" && r.PostalCheck == "" && r.CVVCheck == "" && r.AuthorizationCode == "" &&
+		(r.ThreeDSecure == nil || !*r.ThreeDSecure)
+}
+
+// Merge returns r updated with the fields next carries, so a later partial
+// report never erases what an earlier one said.
+func (r PaymentRisk) Merge(next PaymentRisk) PaymentRisk {
+	if next.Score != nil {
+		r.Score = next.Score
+	}
+	if next.ThreeDSecure != nil {
+		r.ThreeDSecure = next.ThreeDSecure
+	}
+	for _, f := range []struct {
+		to   *string
+		from string
+	}{
+		{&r.IPAddress, next.IPAddress}, {&r.City, next.City}, {&r.Region, next.Region}, {&r.Country, next.Country},
+		{&r.AddressCheck, next.AddressCheck}, {&r.PostalCheck, next.PostalCheck}, {&r.CVVCheck, next.CVVCheck},
+		{&r.AuthorizationCode, next.AuthorizationCode},
+	} {
+		if f.from != "" {
+			*f.to = f.from
+		}
+	}
+	return r
 }
 
 // CardDetails contains only display-safe card attributes.

@@ -340,6 +340,7 @@ func (s *Service) failAttempt(ctx context.Context, a store.Attempt, cause error)
 func ToSnapshot(s connector.PaymentSnapshot) core.Snapshot {
 	out := core.Snapshot{Amount: s.Amount, Currency: strings.ToUpper(s.Currency), Method: s.Method,
 		MethodDetails:     s.MethodDetails,
+		Risk:              s.Risk,
 		ProviderPaymentID: s.ProviderPaymentID, ProviderOrderID: s.ProviderOrderID, FailureCode: s.ErrorCode, FailureMessage: s.ErrorMessage}
 	switch s.Status {
 	case connector.PaymentSucceeded:
@@ -437,7 +438,11 @@ func (s *Service) SyncAttemptLatest(ctx context.Context, attemptID string) (core
 		return core.ApplyResult{Payment: p, Attempt: a}, perr
 	}
 	s.recordProviderPaymentAttempt(ctx, a, snap)
-	return s.o.Core.ApplyAttemptSnapshot(ctx, a.ID, ToSnapshot(snap))
+	res, err := s.o.Core.ApplyAttemptSnapshot(ctx, a.ID, ToSnapshot(snap))
+	if err == nil {
+		s.fetchRiskOnReceipt(ctx, live, res, ref, snap)
+	}
+	return res, err
 }
 
 func (s *Service) syncAttempt(ctx context.Context, attemptID string, hint connector.PaymentRef) (core.ApplyResult, error) {
@@ -490,7 +495,11 @@ func (s *Service) syncAttempt(ctx context.Context, attemptID string, hint connec
 		return core.ApplyResult{Payment: p, Attempt: a}, perr
 	}
 	s.recordProviderPaymentAttempt(ctx, a, snap)
-	return s.o.Core.ApplyAttemptSnapshot(ctx, a.ID, ToSnapshot(snap))
+	res, err := s.o.Core.ApplyAttemptSnapshot(ctx, a.ID, ToSnapshot(snap))
+	if err == nil {
+		s.fetchRiskOnReceipt(ctx, live, res, ref, snap)
+	}
+	return res, err
 }
 
 // recordStoredProviderPaymentAttempt preserves the provider payment already

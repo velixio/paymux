@@ -92,6 +92,17 @@ func run(ctx context.Context, dataDir string) error {
 		if err := add(now.Add(-2*time.Hour), "live", "USD", 9_900, 0); err != nil {
 			return err
 		}
+		// That payment carries a provider's risk review.
+		if err := store.InsertProviderAccountInfo(ctx, tx, store.ProviderAccountInfo{ID: "pa_e2e_whop", OrgID: store.DefaultOrgID, Mode: "live",
+			Connector: "whop", Name: "Whop", Status: "active", Currencies: []string{"USD"}, Purposes: []string{"one_time"}}, now); err != nil {
+			return err
+		}
+		if err := store.InsertAttempt(ctx, tx, store.Attempt{ID: "att_e2e_risk", OrgID: store.DefaultOrgID, Mode: "live",
+			PaymentID: fmt.Sprintf("pay_e2e_%03d", n), ProviderAccountID: "pa_e2e_whop", ProviderRef: "pr_e2e_risk", Status: "captured",
+			AmountReceived: 9_900, CurrencyReceived: "USD", CreatedAt: now, UpdatedAt: now,
+			RiskDetails: `{"score":19,"ip_address":"203.0.113.24","city":"Testville","region":"Sample State","country":"US","address_check":"no_match","postal_check":"match","cvv_check":"match","three_d_secure":false,"authorization_code":"A1B2C3"}`}); err != nil {
+			return err
+		}
 		return add(now.Add(-3*time.Hour), "test", "INR", 77_700, 0)
 	})
 }

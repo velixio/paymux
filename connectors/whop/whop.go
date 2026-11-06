@@ -52,8 +52,9 @@ const configSchema = `{
 }`
 
 var info = connector.Info{
-	Version:     "0.1.0",
-	DisplayName: "Whop",
+	Version:            "0.1.0",
+	DisplayName:        "Whop",
+	ReportsPaymentRisk: true,
 	// Checkout is the purchase page on whop.com.
 	CheckoutHosts: &connector.CheckoutHosts{Redirect: []string{"https://whop.com"}},
 	Capabilities:  []connector.Capability{connector.CapRefund, connector.CapSubscriptionManager, connector.CapDisputeRead, connector.CapDisputeRespond, connector.CapWebhookConfig},
@@ -306,6 +307,12 @@ type paymentEntity struct {
 	} `json:"payment_method"`
 	CreatedAt      string `json:"created_at"`
 	FailureMessage string `json:"failure_message"`
+	// The risk review, decoded field by field in risk().
+	RiskScore          json.RawMessage `json:"risk_score"`
+	IPAddress          json.RawMessage `json:"ip_address"`
+	ThreeDSVerified    json.RawMessage `json:"three_ds_verified"`
+	BillingAddress     json.RawMessage `json:"billing_address"`
+	VerificationChecks json.RawMessage `json:"verification_checks"`
 }
 
 type refundEntity struct {
@@ -401,7 +408,7 @@ func (p paymentEntity) snapshot() (connector.PaymentSnapshot, error) {
 	return connector.PaymentSnapshot{
 		ProviderRef: p.Metadata["ref"], ProviderOrderID: p.CheckoutConfig, ProviderPaymentID: p.ID,
 		Status: mapPaymentStatus(p.Status, p.Substatus), RawStatus: firstNonEmpty(p.Substatus, p.Status),
-		Amount: amt, Currency: cur, Method: p.PaymentMethod, MethodDetails: details, AmountRefunded: ref,
+		Amount: amt, Currency: cur, Method: p.PaymentMethod, MethodDetails: details, Risk: p.risk(), AmountRefunded: ref,
 		ErrorMessage: p.FailureMessage, CreatedAt: parseTime(p.CreatedAt),
 	}, nil
 }

@@ -27,6 +27,7 @@ type payRow struct {
 	ID, App, Status, StatusClass, Amount, Customer, OrderRef, Created string
 	Provider, ProviderKey, ProviderMark, Method, MethodMeta           string
 	Attempts                                                          int
+	RiskLabel, RiskTone                                               string
 }
 
 type payFilter struct{ App, Status, Q, From, To, Currency, Country string }
@@ -68,6 +69,7 @@ type payDetail struct {
 	ID, App, AppID, Mode, Status, StatusClass, Amount, Received, Refunded, OrderRef, Description, Created string
 	Currency                                                                                              string
 	Customer                                                                                              *customerDetail
+	Risk                                                                                                  *riskView
 	Flags                                                                                                 []string
 	Attempts                                                                                              []attemptRow
 	ProviderAttempts                                                                                      []providerAttemptRow
@@ -213,6 +215,9 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 				row.Provider = connectorName
 			}
 			row.Method, row.MethodMeta = paymentListMethod(selected)
+			if risk := paymentRiskView(selected); risk != nil {
+				row.RiskLabel, row.RiskTone = risk.Score, risk.Tone
+			}
 		}
 		if p.CustomerID != "" {
 			_ = d.o.DB.Read(r.Context(), func(q store.Querier) error {
@@ -438,6 +443,14 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 		det.ProviderAttempts = append(det.ProviderAttempts, providerAttemptRow{PaymentID: a.ProviderPaymentID,
 			AttemptID: a.AttemptID, Status: a.Status, Provider: name, OrderID: a.ProviderOrderID, Method: a.Method,
 			Failure: failure, Amount: amount, Created: d.fmtTime(a.CreatedAt)})
+	}
+	if selected, ok := paymentListAttempt(p, attempts); ok {
+		if det.Risk = paymentRiskView(selected); det.Risk != nil {
+			det.Risk.Provider = connectorOf[selected.ProviderAccountID]
+			if _, info, found := connector.Lookup(det.Risk.Provider); found {
+				det.Risk.Provider = info.DisplayName
+			}
+		}
 	}
 	det.CanRefund = s.can(authz.RefundCreate) && len(det.Pickable) > 0
 	det.CanSync = s.can(authz.PaymentCancel) && d.o.PaymentSync != nil && len(attempts) > 0

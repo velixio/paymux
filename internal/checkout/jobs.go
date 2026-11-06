@@ -55,6 +55,10 @@ func (s *Service) Register(q *jobs.Queue) error {
 	q.Register(inbound.JobProcess, s.ProcessProviderEvent)
 	q.Register(inbound.JobFetchOnly, s.ProcessProviderEvent)
 	q.Register(JobPoll, func(ctx context.Context, _ json.RawMessage) error { return s.PollDue(ctx) })
+	q.Register(JobRiskBackfill, func(ctx context.Context, _ json.RawMessage) error { return s.BackfillRisk(ctx) })
+	if err := q.AddSchedule(jobs.Schedule{Name: JobRiskBackfill, Kind: JobRiskBackfill, Every: time.Minute}); err != nil {
+		return err
+	}
 	return q.AddSchedule(jobs.Schedule{Name: JobPoll, Kind: JobPoll, Every: time.Minute})
 }
 
