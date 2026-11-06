@@ -2110,7 +2110,8 @@ table.payments-grid td {
 }
 
 /* Risk review: the score badge, the payment page row and its modal. */
-.risk-score {
+.risk-score,
+button.risk-score {
   display: inline-block;
   padding: 1px 8px;
   border-radius: 999px;
@@ -2119,17 +2120,29 @@ table.payments-grid td {
   white-space: nowrap;
   background: rgba(127, 127, 127, 0.2);
 }
-.risk-low {
-  background: color-mix(in srgb, var(--color-ok) 16%, transparent);
-  color: var(--color-ok);
+.risk-low,
+button.risk-score.risk-low {
+  background: var(--status-ok-bg, color-mix(in srgb, var(--color-ok) 16%, transparent));
+  color: var(--status-ok-fg, var(--color-ok));
 }
-.risk-medium {
-  background: color-mix(in srgb, var(--color-warn) 16%, transparent);
-  color: var(--color-warn);
+.risk-medium,
+button.risk-score.risk-medium {
+  background: var(--status-warn-bg, color-mix(in srgb, var(--color-warn) 16%, transparent));
+  color: var(--status-warn-fg, var(--color-warn));
 }
-.risk-high {
+.risk-high,
+button.risk-score.risk-high {
   background: color-mix(in srgb, #dc2626 16%, transparent);
   color: var(--destructive, var(--color-bad));
+}
+button.risk-score {
+  height: auto;
+  border: 0;
+  box-shadow: none;
+  cursor: pointer;
+}
+button.risk-score:hover {
+  filter: brightness(0.92);
 }
 button.risk-row {
   display: inline-flex;
@@ -2208,7 +2221,7 @@ button.risk-close {
   font-feature-settings: "tnum";
 }
 .risk-check-pass {
-  color: var(--color-ok);
+  color: var(--status-ok-fg, var(--color-ok));
   font-weight: 500;
 }
 .risk-check-fail {

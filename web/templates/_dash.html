@@ -18,3 +18,13 @@
 {{range .Points}}<div class="analytics-chart-row"><span class="analytics-period">{{.Label}}</span><div class="analytics-bars" aria-label="{{.Label}}: {{.Created}} created, {{.Paid}} paid, {{.Failed}} failed"><span class="analytics-bar created"><svg viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><rect width="{{.CreatedWidth}}" height="8" rx="2"></rect></svg><small>{{.Created}}</small></span><span class="analytics-bar paid"><svg viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><rect width="{{.PaidWidth}}" height="8" rx="2"></rect></svg><small>{{.Paid}}</small></span><span class="analytics-bar failed"><svg viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><rect width="{{.FailedWidth}}" height="8" rx="2"></rect></svg><small>{{.Failed}}</small></span></div></div>{{else}}<p class="muted">No payments were created in this range.</p>{{end}}</div><div class="analytics-legend" aria-hidden="true"><span class="created">Created</span><span class="paid">Paid</span><span class="failed">Failed</span></div>{{end}}
 
 {{define "analytics_country_ranking"}}<div class="country-ranking">{{range .CountryRows}}<a class="country-rank-row" href="{{.Href}}"><span class="country-rank-name"><strong>{{.Label}}</strong><small>{{.Paid}} paid · {{.SuccessRate}} success</small></span><svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><rect width="{{.Width}}" height="10" rx="3"></rect></svg><span class="country-rank-value">{{.PaidAmount}}</span></a>{{else}}<p class="muted">No country data in this range.</p>{{end}}</div>{{end}}
+{{define "risk_dialog"}}<dialog id="{{.DialogID}}" class="risk-dialog" aria-labelledby="{{.DialogID}}-title" closedby="any">
+<div class="risk-dialog-head"><h2 id="{{.DialogID}}-title">Risk review</h2><span class="risk-score risk-{{.Tone}}">{{.Score}}</span><button type="button" class="risk-close" command="close" commandfor="{{.DialogID}}" aria-label="Close">✕</button></div>
+{{if .Location}}<p class="risk-place"><svg class="risk-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"></path><circle cx="12" cy="10" r="2.5"></circle></svg><span>{{.Location}}</span></p>{{end}}
+<dl class="risk-checks">
+{{if .IPAddress}}<dt>IP address</dt><dd>{{.IPAddress}}</dd>{{end}}
+{{range .Checks}}<dt>{{.Label}}</dt><dd class="risk-check-{{.Tone}}"><span aria-hidden="true">{{.Mark}}</span> {{.Text}}</dd>{{end}}
+{{if .AuthorizationCode}}<dt>Authorization code</dt><dd>{{.AuthorizationCode}}</dd>{{end}}
+</dl>
+{{if .Provider}}<p class="risk-source">Reported by {{.Provider}}</p>{{end}}
+</dialog>{{end}}

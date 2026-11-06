@@ -13,7 +13,9 @@ import (
 // riskView is an attempt's risk review as the payment pages draw it.
 type riskView struct {
 	Score, Tone, Location, IPAddress, AuthorizationCode, Provider string
-	Checks                                                        []riskCheck
+	// DialogID names the modal, unique on the page: a list draws one per row.
+	DialogID string
+	Checks   []riskCheck
 }
 
 type riskCheck struct{ Label, Text, Tone, Mark string }
@@ -38,7 +40,7 @@ func paymentRiskView(a store.Attempt) *riskView {
 	if a.RiskDetails == "" || json.Unmarshal([]byte(a.RiskDetails), &r) != nil || r.Empty() {
 		return nil
 	}
-	v := &riskView{Tone: "none", Score: "Pending", IPAddress: r.IPAddress, AuthorizationCode: r.AuthorizationCode}
+	v := &riskView{DialogID: "risk-review", Tone: "none", Score: "Pending", IPAddress: r.IPAddress, AuthorizationCode: r.AuthorizationCode}
 	if r.Score != nil {
 		v.Score, v.Tone = riskBand(*r.Score)
 	} else if a.Status == string(state.AttemptFailed) {

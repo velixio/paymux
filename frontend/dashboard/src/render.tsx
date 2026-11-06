@@ -336,6 +336,9 @@ export function RenderNode({ node: n }: { node: ViewNode }): ReactNode {
         {children()}
       </option>
     );
+  // A status pill that happens to open a modal, not a dashboard action button.
+  if (n.tag === "button" && cls.includes("risk-score"))
+    return <button {...props}>{children()}</button>;
   if (n.tag === "button")
     return (
       <Button
