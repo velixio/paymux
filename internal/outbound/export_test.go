@@ -1,6 +1,9 @@
 package outbound
 
-import "time"
+import "context"
 
-// SetSigninWorkBudget shortens how long a sign-in tick may work.
-func (s *Service) SetSigninWorkBudget(d time.Duration) { s.signinBudget = d }
+// SetSigninWorkContext replaces how a sign-in tick's work context is made; nil
+// restores the time limit.
+func (s *Service) SetSigninWorkContext(fn func(context.Context) (context.Context, context.CancelFunc)) {
+	s.signinWorkCtx = fn
+}

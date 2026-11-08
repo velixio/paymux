@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +35,9 @@ const (
 	// signinClearRetryEvery is the pace once only a stuck notification is left, as
 	// when the channel was turned off after it was sent.
 	signinClearRetryEvery = 5 * time.Minute
+	// signinNotificationStart begins every notification, so a reply to one whose
+	// sending was not recorded is still known for what it is.
+	signinNotificationStart = "Sign-in request\n"
 	// signinWorkBudget ends a tick's work before its lease can run out.
 	signinWorkBudget = 25 * time.Second
 	// A group's ordinary messages reach an admin bot too, so a backlog can be long:
@@ -197,7 +201,11 @@ func (s *Service) handleSigninApprovalTick(ctx context.Context, _ json.RawMessag
 	if mine {
 		// The work stops before the lease can run out, so the next holder never
 		// overlaps it. What is left is done by the next tick.
-		workCtx, cancel := context.WithTimeout(ctx, s.signinBudget)
+		workCtx, cancel := context.WithTimeout(ctx, signinWorkBudget)
+		if s.signinWorkCtx != nil {
+			cancel()
+			workCtx, cancel = s.signinWorkCtx(ctx)
+		}
 		err := s.signinApprovalWork(workCtx, now)
 		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 			s.log.Warn("sign-in approval: the tick ran out of time")
@@ -263,7 +271,7 @@ func (s *Service) sendSigninNotifications(ctx context.Context, now time.Time) er
 		if err != nil {
 			return err
 		}
-		text := fmt.Sprintf("Sign-in request\n%s\nIP: %s\nTime: %s\nReply to this message with your PIN.",
+		text := fmt.Sprintf(signinNotificationStart+"%s\nIP: %s\nTime: %s\nReply to this message with your PIN.",
 			u.Email, a.IP, a.CreatedAt.UTC().Format(time.RFC3339))
 		var sent struct {
 			MessageID int64 `json:"message_id"`
@@ -289,7 +297,9 @@ func (s *Service) sendSigninNotifications(ctx context.Context, now time.Time) er
 			return err
 		}
 		if !recorded {
-			s.deleteSigninMessage(stopless, token, sent.Chat.ID, sent.MessageID)
+			if err := s.removeSigninMessage(stopless, a.OrgID, token, sent.Chat.ID, sent.MessageID, now); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -317,7 +327,7 @@ func (s *Service) readSigninReplies(ctx context.Context, now time.Time) error {
 		if !ok {
 			continue
 		}
-		offset, readErr := s.readBotReplies(ctx, token, offset, now)
+		offset, readErr := s.readBotReplies(ctx, orgID, token, offset, now)
 		// Saved even when the job is being stopped: otherwise the claim stays taken
 		// and handled replies are read again.
 		if err := s.db.ReleaseSigninPoll(context.WithoutCancel(ctx), botID, until, offset); err != nil {
@@ -341,6 +351,10 @@ type signinUpdate struct {
 		Text    string `json:"text"`
 		ReplyTo *struct {
 			MessageID int64 `json:"message_id"`
+			From      *struct {
+				ID int64 `json:"id"`
+			} `json:"from"`
+			Text string `json:"text"`
 		} `json:"reply_to_message"`
 	} `json:"message"`
 }
@@ -348,7 +362,7 @@ type signinUpdate struct {
 // readBotReplies handles what is waiting, a bounded amount per tick, and returns
 // the offset to continue from: past the last update handled, so a restart loses
 // no reply.
-func (s *Service) readBotReplies(ctx context.Context, token string, offset int64, now time.Time) (int64, error) {
+func (s *Service) readBotReplies(ctx context.Context, orgID, token string, offset int64, now time.Time) (int64, error) {
 	for range signinBatchesPerTick {
 		status, body, err := s.telegramCallCapped(ctx, token, "getUpdates", map[string]any{"offset": offset, "timeout": 0,
 			"limit": signinBatchSize, "allowed_updates": []string{"message"}}, signinBatchMaxBytes)
@@ -361,7 +375,7 @@ func (s *Service) readBotReplies(ctx context.Context, token string, offset int64
 			return offset, nil
 		}
 		for _, u := range updates {
-			if err := s.handleSigninUpdate(ctx, token, u, now); err != nil {
+			if err := s.handleSigninUpdate(ctx, orgID, token, u, now); err != nil {
 				return offset, err
 			}
 			offset = u.UpdateID + 1
@@ -375,20 +389,29 @@ func (s *Service) readBotReplies(ctx context.Context, token string, offset int64
 
 // handleSigninUpdate acts only on replies to this feature's notifications. Every
 // such reply is deleted, right or wrong: a wrong one may be a mistyped PIN.
-func (s *Service) handleSigninUpdate(ctx context.Context, token string, u signinUpdate, now time.Time) error {
+func (s *Service) handleSigninUpdate(ctx context.Context, orgID, token string, u signinUpdate, now time.Time) error {
 	if u.Message == nil || u.Message.ReplyTo == nil {
 		return nil
 	}
-	a, err := s.db.SigninApprovalByNotification(ctx, u.Message.Chat.ID, u.Message.ReplyTo.MessageID)
+	chat, to := u.Message.Chat.ID, u.Message.ReplyTo
+	a, err := s.db.SigninApprovalByNotification(ctx, chat, to.MessageID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil
+		// A notification this bot sent but whose sending was not recorded, as when
+		// Telegram's answer was lost. The reply may hold a PIN: both go, and no
+		// request is decided by it.
+		botID, _, _ := strings.Cut(token, ":")
+		if to.From == nil || strconv.FormatInt(to.From.ID, 10) != botID || !strings.HasPrefix(to.Text, signinNotificationStart) {
+			return nil
+		}
+		if err := s.removeSigninMessage(ctx, orgID, token, chat, u.Message.MessageID, now); err != nil {
+			return err
+		}
+		return s.removeSigninMessage(ctx, orgID, token, chat, to.MessageID, now)
 	}
 	if err != nil {
 		return err
 	}
-	s.deleteSigninMessage(ctx, token, u.Message.Chat.ID, u.Message.MessageID)
-	// Cut off by the time limit: the next tick reads this reply again.
-	if err := ctx.Err(); err != nil {
+	if err := s.removeSigninMessage(ctx, orgID, token, chat, u.Message.MessageID, now); err != nil {
 		return err
 	}
 	if u.Message.Text == "" || a.Status != store.SigninPending || !a.ExpiresAt.After(now) {
@@ -409,9 +432,40 @@ func (s *Service) handleSigninUpdate(ctx context.Context, token string, u signin
 	return err
 }
 
-// clearSigninNotifications deletes the notifications of decided requests. Past
-// Telegram's deletion limit a failure stops being worth retrying.
+// removeSigninMessage deletes a message that may hold a PIN, or keeps it to try
+// again. Cut off by the time limit it returns the error instead, so the reply is
+// read again by the next tick.
+func (s *Service) removeSigninMessage(ctx context.Context, orgID, token string, chatID, messageID int64, now time.Time) error {
+	if s.deleteSigninMessage(ctx, token, chatID, messageID) {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.db.AddSigninDeletion(ctx, store.SigninDeletion{OrgID: orgID, ChatID: chatID, MessageID: messageID, CreatedAt: now})
+}
+
+// clearSigninNotifications deletes the notifications of decided requests and the
+// messages whose deletion failed before. Past Telegram's deletion limit a failure
+// stops being worth retrying.
 func (s *Service) clearSigninNotifications(ctx context.Context, now time.Time) error {
+	left, err := s.db.SigninDeletions(ctx)
+	if err != nil {
+		return err
+	}
+	for _, d := range left {
+		gone := false
+		if _, token, err := s.signinChannel(ctx, d.OrgID); err != nil {
+			s.log.Warn("sign-in approval: the live Telegram channel cannot be used", "org", d.OrgID, "err", err)
+		} else {
+			gone = s.deleteSigninMessage(ctx, token, d.ChatID, d.MessageID)
+		}
+		if gone || now.Sub(d.CreatedAt) > signinDeleteLimit {
+			if err := s.db.DropSigninDeletion(ctx, d.ChatID, d.MessageID); err != nil {
+				return err
+			}
+		}
+	}
 	due, err := s.db.SigninApprovalsToClear(ctx)
 	if err != nil {
 		return err

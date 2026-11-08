@@ -263,7 +263,7 @@ func TestReplyTextIsStoredNowhere(t *testing.T) {
 		if logs := h.logs.String(); strings.Contains(logs, wrong) || strings.Contains(logs, signinPIN) {
 			t.Fatalf("logs: %s", logs)
 		}
-		for _, table := range []string{"jobs", "signin_approvals", "signin_polls", "audit_log"} {
+		for _, table := range []string{"jobs", "signin_approvals", "signin_polls", "signin_deletions", "audit_log"} {
 			rows, err := selectAll(db, table)
 			if err != nil {
 				t.Fatalf("%s: %v", table, err)

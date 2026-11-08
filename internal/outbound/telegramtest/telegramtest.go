@@ -4,10 +4,12 @@ package telegramtest
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -44,6 +46,7 @@ type Fake struct {
 	nextReply int64
 	nextUpd   int64
 	before    map[string]func(*http.Request)
+	lose      map[string]bool
 }
 
 // New returns a Fake with a supergroup chat -100123 where the bot may delete.
@@ -92,6 +95,17 @@ func (f *Fake) Before(method string, fn func(*http.Request)) {
 		f.before = map[string]func(*http.Request){}
 	}
 	f.before[method] = fn
+}
+
+// LoseAnswer makes a method do its work but fail to answer, as when the
+// connection drops after Telegram accepted the call.
+func (f *Fake) LoseAnswer(method string, lose bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.lose == nil {
+		f.lose = map[string]bool{}
+	}
+	f.lose[method] = lose
 }
 
 // Reply queues a reply in the chat. Empty text means a message without text.
@@ -165,6 +179,14 @@ func (f *Fake) RoundTrip(r *http.Request) (*http.Response, error) {
 	if status, failing := f.failures[method]; failing {
 		return respond(status, fmt.Sprintf(`{"ok":false,"error_code":%d,"description":"failing on purpose"}`, status)), nil
 	}
+	resp := f.answer(r, method, body)
+	if f.lose[method] {
+		return nil, errors.New("telegramtest: the answer was lost")
+	}
+	return resp, nil
+}
+
+func (f *Fake) answer(r *http.Request, method string, body map[string]any) *http.Response {
 	switch method {
 	case "sendMessage":
 		f.nextMsg++
@@ -175,26 +197,28 @@ func (f *Fake) RoundTrip(r *http.Request) (*http.Response, error) {
 			m.ForceReply, _ = markup["force_reply"].(bool)
 		}
 		f.sent = append(f.sent, m)
-		return ok(fmt.Sprintf(`{"message_id":%d,"chat":{"id":%d}}`, m.MessageID, f.chatID)), nil
+		return ok(fmt.Sprintf(`{"message_id":%d,"chat":{"id":%d}}`, m.MessageID, f.chatID))
 	case "deleteMessage":
 		id, _ := body["message_id"].(float64)
 		f.deleted = append(f.deleted, int64(id))
-		return ok(`true`), nil
+		return ok(`true`)
 	case "getWebhookInfo":
-		return ok(fmt.Sprintf(`{"url":%q}`, f.webhook)), nil
+		return ok(fmt.Sprintf(`{"url":%q}`, f.webhook))
 	case "getChat":
-		return ok(fmt.Sprintf(`{"id":%d,"type":%q}`, f.chatID, f.chatType)), nil
+		return ok(fmt.Sprintf(`{"id":%d,"type":%q}`, f.chatID, f.chatType))
 	case "getMe":
-		return ok(`{"id":99,"is_bot":true}`), nil
+		return ok(`{"id":99,"is_bot":true}`)
 	case "getChatMember":
 		if f.canDelete {
-			return ok(`{"status":"administrator","can_delete_messages":true}`), nil
+			return ok(`{"status":"administrator","can_delete_messages":true}`)
 		}
-		return ok(`{"status":"member"}`), nil
+		return ok(`{"status":"member"}`)
 	case "getUpdates":
 		if f.webhook != "" {
-			return respond(http.StatusConflict, `{"ok":false,"error_code":409,"description":"can't use getUpdates method while webhook is active"}`), nil
+			return respond(http.StatusConflict, `{"ok":false,"error_code":409,"description":"can't use getUpdates method while webhook is active"}`)
 		}
+		token, _, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/bot"), "/")
+		botID, _ := strconv.ParseInt(strings.SplitN(token, ":", 2)[0], 10, 64)
 		offset, _ := body["offset"].(float64)
 		f.offset = int64(offset)
 		limit, hasLimit := body["limit"].(float64)
@@ -204,21 +228,31 @@ func (f *Fake) RoundTrip(r *http.Request) (*http.Response, error) {
 				break
 			}
 			if u.id >= f.offset {
-				out = append(out, u.json())
+				out = append(out, f.updateJSON(u, botID))
 			}
 		}
-		return ok("[" + strings.Join(out, ",") + "]"), nil
+		return ok("[" + strings.Join(out, ",") + "]")
 	}
-	return ok(`{"message_id":1}`), nil
+	return ok(`{"message_id":1}`)
 }
 
-func (u update) json() string {
+// updateJSON is how Telegram shows an update: a reply carries the message it
+// answers, with its sender and text when that is a message the bot sent.
+func (f *Fake) updateJSON(u update, botID int64) string {
 	m := map[string]any{"message_id": u.messageID, "chat": map[string]any{"id": u.chatID}}
 	if u.text != "" {
 		m["text"] = u.text
 	}
 	if u.reply != 0 {
-		m["reply_to_message"] = map[string]any{"message_id": u.reply}
+		to := map[string]any{"message_id": u.reply}
+		for _, sent := range f.sent {
+			// Message ids count per chat.
+			if sent.MessageID == u.reply && sent.ChatID == strconv.FormatInt(u.chatID, 10) {
+				to["from"] = map[string]any{"id": botID, "is_bot": true}
+				to["text"] = sent.Text
+			}
+		}
+		m["reply_to_message"] = to
 	}
 	raw, _ := json.Marshal(map[string]any{"update_id": u.id, "message": m})
 	return string(raw)

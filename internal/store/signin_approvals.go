@@ -267,9 +267,57 @@ func (db *DB) ReleaseSigninPoll(ctx context.Context, botID string, until time.Ti
 func (db *DB) HasOpenSigninApprovals(ctx context.Context) (bool, error) {
 	var n int
 	err := db.Read(ctx, func(q Querier) error {
-		return q.QueryRowContext(ctx, `SELECT COUNT(*) FROM signin_approvals WHERE status = ? OR (message_id <> 0 AND cleared = 0)`, SigninPending).Scan(&n)
+		return q.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM signin_approvals WHERE status = ? OR (message_id <> 0 AND cleared = 0))
+			+ (SELECT COUNT(*) FROM signin_deletions)`, SigninPending).Scan(&n)
 	})
 	return n > 0, err
+}
+
+// SigninDeletion is a message still to be deleted from an organization's chat.
+type SigninDeletion struct {
+	OrgID             string
+	ChatID, MessageID int64
+	CreatedAt         time.Time
+}
+
+// AddSigninDeletion keeps a message to delete later. Adding it again changes nothing.
+func (db *DB) AddSigninDeletion(ctx context.Context, d SigninDeletion) error {
+	return db.Write(ctx, func(tx Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO signin_deletions (org_id, chat_id, message_id, created_at) VALUES (?, ?, ?, ?)
+			ON CONFLICT (chat_id, message_id) DO NOTHING`, d.OrgID, d.ChatID, d.MessageID, ms(d.CreatedAt))
+		return err
+	})
+}
+
+// SigninDeletions lists the messages still to be deleted, oldest first.
+func (db *DB) SigninDeletions(ctx context.Context) ([]SigninDeletion, error) {
+	var out []SigninDeletion
+	err := db.Read(ctx, func(q Querier) error {
+		rows, err := q.QueryContext(ctx, `SELECT org_id, chat_id, message_id, created_at FROM signin_deletions ORDER BY created_at, chat_id, message_id`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var d SigninDeletion
+			var at int64
+			if err := rows.Scan(&d.OrgID, &d.ChatID, &d.MessageID, &at); err != nil {
+				return err
+			}
+			d.CreatedAt = time.UnixMilli(at)
+			out = append(out, d)
+		}
+		return rows.Err()
+	})
+	return out, err
+}
+
+// DropSigninDeletion forgets a message: it is gone, or can no longer be deleted.
+func (db *DB) DropSigninDeletion(ctx context.Context, chatID, messageID int64) error {
+	return db.Write(ctx, func(tx Tx) error {
+		_, err := tx.ExecContext(ctx, `DELETE FROM signin_deletions WHERE chat_id = ? AND message_id = ?`, chatID, messageID)
+		return err
+	})
 }
 
 // PendingSigninOrgs lists the organizations with a pending request.

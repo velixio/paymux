@@ -28,3 +28,12 @@ CREATE TABLE signin_polls (
     update_offset BIGINT NOT NULL DEFAULT 0,
     lease_until BIGINT NOT NULL DEFAULT 0
 );
+
+-- Messages that could hold a PIN and are still to be deleted, after a failed try.
+CREATE TABLE signin_deletions (
+    org_id TEXT NOT NULL,
+    chat_id BIGINT NOT NULL,
+    message_id BIGINT NOT NULL,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY (chat_id, message_id)
+);

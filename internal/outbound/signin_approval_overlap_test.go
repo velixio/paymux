@@ -1,9 +1,12 @@
 package outbound_test
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"slices"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -72,24 +75,22 @@ func TestATickDoesNoWorkWhileTheLeaseIsHeld(t *testing.T) {
 func TestATickStopsBeforeItsLeaseRunsOut(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		h := newSigninHarness(t, db)
-		h.svc.SetSigninWorkBudget(50 * time.Millisecond)
+		limit := h.controlTimeLimit()
 		h.user("usr_1")
 		h.begin("usr_1", "b1")
+		var ran atomic.Bool
 		h.tg.Before("sendMessage", func(r *http.Request) {
-			select {
-			case <-r.Context().Done():
-			case <-time.After(2 * time.Second):
-			}
+			ran.Store(true)
+			limit.runOut()
+			waitStopped(t, r)
 		})
-		start := time.Now()
 		if n := h.tick(); n != 1 {
 			t.Fatalf("ran %d", n)
 		}
-		if took := time.Since(start); took > time.Second {
-			t.Fatalf("the tick worked for %v", took)
+		if !ran.Load() {
+			t.Fatal("the notification was never tried")
 		}
 		h.tg.Before("sendMessage", nil)
-		h.svc.SetSigninWorkBudget(time.Minute)
 		if n := h.tick(); n != 1 {
 			t.Fatalf("the next tick is missing or the lease is stuck: ran %d", n)
 		}
@@ -133,14 +134,73 @@ func TestAReplyCutOffByTheTimeLimitIsDeletedLater(t *testing.T) {
 		h := newSigninHarness(t, db)
 		msg := h.sent("usr_1", "b1")
 		reply := h.tg.Reply(msg, "")
-		h.svc.SetSigninWorkBudget(50 * time.Millisecond)
-		h.tg.Before("deleteMessage", func(r *http.Request) { <-r.Context().Done() })
+		limit := h.controlTimeLimit()
+		var ran atomic.Bool
+		h.tg.Before("deleteMessage", func(r *http.Request) {
+			ran.Store(true)
+			limit.runOut()
+			waitStopped(t, r)
+		})
 		h.tick()
+		if !ran.Load() {
+			t.Fatal("the reply was never deleted")
+		}
 		h.tg.Before("deleteMessage", nil)
-		h.svc.SetSigninWorkBudget(time.Minute)
 		h.tick()
 		if !slices.Contains(h.tg.Deleted(), reply) {
 			t.Fatalf("reply %d left in the chat, deleted %v", reply, h.tg.Deleted())
 		}
 	})
+}
+
+// timeLimit is a tick's time limit that runs out when the test says so.
+type timeLimit struct {
+	mu  sync.Mutex
+	cur *limitCtx
+}
+
+type limitCtx struct {
+	context.Context
+	done chan struct{}
+	once sync.Once
+}
+
+func (c *limitCtx) Done() <-chan struct{} { return c.done }
+
+func (c *limitCtx) Err() error {
+	select {
+	case <-c.done:
+		return context.DeadlineExceeded
+	default:
+		return c.Context.Err()
+	}
+}
+
+// controlTimeLimit makes each tick's time limit run out only on runOut.
+func (h *signinHarness) controlTimeLimit() *timeLimit {
+	l := &timeLimit{}
+	h.svc.SetSigninWorkContext(func(ctx context.Context) (context.Context, context.CancelFunc) {
+		c := &limitCtx{Context: ctx, done: make(chan struct{})}
+		l.mu.Lock()
+		l.cur = c
+		l.mu.Unlock()
+		return c, func() {}
+	})
+	h.t.Cleanup(func() { h.svc.SetSigninWorkContext(nil) })
+	return l
+}
+
+func (l *timeLimit) runOut() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.cur.once.Do(func() { close(l.cur.done) })
+}
+
+// waitStopped holds a Telegram call until the tick's time limit stops it.
+func waitStopped(t *testing.T, r *http.Request) {
+	select {
+	case <-r.Context().Done():
+	case <-time.After(10 * time.Second):
+		t.Error("the call was not stopped by the time limit")
+	}
 }
