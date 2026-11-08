@@ -322,8 +322,11 @@ type view struct {
 	OrgThemeName string
 	ThemeChoices []themeChoice
 	UserHasTheme bool // the user's own choice is set and still usable
-	// HasSigninPIN: the account page offers to remove the sign-in PIN.
-	HasSigninPIN bool
+	// The account page's sign-in approval: whether a Telegram account is linked,
+	// the method in use ("" when off), and a link just made to connect Telegram.
+	TelegramLinked  bool
+	SigninMethod    string
+	TelegramLinkURL string
 
 	AppName, LogoURL, Accent string
 

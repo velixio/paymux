@@ -145,19 +145,6 @@ func TestReplyToAnEndedRequestIsStillDeleted(t *testing.T) {
 	})
 }
 
-func TestUsernameChatIDStillMatches(t *testing.T) {
-	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
-		h := newSigninHarness(t, db)
-		h.channel("@groupname", true, "")
-		msg := h.sent("usr_1", "b1")
-		h.tg.Reply(msg, signinPIN)
-		h.tick()
-		if a := h.request("b1"); a.Status != store.SigninApproved || a.ChatID != -100123 {
-			t.Fatalf("request %+v", a)
-		}
-	})
-}
-
 func TestOffsetIsKeptPerBotAndAdvancesAfterHandling(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		h := newSigninHarness(t, db)

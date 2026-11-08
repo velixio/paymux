@@ -1,5 +1,19 @@
--- A user's own sign-in approval PIN, encrypted. NULL means sign-in needs no approval.
+-- The user's own Telegram account, which approves their sign-ins in its private
+-- chat with the bot. 0 means none is linked.
+ALTER TABLE users ADD COLUMN telegram_user_id BIGINT NOT NULL DEFAULT 0;
+-- How sign-ins are approved: '' (not needed), 'tap' or 'pin'.
+ALTER TABLE users ADD COLUMN signin_method TEXT NOT NULL DEFAULT '';
+-- The sign-in approval PIN, encrypted; set only while signin_method is 'pin'.
 ALTER TABLE users ADD COLUMN signin_pin_enc BYTEA;
+
+-- A one-time link that connects a user's Telegram account. Only its hash is kept.
+CREATE TABLE telegram_links (
+    code_hash TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at BIGINT NOT NULL
+);
+CREATE INDEX telegram_links_user ON telegram_links (user_id);
 
 -- One request per sign-in waiting for approval. The reply text is never stored.
 CREATE TABLE signin_approvals (
@@ -9,6 +23,7 @@ CREATE TABLE signin_approvals (
     browser_hash TEXT NOT NULL UNIQUE,
     ip TEXT NOT NULL,
     status TEXT NOT NULL,
+    method TEXT NOT NULL,
     remember BIGINT NOT NULL DEFAULT 0,
     chat_id BIGINT NOT NULL DEFAULT 0,
     message_id BIGINT NOT NULL DEFAULT 0,

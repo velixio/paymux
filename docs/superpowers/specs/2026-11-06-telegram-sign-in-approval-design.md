@@ -2,6 +2,13 @@
 
 Status: approved by the owner on 2026-11-07. Date: 2026-11-06.
 
+**Changed on 2026-11-08, by the owner:** requests no longer go to the channel's
+group. Each user connects their own Telegram account (a one-time `t.me` link to
+the bot, opened with **Start**), and requests go to that private chat only. Two
+methods, one at a time: tap **Approve** / **Deny** (the default) or reply with
+the PIN. Only the linked account decides. Where this document says "the chat",
+read "the user's private chat"; `docs/security.md` describes what is built.
+
 ## Why
 
 A stolen password and authenticator code should not be enough to open the

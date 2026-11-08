@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"slices"
 	"strings"
 
 	"golang.org/x/term"
@@ -24,12 +25,13 @@ var Stdin io.Reader = os.Stdin
 
 const userUsage = "usage: paymux user create --email <email> [--role <role>] [--password-stdin]\n" +
 	"       paymux user reset-2fa --email <email>\n" +
-	"       paymux user remove-pin --email <email>"
+	"       paymux user remove-signin-approval --email <email>\n" +
+	"       paymux user unlink-telegram --email <email>"
 
 // runUser handles "paymux user ...". Like migrate, it opens the database
 // directly, so with SQLite it cannot run while "paymux serve" holds the lock.
 func runUser(ctx context.Context, args []string, env func(string) (string, bool), stdout, stderr io.Writer) int {
-	if len(args) == 0 || (args[0] != "create" && args[0] != "reset-2fa" && args[0] != "remove-pin") {
+	if len(args) == 0 || !slices.Contains([]string{"create", "reset-2fa", "remove-signin-approval", "unlink-telegram"}, args[0]) {
 		fmt.Fprintln(stderr, userUsage)
 		return 2
 	}
@@ -92,14 +94,18 @@ func runUser(ctx context.Context, args []string, env func(string) (string, bool)
 			"At first login they enter it to set up two-factor authentication. It works once, for 7 days.\n", u.Role, u.Email, u.ID, token)
 		return 0
 	}
-	if cmd == "remove-pin" {
+	if cmd == "remove-signin-approval" || cmd == "unlink-telegram" {
 		clean := strings.ToLower(strings.TrimSpace(*email))
-		if err := users.RemoveSigninPIN(ctx, *email); errors.Is(err, store.ErrNotFound) {
+		change, done := users.RemoveSigninApproval, "sign-in approval turned off"
+		if cmd == "unlink-telegram" {
+			change, done = users.UnlinkTelegram, "Telegram disconnected and sign-in approval turned off"
+		}
+		if err := change(ctx, *email); errors.Is(err, store.ErrNotFound) {
 			return fail(fmt.Errorf("no user with email %s", clean))
 		} else if err != nil {
 			return fail(err)
 		}
-		fmt.Fprintf(stdout, "sign-in PIN removed for %s; their pending approval requests were cancelled.\n", clean)
+		fmt.Fprintf(stdout, "%s for %s; their pending approval requests were cancelled.\n", done, clean)
 		return 0
 	}
 	if err := users.ResetTOTP(ctx, *email); errors.Is(err, store.ErrNotFound) {

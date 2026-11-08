@@ -19,13 +19,15 @@ type UserRow struct {
 	ID, Email, PasswordHash string
 	TOTPSecretEnc           []byte
 	TOTPLastStep            int64
-	SigninPINEnc            []byte // the sealed sign-in approval PIN; nil when none is set
+	SigninPINEnc            []byte // the sealed sign-in approval PIN; nil unless SigninMethod is pin
+	TelegramUserID          int64  // the user's own linked Telegram account; 0 when none
+	SigninMethod            string // SigninTap, SigninPIN, or "" when sign-in needs no approval
 	Role                    string // a built-in (admin, operator, viewer) or custom role name
 	Disabled                bool
 	CreatedAt               time.Time
 }
 
-const userCols = `id, email, password_hash, totp_secret_enc, totp_last_step, role, disabled, created_at, signin_pin_enc`
+const userCols = `id, email, password_hash, totp_secret_enc, totp_last_step, role, disabled, created_at, signin_pin_enc, telegram_user_id, signin_method`
 
 func normEmail(e string) string { return strings.ToLower(strings.TrimSpace(e)) }
 
@@ -33,7 +35,7 @@ func scanUser(s scanner) (UserRow, error) {
 	var u UserRow
 	var disabled int
 	var created int64
-	if err := s.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.TOTPSecretEnc, &u.TOTPLastStep, &u.Role, &disabled, &created, &u.SigninPINEnc); err != nil {
+	if err := s.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.TOTPSecretEnc, &u.TOTPLastStep, &u.Role, &disabled, &created, &u.SigninPINEnc, &u.TelegramUserID, &u.SigninMethod); err != nil {
 		return UserRow{}, err
 	}
 	if len(u.TOTPSecretEnc) == 0 {
@@ -71,8 +73,8 @@ func (db *DB) InsertUser(ctx context.Context, u UserRow) error {
 		if u.SigninPINEnc != nil {
 			pin = u.SigninPINEnc
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO users (`+userCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			u.ID, u.Email, u.PasswordHash, enc, u.TOTPLastStep, u.Role, b2i(u.Disabled), ms(u.CreatedAt), pin)
+		_, err = tx.ExecContext(ctx, `INSERT INTO users (`+userCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			u.ID, u.Email, u.PasswordHash, enc, u.TOTPLastStep, u.Role, b2i(u.Disabled), ms(u.CreatedAt), pin, u.TelegramUserID, u.SigninMethod)
 		if err != nil {
 			return fmt.Errorf("insert user: %w", err)
 		}
@@ -254,10 +256,10 @@ func (db *DB) SessionByTokenHash(ctx context.Context, hash string) (SessionRow, 
 		var disabled, remember int
 		err := q.QueryRowContext(ctx, `SELECT s.id, s.user_id, s.token_hash, s.csrf_key, s.created_at, s.last_seen_at, s.expires_at, s.ip, s.user_agent,
 			s.remember, s.authenticated_at, s.ip_hint,
-			u.id, u.email, u.password_hash, u.totp_secret_enc, u.totp_last_step, u.role, u.disabled, u.created_at, u.signin_pin_enc
+			u.id, u.email, u.password_hash, u.totp_secret_enc, u.totp_last_step, u.role, u.disabled, u.created_at, u.signin_pin_enc, u.telegram_user_id, u.signin_method
 			FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`, hash).
 			Scan(&s.ID, &s.UserID, &s.TokenHash, &s.CSRFKey, &created, &seen, &exp, &s.IP, &s.UserAgent, &remember, &authed, &s.IPHint,
-				&u.ID, &u.Email, &u.PasswordHash, &u.TOTPSecretEnc, &u.TOTPLastStep, &u.Role, &disabled, &ucreated, &u.SigninPINEnc)
+				&u.ID, &u.Email, &u.PasswordHash, &u.TOTPSecretEnc, &u.TOTPLastStep, &u.Role, &disabled, &ucreated, &u.SigninPINEnc, &u.TelegramUserID, &u.SigninMethod)
 		if err != nil {
 			return err
 		}

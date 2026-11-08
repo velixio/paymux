@@ -14,22 +14,42 @@ import (
 
 const signinPIN = "482913"
 
-// user seeds a user with signinPIN set.
+// signinTelegramUser is the Telegram account the seeded users link: the fake's
+// private chat.
+const signinTelegramUser = 42
+
+// user seeds a user linked to Telegram who approves with signinPIN.
 func (h *signinHarness) user(id string) {
 	h.t.Helper()
 	enc, err := h.box.Seal([]byte(signinPIN), secrets.AADSigninPIN(id))
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	if err := h.db.InsertUser(ctx, store.UserRow{ID: id, Email: id + "@example.com", PasswordHash: "h", Role: "admin", SigninPINEnc: enc, CreatedAt: h.clk.Now()}); err != nil {
+	if err := h.db.InsertUser(ctx, store.UserRow{ID: id, Email: id + "@example.com", PasswordHash: "h", Role: "admin", SigninPINEnc: enc,
+		TelegramUserID: signinTelegramUser, SigninMethod: store.SigninMethodPIN, CreatedAt: h.clk.Now()}); err != nil {
 		h.t.Fatal(err)
 	}
 }
 
-// begin starts a request for a user; hash is what finds it again.
+// tapUser seeds a user linked to Telegram who approves with a tap.
+func (h *signinHarness) tapUser(id string) {
+	h.t.Helper()
+	if err := h.db.InsertUser(ctx, store.UserRow{ID: id, Email: id + "@example.com", PasswordHash: "h", Role: "admin",
+		TelegramUserID: signinTelegramUser, SigninMethod: store.SigninMethodTap, CreatedAt: h.clk.Now()}); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+// begin starts a request for a user, with the user's method; hash is what finds
+// it again.
 func (h *signinHarness) begin(userID, hash string) {
 	h.t.Helper()
-	if err := h.svc.BeginSigninApproval(ctx, outbound.SigninApprovalInput{OrgID: "org_1", UserID: userID, BrowserHash: hash, IP: "203.0.113.9", Remember: true}); err != nil {
+	u, err := h.db.UserByID(ctx, userID)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	if err := h.svc.BeginSigninApproval(ctx, outbound.SigninApprovalInput{OrgID: "org_1", UserID: userID, BrowserHash: hash, IP: "203.0.113.9",
+		Method: u.SigninMethod, Remember: true}); err != nil {
 		h.t.Fatal(err)
 	}
 }
@@ -80,11 +100,11 @@ func TestSigninNotificationIsSentWithSoundAndAsksForAReply(t *testing.T) {
 			t.Fatalf("sent %+v", sent)
 		}
 		want := "Sign-in request\nusr_1@example.com\nIP: 203.0.113.9\nTime: 2027-01-15T08:00:00Z\nReply to this message with your PIN."
-		if m := sent[0]; m.ChatID != "-100123" || m.DisableNotification || !m.ForceReply || m.Text != want {
+		if m := sent[0]; m.ChatID != "42" || m.DisableNotification || !m.ForceReply || len(m.Buttons) != 0 || m.Text != want {
 			t.Fatalf("message %+v", m)
 		}
 		a := h.request("b1")
-		if a.ChatID != -100123 || a.MessageID != sent[0].MessageID || a.Status != store.SigninPending || !a.ExpiresAt.Equal(a.CreatedAt.Add(5*time.Minute)) {
+		if a.ChatID != signinTelegramUser || a.MessageID != sent[0].MessageID || a.Status != store.SigninPending || !a.ExpiresAt.Equal(a.CreatedAt.Add(5*time.Minute)) {
 			t.Fatalf("request %+v", a)
 		}
 		var deletes int
@@ -221,7 +241,7 @@ func TestTickStopsWhenNothingIsOpen(t *testing.T) {
 		h := newSigninHarness(t, db)
 		h.user("usr_1")
 		h.begin("usr_1", "b1")
-		if err := db.ClearUserSigninPIN(ctx, "usr_1", h.clk.Now()); err != nil {
+		if err := db.ClearUserSigninApproval(ctx, "usr_1", h.clk.Now()); err != nil {
 			t.Fatal(err)
 		}
 		if n := h.tick(); n != 1 {

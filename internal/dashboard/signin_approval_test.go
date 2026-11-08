@@ -37,8 +37,34 @@ func (e *env) signinChannel() {
 	}
 }
 
+// linkTelegram connects the user to Telegram account 42, the fake's private chat.
+func (e *env) linkTelegram(userID string) {
+	e.t.Helper()
+	org, err := e.d.orgID(ctx)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if err := e.db.AddTelegramLink(ctx, org, userID, "code_"+userID, e.clk.Now().Add(time.Minute)); err != nil {
+		e.t.Fatal(err)
+	}
+	if _, err := e.db.UseTelegramLink(ctx, org, "code_"+userID, 42, e.clk.Now()); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// setTap links the user and turns tap approval on.
+func (e *env) setTap(userID string) {
+	e.t.Helper()
+	e.linkTelegram(userID)
+	if err := e.db.SetUserSigninTap(ctx, userID, e.clk.Now()); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// setPIN links the user and turns PIN approval on with testPIN.
 func (e *env) setPIN(userID string) {
 	e.t.Helper()
+	e.linkTelegram(userID)
 	enc, err := e.box.Seal([]byte(testPIN), secrets.AADSigninPIN(userID))
 	if err != nil {
 		e.t.Fatal(err)
@@ -388,7 +414,7 @@ func TestRemovedPINCannotCollect(t *testing.T) {
 		msg := e.toWaiting(e.c, "pin@example.com", secret, false)
 		e.tg.Reply(msg, testPIN)
 		e.signinTick()
-		if err := db.ClearUserSigninPIN(ctx, id, e.clk.Now()); err != nil {
+		if err := db.ClearUserSigninApproval(ctx, id, e.clk.Now()); err != nil {
 			t.Fatal(err)
 		}
 		resp, _ := e.get(e.c, waitingPath)
@@ -509,6 +535,57 @@ func TestASecondSignInCancelsAnUncollectedApproval(t *testing.T) {
 		e.wantNoSession(resp)
 		if !strings.Contains(body, endedWords) {
 			t.Fatalf("first browser:\n%s", body)
+		}
+	})
+}
+
+func TestTappingApproveSignsIn(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		e.signinChannel()
+		id, secret := e.seedUser("tap@example.com", "admin", true)
+		e.setTap(id)
+		msg := e.toWaiting(e.c, "tap@example.com", secret, false)
+		if sent := e.tg.Sent(); sent[len(sent)-1].ChatID != "42" || len(sent[len(sent)-1].Buttons) != 2 {
+			t.Fatalf("notification %+v", sent[len(sent)-1])
+		}
+		resp, _ := e.get(e.c, waitingPath)
+		e.wantNoSession(resp)
+		e.tg.Tap(msg, "signin:approve")
+		e.signinTick()
+		resp, _ = e.get(e.c, waitingPath)
+		if resp.StatusCode != 303 || resp.Header.Get("Location") != "/dashboard/" || sessionCookie(resp) == nil {
+			t.Fatalf("not signed in: %d %s", resp.StatusCode, resp.Header.Get("Location"))
+		}
+	})
+}
+
+func TestTappingDenyEndsTheSignIn(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		e.signinChannel()
+		id, secret := e.seedUser("tap@example.com", "admin", true)
+		e.setTap(id)
+		msg := e.toWaiting(e.c, "tap@example.com", secret, false)
+		e.tg.Tap(msg, "signin:deny")
+		e.signinTick()
+		resp, body := e.get(e.c, waitingPath)
+		e.wantNoSession(resp)
+		if !strings.Contains(body, endedWords) {
+			t.Fatalf("page:\n%s", body)
+		}
+	})
+}
+
+func TestLinkedTelegramWithoutAMethodSignsInAsBefore(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		e.signinChannel()
+		id, secret := e.seedUser("plain@example.com", "admin", true)
+		e.linkTelegram(id)
+		resp, _ := e.signIn(e.c, "plain@example.com", secret, false)
+		if resp.StatusCode != 303 || resp.Header.Get("Location") != "/dashboard/" || sessionCookie(resp) == nil {
+			t.Fatalf("got %d %s", resp.StatusCode, resp.Header.Get("Location"))
 		}
 	})
 }

@@ -26,12 +26,12 @@ const (
 )
 
 // finishSignIn ends every sign-in that has proved who the person is (password
-// and code, or the identity provider). A user with a PIN gets a request to
-// approve instead of a session. Nothing the browser sees may name where the
+// and code, or the identity provider). A user with sign-in approval on gets a
+// request to approve instead of a session. Nothing the browser sees may name where the
 // approval happens.
 func (d *Dashboard) finishSignIn(w http.ResponseWriter, r *http.Request, u store.UserRow, remember bool) {
 	ctx := r.Context()
-	if d.o.DevSkip2FA || u.SigninPINEnc == nil {
+	if d.o.DevSkip2FA || !u.SigninApprovalOn() {
 		if err := d.createSession(ctx, w, r, u, remember); err != nil {
 			d.fail(w, err)
 			return
@@ -60,7 +60,7 @@ func (d *Dashboard) finishSignIn(w http.ResponseWriter, r *http.Request, u store
 	}
 	token, hash := auth.NewSessionToken()
 	if err := d.o.Outbound.BeginSigninApproval(ctx, outbound.SigninApprovalInput{OrgID: org, UserID: u.ID, BrowserHash: hash,
-		IP: d.clientIP(r), Remember: remember}); err != nil {
+		IP: d.clientIP(r), Method: u.SigninMethod, Remember: remember}); err != nil {
 		d.fail(w, err)
 		return
 	}
@@ -106,7 +106,7 @@ func (d *Dashboard) signinWaitPage(w http.ResponseWriter, r *http.Request) {
 			d.fail(w, err)
 			return
 		}
-		if !u.Disabled && u.SigninPINEnc != nil {
+		if !u.Disabled && u.SigninApprovalOn() {
 			ok, err := d.o.DB.CollectSigninApproval(ctx, a.ID, now.Add(-signinCollectWindow))
 			if err != nil {
 				d.fail(w, err)
@@ -146,20 +146,69 @@ func (d *Dashboard) signinWaitStatus(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, state)
 }
 
-var signinPINPattern = regexp.MustCompile(`^[0-9]{6,12}$`)
-
-// signinPINSet turns on the approval step, or changes the PIN. The channel is
-// checked first: a PIN it cannot serve would lock the user out at next sign-in.
-func (d *Dashboard) signinPINSet(w http.ResponseWriter, r *http.Request, s *session) {
+// telegramLink makes a one-time link that connects the user's Telegram account,
+// and shows it.
+func (d *Dashboard) telegramLink(w http.ResponseWriter, r *http.Request, s *session) {
 	ctx := r.Context()
-	pin := r.PostForm.Get("pin")
-	if !signinPINPattern.MatchString(pin) {
-		d.renderAccount(w, r, s, http.StatusBadRequest, "The PIN must be 6 to 12 digits.")
+	org, err := d.orgID(ctx)
+	if err != nil {
+		d.fail(w, err)
 		return
 	}
-	if pin != r.PostForm.Get("confirm_pin") {
-		d.renderAccount(w, r, s, http.StatusBadRequest, "The two PINs differ.")
+	url, err := d.o.Outbound.BeginTelegramLink(ctx, org, s.User.ID)
+	if err != nil {
+		if outbound.IsSigninProblem(err) {
+			d.renderAccount(w, r, s, http.StatusBadRequest, err.Error())
+			return
+		}
+		d.fail(w, err)
 		return
+	}
+	d.renderAccountLink(w, r, s, http.StatusOK, "", url)
+}
+
+// telegramUnlink forgets the user's Telegram account; approval goes with it.
+func (d *Dashboard) telegramUnlink(w http.ResponseWriter, r *http.Request, s *session) {
+	ctx := r.Context()
+	if err := d.o.DB.UnlinkUserTelegram(ctx, s.User.ID, d.o.Now()); err != nil {
+		d.fail(w, err)
+		return
+	}
+	if err := d.record(ctx, r, s, "user.telegram_unlinked", s.User.ID, nil, nil); err != nil {
+		d.o.Logger.Warn("dashboard: audit of sign-in approval", "err", err)
+	}
+	http.Redirect(w, r, prefix+"/account?n=unlinked", http.StatusSeeOther)
+}
+
+var signinPINPattern = regexp.MustCompile(`^[0-9]{6,12}$`)
+
+// signinApprovalSet turns approval on with one method, tap (the default) or PIN,
+// or changes the PIN. The bot is checked first: an approval it cannot serve
+// would lock the user out at next sign-in.
+func (d *Dashboard) signinApprovalSet(w http.ResponseWriter, r *http.Request, s *session) {
+	ctx := r.Context()
+	if s.User.TelegramUserID == 0 {
+		d.renderAccount(w, r, s, http.StatusBadRequest, "Connect your Telegram account first.")
+		return
+	}
+	method := r.PostForm.Get("method")
+	if method == "" {
+		method = store.SigninMethodTap
+	}
+	if method != store.SigninMethodTap && method != store.SigninMethodPIN {
+		d.renderAccount(w, r, s, http.StatusBadRequest, "Choose tap or PIN.")
+		return
+	}
+	pin := r.PostForm.Get("pin")
+	if method == store.SigninMethodPIN {
+		if !signinPINPattern.MatchString(pin) {
+			d.renderAccount(w, r, s, http.StatusBadRequest, "The PIN must be 6 to 12 digits.")
+			return
+		}
+		if pin != r.PostForm.Get("confirm_pin") {
+			d.renderAccount(w, r, s, http.StatusBadRequest, "The two PINs differ.")
+			return
+		}
 	}
 	org, err := d.orgID(ctx)
 	if err != nil {
@@ -170,30 +219,40 @@ func (d *Dashboard) signinPINSet(w http.ResponseWriter, r *http.Request, s *sess
 		d.renderAccount(w, r, s, http.StatusBadRequest, err.Error())
 		return
 	}
-	enc, err := d.o.Box.Seal([]byte(pin), secrets.AADSigninPIN(s.User.ID))
+	if method == store.SigninMethodPIN {
+		enc, sealErr := d.o.Box.Seal([]byte(pin), secrets.AADSigninPIN(s.User.ID))
+		if sealErr != nil {
+			d.fail(w, sealErr)
+			return
+		}
+		err = d.o.DB.SetUserSigninPIN(ctx, s.User.ID, enc, d.o.Now())
+	} else {
+		err = d.o.DB.SetUserSigninTap(ctx, s.User.ID, d.o.Now())
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		// Telegram was disconnected meanwhile, from another session.
+		d.renderAccount(w, r, s, http.StatusBadRequest, "Connect your Telegram account first.")
+		return
+	}
 	if err != nil {
 		d.fail(w, err)
 		return
 	}
-	if err := d.o.DB.SetUserSigninPIN(ctx, s.User.ID, enc, d.o.Now()); err != nil {
-		d.fail(w, err)
-		return
+	if err := d.record(ctx, r, s, "user.signin_approval_set", s.User.ID, nil, map[string]string{"method": method}); err != nil {
+		d.o.Logger.Warn("dashboard: audit of sign-in approval", "err", err)
 	}
-	if err := d.record(ctx, r, s, "user.signin_pin_set", s.User.ID, nil, nil); err != nil {
-		d.o.Logger.Warn("dashboard: audit of sign-in PIN", "err", err)
-	}
-	http.Redirect(w, r, prefix+"/account?n=pin", http.StatusSeeOther)
+	http.Redirect(w, r, prefix+"/account?n=approval", http.StatusSeeOther)
 }
 
-// signinPINRemove turns the approval step off.
-func (d *Dashboard) signinPINRemove(w http.ResponseWriter, r *http.Request, s *session) {
+// signinApprovalOff turns the approval step off. Telegram stays linked.
+func (d *Dashboard) signinApprovalOff(w http.ResponseWriter, r *http.Request, s *session) {
 	ctx := r.Context()
-	if err := d.o.DB.ClearUserSigninPIN(ctx, s.User.ID, d.o.Now()); err != nil {
+	if err := d.o.DB.ClearUserSigninApproval(ctx, s.User.ID, d.o.Now()); err != nil {
 		d.fail(w, err)
 		return
 	}
-	if err := d.record(ctx, r, s, "user.signin_pin_removed", s.User.ID, nil, nil); err != nil {
-		d.o.Logger.Warn("dashboard: audit of sign-in PIN", "err", err)
+	if err := d.record(ctx, r, s, "user.signin_approval_removed", s.User.ID, nil, nil); err != nil {
+		d.o.Logger.Warn("dashboard: audit of sign-in approval", "err", err)
 	}
-	http.Redirect(w, r, prefix+"/account?n=pin_removed", http.StatusSeeOther)
+	http.Redirect(w, r, prefix+"/account?n=approval_off", http.StatusSeeOther)
 }

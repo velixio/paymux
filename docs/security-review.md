@@ -415,13 +415,15 @@ paragraph under the same headings; the numbers continue from F28.
 - **F48.** The memory figure is the process's heap, not the script's, so it is an approximation under heavy load.
   Hooks are code the operator wrote; a container memory limit remains the hard bound.
 
-- **Sign-in approval PIN.** Accepted with the design (`docs/superpowers/specs/2026-11-06-telegram-sign-in-approval-design.md`).
-  The PIN is encrypted rather than hashed, so anyone holding the master key can read it. In a group chat everyone can
-  see a PIN until the bot deletes it, it may stay in phone notifications, and everyone sees each sign-in's email and IP
-  address. Anyone in the chat who knows a user's PIN can approve that user's sign-in. If the bot stops working, users
-  with a PIN are locked out until it is fixed or `paymux user remove-pin` is run. If the bot cannot delete a reply,
-  the sign-in still succeeds; the deletion is tried again every few minutes for up to two days, and the PIN stays in
-  the chat until it works.
+- **Sign-in approval in Telegram.** Accepted with the design (`docs/superpowers/specs/2026-11-06-telegram-sign-in-approval-design.md`),
+  changed since to the user's own private chat. Each user links their own Telegram account and approves by tapping
+  Approve (the default) or replying with a PIN; only that account, in that chat, decides. With the tap method,
+  whoever holds the user's Telegram can approve. The PIN is encrypted rather than hashed, so anyone holding the master
+  key can read it, and it may stay in phone notifications. If the bot stops working, users with approval on are locked
+  out until it is fixed or `paymux user remove-signin-approval` is run. If the bot cannot delete a reply, the sign-in
+  still succeeds; the deletion is tried again every few minutes for up to two days, and the PIN stays in the chat
+  until it works. A "/start" sent after a link has stopped working is answered only the next time the bot reads,
+  which it does while a request or a link waits.
 
 ### Reviewed, not issues (fifth batch)
 

@@ -73,11 +73,9 @@ func TestCheckSigninApprovalChannel(t *testing.T) {
 	}{
 		{"channel off", func(h *signinHarness) { h.channel("-100123", false, "") }, "Turn on the live Telegram channel in Settings first."},
 		{"webhook set", func(h *signinHarness) { h.tg.SetWebhook("https://example.com/hook") }, "This bot has a webhook set. Remove it so Paymux can read replies."},
-		{"a channel", func(h *signinHarness) { h.tg.SetChat(-100123, "channel") }, "Channels can't be used, because they have no normal replies. Use a private chat or a group."},
-		{"group without delete rights", func(h *signinHarness) { h.tg.SetBotCanDelete(false) }, "Make the bot an admin of this group with permission to delete messages."},
-		{"bad token", func(h *signinHarness) { h.tg.Fail("getChat", http.StatusUnauthorized) }, "Paymux could not reach the Telegram chat. Check the bot token and chat id in Settings."},
-		{"private chat", func(h *signinHarness) { h.tg.SetChat(42, "private"); h.tg.SetBotCanDelete(false) }, ""},
-		{"group with delete rights", func(h *signinHarness) {}, ""},
+		{"bad token", func(h *signinHarness) { h.tg.Fail("getWebhookInfo", http.StatusUnauthorized) }, "Paymux could not reach the Telegram bot. Check the bot token in Settings."},
+		{"bot unreadable", func(h *signinHarness) { h.tg.Fail("getMe", http.StatusInternalServerError) }, "Paymux could not reach the Telegram bot. Check the bot token in Settings."},
+		{"working bot", func(h *signinHarness) {}, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {

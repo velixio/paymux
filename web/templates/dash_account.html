@@ -47,15 +47,30 @@
 </form>
 
 <h2>Sign-in approval</h2>
-<p class="muted">Each sign-in must also be approved by replying to a Telegram message with this PIN. Anyone in that chat can see a PIN until Paymux removes it.</p>
-<form method="post" action="/dashboard/account/signin-pin" class="stack">
+{{if not .TelegramLinked}}<p class="muted">Each sign-in can wait for your approval in Telegram, in your private chat with the Paymux bot. Connect your own Telegram account first.</p>
+{{with .TelegramLinkURL}}<p><a class="btn" href="{{.}}" target="_blank" rel="noopener noreferrer">Open Telegram</a></p>
+<p class="muted">Tap <strong>Start</strong> in Telegram. When the bot says you are connected, <a href="/dashboard/account">reload this page</a>. The link works once, for 10 minutes.</p>
+{{else}}<form method="post" action="/dashboard/account/telegram/link">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
-<label>PIN (6 to 12 digits)<input class="field" name="pin" type="password" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{6,12}" minlength="6" maxlength="12" required></label>
-<label>PIN again<input class="field" name="confirm_pin" type="password" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{6,12}" minlength="6" maxlength="12" required></label>
-<button class="btn" type="submit">{{if .HasSigninPIN}}Change PIN{{else}}Turn on{{end}}</button>
-</form>
-{{if .HasSigninPIN}}<form method="post" action="/dashboard/account/signin-pin/remove">
-<input type="hidden" name="csrf" value="{{.CSRF}}">
-<button class="btn" type="submit">Remove PIN</button>
+<button class="btn" type="submit">Connect Telegram</button>
 </form>{{end}}
-{{template "dash_close" .}}{{end}}
+{{else}}<p class="muted">Telegram is connected. {{if eq .SigninMethod "tap"}}Each sign-in waits until you tap <strong>Approve</strong> in Telegram.{{else if eq .SigninMethod "pin"}}Each sign-in waits until you reply in Telegram with your PIN.{{else}}Sign-in approval is off.{{end}}</p>
+<form method="post" action="/dashboard/account/signin-approval" class="stack">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<fieldset><legend>How to approve</legend>
+<label><input type="radio" name="method" value="tap"{{if ne .SigninMethod "pin"}} checked{{end}}> Tap Approve in Telegram</label>
+<label><input type="radio" name="method" value="pin"{{if eq .SigninMethod "pin"}} checked{{end}}> Reply with a PIN</label>
+</fieldset>
+<label>PIN, for the PIN method (6 to 12 digits)<input class="field" name="pin" type="password" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{6,12}" minlength="6" maxlength="12"></label>
+<label>PIN again<input class="field" name="confirm_pin" type="password" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{6,12}" minlength="6" maxlength="12"></label>
+<button class="btn" type="submit">{{if .SigninMethod}}Save{{else}}Turn on{{end}}</button>
+</form>
+{{if .SigninMethod}}<form method="post" action="/dashboard/account/signin-approval/off">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<button class="btn" type="submit">Turn off sign-in approval</button>
+</form>{{end}}
+<form method="post" action="/dashboard/account/telegram/unlink">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<button class="btn" type="submit">Disconnect Telegram</button>
+</form>
+{{end}}{{template "dash_close" .}}{{end}}

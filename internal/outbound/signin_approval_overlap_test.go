@@ -109,7 +109,7 @@ func TestASecondNotificationForARequestIsDeleted(t *testing.T) {
 		h.begin("usr_1", "b1")
 		id := h.request("b1").ID
 		h.tg.Before("sendMessage", func(*http.Request) {
-			if _, err := db.SetSigninNotification(ctx, id, -100123, 999); err != nil {
+			if _, err := db.SetSigninNotification(ctx, id, signinTelegramUser, 999); err != nil {
 				t.Error(err)
 			}
 		})

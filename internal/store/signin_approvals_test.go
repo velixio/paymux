@@ -13,7 +13,7 @@ var signinT0 = time.UnixMilli(1_800_000_000_000).UTC()
 
 func signinUser(t *testing.T, db *store.DB, id string) {
 	t.Helper()
-	if err := db.InsertUser(ctx, store.UserRow{ID: id, Email: id + "@example.com", PasswordHash: "h", Role: "admin", CreatedAt: signinT0}); err != nil {
+	if err := db.InsertUser(ctx, store.UserRow{ID: id, Email: id + "@example.com", PasswordHash: "h", Role: "admin", TelegramUserID: 42, CreatedAt: signinT0}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -21,7 +21,7 @@ func signinUser(t *testing.T, db *store.DB, id string) {
 func insertSignin(t *testing.T, db *store.DB, id, userID string, at time.Time) store.SigninApproval {
 	t.Helper()
 	a := store.SigninApproval{ID: id, OrgID: "org_1", UserID: userID, BrowserHash: "hash_" + id, IP: "203.0.113.9",
-		Status: store.SigninPending, Remember: true, CreatedAt: at, ExpiresAt: at.Add(5 * time.Minute)}
+		Status: store.SigninPending, Method: store.SigninMethodPIN, Remember: true, CreatedAt: at, ExpiresAt: at.Add(5 * time.Minute)}
 	if err := db.Write(ctx, func(tx store.Tx) error { return store.InsertSigninApproval(ctx, tx, a) }); err != nil {
 		t.Fatal(err)
 	}
@@ -148,33 +148,160 @@ func TestClaimSigninPollIsExclusivePerBot(t *testing.T) {
 	})
 }
 
-func TestSettingOrClearingThePINEndsPendingRequests(t *testing.T) {
+func TestChangingTheMethodEndsPendingRequests(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		signinUser(t, db, "usr_1")
+		user := func() store.UserRow {
+			u, err := db.UserByID(ctx, "usr_1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return u
+		}
 		insertSignin(t, db, "a", "usr_1", signinT0)
 		if err := db.SetUserSigninPIN(ctx, "usr_1", []byte("sealed"), signinT0); err != nil {
 			t.Fatal(err)
 		}
-		u, err := db.UserByID(ctx, "usr_1")
-		if err != nil || string(u.SigninPINEnc) != "sealed" {
-			t.Fatalf("after set: %q %v", u.SigninPINEnc, err)
+		if u := user(); string(u.SigninPINEnc) != "sealed" || u.SigninMethod != store.SigninMethodPIN || !u.SigninApprovalOn() {
+			t.Fatalf("after PIN: %+v", u)
 		}
 		if got := signinByHash(t, db, "a"); got.Status != store.SigninEnded {
-			t.Fatalf("after set: %q", got.Status)
+			t.Fatalf("after PIN: %q", got.Status)
 		}
 		insertSignin(t, db, "b", "usr_1", signinT0)
-		if err := db.ClearUserSigninPIN(ctx, "usr_1", signinT0); err != nil {
+		if err := db.SetUserSigninTap(ctx, "usr_1", signinT0); err != nil {
 			t.Fatal(err)
 		}
-		u, err = db.UserByID(ctx, "usr_1")
-		if err != nil || u.SigninPINEnc != nil {
-			t.Fatalf("after clear: %q %v", u.SigninPINEnc, err)
+		if u := user(); u.SigninPINEnc != nil || u.SigninMethod != store.SigninMethodTap || !u.SigninApprovalOn() {
+			t.Fatalf("after tap: %+v", u)
 		}
 		if got := signinByHash(t, db, "b"); got.Status != store.SigninEnded {
-			t.Fatalf("after clear: %q", got.Status)
+			t.Fatalf("after tap: %q", got.Status)
 		}
-		if err := db.ClearUserSigninPIN(ctx, "nobody", signinT0); !errors.Is(err, store.ErrNotFound) {
+		insertSignin(t, db, "c", "usr_1", signinT0)
+		if err := db.ClearUserSigninApproval(ctx, "usr_1", signinT0); err != nil {
+			t.Fatal(err)
+		}
+		if u := user(); u.SigninPINEnc != nil || u.SigninMethod != "" || u.SigninApprovalOn() || u.TelegramUserID != 42 {
+			t.Fatalf("after off: %+v", u)
+		}
+		if got := signinByHash(t, db, "c"); got.Status != store.SigninEnded {
+			t.Fatalf("after off: %q", got.Status)
+		}
+		if err := db.ClearUserSigninApproval(ctx, "nobody", signinT0); !errors.Is(err, store.ErrNotFound) {
 			t.Fatalf("unknown user: %v", err)
+		}
+	})
+}
+
+func TestApprovalNeedsALinkedTelegram(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		if err := db.InsertUser(ctx, store.UserRow{ID: "usr_1", Email: "usr_1@example.com", PasswordHash: "h", Role: "admin", CreatedAt: signinT0}); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.SetUserSigninTap(ctx, "usr_1", signinT0); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("tap without Telegram: %v", err)
+		}
+		if err := db.SetUserSigninPIN(ctx, "usr_1", []byte("sealed"), signinT0); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("PIN without Telegram: %v", err)
+		}
+		// A row that says so all the same is not on.
+		for _, u := range []store.UserRow{{SigninMethod: store.SigninMethodTap}, {TelegramUserID: 42, SigninMethod: store.SigninMethodPIN}, {TelegramUserID: 42}} {
+			if u.SigninApprovalOn() {
+				t.Fatalf("on: %+v", u)
+			}
+		}
+	})
+}
+
+func TestTelegramLinks(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		if err := db.InsertUser(ctx, store.UserRow{ID: "usr_1", Email: "usr_1@example.com", PasswordHash: "h", Role: "admin", CreatedAt: signinT0}); err != nil {
+			t.Fatal(err)
+		}
+		until := signinT0.Add(10 * time.Minute)
+		if err := db.AddTelegramLink(ctx, "org_1", "usr_1", "old", until); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.AddTelegramLink(ctx, "org_1", "usr_1", "code", until); err != nil {
+			t.Fatal(err)
+		}
+		if open, err := db.HasOpenSigninApprovals(ctx, signinT0); err != nil || !open {
+			t.Fatalf("open with a live link: %v %v", open, err)
+		}
+		if orgs, err := db.SigninOrgsToRead(ctx, signinT0); err != nil || len(orgs) != 1 || orgs[0] != "org_1" {
+			t.Fatalf("orgs to read: %v %v", orgs, err)
+		}
+		for name, try := range map[string]func() error{
+			"replaced":  func() error { _, err := db.UseTelegramLink(ctx, "org_1", "old", 55, signinT0); return err },
+			"other org": func() error { _, err := db.UseTelegramLink(ctx, "org_2", "code", 55, signinT0); return err },
+			"too late":  func() error { _, err := db.UseTelegramLink(ctx, "org_1", "code", 55, until); return err },
+		} {
+			if err := try(); !errors.Is(err, store.ErrNotFound) {
+				t.Fatalf("%s: %v", name, err)
+			}
+		}
+		insertSignin(t, db, "a", "usr_1", signinT0)
+		u, err := db.UseTelegramLink(ctx, "org_1", "code", 55, signinT0)
+		if err != nil || u.ID != "usr_1" || u.TelegramUserID != 55 {
+			t.Fatalf("used: %+v %v", u, err)
+		}
+		if got := signinByHash(t, db, "a"); got.Status != store.SigninEnded {
+			t.Fatalf("a new link left a request open: %q", got.Status)
+		}
+		if _, err := db.UseTelegramLink(ctx, "org_1", "code", 66, signinT0); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("used twice: %v", err)
+		}
+		if err := db.SetUserSigninTap(ctx, "usr_1", signinT0); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.AddTelegramLink(ctx, "org_1", "usr_1", "again", until); err != nil {
+			t.Fatal(err)
+		}
+		insertSignin(t, db, "b", "usr_1", signinT0)
+		if err := db.UnlinkUserTelegram(ctx, "usr_1", signinT0); err != nil {
+			t.Fatal(err)
+		}
+		if u, _ := db.UserByID(ctx, "usr_1"); u.TelegramUserID != 0 || u.SigninMethod != "" || u.SigninApprovalOn() {
+			t.Fatalf("after unlink: %+v", u)
+		}
+		if got := signinByHash(t, db, "b"); got.Status != store.SigninEnded {
+			t.Fatalf("unlinking left a request open: %q", got.Status)
+		}
+		if _, err := db.UseTelegramLink(ctx, "org_1", "again", 55, signinT0); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("a link outlived unlinking: %v", err)
+		}
+		if err := db.AddTelegramLink(ctx, "org_1", "usr_1", "late", until); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.PurgeSigninApprovals(ctx, signinT0, until); err != nil {
+			t.Fatal(err)
+		}
+		if open, err := db.HasOpenSigninApprovals(ctx, signinT0); err != nil || open {
+			t.Fatalf("open after purge: %v %v", open, err)
+		}
+		if _, err := db.UseTelegramLink(ctx, "org_1", "late", 55, signinT0); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("an expired link was not purged: %v", err)
+		}
+	})
+}
+
+func TestDecideSigninApproval(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		signinUser(t, db, "usr_1")
+		insertSignin(t, db, "a", "usr_1", signinT0)
+		if got, err := db.DecideSigninApproval(ctx, "a", true, signinT0.Add(5*time.Minute)); err != nil || got.Status != store.SigninPending {
+			t.Fatalf("out of time: %+v %v", got, err)
+		}
+		if got, err := db.DecideSigninApproval(ctx, "a", false, signinT0); err != nil || got.Status != store.SigninEnded || got.DecidedAt.IsZero() {
+			t.Fatalf("denied: %+v %v", got, err)
+		}
+		if got, err := db.DecideSigninApproval(ctx, "a", true, signinT0); err != nil || got.Status != store.SigninEnded {
+			t.Fatalf("decided twice: %+v %v", got, err)
+		}
+		insertSignin(t, db, "b", "usr_1", signinT0)
+		if got, err := db.DecideSigninApproval(ctx, "b", true, signinT0); err != nil || got.Status != store.SigninApproved {
+			t.Fatalf("approved: %+v %v", got, err)
 		}
 	})
 }
@@ -182,14 +309,14 @@ func TestSettingOrClearingThePINEndsPendingRequests(t *testing.T) {
 func TestSigninApprovalWorkLists(t *testing.T) {
 	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
 		signinUser(t, db, "usr_1")
-		if open, err := db.HasOpenSigninApprovals(ctx); err != nil || open {
+		if open, err := db.HasOpenSigninApprovals(ctx, signinT0); err != nil || open {
 			t.Fatalf("open with no rows: %v %v", open, err)
 		}
 		insertSignin(t, db, "a", "usr_1", signinT0)
-		if open, err := db.HasOpenSigninApprovals(ctx); err != nil || !open {
+		if open, err := db.HasOpenSigninApprovals(ctx, signinT0); err != nil || !open {
 			t.Fatalf("open with a pending row: %v %v", open, err)
 		}
-		if orgs, err := db.PendingSigninOrgs(ctx); err != nil || len(orgs) != 1 || orgs[0] != "org_1" {
+		if orgs, err := db.SigninOrgsToRead(ctx, signinT0); err != nil || len(orgs) != 1 || orgs[0] != "org_1" {
 			t.Fatalf("pending orgs: %v %v", orgs, err)
 		}
 		send, err := db.SigninApprovalsToSend(ctx, signinT0)
@@ -230,14 +357,14 @@ func TestSigninApprovalWorkLists(t *testing.T) {
 		if got := signinByHash(t, db, "a"); got.Status != store.SigninEnded {
 			t.Fatalf("not expired: %q", got.Status)
 		}
-		if orgs, err := db.PendingSigninOrgs(ctx); err != nil || len(orgs) != 0 {
+		if orgs, err := db.SigninOrgsToRead(ctx, signinT0); err != nil || len(orgs) != 0 {
 			t.Fatalf("pending orgs after expiry: %v %v", orgs, err)
 		}
 		clear, err := db.SigninApprovalsToClear(ctx)
 		if err != nil || len(clear) != 1 || clear[0].ID != "a" {
 			t.Fatalf("to clear: %+v %v", clear, err)
 		}
-		if open, err := db.HasOpenSigninApprovals(ctx); err != nil || !open {
+		if open, err := db.HasOpenSigninApprovals(ctx, signinT0); err != nil || !open {
 			t.Fatalf("open with a notification to delete: %v %v", open, err)
 		}
 		if err := db.MarkSigninCleared(ctx, "a"); err != nil {
@@ -246,16 +373,16 @@ func TestSigninApprovalWorkLists(t *testing.T) {
 		if clear, err = db.SigninApprovalsToClear(ctx); err != nil || len(clear) != 0 {
 			t.Fatalf("cleared already: %+v %v", clear, err)
 		}
-		if open, err := db.HasOpenSigninApprovals(ctx); err != nil || open {
+		if open, err := db.HasOpenSigninApprovals(ctx, signinT0); err != nil || open {
 			t.Fatalf("open when all done: %v %v", open, err)
 		}
 
 		// Ended rows stay long enough to recognise late replies, then go.
-		if err := db.PurgeSigninApprovals(ctx, signinT0); err != nil {
+		if err := db.PurgeSigninApprovals(ctx, signinT0, signinT0); err != nil {
 			t.Fatal(err)
 		}
 		signinByHash(t, db, "a")
-		if err := db.PurgeSigninApprovals(ctx, signinT0.Add(time.Millisecond)); err != nil {
+		if err := db.PurgeSigninApprovals(ctx, signinT0.Add(time.Millisecond), signinT0); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := db.SigninApprovalByBrowser(ctx, "hash_a"); !errors.Is(err, store.ErrNotFound) {
@@ -273,8 +400,17 @@ func TestApprovedRequestsEndWithLaterChanges(t *testing.T) {
 					Status: store.SigninPending, CreatedAt: signinT0, ExpiresAt: signinT0.Add(time.Minute)})
 			})
 		},
-		"a new PIN":        func(db *store.DB) error { return db.SetUserSigninPIN(ctx, "usr_1", []byte("sealed"), signinT0) },
-		"removing the PIN": func(db *store.DB) error { return db.ClearUserSigninPIN(ctx, "usr_1", signinT0) },
+		"a new PIN":              func(db *store.DB) error { return db.SetUserSigninPIN(ctx, "usr_1", []byte("sealed"), signinT0) },
+		"turning tap on":         func(db *store.DB) error { return db.SetUserSigninTap(ctx, "usr_1", signinT0) },
+		"turning approval off":   func(db *store.DB) error { return db.ClearUserSigninApproval(ctx, "usr_1", signinT0) },
+		"disconnecting Telegram": func(db *store.DB) error { return db.UnlinkUserTelegram(ctx, "usr_1", signinT0) },
+		"connecting Telegram again": func(db *store.DB) error {
+			if err := db.AddTelegramLink(ctx, "org_1", "usr_1", "code", signinT0.Add(time.Minute)); err != nil {
+				return err
+			}
+			_, err := db.UseTelegramLink(ctx, "org_1", "code", 55, signinT0)
+			return err
+		},
 		"signing out other sessions": func(db *store.DB) error {
 			_, err := db.DeleteUserSessionsExcept(ctx, "usr_1", "ses_none")
 			return err

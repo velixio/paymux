@@ -21,21 +21,28 @@ type SentMessage struct {
 	Text                string
 	DisableNotification bool
 	ForceReply          bool
+	Buttons             []string // the callback data of inline buttons
+}
+
+// Answer is one answerCallbackQuery call.
+type Answer struct {
+	CallbackID, Text string
 }
 
 type update struct {
 	id                       int64
 	chatID, messageID, reply int64
+	fromID                   int64
 	text                     string
+	callback                 string // the button's data when this is a tap
 }
 
 // Fake is an http.RoundTripper that answers Bot API calls from memory.
 type Fake struct {
 	mu        sync.Mutex
 	chatID    int64
-	chatType  string
-	canDelete bool
 	webhook   string
+	answers   []Answer
 	failures  map[string]int
 	updates   []update
 	sent      []SentMessage
@@ -49,24 +56,21 @@ type Fake struct {
 	lose      map[string]bool
 }
 
-// New returns a Fake with a supergroup chat -100123 where the bot may delete.
+// BotUsername is the username getMe answers with.
+const BotUsername = "paymux_test_bot"
+
+// New returns a Fake whose Reply and Tap come from the private chat of Telegram
+// user 42.
 func New() *Fake {
-	return &Fake{chatID: -100123, chatType: "supergroup", canDelete: true, failures: map[string]int{}, calls: map[string]int{},
+	return &Fake{chatID: 42, failures: map[string]int{}, calls: map[string]int{},
 		nextMsg: 321, nextReply: 1000, nextUpd: 500}
 }
 
-// SetChat sets what getChat answers and the chat messages are sent in.
-func (f *Fake) SetChat(chatID int64, chatType string) {
+// SetChat sets the private chat, and so the user, that Reply and Tap come from.
+func (f *Fake) SetChat(chatID int64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.chatID, f.chatType = chatID, chatType
-}
-
-// SetBotCanDelete sets whether the bot is an admin that may delete in a group.
-func (f *Fake) SetBotCanDelete(can bool) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.canDelete = can
+	f.chatID = chatID
 }
 
 // SetWebhook sets the bot's webhook. While one is set getUpdates answers 409.
@@ -117,15 +121,50 @@ func (f *Fake) Reply(toMessageID int64, text string) int64 {
 	return f.ReplyFromChat(chatID, toMessageID, text)
 }
 
-// ReplyFromChat queues a reply in the given chat; toMessageID 0 means an ordinary
-// message that replies to nothing.
+// ReplyFromChat queues a reply in the given chat, sent by the user of that number
+// (in a private chat they are the same); toMessageID 0 means an ordinary message
+// that replies to nothing.
 func (f *Fake) ReplyFromChat(chatID, toMessageID int64, text string) int64 {
+	return f.ReplyFrom(chatID, chatID, toMessageID, text)
+}
+
+// ReplyFrom queues a message sent by fromID in chatID.
+func (f *Fake) ReplyFrom(chatID, fromID, toMessageID int64, text string) int64 {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.nextReply++
 	f.nextUpd++
-	f.updates = append(f.updates, update{id: f.nextUpd, chatID: chatID, messageID: f.nextReply, reply: toMessageID, text: text})
+	f.updates = append(f.updates, update{id: f.nextUpd, chatID: chatID, fromID: fromID, messageID: f.nextReply, reply: toMessageID, text: text})
 	return f.nextReply
+}
+
+// Start queues "/start <code>" sent by a user in their private chat with the bot,
+// as opening a t.me link does.
+func (f *Fake) Start(userID int64, code string) {
+	f.ReplyFrom(userID, userID, 0, "/start "+code)
+}
+
+// Tap queues a tap on a button of a message in the private chat.
+func (f *Fake) Tap(messageID int64, data string) {
+	f.mu.Lock()
+	chatID := f.chatID
+	f.mu.Unlock()
+	f.TapFrom(chatID, chatID, messageID, data)
+}
+
+// TapFrom queues a tap by fromID on a button of a message in chatID.
+func (f *Fake) TapFrom(chatID, fromID, messageID int64, data string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nextUpd++
+	f.updates = append(f.updates, update{id: f.nextUpd, chatID: chatID, fromID: fromID, messageID: messageID, callback: data})
+}
+
+// Answers returns every answer to a tap so far.
+func (f *Fake) Answers() []Answer {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]Answer(nil), f.answers...)
 }
 
 // Sent returns every message sent so far.
@@ -195,24 +234,32 @@ func (f *Fake) answer(r *http.Request, method string, body map[string]any) *http
 		m.DisableNotification, _ = body["disable_notification"].(bool)
 		if markup, ok := body["reply_markup"].(map[string]any); ok {
 			m.ForceReply, _ = markup["force_reply"].(bool)
+			rows, _ := markup["inline_keyboard"].([]any)
+			for _, row := range rows {
+				buttons, _ := row.([]any)
+				for _, b := range buttons {
+					button, _ := b.(map[string]any)
+					data, _ := button["callback_data"].(string)
+					m.Buttons = append(m.Buttons, data)
+				}
+			}
 		}
 		f.sent = append(f.sent, m)
-		return ok(fmt.Sprintf(`{"message_id":%d,"chat":{"id":%d}}`, m.MessageID, f.chatID))
+		return ok(fmt.Sprintf(`{"message_id":%d,"chat":{"id":%s}}`, m.MessageID, m.ChatID))
+	case "answerCallbackQuery":
+		a := Answer{}
+		a.CallbackID, _ = body["callback_query_id"].(string)
+		a.Text, _ = body["text"].(string)
+		f.answers = append(f.answers, a)
+		return ok(`true`)
 	case "deleteMessage":
 		id, _ := body["message_id"].(float64)
 		f.deleted = append(f.deleted, int64(id))
 		return ok(`true`)
 	case "getWebhookInfo":
 		return ok(fmt.Sprintf(`{"url":%q}`, f.webhook))
-	case "getChat":
-		return ok(fmt.Sprintf(`{"id":%d,"type":%q}`, f.chatID, f.chatType))
 	case "getMe":
-		return ok(`{"id":99,"is_bot":true}`)
-	case "getChatMember":
-		if f.canDelete {
-			return ok(`{"status":"administrator","can_delete_messages":true}`)
-		}
-		return ok(`{"status":"member"}`)
+		return ok(`{"id":99,"is_bot":true,"username":"` + BotUsername + `"}`)
 	case "getUpdates":
 		if f.webhook != "" {
 			return respond(http.StatusConflict, `{"ok":false,"error_code":409,"description":"can't use getUpdates method while webhook is active"}`)
@@ -237,22 +284,37 @@ func (f *Fake) answer(r *http.Request, method string, body map[string]any) *http
 }
 
 // updateJSON is how Telegram shows an update: a reply carries the message it
-// answers, with its sender and text when that is a message the bot sent.
+// answers, and a tap the message whose button it was, each with its sender and
+// text when that is a message the bot sent.
 func (f *Fake) updateJSON(u update, botID int64) string {
-	m := map[string]any{"message_id": u.messageID, "chat": map[string]any{"id": u.chatID}}
+	chatType := "private"
+	if u.chatID < 0 {
+		chatType = "supergroup"
+	}
+	chat := map[string]any{"id": u.chatID, "type": chatType}
+	botMessage := func(id int64) map[string]any {
+		m := map[string]any{"message_id": id, "chat": chat}
+		for _, sent := range f.sent {
+			// Message ids count per chat.
+			if sent.MessageID == id && sent.ChatID == strconv.FormatInt(u.chatID, 10) {
+				m["from"] = map[string]any{"id": botID, "is_bot": true}
+				m["text"] = sent.Text
+			}
+		}
+		return m
+	}
+	from := map[string]any{"id": u.fromID, "is_bot": false}
+	if u.callback != "" {
+		raw, _ := json.Marshal(map[string]any{"update_id": u.id, "callback_query": map[string]any{
+			"id": fmt.Sprintf("cb%d", u.id), "from": from, "message": botMessage(u.messageID), "data": u.callback}})
+		return string(raw)
+	}
+	m := map[string]any{"message_id": u.messageID, "chat": chat, "from": from}
 	if u.text != "" {
 		m["text"] = u.text
 	}
 	if u.reply != 0 {
-		to := map[string]any{"message_id": u.reply}
-		for _, sent := range f.sent {
-			// Message ids count per chat.
-			if sent.MessageID == u.reply && sent.ChatID == strconv.FormatInt(u.chatID, 10) {
-				to["from"] = map[string]any{"id": botID, "is_bot": true}
-				to["text"] = sent.Text
-			}
-		}
-		m["reply_to_message"] = to
+		m["reply_to_message"] = botMessage(u.reply)
 	}
 	raw, _ := json.Marshal(map[string]any{"update_id": u.id, "message": m})
 	return string(raw)

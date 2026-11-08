@@ -17,9 +17,25 @@ const (
 	SigninEnded     = "ended"
 )
 
+// How a user approves their sign-ins, in the private chat of their linked
+// Telegram account: by tapping Approve, or by replying with a PIN.
+const (
+	SigninMethodTap = "tap"
+	SigninMethodPIN = "pin"
+)
+
+// SigninApprovalOn reports whether the user's sign-ins wait for an approval.
+func (u UserRow) SigninApprovalOn() bool {
+	if u.TelegramUserID == 0 {
+		return false
+	}
+	return u.SigninMethod == SigninMethodTap || u.SigninMethod == SigninMethodPIN && u.SigninPINEnc != nil
+}
+
 // SigninApproval is one sign-in waiting for, or decided by, an approval.
 type SigninApproval struct {
 	ID, OrgID, UserID, BrowserHash, IP, Status string
+	Method                                     string // the user's method when the sign-in started
 	Remember                                   bool
 	ChatID, MessageID                          int64 // 0 until the notification is sent
 	WrongAttempts                              int
@@ -27,12 +43,12 @@ type SigninApproval struct {
 	CreatedAt, ExpiresAt, DecidedAt            time.Time
 }
 
-const signinCols = `id, org_id, user_id, browser_hash, ip, status, remember, chat_id, message_id, wrong_attempts, cleared, created_at, expires_at, decided_at`
+const signinCols = `id, org_id, user_id, browser_hash, ip, status, method, remember, chat_id, message_id, wrong_attempts, cleared, created_at, expires_at, decided_at`
 
 func scanSignin(s scanner) (SigninApproval, error) {
 	var a SigninApproval
 	var remember, cleared, created, expires, decided int64
-	if err := s.Scan(&a.ID, &a.OrgID, &a.UserID, &a.BrowserHash, &a.IP, &a.Status, &remember, &a.ChatID, &a.MessageID,
+	if err := s.Scan(&a.ID, &a.OrgID, &a.UserID, &a.BrowserHash, &a.IP, &a.Status, &a.Method, &remember, &a.ChatID, &a.MessageID,
 		&a.WrongAttempts, &cleared, &created, &expires, &decided); err != nil {
 		return SigninApproval{}, err
 	}
@@ -49,9 +65,11 @@ func endOpenSignins(ctx context.Context, tx Tx, userID string, now time.Time) er
 	return err
 }
 
-func (db *DB) setUserSigninPIN(ctx context.Context, userID string, enc any, now time.Time) error {
+// setUserSignin changes a user's approval method where cond holds, and ends the
+// user's open requests. ErrNotFound means no such user, or cond did not hold.
+func (db *DB) setUserSignin(ctx context.Context, userID, set, cond string, now time.Time, args ...any) error {
 	return db.Write(ctx, func(tx Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE users SET signin_pin_enc = ? WHERE id = ?`, enc, userID)
+		res, err := tx.ExecContext(ctx, `UPDATE users SET `+set+` WHERE id = ?`+cond, append(args, userID)...)
 		if err != nil {
 			return err
 		}
@@ -62,14 +80,83 @@ func (db *DB) setUserSigninPIN(ctx context.Context, userID string, enc any, now 
 	})
 }
 
-// SetUserSigninPIN stores the sealed PIN and ends the user's open requests.
+const whenTelegramLinked = ` AND telegram_user_id <> 0`
+
+// SetUserSigninPIN makes the user approve sign-ins with this sealed PIN, and ends
+// their open requests. ErrNotFound also means no Telegram account is linked.
 func (db *DB) SetUserSigninPIN(ctx context.Context, userID string, enc []byte, now time.Time) error {
-	return db.setUserSigninPIN(ctx, userID, enc, now)
+	return db.setUserSignin(ctx, userID, `signin_method = ?, signin_pin_enc = ?`, whenTelegramLinked, now, SigninMethodPIN, enc)
 }
 
-// ClearUserSigninPIN removes the PIN and ends the user's open requests.
-func (db *DB) ClearUserSigninPIN(ctx context.Context, userID string, now time.Time) error {
-	return db.setUserSigninPIN(ctx, userID, nil, now)
+// SetUserSigninTap makes the user approve sign-ins by tapping Approve, forgets
+// any PIN, and ends their open requests. ErrNotFound also means no Telegram
+// account is linked.
+func (db *DB) SetUserSigninTap(ctx context.Context, userID string, now time.Time) error {
+	return db.setUserSignin(ctx, userID, `signin_method = ?, signin_pin_enc = NULL`, whenTelegramLinked, now, SigninMethodTap)
+}
+
+// ClearUserSigninApproval turns sign-in approval off and ends the user's open
+// requests. The linked Telegram account stays.
+func (db *DB) ClearUserSigninApproval(ctx context.Context, userID string, now time.Time) error {
+	return db.setUserSignin(ctx, userID, `signin_method = '', signin_pin_enc = NULL`, "", now)
+}
+
+// UnlinkUserTelegram forgets the user's Telegram account, which turns sign-in
+// approval off, and ends their open requests and links.
+func (db *DB) UnlinkUserTelegram(ctx context.Context, userID string, now time.Time) error {
+	return db.Write(ctx, func(tx Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE users SET telegram_user_id = 0, signin_method = '', signin_pin_enc = NULL WHERE id = ?`, userID)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return ErrNotFound
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM telegram_links WHERE user_id = ?`, userID); err != nil {
+			return err
+		}
+		return endOpenSignins(ctx, tx, userID, now)
+	})
+}
+
+// AddTelegramLink keeps a one-time link for the user, in place of any earlier one.
+func (db *DB) AddTelegramLink(ctx context.Context, orgID, userID, codeHash string, expires time.Time) error {
+	return db.Write(ctx, func(tx Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM telegram_links WHERE user_id = ?`, userID); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO telegram_links (code_hash, org_id, user_id, expires_at) VALUES (?, ?, ?, ?)`,
+			codeHash, orgID, userID, ms(expires))
+		return err
+	})
+}
+
+// UseTelegramLink spends a live link: the Telegram account becomes the user's,
+// and the user's open requests end. It returns the user, or ErrNotFound when the
+// link is unknown, spent or out of time.
+func (db *DB) UseTelegramLink(ctx context.Context, orgID, codeHash string, telegramUserID int64, now time.Time) (UserRow, error) {
+	var userID string
+	err := db.Write(ctx, func(tx Tx) error {
+		err := tx.QueryRowContext(ctx, `SELECT user_id FROM telegram_links WHERE code_hash = ? AND org_id = ? AND expires_at > ?`,
+			codeHash, orgID, ms(now)).Scan(&userID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM telegram_links WHERE user_id = ?`, userID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE users SET telegram_user_id = ? WHERE id = ?`, telegramUserID, userID); err != nil {
+			return err
+		}
+		return endOpenSignins(ctx, tx, userID, now)
+	})
+	if err != nil {
+		return UserRow{}, err
+	}
+	return db.UserByID(ctx, userID)
 }
 
 // InsertSigninApproval stores a new request. A user has one request at a time,
@@ -78,9 +165,9 @@ func InsertSigninApproval(ctx context.Context, tx Tx, a SigninApproval) error {
 	if err := endOpenSignins(ctx, tx, a.UserID, a.CreatedAt); err != nil {
 		return err
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO signin_approvals (id, org_id, user_id, browser_hash, ip, status, remember, created_at, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.ID, a.OrgID, a.UserID, a.BrowserHash, a.IP, a.Status, b2i(a.Remember), ms(a.CreatedAt), ms(a.ExpiresAt))
+	_, err := tx.ExecContext(ctx, `INSERT INTO signin_approvals (id, org_id, user_id, browser_hash, ip, status, method, remember, created_at, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.ID, a.OrgID, a.UserID, a.BrowserHash, a.IP, a.Status, a.Method, b2i(a.Remember), ms(a.CreatedAt), ms(a.ExpiresAt))
 	return err
 }
 
@@ -229,6 +316,25 @@ func (db *DB) RecordSigninReply(ctx context.Context, id string, correct bool, ma
 	return db.oneSignin(ctx, `id = ?`, id)
 }
 
+// DecideSigninApproval approves or denies a live request with a tap. A request
+// already decided or out of time does not change. It returns the request as it
+// now stands.
+func (db *DB) DecideSigninApproval(ctx context.Context, id string, approve bool, now time.Time) (SigninApproval, error) {
+	status := SigninEnded
+	if approve {
+		status = SigninApproved
+	}
+	err := db.Write(ctx, func(tx Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE signin_approvals SET status = ?, decided_at = ? WHERE id = ? AND status = ? AND expires_at > ?`,
+			status, ms(now), id, SigninPending, ms(now))
+		return err
+	})
+	if err != nil {
+		return SigninApproval{}, err
+	}
+	return db.oneSignin(ctx, `id = ?`, id)
+}
+
 // ClaimSigninPoll takes the right to read one bot's replies until until. ok is
 // false while someone else holds it. offset is where reading continues; it
 // belongs to this bot, as update ids from another bot would not be comparable.
@@ -263,12 +369,13 @@ func (db *DB) ReleaseSigninPoll(ctx context.Context, botID string, until time.Ti
 	})
 }
 
-// HasOpenSigninApprovals reports whether anything is left to send, read or delete.
-func (db *DB) HasOpenSigninApprovals(ctx context.Context) (bool, error) {
+// HasOpenSigninApprovals reports whether anything is left to send, read or
+// delete, including a link waiting to be used.
+func (db *DB) HasOpenSigninApprovals(ctx context.Context, now time.Time) (bool, error) {
 	var n int
 	err := db.Read(ctx, func(q Querier) error {
 		return q.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM signin_approvals WHERE status = ? OR (message_id <> 0 AND cleared = 0))
-			+ (SELECT COUNT(*) FROM signin_deletions)`, SigninPending).Scan(&n)
+			+ (SELECT COUNT(*) FROM signin_deletions) + (SELECT COUNT(*) FROM telegram_links WHERE expires_at > ?)`, SigninPending, ms(now)).Scan(&n)
 	})
 	return n > 0, err
 }
@@ -320,11 +427,13 @@ func (db *DB) DropSigninDeletion(ctx context.Context, chatID, messageID int64) e
 	})
 }
 
-// PendingSigninOrgs lists the organizations with a pending request.
-func (db *DB) PendingSigninOrgs(ctx context.Context) ([]string, error) {
+// SigninOrgsToRead lists the organizations whose bot has something to read: a
+// pending request, or a link waiting to be used.
+func (db *DB) SigninOrgsToRead(ctx context.Context, now time.Time) ([]string, error) {
 	var out []string
 	err := db.Read(ctx, func(q Querier) error {
-		rows, err := q.QueryContext(ctx, `SELECT DISTINCT org_id FROM signin_approvals WHERE status = ? ORDER BY org_id`, SigninPending)
+		rows, err := q.QueryContext(ctx, `SELECT org_id FROM signin_approvals WHERE status = ?
+			UNION SELECT org_id FROM telegram_links WHERE expires_at > ? ORDER BY org_id`, SigninPending, ms(now))
 		if err != nil {
 			return err
 		}
@@ -341,9 +450,13 @@ func (db *DB) PendingSigninOrgs(ctx context.Context) ([]string, error) {
 	return out, err
 }
 
-// PurgeSigninApprovals deletes the decided requests created before before.
-func (db *DB) PurgeSigninApprovals(ctx context.Context, before time.Time) error {
+// PurgeSigninApprovals deletes the decided requests created before before, and
+// the links out of time at now.
+func (db *DB) PurgeSigninApprovals(ctx context.Context, before, now time.Time) error {
 	return db.Write(ctx, func(tx Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM telegram_links WHERE expires_at <= ?`, ms(now)); err != nil {
+			return err
+		}
 		_, err := tx.ExecContext(ctx, `DELETE FROM signin_approvals WHERE status <> ? AND created_at < ?`, SigninPending, ms(before))
 		return err
 	})
