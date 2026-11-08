@@ -33,6 +33,18 @@ The longer cookie is a larger window if it is stolen. What limits that:
 - **Audit.** `user.login` (with `remember`), `session.revoke`, `session.revoke_others`, `user.sessions_revoke`, `user.password_change`, `user.theme`, `theme.create`, `theme.update`, `theme.rename`, `theme.delete`, `theme.import` and `session.reauth`.
 - **Limits are unchanged.** The login lockouts and rate limits apply as before, to the confirmation page as well.
 
+## Sign-in approval PIN
+
+A user can add one more step after the password and code (or the identity provider). Under **Your sessions**, *Sign-in approval*, they set a PIN of 6 to 12 digits. Each later sign-in sends a notification to the organization's live Telegram chat, and the browser shows only "Waiting for external auth" until someone replies to that notification with the PIN. The browser then signs in by itself. A request ends after 5 minutes, after 5 wrong PINs, or when the same user starts another sign-in. Wrong PINs also count toward the account's sign-in lockout.
+
+- **Storage.** The PIN is sealed with the master key, not hashed, so `paymux secrets reseal` re-encrypts it. Reply text is never stored or logged.
+- **Replies are deleted.** Every reply to a notification is deleted as soon as it is read, right or wrong. A deletion that fails is tried again every few minutes until Telegram's two-day limit. A reply to a notification whose sending was not recorded (for example, Telegram's answer was lost) is deleted together with that notification, and does not decide any request.
+- **Who sees what.** Everyone in the chat sees each request's email address and IP address, and can see a PIN until it is deleted, including in phone notifications. Anyone there who knows a user's PIN can approve that user's sign-in, and anyone can send wrong PINs to cancel it. Use a private chat or a group of people you trust.
+- **Changes end waiting sign-ins.** Changing or removing the PIN, a newer sign-in, **Sign out all other sessions**, and everything that signs the user out everywhere end a request that is waiting or approved but not yet used. Setting a PIN does not end sessions that are already open.
+- **Changing the PIN** needs a sign-in within the last 12 hours, like the sensitive actions above. The channel is checked first: the bot must reach the chat with no webhook set, and in a group it must be an admin that may delete messages.
+- **Recovery.** If the bot stops working, users with a PIN cannot sign in. `paymux user remove-pin --email <email>` removes the PIN and cancels that user's waiting requests (see `docs/runbook.md`).
+- **Audit.** `user.signin_pin_set` and `user.signin_pin_removed`.
+
 ## OIDC sign-in
 
 Configure issuer, client ID, and secret together and register this exact redirect URI with the identity provider:

@@ -420,7 +420,8 @@ paragraph under the same headings; the numbers continue from F28.
   see a PIN until the bot deletes it, it may stay in phone notifications, and everyone sees each sign-in's email and IP
   address. Anyone in the chat who knows a user's PIN can approve that user's sign-in. If the bot stops working, users
   with a PIN are locked out until it is fixed or `paymux user remove-pin` is run. If the bot cannot delete a reply,
-  the sign-in still succeeds and the PIN stays in the chat, with a warning logged.
+  the sign-in still succeeds; the deletion is tried again every few minutes for up to two days, and the PIN stays in
+  the chat until it works.
 
 ### Reviewed, not issues (fifth batch)
 
