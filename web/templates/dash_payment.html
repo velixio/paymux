@@ -75,6 +75,8 @@
 {{if .LegalName}}<dt>Legal name</dt><dd>{{.LegalName}}</dd>{{end}}
 {{if .GSTIN}}<dt>GSTIN</dt><dd>{{.GSTIN}}</dd>{{end}}
 </dl>{{end}}
+{{if .Blocked}}<p class="flag">Blocked from paying: {{.Blocked}}{{if .BlockedAt}}, {{.BlockedAt}}{{end}}</p>{{end}}
+{{if .CanBlock}}<form method="post" action="/dashboard/payments/{{.PaymentID}}/customer-block" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}">{{if .Blocked}}<input type="hidden" name="blocked" value="0"><button class="btn" type="submit">Unblock customer</button>{{else}}<input type="hidden" name="blocked" value="1"><button class="btn" type="submit" title="They cannot start a payment, and a payment of theirs that succeeds goes to review">Block customer</button>{{end}}</form>{{end}}
 </div>{{end}}
 {{with .RiskPanel}}<div class="pt-panel pt-risk">
 <h2>Risk</h2>
@@ -93,6 +95,7 @@
 </dl>
 </div>
 <div class="pt-actions">
+{{if .CanApprove}}<form method="post" action="/dashboard/payments/{{.ID}}/approve" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="pt-action" type="submit" title="Marks the payment succeeded and notifies your app. Refund it instead if the buyer is not genuine.">Approve payment</button></form>{{end}}
 {{if .CanSync}}<form method="post" action="/dashboard/payments/{{.ID}}/sync" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn" type="submit">Sync from provider</button></form>{{end}}
 {{if .CanRefund}}<button type="button" class="pt-action" command="show-modal" commandfor="refund-{{.ID}}" aria-haspopup="dialog">Refund</button>{{end}}
 {{if .CanReplay}}<form method="post" action="/dashboard/payments/{{.ID}}/webhook" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="pt-action" type="submit" title="Sends the current status as a new event">Send status webhook</button></form>{{end}}

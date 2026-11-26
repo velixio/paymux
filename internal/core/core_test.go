@@ -451,6 +451,7 @@ func TestSnapshotLateSuccess(t *testing.T) {
 		if r.Payment.Status != "failed" || r.Attempt.FailureCode != "bank_declined" {
 			t.Fatalf("failed: %+v", r)
 		}
+		e.backdate(p.ID, time.Minute) // past its expiry: no longer payable
 		r = e.apply(a.ID, captured(500))
 		if r.Payment.Status != "succeeded" || !r.Payment.HasFlag("late_success") || r.Payment.AmountReceived != 500 {
 			t.Fatalf("late success: %+v", r.Payment)

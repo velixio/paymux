@@ -209,6 +209,10 @@ A started attempt now holds its payment open for the new `attempt_ttl` setting (
 
 The default `payment_ttl` is now 30 minutes, for new installations only. An existing installation keeps its stored value, so to use the new default, set **Settings → Payment behavior → Payment expiry** to 30 and check any app overrides. Only payments created after that change use it.
 
+## Release note: card-testing protection
+
+Three new settings under **Settings → Fraud protection** watch for stolen cards tried one after another: a payment stops taking attempts after 5 different declined cards, a success after 3 declined cards goes to `needs_review`, and a customer is blocked after 10 declined cards across their payments. They are on by default. A payment held this way sends your app `payment.needs_review` instead of `payment.succeeded`; approve it on its dashboard page, or refund it. Check that your app does not grant access on `payment.needs_review`. Declined cards recorded before the upgrade count too, but a payment or customer is only stopped or blocked at its next decline. Renewals are not affected. To turn a rule off, set it to 0.
+
 ## Updating from the dashboard
 
 Admins can update a server from **Update** in the dashboard menu (action

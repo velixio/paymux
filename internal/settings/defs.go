@@ -104,6 +104,11 @@ var defs = []Def{
 	{"billing_details", `"state_required"`, orgApp, oneOf("off", "state_required", "optional", "required")},
 	{"payment_ttl", `30`, orgApp, intRange(10, 7*24*60)}, // minutes
 	{"attempt_ttl", `15`, orgApp, intRange(5, 24*60)},    // minutes
+	// Card testing: declined cards counted per payment, and per customer
+	// across their payments. 0 turns a rule off.
+	{"card_decline_limit", `5`, orgApp, intRange(0, 30)},
+	{"review_after_declined_cards", `3`, orgApp, intRange(0, 30)},
+	{"customer_decline_limit", `10`, orgApp, intRange(0, 100)},
 	{"pay_page_retry_buttons", `{"try_again":true,"pay_another_way":true}`, orgApp, validRetryButtons},
 	{"invoice_delivery", `"app"`, orgApp, oneOf("app", "paymux", "both")},
 	{"issue_invoices", `true`, LevelApp, isBool},

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -349,4 +350,54 @@ func SetAttemptRiskChecked(ctx context.Context, tx Tx, id, risk string, checkedA
 	_, err := tx.ExecContext(ctx, "UPDATE payment_attempts SET risk_details = ?, risk_checked_at = ? WHERE id = ?",
 		nonEmptyJSON(risk), ms(checkedAt), id)
 	return err
+}
+
+// DeclinedCards returns the distinct cards declined on the payment's provider
+// tries, each as a key (network and last four digits, or the provider payment
+// id when the provider gave no card), mapped to its number of declines.
+func DeclinedCards(ctx context.Context, q Queryer, paymentID string) (map[string]int, error) {
+	return declinedCards(ctx, q, `SELECT p.provider_payment_id, COALESCE(p.method_details,'')
+		FROM provider_payment_attempts p JOIN payment_attempts a ON a.id = p.attempt_id
+		WHERE a.payment_id = ? AND p.status = 'failed'`, paymentID)
+}
+
+// CustomerDeclinedCards is DeclinedCards over every payment of a customer.
+func CustomerDeclinedCards(ctx context.Context, q Queryer, customerID string) (map[string]int, error) {
+	return declinedCards(ctx, q, `SELECT p.provider_payment_id, COALESCE(p.method_details,'')
+		FROM provider_payment_attempts p JOIN payment_attempts a ON a.id = p.attempt_id
+		JOIN payments y ON y.id = a.payment_id
+		WHERE y.customer_id = ? AND p.status = 'failed'`, customerID)
+}
+
+func declinedCards(ctx context.Context, q Queryer, query string, arg string) (map[string]int, error) {
+	rows, err := q.QueryContext(ctx, query, arg)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var providerPaymentID, details string
+		if err := rows.Scan(&providerPaymentID, &details); err != nil {
+			return nil, err
+		}
+		out[CardKey(details, providerPaymentID)]++
+	}
+	return out, rows.Err()
+}
+
+// CardKey identifies the card of a try from its stored method details. Two
+// cards of one network with the same last four digits count as one, which only
+// ever undercounts.
+func CardKey(methodDetails, providerPaymentID string) string {
+	var d struct {
+		Card *struct {
+			Last4   string `json:"last4"`
+			Network string `json:"network"`
+		} `json:"card"`
+	}
+	if json.Unmarshal([]byte(methodDetails), &d) == nil && d.Card != nil && d.Card.Last4 != "" {
+		return "card:" + strings.ToLower(d.Card.Network) + ":" + d.Card.Last4
+	}
+	return "try:" + providerPaymentID
 }
