@@ -96,3 +96,40 @@ func riskEnv(t *testing.T) *env {
 	}
 	return e
 }
+
+func TestRiskTagsShowOnlyPassedChecksAndTheIPCountry(t *testing.T) {
+	v := paymentRiskView(store.Attempt{Status: "captured", RiskDetails: `{"score":19,"country":"CO",
+		"address_check":"no_match","postal_check":"match","cvv_check":"match","three_d_secure":true}`})
+	var got []string
+	for _, tag := range v.Tags {
+		got = append(got, tag.Label+"|"+tag.Title)
+	}
+	want := []string{"CVV|CVV matched", "AVS|ZIP or postal code matched", "3DS|3D Secure verified"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("tags %v, want %v", got, want)
+	}
+	if v.Flag != "🇨🇴" || v.FlagTitle != "Buyer IP in Colombia" {
+		t.Fatalf("flag %q %q", v.Flag, v.FlagTitle)
+	}
+
+	v = paymentRiskView(store.Attempt{Status: "captured", RiskDetails: `{"score":40,"country":"zz9",
+		"address_check":"unavailable","postal_check":"unavailable","cvv_check":"unchecked","three_d_secure":false}`})
+	if len(v.Tags) != 0 || v.Flag != "" {
+		t.Fatalf("nothing verified and no valid country: %+v %q", v.Tags, v.Flag)
+	}
+	v = paymentRiskView(store.Attempt{Status: "captured", RiskDetails: `{"address_check":"match"}`})
+	if len(v.Tags) != 1 || v.Tags[0].Title != "Address matched" {
+		t.Fatalf("address match: %+v", v.Tags)
+	}
+}
+
+func TestPaymentsListAndPageShowRiskTags(t *testing.T) {
+	e := riskEnv(t)
+	c := e.roleClient("viewer")
+	e.seedRiskPayment("pay_tags", `{"score":19,"country":"US","cvv_check":"match","address_check":"match"}`)
+	row := regexpFind(t, `(?s)(<tr>\s*<td><a href="/dashboard/payments/pay_tags".*?</tr>)`, e.pageOK(c, "/dashboard/payments"))
+	has(t, row, `class="risk-tag" title="CVV matched">CVV</span>`, `class="risk-tag" title="Address matched">AVS</span>`,
+		`class="risk-flag" title="Buyer IP in United States" aria-label="Buyer IP in United States">🇺🇸</span>`)
+	lacks(t, row, ">3DS<")
+	has(t, e.pageOK(c, "/dashboard/payments/pay_tags"), `title="CVV matched">CVV</span>`, "Buyer IP in United States")
+}

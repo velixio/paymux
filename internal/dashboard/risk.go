@@ -2,8 +2,12 @@ package dashboard
 
 import (
 	"encoding/json"
+	"slices"
 	"strconv"
 	"strings"
+
+	"golang.org/x/text/language"
+	"golang.org/x/text/language/display"
 
 	"github.com/velixio/paymux/internal/core/state"
 	"github.com/velixio/paymux/internal/store"
@@ -16,9 +20,52 @@ type riskView struct {
 	// DialogID names the modal, unique on the page: a list draws one per row.
 	DialogID string
 	Checks   []riskCheck
+	// Tags name the checks that passed (CVV, AVS, 3DS), for a glance in a row.
+	// A failed or unavailable check has no tag: the checks list shows it.
+	Tags []riskTag
+	// Flag is the emoji flag of the buyer IP's country, FlagTitle its name.
+	Flag, FlagTitle string
 }
 
 type riskCheck struct{ Label, Text, Tone, Mark string }
+
+type riskTag struct{ Label, Title string }
+
+// riskTags lists the passed checks of r. AVS is the address check, or the ZIP
+// or postal code check when only that matched.
+func riskTags(r connector.PaymentRisk) []riskTag {
+	var tags []riskTag
+	if r.CVVCheck == connector.CheckMatch {
+		tags = append(tags, riskTag{"CVV", "CVV matched"})
+	}
+	switch {
+	case r.AddressCheck == connector.CheckMatch:
+		tags = append(tags, riskTag{"AVS", "Address matched"})
+	case r.PostalCheck == connector.CheckMatch:
+		tags = append(tags, riskTag{"AVS", "ZIP or postal code matched"})
+	}
+	if r.ThreeDSecure != nil && *r.ThreeDSecure {
+		tags = append(tags, riskTag{"3DS", "3D Secure verified"})
+	}
+	return tags
+}
+
+// countryFlag returns the emoji flag and English name of a two-letter
+// country code, or "" for anything else.
+func countryFlag(code string) (flag, name string) {
+	code = strings.ToUpper(code)
+	if len(code) != 2 || code[0] < 'A' || code[0] > 'Z' || code[1] < 'A' || code[1] > 'Z' {
+		return "", ""
+	}
+	flag = string([]rune{0x1F1E6 + rune(code[0]-'A'), 0x1F1E6 + rune(code[1]-'A')})
+	name = code
+	if region, err := language.ParseRegion(code); err == nil {
+		if n := display.English.Regions().Name(region); n != "" {
+			name = n
+		}
+	}
+	return flag, name
+}
 
 // riskBand labels a 0-100 risk score. These bands are Paymux's own display
 // choice, not a provider's verdict.
@@ -53,6 +100,10 @@ func tryRiskView(raw, status, threeDS string) *riskView {
 	case connector.ThreeDSFailed:
 		check.Text, check.Tone, check.Mark = "Failed", "fail", "✕"
 	}
+	v.Tags = slices.DeleteFunc(v.Tags, func(t riskTag) bool { return t.Label == "3DS" })
+	if threeDS == connector.ThreeDSPassed {
+		v.Tags = append(v.Tags, riskTag{"3DS", "3D Secure verified"})
+	}
 	for i := range v.Checks {
 		if v.Checks[i].Label == check.Label {
 			v.Checks[i] = check
@@ -83,6 +134,10 @@ func riskViewFromJSON(raw, status string) *riskView {
 		}
 	}
 	v.Location = strings.Join(location, ", ")
+	v.Tags = riskTags(r)
+	if flag, name := countryFlag(r.Country); flag != "" {
+		v.Flag, v.FlagTitle = flag, "Buyer IP in "+name
+	}
 	for _, c := range []struct{ label, result string }{
 		{"Address", r.AddressCheck}, {"ZIP / postal", r.PostalCheck}, {"CVV", r.CVVCheck},
 	} {

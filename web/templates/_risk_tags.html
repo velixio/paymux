@@ -1,0 +1,2 @@
+{{/* The passed checks of a risk review and the buyer IP's country, for the payments list and a payment's Risk panel. */}}
+{{define "risk_tags"}}{{range .Tags}} <span class="risk-tag" title="{{.Title}}">{{.Label}}</span>{{end}}{{if .Flag}} <span class="risk-flag" title="{{.FlagTitle}}" aria-label="{{.FlagTitle}}">{{.Flag}}</span>{{end}}{{end}}
