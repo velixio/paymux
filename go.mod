@@ -1,6 +1,6 @@
 module github.com/velixio/paymux
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/dlclark/regexp2/v2 v2.12.0
