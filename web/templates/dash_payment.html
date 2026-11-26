@@ -80,6 +80,7 @@
 </div>{{end}}
 {{with .RiskPanel}}<div class="pt-panel pt-risk">
 <h2>Risk</h2>
+{{if or .Tags .Flag}}<p class="risk-tags">{{template "risk_tags" .}}</p>{{end}}
 {{template "pt_risk_rows" .}}
 {{if .Provider}}<p class="risk-source">Reported by {{.Provider}}</p>{{end}}
 </div>{{end}}

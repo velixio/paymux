@@ -2546,3 +2546,25 @@ button.risk-close {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Passed checks (CVV, AVS, 3DS) and the buyer IP's flag, beside the score. */
+.risk-tags {
+  margin: 0 0 8px;
+}
+.risk-tag {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  background: var(--status-ok-bg, color-mix(in srgb, var(--color-ok) 16%, transparent));
+  color: var(--status-ok-fg, var(--color-ok));
+}
+.risk-flag {
+  font-size: 14px;
+  line-height: 1;
+  vertical-align: middle;
+  cursor: default;
+}
