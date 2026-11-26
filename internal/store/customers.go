@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"time"
 )
@@ -11,6 +12,9 @@ type Customer struct {
 	ID, OrgID, AppID, Mode, ExternalRef, Name, Email, Phone string
 	Billing                                                 Billing
 	CreatedAt                                               time.Time
+	// BlockedAt is when the customer was blocked from paying; zero when not.
+	BlockedAt     time.Time
+	BlockedReason string
 }
 
 // Billing holds the customer's billing details.
@@ -55,20 +59,43 @@ func UpsertCustomer(ctx context.Context, tx Tx, c Customer, now time.Time) (stri
 // GetCustomer loads a customer by id.
 func GetCustomer(ctx context.Context, q Queryer, id string) (Customer, error) {
 	var c Customer
-	var created int64
+	var created, blocked int64
 	err := q.QueryRowContext(ctx, `SELECT id, org_id, app_id, mode, COALESCE(external_ref,''), COALESCE(name,''),
 		COALESCE(email,''), COALESCE(phone,''), COALESCE(billing_legal_name,''), COALESCE(billing_gstin,''),
 		COALESCE(billing_line1,''), COALESCE(billing_line2,''), COALESCE(billing_city,''),
-		COALESCE(billing_state_code,''), COALESCE(billing_postal_code,''), COALESCE(billing_country,''), created_at
+		COALESCE(billing_state_code,''), COALESCE(billing_postal_code,''), COALESCE(billing_country,''), created_at,
+		COALESCE(blocked_at,0), COALESCE(blocked_reason,'')
 		FROM customers WHERE id = ?`, id).
 		Scan(&c.ID, &c.OrgID, &c.AppID, &c.Mode, &c.ExternalRef, &c.Name, &c.Email, &c.Phone, &c.Billing.LegalName,
 			&c.Billing.GSTIN, &c.Billing.Line1, &c.Billing.Line2, &c.Billing.City, &c.Billing.StateCode,
-			&c.Billing.PostalCode, &c.Billing.Country, &created)
+			&c.Billing.PostalCode, &c.Billing.Country, &created, &blocked, &c.BlockedReason)
 	if err != nil {
 		return Customer{}, notFound(err)
 	}
 	c.CreatedAt = fromMS(created)
+	if blocked != 0 {
+		c.BlockedAt = fromMS(blocked)
+	}
 	return c, nil
+}
+
+// SetCustomerBlock blocks the customer from paying (reason set) or unblocks
+// them (reason empty). It reports whether the stored state changed.
+func SetCustomerBlock(ctx context.Context, tx Tx, id, reason string, now time.Time) (bool, error) {
+	var res sql.Result
+	var err error
+	if reason == "" {
+		res, err = tx.ExecContext(ctx, `UPDATE customers SET blocked_at = NULL, blocked_reason = NULL, updated_at = ?
+			WHERE id = ? AND blocked_at IS NOT NULL`, ms(now), id)
+	} else {
+		res, err = tx.ExecContext(ctx, `UPDATE customers SET blocked_at = ?, blocked_reason = ?, updated_at = ?
+			WHERE id = ? AND blocked_at IS NULL`, ms(now), reason, ms(now), id)
+	}
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // ProviderAccount is a row of provider_accounts (config is opaque here).

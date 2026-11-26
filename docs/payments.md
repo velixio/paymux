@@ -24,7 +24,7 @@ A browser redirect can happen before confirmation or never arrive. It is navigat
 | `failed` | The payment has reached a failed outcome; late confirmations still require attention. |
 | `expired` | Its payment window (`payment_ttl`) ended with no attempt still open. |
 | `canceled` | The payment was canceled before completion. |
-| `needs_review` | The result requires operator review, for example an amount mismatch or success after cancellation. |
+| `needs_review` | The result requires operator review, for example an amount mismatch, a success after cancellation, or a success after several declined cards. |
 
 **Finding out why a payment failed.** `GET /v1/payments/{id}` returns each attempt with its `tries`: every go at paying that the provider reported, oldest first, kept even if a later try succeeds. A try can include its status, method, card details, `three_d_secure.status` (`passed`, `failed` or `not_verified`), `failure_code` and `failure_message`. Providers differ, so any value the provider did not report is left out, and a missing value does not mean a failure. An attempt's own `failure_code` and `failure_message` describe its current state and clear if it succeeds.
 
@@ -34,7 +34,15 @@ Attempt states include `created`, `pending`, `authorized`, `captured`, and `fail
 
 **How long a payment stays open.** `payment_ttl` (30 minutes by default) is how long a customer can start or retry a payment. `attempt_ttl` (15 minutes by default, from 5 minutes to 24 hours) is how long they have to finish an attempt they started, so an attempt begun just before the end is not cut off: a payment past its expiry waits for that attempt's limit, then expires. A later change to `attempt_ttl` applies to new attempts only. Once the provider reports processing, neither limit applies, and the payment waits for the provider's result. Paymux keeps polling the provider for up to 72 hours (this window is not configurable), so a customer who paid late is still recorded. A failed payment keeps the status `failed` past its expiry, but can no longer be retried; the dashboard then shows it as **Failed** rather than **Ready to retry**, and an unfinished attempt of a closed payment as **expired**.
 
-A late matching success can move a failed or expired payment to success with a late flag. Success after cancellation or a currency/amount mismatch goes to review. Another successful attempt on an already succeeded payment triggers duplicate-payment handling. Review the effective `duplicate_payment_action` policy rather than assuming every duplicate is automatically refunded.
+**Card testing.** Someone holding stolen cards may try one after another on the same checkout, and some providers keep a checkout open after a decline. Paymux counts the different cards declined (by network and last four digits), using three settings under **Settings → Fraud protection**, each with 0 to turn it off:
+
+- `card_decline_limit` (5 by default): at this many declined cards, the payment is flagged `card_testing` and takes no new attempt.
+- `review_after_declined_cards` (3 by default): a success after this many other declined cards goes to `needs_review` with the flag `declined_cards`, instead of `succeeded`. A success on a `card_testing` payment always goes to review.
+- `customer_decline_limit` (10 by default): at this many declined cards across one customer's payments, the customer is blocked. A blocked customer cannot start an attempt, and a success of theirs goes to review with the flag `customer_blocked`.
+
+Your app gets `payment.needs_review`, not `payment.succeeded`, so do not grant access yet. In the dashboard, check the card tries and the risk panel, then either **Approve payment** (the payment becomes `succeeded` and your app gets `payment.succeeded`) or refund it. **Block customer** and **Unblock customer** are on the payment page. These rules do not apply to subscription renewals, which are charged with no customer present. The provider may still accept cards on a checkout Paymux has stopped; such a success goes to review.
+
+A late matching success can move a failed or expired payment to success with a late flag. A success on a checkout the provider kept open after a decline, before the payment's expiry, is not late. Success after cancellation or a currency/amount mismatch goes to review. Another successful attempt on an already succeeded payment triggers duplicate-payment handling. Review the effective `duplicate_payment_action` policy rather than assuming every duplicate is automatically refunded.
 
 ## Routing hierarchy
 

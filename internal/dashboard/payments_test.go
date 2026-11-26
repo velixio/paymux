@@ -796,7 +796,7 @@ func TestSendWebhookFromPaymentPage(t *testing.T) {
 }
 
 func TestPaymentDisplayStatusEndsRetryAtExpiry(t *testing.T) {
-	now := time.Now()
+	now := time.Date(2026, time.November, 6, 12, 0, 0, 0, time.UTC)
 	failed := store.Payment{Status: "failed", ExpiresAt: now.Add(time.Minute)}
 	if got, _ := paymentDisplayStatus(failed, now); got != "Ready to retry" {
 		t.Errorf("within the limit: %q", got)
@@ -825,4 +825,73 @@ func TestAttemptDisplayStatus(t *testing.T) {
 			t.Errorf("attempt %s on payment %s: %q, want %q", tt.attempt, tt.payment, got, tt.want)
 		}
 	}
+}
+
+func TestPaymentHeldForDeclinedCardsCanBeApprovedAndItsCustomerBlocked(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		app := e.seedApp("alpha")
+		p := e.seedPayment("pay_review", app.ID, "live", "needs_review", "ORD-REVIEW", 9900, e.clk.Now())
+		if err := db.Write(ctx, func(tx store.Tx) error {
+			if _, err := store.UpsertCustomer(ctx, tx, store.Customer{ID: "cus_review", OrgID: store.DefaultOrgID, AppID: app.ID,
+				Mode: "live", ExternalRef: "u-1", Email: "buyer@example.com"}, e.clk.Now()); err != nil {
+				return err
+			}
+			_, err := tx.ExecContext(ctx, `UPDATE payments SET customer_id = 'cus_review', amount_received = 9900,
+				flags = '["declined_cards"]' WHERE id = ?`, p.ID)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		e.seedAttempt(store.Attempt{ID: "att_review", Mode: "live", PaymentID: p.ID, ProviderAccountID: "pa_rzp",
+			ProviderRef: "ref_review", ProviderPaymentID: "pay_paid", Status: "captured", AmountReceived: 9900, CurrencyReceived: "INR"})
+		path := "/dashboard/payments/" + p.ID
+
+		viewer := e.roleClient("viewer")
+		body := e.pageOK(viewer, path)
+		lacks(t, body, path+"/approve", path+"/customer-block")
+		tok := csrfOf(t, body)
+		for _, action := range []string{"/approve", "/customer-block"} {
+			if r, _ := e.post(viewer, path+action, url.Values{"csrf": {tok}, "blocked": {"1"}}); r.StatusCode != http.StatusForbidden {
+				t.Fatalf("viewer %s: %d", action, r.StatusCode)
+			}
+		}
+
+		op := e.roleClient("operator")
+		body = e.pageOK(op, path)
+		has(t, body, `action="`+path+`/approve"`, "Approve payment", `action="`+path+`/customer-block"`, "Block customer")
+
+		r, body := e.post(op, path+"/customer-block", url.Values{"csrf": {csrfOf(t, body)}, "blocked": {"1"}})
+		if r.StatusCode != http.StatusOK || !strings.Contains(body, "Customer blocked") {
+			t.Fatalf("block: %d\n%s", r.StatusCode, body)
+		}
+		has(t, body, "Blocked from paying: by an operator", "Unblock customer")
+		if n := auditCount(t, db, "customer.block"); n != 1 {
+			t.Fatalf("customer.block audit count = %d", n)
+		}
+
+		r, body = e.post(op, path+"/approve", url.Values{"csrf": {csrfOf(t, body)}})
+		if r.StatusCode != http.StatusOK || !strings.Contains(body, "Payment approved") {
+			t.Fatalf("approve: %d\n%s", r.StatusCode, body)
+		}
+		lacks(t, body, "Approve payment")
+		var status string
+		_ = db.Read(ctx, func(q store.Querier) error {
+			got, err := store.GetPayment(ctx, q, p.ID)
+			status = got.Status
+			return err
+		})
+		if status != "succeeded" || auditCount(t, db, "payment.approve") != 1 {
+			t.Fatalf("after approve: %s, audit %d", status, auditCount(t, db, "payment.approve"))
+		}
+
+		r, _ = e.post(op, path+"/approve", url.Values{"csrf": {csrfOf(t, body)}})
+		if r.StatusCode != http.StatusConflict {
+			t.Fatalf("approved twice: %d", r.StatusCode)
+		}
+		r, body = e.post(op, path+"/customer-block", url.Values{"csrf": {csrfOf(t, e.pageOK(op, path))}, "blocked": {"0"}})
+		if r.StatusCode != http.StatusOK || !strings.Contains(body, "Customer unblocked") || strings.Contains(body, "Blocked from paying") {
+			t.Fatalf("unblock: %d\n%s", r.StatusCode, body)
+		}
+	})
 }

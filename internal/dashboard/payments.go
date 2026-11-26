@@ -38,6 +38,11 @@ type customerDetail struct {
 	ExternalRef, Name, Email, Phone                                      string
 	LegalName, GSTIN, Line1, Line2, City, StateCode, PostalCode, Country string
 	HasBilling                                                           bool
+	// Blocked says why the customer is blocked from paying, "" when not.
+	Blocked, BlockedAt string
+	// CanBlock shows the block or unblock button, which posts to PaymentID.
+	CanBlock  bool
+	PaymentID string
 }
 
 type refundRow struct{ ID, Amount, Status, Reason, InitiatedBy, Actor, Created string }
@@ -59,7 +64,7 @@ type payDetail struct {
 	NoTries                                                                                               bool
 	Flags                                                                                                 []string
 	Pickable                                                                                              []attemptOpt
-	CanRefund, CanReplay, CanSync                                                                         bool
+	CanRefund, CanReplay, CanSync, CanApprove, CanBlock                                                   bool
 	// RefundNonce is the single-use key of the refund form on this page.
 	RefundNonce string
 	// SimAttempts are the captured attempts on a test-mode simulator account,
@@ -377,6 +382,7 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 		det.Customer = &customerDetail{ExternalRef: cust.ExternalRef, Name: cust.Name, Email: cust.Email, Phone: cust.Phone,
 			LegalName: cust.Billing.LegalName, GSTIN: cust.Billing.GSTIN, Line1: cust.Billing.Line1, Line2: cust.Billing.Line2,
 			City: cust.Billing.City, StateCode: cust.Billing.StateCode, PostalCode: cust.Billing.PostalCode, Country: cust.Billing.Country,
+			Blocked: blockReasonLabel(cust), BlockedAt: blockedAt(d, cust),
 			HasBilling: cust.Billing.Line1 != "" || cust.Billing.Line2 != "" || cust.Billing.City != "" || cust.Billing.StateCode != "" ||
 				cust.Billing.PostalCode != "" || cust.Billing.Country != ""}
 	}
@@ -405,6 +411,11 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	}
 	det.CanRefund = s.can(authz.RefundCreate) && len(det.Pickable) > 0
 	det.CanSync = s.can(authz.PaymentCancel) && d.o.PaymentSync != nil && len(attempts) > 0
+	det.CanApprove = s.can(authz.PaymentCancel) && core.Approvable(p)
+	det.CanBlock = s.can(authz.PaymentCancel) && cust.ID != ""
+	if det.Customer != nil {
+		det.Customer.CanBlock, det.Customer.PaymentID = det.CanBlock, p.ID
+	}
 	if det.CanRefund {
 		det.RefundNonce = refundNonce(s, p.ID)
 	}
@@ -878,4 +889,84 @@ func (d *Dashboard) paymentWebhookSubmit(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	d.renderPayment(w, r, s, http.StatusOK, "", "Status webhook queued. Check delivery results below.")
+}
+
+func blockReasonLabel(c store.Customer) string {
+	switch {
+	case c.BlockedAt.IsZero():
+		return ""
+	case c.BlockedReason == core.BlockReasonDeclinedCards:
+		return "too many declined cards"
+	default:
+		return "by an operator"
+	}
+}
+
+func blockedAt(d *Dashboard, c store.Customer) string {
+	if c.BlockedAt.IsZero() {
+		return ""
+	}
+	return d.fmtTime(c.BlockedAt)
+}
+
+// reviewedPayment loads the payment of a review action, or writes the
+// response and reports false.
+func (d *Dashboard) reviewedPayment(w http.ResponseWriter, r *http.Request, s *session) (store.Payment, bool) {
+	// Custom roles can be granted payment.cancel without payment.read: never
+	// act on, or render, a payment such a role cannot read.
+	if !s.can(authz.PaymentRead) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return store.Payment{}, false
+	}
+	ctx := r.Context()
+	var p store.Payment
+	err := d.o.DB.Read(ctx, func(q store.Querier) (err error) { p, err = store.GetPayment(ctx, q, r.PathValue("id")); return })
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!d.inOrg(ctx, p.OrgID) || p.Mode != d.mode(r, s)) {
+		http.NotFound(w, r)
+		return store.Payment{}, false
+	}
+	if err != nil {
+		d.fail(w, err)
+		return store.Payment{}, false
+	}
+	return p, true
+}
+
+// paymentApproveSubmit approves a payment held for a declined-cards review.
+func (d *Dashboard) paymentApproveSubmit(w http.ResponseWriter, r *http.Request, s *session) {
+	p, ok := d.reviewedPayment(w, r, s)
+	if !ok {
+		return
+	}
+	if _, err := d.o.Core.ApproveReview(r.Context(), s.auditActor(), p.ID); err != nil {
+		if errors.Is(err, core.ErrInvalidState) {
+			d.renderPayment(w, r, s, http.StatusConflict, "Only a payment held for a declined-cards review can be approved.", "")
+			return
+		}
+		d.fail(w, err)
+		return
+	}
+	d.renderPayment(w, r, s, http.StatusOK, "", "Payment approved: it is now succeeded and your app was notified.")
+}
+
+// paymentCustomerBlockSubmit blocks (blocked=1) or unblocks the payment's customer.
+func (d *Dashboard) paymentCustomerBlockSubmit(w http.ResponseWriter, r *http.Request, s *session) {
+	p, ok := d.reviewedPayment(w, r, s)
+	if !ok {
+		return
+	}
+	if p.CustomerID == "" {
+		d.renderPayment(w, r, s, http.StatusBadRequest, "This payment has no customer to block.", "")
+		return
+	}
+	blocked := r.PostFormValue("blocked") == "1"
+	if _, err := d.o.Core.SetCustomerBlocked(r.Context(), s.auditActor(), p.CustomerID, blocked); err != nil {
+		d.fail(w, err)
+		return
+	}
+	notice := "Customer unblocked: they can pay again."
+	if blocked {
+		notice = "Customer blocked: they cannot start a payment, and a payment of theirs that succeeds goes to review."
+	}
+	d.renderPayment(w, r, s, http.StatusOK, "", notice)
 }

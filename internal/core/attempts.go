@@ -49,6 +49,11 @@ func (s *Service) CreateAttempt(ctx context.Context, paymentID, providerAccountI
 		case state.PaymentCanceled, state.PaymentExpired:
 			return newErr(ErrInvalidState, "a payment that is %s cannot take new attempts", p.Status)
 		}
+		if why, err := refusedForCardTesting(ctx, tx, p); err != nil {
+			return err
+		} else if why != "" {
+			return newErr(ErrInvalidState, "%s", why)
+		}
 		// Counted under the payment lock, so concurrent requests cannot pass together.
 		if prior, err := store.ListAttempts(ctx, tx, p.ID); err != nil {
 			return err
@@ -252,6 +257,7 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 		return ApplyResult{}, err
 	}
 	s.recordTry(ctx, attemptID, snap)
+	hist := s.loadDeclineHistory(ctx, attemptID)
 	var res ApplyResult
 	var alerts []notify.Alert
 	err := s.db.Write(ctx, func(tx store.Tx) error {
@@ -279,7 +285,11 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 			// Enrich display-safe details without replaying ledger entries, events
 			// or payment transitions.
 			enriched := false
-			if (a.MethodDetails == "" || a.MethodDetails == "{}") && !snap.MethodDetails.Empty() {
+			// A later try on a settled attempt (another card on a checkout the
+			// provider keeps open) is in the try history; it must not overwrite
+			// the details of the payment that settled the attempt.
+			sameTry := snap.ProviderPaymentID == "" || a.ProviderPaymentID == "" || snap.ProviderPaymentID == a.ProviderPaymentID
+			if sameTry && (a.MethodDetails == "" || a.MethodDetails == "{}") && !snap.MethodDetails.Empty() {
 				raw, marshalErr := json.Marshal(snap.MethodDetails)
 				if marshalErr != nil {
 					return marshalErr
@@ -288,9 +298,15 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 				a.Method = firstNonEmpty(snap.Method, a.Method)
 				enriched = true
 			}
-			if raw, changed := mergedRisk(a.RiskDetails, snap.Risk); changed {
+			if raw, changed := mergedRisk(a.RiskDetails, snap.Risk); sameTry && changed {
 				a.RiskDetails = raw
 				enriched = true
+			}
+			if isDecline(snap) {
+				if err := s.guardDeclines(ctx, tx, &p, a.ID, hist, &alerts); err != nil {
+					return err
+				}
+				res.Payment = p
 			}
 			if enriched {
 				if err := store.UpdateAttempt(ctx, tx, a, s.nowUTC()); err != nil {
@@ -325,7 +341,12 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 				a.MethodDetails = string(raw)
 			}
 		}
-		if raw, changed := mergedRisk(a.RiskDetails, snap.Risk); changed {
+		if snap.Status == state.AttemptCaptured && !snap.Risk.Empty() {
+			// The risk of the try that paid, not a merge with declined tries before it.
+			if raw, err := json.Marshal(snap.Risk); err == nil {
+				a.RiskDetails = string(raw)
+			}
+		} else if raw, changed := mergedRisk(a.RiskDetails, snap.Risk); changed {
 			a.RiskDetails = raw
 		}
 		a.ProviderPaymentID = firstNonEmpty(snap.ProviderPaymentID, a.ProviderPaymentID)
@@ -346,6 +367,15 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 		ev, haveEvent := paymentEventFor(snap, p, otherOpen)
 		if haveEvent {
 			po := state.PaymentNext(state.PaymentStatus(p.Status), ev)
+			if po.Action == state.Apply && po.Next == state.PaymentSucceeded {
+				reason, err := s.reviewReason(ctx, tx, p, snap, hist)
+				if err != nil {
+					return err
+				}
+				if reason != "" {
+					po = state.PaymentOutcome{Action: state.Apply, Next: state.PaymentNeedsReview, Late: po.Late, Reason: reason}
+				}
+			}
 			switch po.Action {
 			case state.Apply:
 				if err := s.applyPaymentTransition(ctx, tx, &p, a.ID, ev, po, snap, now, &alerts); err != nil {
@@ -356,6 +386,11 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 				if err := s.handleDuplicate(ctx, tx, &p, a, snap, now, &alerts); err != nil {
 					return err
 				}
+			}
+		}
+		if isDecline(snap) {
+			if err := s.guardDeclines(ctx, tx, &p, a.ID, hist, &alerts); err != nil {
+				return err
 			}
 		}
 		if err := store.UpdateAttempt(ctx, tx, a, now); err != nil {
@@ -418,11 +453,14 @@ func firstNonEmpty(a, b string) string {
 // flags, version bump and the matching payment.* event.
 func (s *Service) applyPaymentTransition(ctx context.Context, tx store.Tx, p *store.Payment, attemptID string,
 	ev state.PaymentEvent, po state.PaymentOutcome, snap Snapshot, now time.Time, alerts *[]notify.Alert) error {
+	from := p.Status
 	p.Status = string(po.Next)
 	if ev == state.EvSucceeded || ev == state.EvSucceededMismatch {
 		p.AmountReceived = snap.Amount
 	}
-	if po.Late {
+	// A provider may keep its checkout open after a decline that failed the
+	// payment: a success there before the payment's expiry is not late.
+	if po.Late && !(from == string(state.PaymentFailed) && now.Before(p.ExpiresAt)) {
 		addFlag(p, FlagLateSuccess)
 	}
 	if po.Reason != "" {
@@ -434,9 +472,14 @@ func (s *Service) applyPaymentTransition(ctx context.Context, tx store.Tx, p *st
 	if po.Next == state.PaymentNeedsReview {
 		sev, msg := notify.SeverityWarning, fmt.Sprintf("Payment %s needs review: the provider reports %d %s but %d %s was expected. Check it in the dashboard.",
 			p.ID, snap.Amount, snap.Currency, p.Amount, p.Currency)
-		if po.Reason == state.ReasonSuccessAfterCancel {
+		switch po.Reason {
+		case state.ReasonSuccessAfterCancel:
 			sev, msg = notify.SeverityCritical, fmt.Sprintf("Payment %s was paid (%d %s) after the app canceled it. It needs review and is never refunded automatically.",
 				p.ID, snap.Amount, snap.Currency)
+		case FlagDeclinedCards, FlagCardTesting:
+			msg = fmt.Sprintf("Payment %s was paid after several declined cards, a sign of card testing. Check the card tries, then approve it or refund it.", p.ID)
+		case FlagCustomerBlocked:
+			msg = fmt.Sprintf("Payment %s was paid by a blocked customer. Check it, then approve it or refund it.", p.ID)
 		}
 		*alerts = append(*alerts, notify.Alert{Severity: sev, Kind: "payment.needs_review", Message: msg,
 			Refs: map[string]string{"payment": p.ID, "attempt": attemptID, "app": p.AppID, "reason": po.Reason}})
