@@ -8,6 +8,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/velixio/paymux/internal/iprep"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strings"
@@ -51,6 +53,9 @@ type CreatePaymentInput struct {
 	// Country and AllowedConnectors feed routing (section 8).
 	Country           string
 	AllowedConnectors []string
+	// BuyerIP is the buyer's IP as the app saw it at its own order page,
+	// for the IP review rules. "" when unknown; a private address is ignored.
+	BuyerIP string
 }
 
 // CreatedPayment is the result of CreatePayment. ClientSecret is shown once;
@@ -207,6 +212,12 @@ func (s *Service) CreatePayment(ctx context.Context, in CreatePaymentInput) (Cre
 		}
 		if err := store.InsertPayment(ctx, tx, p); err != nil {
 			return err
+		}
+		if iprep.Public(in.BuyerIP) {
+			ip, _ := netip.ParseAddr(in.BuyerIP)
+			if err := store.NoteCheckoutIP(ctx, tx, p.ID, ip.Unmap().String(), store.CheckoutIPApp, now); err != nil {
+				return err
+			}
 		}
 		return s.emitPayment(ctx, tx, "payment.created", p, "", "")
 	})

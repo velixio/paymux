@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -48,6 +49,10 @@ type billingReq struct {
 	PostalCode string `json:"postal_code"`
 	Country    string `json:"country"`
 }
+
+// BuyerIPHeader carries the buyer's IP, as the app saw it at its own order
+// page, on POST /v1/payments.
+const BuyerIPHeader = "Paymux-Buyer-IP"
 
 type createPaymentReq struct {
 	Amount            *int64            `json:"amount"`
@@ -100,6 +105,17 @@ func (a *API) createPayment(w http.ResponseWriter, r *http.Request, pr core.Prin
 	in := core.CreatePaymentInput{Scope: scope(pr), Amount: *req.Amount, Currency: req.Currency, OrderRef: req.OrderRef,
 		Description: req.Description, Metadata: req.Metadata, ReturnURL: req.ReturnURL,
 		Country: req.Country, AllowedConnectors: req.AllowedConnectors}
+	// The buyer's IP is evidence about the payment, not part of it: a header,
+	// so it is outside the idempotency hash and a retry that adds or changes
+	// it still replays the first response.
+	if raw := strings.TrimSpace(r.Header.Get(BuyerIPHeader)); raw != "" {
+		ip, err := netip.ParseAddr(raw)
+		if err != nil {
+			a.fail(w, r, http.StatusBadRequest, "invalid_request", BuyerIPHeader+" must be an IPv4 or IPv6 address")
+			return
+		}
+		in.BuyerIP = ip.Unmap().WithZone("").String()
+	}
 	if c := req.Customer; c != nil {
 		in.Customer = &core.CustomerInput{ExternalRef: c.ExternalRef, Name: c.Name, Email: c.Email, Phone: c.Phone}
 		if b := c.Billing; b != nil {

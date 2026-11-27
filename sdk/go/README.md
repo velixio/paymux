@@ -42,6 +42,10 @@ payment, err := client.Payments.Create(ctx, paymux.CreatePaymentParams{
 action := payment.Checkout
 ```
 
+In this mode the buyer never opens a Paymux page, so Paymux cannot see their
+IP. Pass it with `paymux.WithBuyerIP(clientIP)` on the create call, so
+Paymux can hold a payment paid from a VPN or from another country for review.
+
 Return only `action` to the authenticated order owner and execute it with
 `executeCheckout` from the JavaScript checkout SDK. Supply billing details
 required by the App's tax policy during payment creation. Use

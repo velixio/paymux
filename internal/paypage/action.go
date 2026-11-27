@@ -171,6 +171,7 @@ func (h *Handler) action(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	h.noteIP(r, p.ID)
 	start := h.o.Flow.StartCheckout
 	if req.Fresh {
 		start = h.o.Flow.StartFreshCheckout

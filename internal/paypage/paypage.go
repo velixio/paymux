@@ -41,6 +41,8 @@ type Options struct {
 	CSRFKey []byte
 	Logger  *slog.Logger
 	Now     func() time.Time
+	// ClientIP names the buyer's IP behind trusted proxies. Nil records none.
+	ClientIP func(*http.Request) string
 }
 
 // Handler serves the pay, return and asset routes.
@@ -202,6 +204,7 @@ func (h *Handler) pay(w http.ResponseWriter, r *http.Request) {
 	}
 	// A reload shows the open attempt's checkout again; ?fresh=1 ("try again",
 	// "pay another way") starts a new attempt.
+	h.noteIP(r, p.ID)
 	start := h.o.Flow.StartCheckout
 	if r.URL.Query().Get("fresh") == "1" {
 		start = h.o.Flow.StartFreshCheckout
@@ -222,6 +225,17 @@ func (h *Handler) pay(w http.ResponseWriter, r *http.Request) {
 		}
 	default:
 		h.serverError(w, appName, err)
+	}
+}
+
+// noteIP records the IP of the browser starting p's checkout, for the IP
+// review rules. A failure is logged and never stops the checkout.
+func (h *Handler) noteIP(r *http.Request, paymentID string) {
+	if h.o.ClientIP == nil {
+		return
+	}
+	if err := h.o.Core.NoteCheckoutIP(r.Context(), paymentID, h.o.ClientIP(r)); err != nil {
+		h.o.Logger.Warn("paypage: checkout IP not recorded", "payment", paymentID, "err", err)
 	}
 }
 

@@ -413,11 +413,15 @@ const (
 // the merchant. A check holds the outcome only, never the value checked: no
 // CVV, and no card or authentication data.
 type PaymentRisk struct {
-	Score             *int   `json:"score,omitempty"` // 0 (safest) to 100, nil until scored
-	IPAddress         string `json:"ip_address,omitempty"`
+	Score     *int   `json:"score,omitempty"` // 0 (safest) to 100, nil until scored
+	IPAddress string `json:"ip_address,omitempty"`
+	// City, Region, Country (ISO 3166-1 alpha-2) and PostalCode are the
+	// card's billing address as the buyer entered it at the provider's
+	// checkout, not the IP's location.
 	City              string `json:"city,omitempty"`
 	Region            string `json:"region,omitempty"`
 	Country           string `json:"country,omitempty"`
+	PostalCode        string `json:"postal_code,omitempty"`
 	AddressCheck      string `json:"address_check,omitempty"`
 	PostalCheck       string `json:"postal_check,omitempty"`
 	CVVCheck          string `json:"cvv_check,omitempty"`
@@ -428,7 +432,7 @@ type PaymentRisk struct {
 // Empty reports whether r holds nothing worth showing. An unverified 3-D Secure
 // flag alone does not count: providers send it for every payment.
 func (r PaymentRisk) Empty() bool {
-	return r.Score == nil && r.IPAddress == "" && r.City == "" && r.Region == "" && r.Country == "" &&
+	return r.Score == nil && r.IPAddress == "" && r.City == "" && r.Region == "" && r.Country == "" && r.PostalCode == "" &&
 		r.AddressCheck == "" && r.PostalCheck == "" && r.CVVCheck == "" && r.AuthorizationCode == "" &&
 		(r.ThreeDSecure == nil || !*r.ThreeDSecure)
 }
@@ -446,7 +450,7 @@ func (r PaymentRisk) Merge(next PaymentRisk) PaymentRisk {
 		to   *string
 		from string
 	}{
-		{&r.IPAddress, next.IPAddress}, {&r.City, next.City}, {&r.Region, next.Region}, {&r.Country, next.Country},
+		{&r.IPAddress, next.IPAddress}, {&r.City, next.City}, {&r.Region, next.Region}, {&r.Country, next.Country}, {&r.PostalCode, next.PostalCode},
 		{&r.AddressCheck, next.AddressCheck}, {&r.PostalCheck, next.PostalCheck}, {&r.CVVCheck, next.CVVCheck},
 		{&r.AuthorizationCode, next.AuthorizationCode},
 	} {

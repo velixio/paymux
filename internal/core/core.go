@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/velixio/paymux/internal/iprep"
 	"time"
 
 	"github.com/velixio/paymux/internal/events"
@@ -111,6 +112,9 @@ type Options struct {
 	// invoicing lane uses them). Nil means none.
 	OnPaymentSucceeded PaymentHook
 	OnRefundSucceeded  RefundHook
+	// IPLookup tells a VPN, proxy or Tor IP and an IP's country, for the
+	// review_vpn and review_ip_mismatch rules. Nil means no lookups.
+	IPLookup iprep.Looker
 }
 
 // Alerter raises ops alerts (*notify.Alerts).
@@ -153,6 +157,7 @@ type Service struct {
 	onPaymentSucceeded PaymentHook
 	onRefundSucceeded  RefundHook
 	syncer             AttemptSyncer
+	ipLookup           iprep.Looker
 }
 
 // AttemptSyncer fetches an attempt's truth from its provider and applies it
@@ -180,7 +185,7 @@ func NewService(o Options) *Service {
 		o.Now = time.Now
 	}
 	return &Service{db: o.DB, settings: o.Settings, jobs: o.Jobs, router: o.Router, alerts: o.Alerts, emitter: o.Emitter, now: o.Now,
-		onPaymentSucceeded: o.OnPaymentSucceeded, onRefundSucceeded: o.OnRefundSucceeded}
+		onPaymentSucceeded: o.OnPaymentSucceeded, onRefundSucceeded: o.OnRefundSucceeded, ipLookup: o.IPLookup}
 }
 
 func (s *Service) nowUTC() time.Time { return s.now().UTC() }

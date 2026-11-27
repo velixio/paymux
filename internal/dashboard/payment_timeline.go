@@ -508,3 +508,17 @@ func buildGlance(in timelineData) glanceView {
 	}
 	return g
 }
+
+// latestRiskJSON is the stored risk JSON latestRisk shows, "" when none.
+func latestRiskJSON(in timelineData) string {
+	tries := allTries(in)
+	for i := len(tries) - 1; i >= 0; i-- {
+		if tryRiskView(tries[i].RiskDetails, tries[i].Status, tries[i].ThreeDS) != nil {
+			return tries[i].RiskDetails
+		}
+	}
+	if a, ok := paymentListAttempt(in.Payment, in.Attempts); ok {
+		return a.RiskDetails
+	}
+	return ""
+}

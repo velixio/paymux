@@ -2568,3 +2568,33 @@ button.risk-close {
   vertical-align: middle;
   cursor: default;
 }
+
+/* A failed signal (a VPN, an IP that never opened the checkout). */
+.risk-tag-warn {
+  background: var(--status-warn-bg, color-mix(in srgb, var(--color-warn) 16%, transparent));
+  color: var(--status-warn-fg, var(--color-warn));
+}
+
+/* Checkout IPs panel. */
+.net-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+.net-list li {
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+.net-ip {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.net-meta {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+/* An operator's fraud tag. */
+.risk-tag-bad {
+  background: var(--status-bad-bg, color-mix(in srgb, var(--color-bad) 16%, transparent));
+  color: var(--status-bad-fg, var(--color-bad));
+}

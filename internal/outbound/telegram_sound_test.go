@@ -148,7 +148,7 @@ func TestTelegramTestMessage(t *testing.T) {
 		{"paid_after_failures", "✅ " + head + "\nPaid 08:00 UTC on attempt 8" + history, false},
 		{"canceled", "🚫 " + head + "\nCanceled", false},
 		{"expired", "⌛ " + head + "\nExpired", false},
-		{"alert", "[TEST] refund.succeeded · re_test_message · 99.00 USD", true},
+		{"alert", "[TEST] refund.succeeded · re_test_message · 25.00 USD of 99.00 USD\n🇺🇸 United States (US) · buyer@example.com", true},
 	} {
 		t.Run(tc.scenario, func(t *testing.T) {
 			storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
@@ -229,4 +229,33 @@ func TestTelegramTestMessagesInTwoChatsWithOneMessageIDBothGetDeleted(t *testing
 			t.Fatalf("deleted %d test messages, want 2", wantDeletes)
 		}
 	})
+}
+
+func TestRefundAlertShowsAmountAndBuyer(t *testing.T) {
+	for name, tc := range map[string]struct {
+		amount int64
+		want   string
+	}{
+		"full":    {9900, "[TEST] refund.succeeded · re_1 · 99.00 USD\n🇻🇳 Vietnam (VN) · buyer@example.com"},
+		"partial": {2500, "[TEST] refund.succeeded · re_1 · 25.00 USD of 99.00 USD\n🇻🇳 Vietnam (VN) · buyer@example.com"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+				h := newTelegramHarness(t, db, 0)
+				h.setSound(0, "refund.succeeded")
+				h.attempt("att_1", "captured", "", "", h.e.clk.Now())
+				h.write(func(tx store.Tx) error {
+					if err := store.InsertRefund(ctx, tx, store.Refund{ID: "re_1", OrgID: "org_1", AppID: "app_1", Mode: "test",
+						PaymentID: "p123", AttemptID: "att_1", Amount: tc.amount, Currency: "USD", Status: "succeeded",
+						ProviderRef: "ref_re_1", InitiatedBy: "dashboard", CreatedAt: h.e.clk.Now(), UpdatedAt: h.e.clk.Now()}); err != nil {
+						return err
+					}
+					return h.svc.Emit(ctx, tx, events.Event{OrgID: "org_1", AppID: "app_1", Mode: "test", Type: "refund.succeeded",
+						ObjectType: "refund", ObjectID: "re_1", ObjectVersion: 1, Data: map[string]any{"id": "re_1"}})
+				})
+				h.run(1)
+				wantCalls(t, h.tg.take(), telegramCall{Method: "sendMessage", Text: tc.want})
+			})
+		})
+	}
 }

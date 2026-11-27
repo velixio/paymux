@@ -83,7 +83,9 @@ func (s *Service) SendTelegramTest(ctx context.Context, orgID, mode, scenario st
 func telegramTestText(mode, scenario string, now time.Time) (string, error) {
 	p := store.Payment{ID: "pay_test_message", Mode: mode, Amount: 9900, Currency: "USD", Status: "created"}
 	if scenario == "alert" {
-		return "[" + strings.ToUpper(mode) + "] refund.succeeded · re_test_message · " + notificationAmount(p), nil
+		r := store.Refund{Amount: 2500, Currency: "USD"}
+		c := store.Customer{Email: "buyer@example.com", Billing: store.Billing{Country: "US"}}
+		return "[" + strings.ToUpper(mode) + "] refund.succeeded · re_test_message · " + refundAmount(r, p) + "\n" + buyerLine(p, c), nil
 	}
 	failed := func(minutesAgo int, reason string) store.Attempt {
 		return store.Attempt{Status: "failed", FailureMessage: reason, UpdatedAt: now.Add(-time.Duration(minutesAgo) * time.Minute)}

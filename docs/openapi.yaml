@@ -77,6 +77,7 @@ paths:
         mode because payment and provider checkout creation are one operation.
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/BuyerIP"
       requestBody:
         required: true
         content:
@@ -879,6 +880,18 @@ components:
       in: header
       required: false
       schema: { type: string, maxLength: 255 }
+    BuyerIP:
+      name: Paymux-Buyer-IP
+      in: header
+      required: false
+      description: >-
+        The buyer's IP as your server saw it at your own order page. Paymux
+        compares it with the IP the provider saw pay (`review_ip_mismatch`)
+        and holds a VPN, proxy or Tor IP for review (`review_vpn`). A private
+        address is ignored. It is outside the idempotency check: a retry that
+        adds or changes it replays the first response. Send it in
+        `provider_action` mode, where the buyer never opens a Paymux page.
+      schema: { type: string, example: "203.0.113.24" }
     IdempotencyKeyRequired:
       name: Idempotency-Key
       in: header
@@ -1074,7 +1087,7 @@ components:
           type: array
           items:
             type: string
-            examples: [duplicate_success, duplicate_refunded, late_success, amount_mismatch, success_after_cancel, card_testing, declined_cards, customer_blocked]
+            examples: [duplicate_success, duplicate_refunded, late_success, amount_mismatch, success_after_cancel, card_testing, declined_cards, customer_blocked, vpn, ip_mismatch, address_mismatch, fraud]
     PaymentAttempt:
       type: object
       description: One try at paying, on one provider account. Useful for finding out why a payment failed.

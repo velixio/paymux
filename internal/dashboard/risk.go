@@ -23,8 +23,12 @@ type riskView struct {
 	// Tags name the checks that passed (CVV, AVS, 3DS), for a glance in a row.
 	// A failed or unavailable check has no tag: the checks list shows it.
 	Tags []riskTag
-	// Flag is the emoji flag of the buyer IP's country, FlagTitle its name.
+	// Flag is the emoji flag of the card billing address's country, FlagTitle
+	// says so.
 	Flag, FlagTitle string
+	// AddressNote warns that the card billing address differs from the one
+	// the app sent with the order; "" when it matches or cannot be compared.
+	AddressNote string
 }
 
 type riskCheck struct{ Label, Text, Tone, Mark string }
@@ -136,7 +140,7 @@ func riskViewFromJSON(raw, status string) *riskView {
 	v.Location = strings.Join(location, ", ")
 	v.Tags = riskTags(r)
 	if flag, name := countryFlag(r.Country); flag != "" {
-		v.Flag, v.FlagTitle = flag, "Buyer IP in "+name
+		v.Flag, v.FlagTitle = flag, "Card billed in "+name
 	}
 	for _, c := range []struct{ label, result string }{
 		{"Address", r.AddressCheck}, {"ZIP / postal", r.PostalCheck}, {"CVV", r.CVVCheck},

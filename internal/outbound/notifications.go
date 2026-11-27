@@ -342,8 +342,32 @@ func (s *Service) notificationPayment(ctx context.Context, ev store.EventRow) (p
 	if ev.ObjectType != "payment" {
 		return payment, customer, false, nil
 	}
+	return s.paymentAndCustomer(ctx, ev, ev.ObjectID)
+}
+
+// notificationRefund loads the event's refund with its payment and customer. ok
+// is false when any of them is missing or belongs to another organization or mode.
+func (s *Service) notificationRefund(ctx context.Context, ev store.EventRow) (refund store.Refund, payment store.Payment, customer store.Customer, ok bool, err error) {
+	if ev.ObjectType != "refund" {
+		return refund, payment, customer, false, nil
+	}
 	err = s.db.Read(ctx, func(q store.Querier) (err error) {
-		payment, err = store.GetPayment(ctx, q, ev.ObjectID)
+		refund, err = store.GetRefund(ctx, q, ev.ObjectID)
+		return err
+	})
+	if errors.Is(err, store.ErrNotFound) {
+		return refund, payment, customer, false, nil
+	}
+	if err != nil || refund.OrgID != ev.OrgID || refund.Mode != ev.Mode {
+		return refund, payment, customer, false, err
+	}
+	payment, customer, ok, err = s.paymentAndCustomer(ctx, ev, refund.PaymentID)
+	return refund, payment, customer, ok, err
+}
+
+func (s *Service) paymentAndCustomer(ctx context.Context, ev store.EventRow, paymentID string) (payment store.Payment, customer store.Customer, ok bool, err error) {
+	err = s.db.Read(ctx, func(q store.Querier) (err error) {
+		payment, err = store.GetPayment(ctx, q, paymentID)
 		if err != nil || payment.OrgID != ev.OrgID || payment.Mode != ev.Mode {
 			return err
 		}
@@ -370,11 +394,24 @@ func (s *Service) notificationPayment(ctx context.Context, ev store.EventRow) (p
 }
 
 func notificationAmount(p store.Payment) string {
-	amount, err := money.FormatDecimal(p.Amount, p.Currency)
-	if err != nil {
-		amount = strconv.FormatInt(p.Amount, 10)
+	return formatAmount(p.Amount, p.Currency)
+}
+
+// refundAmount is the refund's amount, and the payment's when it is a partial refund.
+func refundAmount(r store.Refund, p store.Payment) string {
+	amount := formatAmount(r.Amount, r.Currency)
+	if r.Amount != p.Amount || r.Currency != p.Currency {
+		amount += " of " + notificationAmount(p)
 	}
-	return amount + " " + p.Currency
+	return amount
+}
+
+func formatAmount(minor int64, currency string) string {
+	amount, err := money.FormatDecimal(minor, currency)
+	if err != nil {
+		amount = strconv.FormatInt(minor, 10)
+	}
+	return amount + " " + currency
 }
 
 // notificationCountry returns the payment's valid two-letter country, if any.
@@ -394,10 +431,21 @@ func notificationCountry(p store.Payment, c store.Customer) string {
 }
 
 func (s *Service) notificationDetails(ctx context.Context, ev store.EventRow) (string, string) {
+	if ev.ObjectType == "refund" {
+		refund, payment, customer, ok, err := s.notificationRefund(ctx, ev)
+		if err != nil || !ok {
+			return "", ""
+		}
+		return " · " + refundAmount(refund, payment), buyerLine(payment, customer)
+	}
 	payment, customer, ok, err := s.notificationPayment(ctx, ev)
 	if err != nil || !ok {
 		return "", ""
 	}
+	return " · " + notificationAmount(payment), buyerLine(payment, customer)
+}
+
+func buyerLine(payment store.Payment, customer store.Customer) string {
 	var second []string
 	if label := countryLabel(notificationCountry(payment, customer)); label != "" {
 		second = append(second, label)
@@ -405,7 +453,7 @@ func (s *Service) notificationDetails(ctx context.Context, ev store.EventRow) (s
 	if customer.Email != "" {
 		second = append(second, customer.Email)
 	}
-	return " · " + notificationAmount(payment), strings.Join(second, " · ")
+	return strings.Join(second, " · ")
 }
 
 func countryFlag(code string) string {

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -132,7 +133,7 @@ func parseBaseURL(raw string) (*url.URL, error) {
 
 // RequestOption configures one mutation request.
 type RequestOption func(*requestConfig) error
-type requestConfig struct{ idempotencyKey string }
+type requestConfig struct{ idempotencyKey, buyerIP string }
 
 // WithIdempotencyKey sets a stable key representing one logical operation.
 // Reuse the same key when retrying that operation; never reuse it for another.
@@ -142,6 +143,22 @@ func WithIdempotencyKey(key string) RequestOption {
 			return errors.New("paymux: idempotency key must be 1-255 non-whitespace-padded characters")
 		}
 		c.idempotencyKey = key
+		return nil
+	}
+}
+
+// WithBuyerIP sends the buyer's IP, as your server saw it at your own order
+// page, with Payments.Create. Paymux compares it with the IP the provider saw
+// pay and holds a mismatch, or a VPN, for review. It is sent as the
+// Paymux-Buyer-IP header, outside the idempotency check, so a retry that adds
+// it still replays the first response. Other calls ignore it.
+func WithBuyerIP(ip string) RequestOption {
+	return func(c *requestConfig) error {
+		addr, err := netip.ParseAddr(strings.TrimSpace(ip))
+		if err != nil {
+			return errors.New("paymux: buyer IP must be an IPv4 or IPv6 address")
+		}
+		c.buyerIP = addr.Unmap().WithZone("").String()
 		return nil
 	}
 }
@@ -227,6 +244,9 @@ func (c *Client) doJSON(ctx context.Context, method, path string, query url.Valu
 	}
 	if mutation != nil {
 		req.Header.Set("Idempotency-Key", mutation.idempotencyKey)
+		if mutation.buyerIP != "" && method == http.MethodPost && path == "v1/payments" {
+			req.Header.Set("Paymux-Buyer-IP", mutation.buyerIP)
+		}
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {

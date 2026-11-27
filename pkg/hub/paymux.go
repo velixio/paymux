@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/velixio/paymux/internal/iprep"
 	"log/slog"
 	"net"
 	"net/http"
@@ -328,7 +329,7 @@ func (a *App) Start(ctx context.Context) error {
 		return links.OnPaymentSucceeded(ctx, tx, p, at)
 	}
 	svc := core.NewService(core.Options{DB: db, Settings: set, Jobs: q, Emitter: emitter, Router: rt, Alerts: alerts,
-		OnPaymentSucceeded: onPaymentSucceeded, OnRefundSucceeded: inv.OnRefundSucceeded})
+		OnPaymentSucceeded: onPaymentSucceeded, OnRefundSucceeded: inv.OnRefundSucceeded, IPLookup: ipLookup(a.cfg)})
 	links = paylinks.New(paylinks.Options{DB: db, Core: svc, Emitter: emitter, Settings: set, BaseURL: customerURL})
 	disp := disputes.New(disputes.Options{DB: db, Settings: set, Emitter: emitter, Alerts: alerts, Credit: inv, Conns: conns, Core: svc,
 		Logger: a.log, CutoffErr: invoice.ErrCreditNoteCutoff})
@@ -418,7 +419,7 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	csrf := sha256.Sum256(append([]byte("paymux-pay-csrf-key|"), a.cfg.MasterKey...))
 	pay := paypage.New(paypage.Options{Core: svc, Flow: flow, Settings: set, Renderer: renderer,
-		CSRFKey: csrf[:], Logger: a.log})
+		CSRFKey: csrf[:], Logger: a.log, ClientIP: func(r *http.Request) string { return clientip.From(r, a.cfg.TrustedProxies) }})
 	linkPages := paylinks.NewHosted(paylinks.HostedOptions{Service: links, Core: svc, Renderer: renderer, Settings: set, CSRFKey: csrf[:],
 		Secure: a.cfg.CustomerURL().Scheme == "https", Logger: a.log})
 
@@ -710,4 +711,24 @@ func (a *App) oidcClient() *oidc.Client {
 	return oidc.New(oidc.Config{Issuer: a.cfg.OIDCIssuer, ClientID: a.cfg.OIDCClientID, ClientSecret: a.cfg.OIDCClientSecret.Reveal(),
 		RedirectURL:   strings.TrimRight(a.cfg.BaseURL.String(), "/") + "/dashboard/login/oidc/callback",
 		AllowInsecure: strings.HasPrefix(a.cfg.OIDCIssuer, "http://")}) // config allows http for localhost only
+}
+
+// ipLookup is the IP lookup service for the IP review rules: vpnapi.io when
+// PAYMUX_VPNAPI_KEY is set, then the echoip server of PAYMUX_IP_LOOKUP_URL as
+// its fallback, or none.
+func ipLookup(cfg config.Config) iprep.Looker {
+	var chain iprep.Chain
+	if cfg.VPNAPIKey != "" {
+		chain = append(chain, &iprep.VPNAPI{Key: string(cfg.VPNAPIKey)})
+	}
+	if cfg.IPLookupURL != "" {
+		chain = append(chain, &iprep.EchoIP{BaseURL: cfg.IPLookupURL})
+	}
+	switch len(chain) {
+	case 0:
+		return nil
+	case 1:
+		return chain[0]
+	}
+	return chain
 }

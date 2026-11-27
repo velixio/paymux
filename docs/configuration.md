@@ -94,6 +94,13 @@ This is an organisation setting (the dashboard's *Settings* page), not an enviro
 | `time_zone` | `server` (or a zone such as `Asia/Tokyo`) | The time zone of the dates, times, charts and date filters on the dashboard. `server` follows `PAYMUX_TZ`. Scheduled jobs such as reconciliation stay on `PAYMUX_TZ`, and GST dates stay in IST. |
 | `fx_provider` | `frankfurter` (or `off`) | Source of the indicative market rates on the dashboard. The default, `frankfurter`, makes an outbound request to `api.frankfurter.dev` (no key; no Paymux data is sent) once the stored rates are 6 hours old, even while `default_currency` is `off`. A failed request logs one warning and is tried again by the next hourly run. Set `off` on a host without outbound access: it neither fetches nor shows rates. Invoices and GST never use these rates. |
 
+## Buyer IP lookups
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PAYMUX_VPNAPI_KEY` | Unset | A [vpnapi.io](https://vpnapi.io/) API key. With it, Paymux looks up the buyer's checkout IP and the IP the provider saw pay, when a success arrives, to tell a VPN, proxy or Tor IP and each IP's country (the `review_vpn` and `review_ip_mismatch` settings). Those IPs are sent to vpnapi.io, and nothing else. Each IP is looked up at most once in 30 days; the free plan allows 1000 lookups a day. A failed lookup logs a warning and the rules skip that IP. Without a key, `review_vpn` does nothing. |
+| `PAYMUX_IP_LOOKUP_URL` | Unset | An [echoip](https://github.com/mpolden/echoip) server, such as one you host, asked as `{url}/{ip}/json`. It is free and gives each IP's country, place and network owner, which is enough for `review_ip_mismatch`, but it cannot tell a VPN. With `PAYMUX_VPNAPI_KEY` too, it is the fallback when vpnapi.io fails or is over its daily limit. Those IPs are sent to that server. |
+
 ## Dashboard single sign-on
 
 | Variable | Default | Meaning |

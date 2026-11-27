@@ -25,7 +25,7 @@ const (
 
 // reviewReasons are the needs_review reasons an operator may approve: the
 // money arrived in full, only the buyer is in doubt.
-var reviewReasons = []string{FlagCardTesting, FlagDeclinedCards, FlagCustomerBlocked}
+var reviewReasons = []string{FlagCardTesting, FlagDeclinedCards, FlagCustomerBlocked, FlagVPN, FlagIPMismatch, FlagAddressMismatch}
 
 // BlockReasonDeclinedCards is the customer block reason set by the
 // customer_decline_limit rule. An operator's block has the reason "operator".
@@ -107,15 +107,17 @@ func (s *Service) loadDeclineHistory(ctx context.Context, attemptID string) decl
 
 // reviewReason says why a success on p must go to review, or "" when it may
 // succeed. The caller holds the payment lock.
-func (s *Service) reviewReason(ctx context.Context, tx store.Tx, p store.Payment, snap Snapshot, hist declineHistory) (string, error) {
+func (s *Service) reviewReason(ctx context.Context, tx store.Tx, p store.Payment, snap Snapshot, hist declineHistory, ipc ipCheck) (string, error) {
 	if merchantInitiated(p) {
 		return "", nil
 	}
 	if p.HasFlag(FlagCardTesting) {
 		return FlagCardTesting, nil
 	}
+	var c store.Customer
 	if p.CustomerID != "" {
-		c, err := store.GetCustomer(ctx, tx, p.CustomerID)
+		var err error
+		c, err = store.GetCustomer(ctx, tx, p.CustomerID)
 		if err != nil && err != store.ErrNotFound {
 			return "", err
 		}
@@ -123,21 +125,23 @@ func (s *Service) reviewReason(ctx context.Context, tx store.Tx, p store.Payment
 			return FlagCustomerBlocked, nil
 		}
 	}
-	if !hist.known {
-		return "", nil
+	if hist.known {
+		limit, err := s.intPolicy(ctx, tx, p.AppID, "review_after_declined_cards")
+		if err != nil {
+			return "", err
+		}
+		others := len(hist.payment)
+		if hist.payment[snapCardKey(snap)] > 0 {
+			others-- // a card declined once and then accepted is not another card
+		}
+		if limit > 0 && others >= limit {
+			return FlagDeclinedCards, nil
+		}
 	}
-	limit, err := s.intPolicy(ctx, tx, p.AppID, "review_after_declined_cards")
-	if err != nil || limit <= 0 {
-		return "", err
+	if reason, err := s.ipReason(ctx, tx, p, ipc); reason != "" || err != nil {
+		return reason, err
 	}
-	others := len(hist.payment)
-	if hist.payment[snapCardKey(snap)] > 0 {
-		others-- // a card declined once and then accepted is not another card
-	}
-	if others >= limit {
-		return FlagDeclinedCards, nil
-	}
-	return "", nil
+	return s.addressReason(ctx, tx, p, c, snap)
 }
 
 // guardDeclines applies the card-testing limits after a declined try on p:
@@ -160,8 +164,14 @@ func (s *Service) guardDeclines(ctx context.Context, tx store.Tx, p *store.Payme
 				if err := store.UpdatePayment(ctx, tx, p, now); err != nil {
 					return err
 				}
+				msg := fmt.Sprintf("Payment %s stopped taking new attempts: %d different cards were declined on it. A success on it goes to review.", p.ID, len(cards))
+				if p.Status == string(state.PaymentSucceeded) {
+					// Cards tested on a checkout that already paid: the card
+					// that paid is likely stolen too.
+					msg = fmt.Sprintf("Payment %s already succeeded, and then %d different cards were declined on its checkout: card testing. The card that paid may be stolen too; check the payment and refund it before the cardholder disputes it.", p.ID, len(cards))
+				}
 				*alerts = append(*alerts, notify.Alert{Severity: notify.SeverityWarning, Kind: "payment.card_testing",
-					Message: fmt.Sprintf("Payment %s stopped taking new attempts: %d different cards were declined on it. A success on it goes to review.", p.ID, len(cards)),
+					Message: msg,
 					Refs:    map[string]string{"payment": p.ID, "attempt": attemptID, "app": p.AppID}})
 			}
 		}
@@ -300,6 +310,42 @@ func (s *Service) SetCustomerBlocked(ctx context.Context, actor audit.Actor, cus
 		}
 		return audit.Record(ctx, tx, audit.Entry{OrgID: c.OrgID, Actor: actor, Action: action, Target: c.ID,
 			Before: map[string]any{"blocked": !blocked, "reason": c.BlockedReason}, After: map[string]any{"blocked": blocked, "reason": reason}})
+	})
+	return changed, err
+}
+
+// FlagFraud is an operator's verdict that a payment is fraud: a stolen card,
+// card testing, a fraud alert from the provider. It changes nothing else on
+// the payment; refund it and block the customer as needed.
+const FlagFraud = "fraud"
+
+// SetFraud tags (fraud true) or untags payment paymentID as fraud on an
+// operator's word. It reports whether anything changed.
+func (s *Service) SetFraud(ctx context.Context, actor audit.Actor, paymentID string, fraud bool) (bool, error) {
+	var changed bool
+	err := s.db.Write(ctx, func(tx store.Tx) error {
+		changed = false
+		p, err := store.GetPaymentForUpdate(ctx, tx, paymentID)
+		if err != nil {
+			return mapStoreErr(err, "payment")
+		}
+		if p.HasFlag(FlagFraud) == fraud {
+			return nil
+		}
+		before := ViewPayment(p)
+		action := "payment.fraud_unmark"
+		if fraud {
+			addFlag(&p, FlagFraud)
+			action = "payment.fraud_mark"
+		} else {
+			p.Flags = slices.DeleteFunc(p.Flags, func(f string) bool { return f == FlagFraud })
+		}
+		if err := store.UpdatePayment(ctx, tx, &p, s.nowUTC()); err != nil {
+			return err
+		}
+		changed = true
+		return audit.Record(ctx, tx, audit.Entry{OrgID: p.OrgID, Actor: actor, Action: action, Target: p.ID,
+			Before: before, After: ViewPayment(p)})
 	})
 	return changed, err
 }

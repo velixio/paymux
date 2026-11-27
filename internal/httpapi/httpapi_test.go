@@ -658,3 +658,26 @@ func TestUnauthenticatedRequestsDoNotConsumeAKeysBudget(t *testing.T) {
 		}
 	})
 }
+
+func TestCreatePaymentRecordsTheBuyerIP(t *testing.T) {
+	each(t, func(t *testing.T, f *fixture) {
+		_, m := f.createPayment(createBody, "Idempotency-Key", "k-ip", "Paymux-Buyer-IP", " ::ffff:203.0.113.24 ")
+		id := m["id"].(string)
+		if n := f.count("SELECT COUNT(*) FROM checkout_ips WHERE payment_id = ? AND ip = '203.0.113.24' AND source = 'app'", id); n != 1 {
+			t.Fatalf("buyer IP rows: %d", n)
+		}
+		// A retry that adds or changes the IP is the same request: it replays.
+		again, m2 := f.createPayment(createBody, "Idempotency-Key", "k-ip", "Paymux-Buyer-IP", "198.51.100.1")
+		if m2["id"] != id || again.header.Get("Idempotent-Replay") != "true" {
+			t.Fatalf("retry with another IP: %v %s", m2["id"], again.raw)
+		}
+		// A private address is not the buyer's: ignored, not refused.
+		_, m3 := f.createPayment(createBody, "Paymux-Buyer-IP", "10.0.0.7")
+		if n := f.count("SELECT COUNT(*) FROM checkout_ips WHERE payment_id = ?", m3["id"].(string)); n != 0 {
+			t.Fatalf("private IP recorded: %d", n)
+		}
+		if r := f.do("POST", "/v1/payments", f.testKey, createBody, "Paymux-Buyer-IP", "not-an-ip"); r.status != 400 || r.errType(t) != "invalid_request" {
+			t.Fatalf("bad IP: %d %s", r.status, r.raw)
+		}
+	})
+}

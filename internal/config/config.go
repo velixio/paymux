@@ -66,9 +66,17 @@ type Config struct {
 	OpsWebhookURL string   // PAYMUX_OPS_WEBHOOK_URL, Slack-compatible
 
 	// OIDC single sign-on for the dashboard. Enabled when OIDCIssuer is set.
-	OIDCIssuer         string   // PAYMUX_OIDC_ISSUER
-	OIDCClientID       string   // PAYMUX_OIDC_CLIENT_ID
-	OIDCClientSecret   Secret   // PAYMUX_OIDC_CLIENT_SECRET
+	OIDCIssuer       string // PAYMUX_OIDC_ISSUER
+	OIDCClientID     string // PAYMUX_OIDC_CLIENT_ID
+	OIDCClientSecret Secret // PAYMUX_OIDC_CLIENT_SECRET
+	// VPNAPIKey (PAYMUX_VPNAPI_KEY) turns on vpnapi.io lookups of buyer IPs
+	// for the review_vpn and review_ip_mismatch rules. Buyer IPs are then sent
+	// to vpnapi.io.
+	VPNAPIKey Secret
+	// IPLookupURL (PAYMUX_IP_LOOKUP_URL) is an echoip server for the country
+	// and network of buyer IPs, free but without VPN detection; with
+	// VPNAPIKey too it is the fallback. Buyer IPs are then sent to it.
+	IPLookupURL        string
 	OIDCAllowedDomains []string // PAYMUX_OIDC_ALLOWED_DOMAINS: e-mail domains that may be created at first sign-in
 	OIDCDefaultRole    string   // PAYMUX_OIDC_DEFAULT_ROLE for those users (default viewer; never admin)
 
@@ -329,6 +337,14 @@ func loadOIDC(c *Config, get func(k, def string) string, bad func(string, ...any
 	c.OIDCIssuer = strings.TrimRight(get("PAYMUX_OIDC_ISSUER", ""), "/")
 	c.OIDCClientID = get("PAYMUX_OIDC_CLIENT_ID", "")
 	c.OIDCClientSecret = Secret(get("PAYMUX_OIDC_CLIENT_SECRET", ""))
+	c.VPNAPIKey = Secret(strings.TrimSpace(get("PAYMUX_VPNAPI_KEY", "")))
+	if raw := strings.TrimSpace(get("PAYMUX_IP_LOOKUP_URL", "")); raw != "" {
+		if u, err := url.Parse(raw); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.RawQuery != "" || u.User != nil {
+			bad("PAYMUX_IP_LOOKUP_URL must be an http(s) URL with no query or user name")
+		} else {
+			c.IPLookupURL = strings.TrimRight(raw, "/")
+		}
+	}
 	domains, role := get("PAYMUX_OIDC_ALLOWED_DOMAINS", ""), get("PAYMUX_OIDC_DEFAULT_ROLE", "")
 	if c.OIDCIssuer == "" && c.OIDCClientID == "" && c.OIDCClientSecret == "" && domains == "" && role == "" {
 		return

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -124,5 +125,31 @@ func TestBaseURLSafety(t *testing.T) {
 	}
 	if _, err := New("key", WithBaseURL("https://user:pass@example.com")); err == nil {
 		t.Fatal("URL credentials accepted")
+	}
+}
+
+func TestWithBuyerIPGoesOnlyWithCreate(t *testing.T) {
+	var got []string
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.URL.Path+"="+r.Header.Get("Paymux-Buyer-IP"))
+		if r.URL.Path == "/v1/payments" {
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":"pay_1","object":"payment","status":"created","amount":100,"currency":"INR"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"kind":"complete","payment_id":"pay_1","status":"succeeded"}`))
+	})
+	ctx := context.Background()
+	if _, err := client.Payments.Create(ctx, CreatePaymentParams{Amount: 100, Currency: "INR"}, WithIdempotencyKey("o-1"), WithBuyerIP("::ffff:203.0.113.24")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Payments.CheckoutAction(ctx, "pay_1", CheckoutActionParams{}, WithIdempotencyKey("o-1-c"), WithBuyerIP("203.0.113.24")); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, ",") != "/v1/payments=203.0.113.24,/v1/payments/pay_1/checkout-action=" {
+		t.Fatalf("requests %v", got)
+	}
+	if _, err := client.Payments.Create(ctx, CreatePaymentParams{Amount: 100, Currency: "INR"}, WithIdempotencyKey("o-2"), WithBuyerIP("nope")); err == nil {
+		t.Fatal("a bad IP was sent")
 	}
 }

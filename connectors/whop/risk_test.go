@@ -17,7 +17,7 @@ func decodePayment(t *testing.T, body string) paymentEntity {
 func TestSnapshotReadsRiskReview(t *testing.T) {
 	s, err := decodePayment(t, `{"id":"pay_1","status":"paid","total":4.99,"currency":"usd",
 		"risk_score":19,"ip_address":"203.0.113.24","three_ds_verified":false,
-		"billing_address":{"city":"Testville","state":"Sample State","country":"US","line1":"1 Main St"},
+		"billing_address":{"city":"Testville","state":"Sample State","country":"US","line1":"1 Main St","postal_code":"10080"},
 		"verification_checks":{"address_line1":"FAIL","zip_code":"PASS","card_security_code":"pass","authorization_code":"A1B2C3"}}`).snapshot()
 	if err != nil {
 		t.Fatal(err)
@@ -26,7 +26,7 @@ func TestSnapshotReadsRiskReview(t *testing.T) {
 	if r.Score == nil || *r.Score != 19 {
 		t.Fatalf("score = %v", r.Score)
 	}
-	if r.IPAddress != "203.0.113.24" || r.City != "Testville" || r.Region != "Sample State" || r.Country != "US" {
+	if r.IPAddress != "203.0.113.24" || r.City != "Testville" || r.Region != "Sample State" || r.Country != "US" || r.PostalCode != "10080" {
 		t.Fatalf("buyer facts = %+v", r)
 	}
 	if r.AddressCheck != "no_match" || r.PostalCheck != "match" || r.CVVCheck != "match" || r.AuthorizationCode != "A1B2C3" {
