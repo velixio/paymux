@@ -124,6 +124,7 @@ func (d *Dashboard) routesPages() {
 	m.HandleFunc("POST "+prefix+"/payments/{id}/approve", d.authed(authz.PaymentCancel, d.paymentApproveSubmit))
 	m.HandleFunc("POST "+prefix+"/payments/{id}/customer-block", d.authed(authz.PaymentCancel, d.paymentCustomerBlockSubmit))
 	m.HandleFunc("POST "+prefix+"/payments/{id}/fraud", d.authed(authz.PaymentCancel, d.paymentFraudSubmit))
+	m.HandleFunc("POST "+prefix+"/payments/{id}/allow", d.authed(authz.PaymentCancel, d.paymentAllowSubmit))
 	m.HandleFunc("POST "+prefix+"/payments/{id}/webhook", d.authed(authz.WebhookReplay, d.paymentWebhookSubmit))
 	m.HandleFunc("POST "+prefix+"/payments/{id}/refund", d.authed(authz.RefundCreate, d.refundSubmit))
 	m.HandleFunc("POST "+prefix+"/payments/{id}/simulate-dispute", d.authed(authz.DisputeManage, d.simulateDispute))

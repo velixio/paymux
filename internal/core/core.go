@@ -29,6 +29,9 @@ var (
 	ErrNoRoute = errors.New("no route")
 	// ErrCurrencyNotAccepted means a routing rule rejects the payment.
 	ErrCurrencyNotAccepted = errors.New("currency not accepted")
+	// ErrBlocked means fraud protection refused to start a checkout, before
+	// any card was charged.
+	ErrBlocked = errors.New("blocked by fraud protection")
 )
 
 // NewError builds a domain error of the given kind (for Router implementations).

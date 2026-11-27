@@ -49,6 +49,19 @@ Your app gets `payment.needs_review`, not `payment.succeeded`, so do not grant a
 
 - `review_address_mismatch`: a success whose card billing address, as the buyer entered it at the provider's checkout, is in another country than the billing address your app sent with the payment, or has another ZIP or postal code in the same country, goes to `needs_review` with the flag `address_mismatch`. A side the app or provider did not send is not compared. Only Whop reports the card billing address today.
 
+### Refusing a checkout before any charge
+
+A review comes after the card is charged, and the provider keeps its processing fee even when the payment is refunded. These settings, also under **Settings → Fraud protection**, refuse to start a checkout instead, so no card is charged. They apply to live payments only, never to merchant-initiated renewals, and use the payment's checkout IPs (the pay page's, and the `Paymux-Buyer-IP` your app sent):
+
+- `block_vpn_checkout` (on): the IP is a VPN, proxy or Tor exit. Needs `PAYMUX_VPNAPI_KEY`.
+- `block_country_mismatch` (on): the IP is in another country than the billing address your app sent. Needs an IP lookup.
+- `block_fraud_linked` (on): the IP or the customer's email address was used on a payment tagged as fraud.
+- `ip_payment_limit` (2): payments one IP may start a checkout for in 24 hours; the next is refused. A payment that never started a checkout does not count.
+- `ip_decline_limit` (2): different cards declined from one IP in 24 hours, after which that IP cannot start a checkout.
+- `email_paid_limit` (0, off): paid payments one email address may make in 24 hours.
+
+A refused payment is tagged `risk_blocked`, with a flag naming the rule (such as `blocked_vpn`), audited and alerted once, and stays refused. Your app's checkout action gets `403 payment_blocked`, and the pay page says the payment cannot be completed, without the reason. If the buyer is genuine, **Allow checkout** on the payment page lets it be paid regardless of these rules. The payments list filters on **Blocked before charge**. An IP that cannot be looked up is skipped, never refused.
+
 A payment with no checkout IP (no browser opened the pay page and your app sent none) is not compared. An IP that cannot be looked up is skipped, never held. The payment page's **Checkout IPs** panel lists each checkout IP with its country, network owner (a hosting company rather than an internet provider often means a VPN) and any VPN tag, and the IP that paid, marked **Matches checkout** or **Not a checkout IP**. Approve or refund these reviews as above. When cards are declined on a checkout that already succeeded, the `payment.card_testing` alert says so: the card that paid may be stolen too, and a refund before the cardholder disputes it costs less than the dispute.
 
 A late matching success can move a failed or expired payment to success with a late flag. A success on a checkout the provider kept open after a decline, before the payment's expiry, is not late. Success after cancellation or a currency/amount mismatch goes to review. Another successful attempt on an already succeeded payment triggers duplicate-payment handling. Review the effective `duplicate_payment_action` policy rather than assuming every duplicate is automatically refunded.

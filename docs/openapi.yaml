@@ -230,7 +230,10 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "403":
-          $ref: "#/components/responses/InsufficientScope"
+          description: The key lacks the scope (`insufficient_scope`), or fraud protection refused the payment before any card was charged (`payment_blocked`); see the pre-charge settings under Fraud protection.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -986,6 +989,7 @@ components:
                 - billing_required
                 - invalid_billing
                 - provider_unavailable
+                - payment_blocked
                 - payout_needs_review
                 - currency_not_accepted
                 - idempotency_key_reuse

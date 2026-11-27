@@ -374,6 +374,8 @@ func (a *API) failCore(w http.ResponseWriter, r *http.Request, err error) {
 		status, typ = http.StatusNotFound, "not_found"
 	case errors.Is(err, core.ErrInvalidState):
 		status, typ = http.StatusConflict, "invalid_state"
+	case errors.Is(err, core.ErrBlocked):
+		status, typ = http.StatusForbidden, "payment_blocked"
 	case errors.Is(err, core.ErrNotRefundable):
 		status, typ = http.StatusConflict, "not_refundable"
 	case errors.Is(err, core.ErrRefundExceeds):

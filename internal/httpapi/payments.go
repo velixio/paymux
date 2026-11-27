@@ -297,6 +297,8 @@ func (a *API) resolveCheckoutAction(ctx context.Context, p store.Payment, req ch
 			return nil, &checkoutActionFailure{http.StatusBadGateway, "provider_unavailable", "no payment provider is available; try checkout-action", err}
 		case errors.Is(err, core.ErrNoRoute), errors.Is(err, core.ErrCurrencyNotAccepted):
 			return nil, &checkoutActionFailure{http.StatusUnprocessableEntity, "no_route", "no payment method is available", err}
+		case errors.Is(err, core.ErrBlocked):
+			return nil, &checkoutActionFailure{http.StatusForbidden, "payment_blocked", "fraud protection refused this payment; no card was charged", err}
 		case errors.Is(err, core.ErrInvalidState):
 			return nil, &checkoutActionFailure{http.StatusConflict, "state_conflict", "payment cannot be started in its current state", err}
 		default:

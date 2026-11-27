@@ -218,6 +218,8 @@ func (h *Handler) pay(w http.ResponseWriter, r *http.Request) {
 			"result.unavailable.provider", "")
 	case errors.Is(err, core.ErrNoRoute), errors.Is(err, core.ErrCurrencyNotAccepted):
 		h.result(w, http.StatusUnprocessableEntity, appName, "result.unavailable.title", "result.unavailable.no_method", "")
+	case errors.Is(err, core.ErrBlocked):
+		h.result(w, http.StatusForbidden, appName, "result.unavailable.title", "result.unavailable.cannot_pay", "")
 	case errors.Is(err, core.ErrInvalidState):
 		fresh, gerr := h.o.Core.GetPaymentByID(ctx, p.ID)
 		if gerr != nil || !h.statusPage(w, fresh, appName) {
