@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/velixio/paymux/internal/iprep"
 	"slices"
 	"sync"
 	"testing"
@@ -34,6 +35,7 @@ type env struct {
 	events   []events.Event
 	failEmit bool
 	alerts   alertRec
+	ips      *fakeLooker
 }
 
 func (e *env) emitted() []string {
@@ -54,10 +56,10 @@ func (e *env) lastEvent() events.Event {
 
 func newEnv(t *testing.T, db *store.DB) *env {
 	t.Helper()
-	e := &env{t: t, db: db, set: settings.New(db)}
+	e := &env{t: t, db: db, set: settings.New(db), ips: &fakeLooker{info: map[string]iprep.Info{}}}
 	e.q = jobs.New(db, jobs.Options{Logger: nil})
 	e.svc = core.NewService(core.Options{
-		DB: db, Settings: e.set, Jobs: e.q, Alerts: &e.alerts,
+		DB: db, Settings: e.set, Jobs: e.q, Alerts: &e.alerts, IPLookup: e.ips,
 		Emitter: events.EmitterFunc(func(_ context.Context, _ store.Tx, ev events.Event) error {
 			e.mu.Lock()
 			defer e.mu.Unlock()

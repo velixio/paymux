@@ -258,6 +258,7 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 	}
 	s.recordTry(ctx, attemptID, snap)
 	hist := s.loadDeclineHistory(ctx, attemptID)
+	ipc := s.loadIPCheck(ctx, attemptID, snap)
 	var res ApplyResult
 	var alerts []notify.Alert
 	err := s.db.Write(ctx, func(tx store.Tx) error {
@@ -368,7 +369,7 @@ func (s *Service) ApplyAttemptSnapshot(ctx context.Context, attemptID string, sn
 		if haveEvent {
 			po := state.PaymentNext(state.PaymentStatus(p.Status), ev)
 			if po.Action == state.Apply && po.Next == state.PaymentSucceeded {
-				reason, err := s.reviewReason(ctx, tx, p, snap, hist)
+				reason, err := s.reviewReason(ctx, tx, p, snap, hist, ipc)
 				if err != nil {
 					return err
 				}

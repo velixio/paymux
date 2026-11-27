@@ -42,6 +42,13 @@ Attempt states include `created`, `pending`, `authorized`, `captured`, and `fail
 
 Your app gets `payment.needs_review`, not `payment.succeeded`, so do not grant access yet. In the dashboard, check the card tries and the risk panel, then either **Approve payment** (the payment becomes `succeeded` and your app gets `payment.succeeded`) or refund it. **Block customer** and **Unblock customer** are on the payment page. These rules do not apply to subscription renewals, which are charged with no customer present. The provider may still accept cards on a checkout Paymux has stopped; such a success goes to review.
 
+**Buyer IP checks.** Paymux records the IP of each browser that opens a payment's pay page or starts its browser checkout, and compares it with the IP the provider saw pay. Two settings under **Settings → Fraud protection**, both on by default:
+
+- `review_vpn`: a success paid from, or started from, a VPN, proxy or Tor IP goes to `needs_review` with the flag `vpn`. A privacy relay such as iCloud Private Relay does not count. This needs `PAYMUX_VPNAPI_KEY` (see [Configuration](configuration.md)).
+- `review_ip_mismatch`: a success paid from an IP that never opened the pay page goes to `needs_review` with the flag `ip_mismatch`. With an IP lookup (`PAYMUX_VPNAPI_KEY` or `PAYMUX_IP_LOOKUP_URL`), only an IP in another country than every checkout IP counts, so a phone moving between Wi-Fi and mobile data is not held. Without it, any other IP of the same family (IPv4 or IPv6) counts.
+
+A payment no browser opened (your app sent the buyer straight to the provider) is not compared. An IP that cannot be looked up is skipped, never held. The payment page's **Checkout IPs** panel lists each checkout IP with its country, network owner (a hosting company rather than an internet provider often means a VPN) and any VPN tag, and the IP that paid, marked **Matches checkout** or **Not a checkout IP**. Approve or refund these reviews as above. When cards are declined on a checkout that already succeeded, the `payment.card_testing` alert says so: the card that paid may be stolen too, and a refund before the cardholder disputes it costs less than the dispute.
+
 A late matching success can move a failed or expired payment to success with a late flag. A success on a checkout the provider kept open after a decline, before the payment's expiry, is not late. Success after cancellation or a currency/amount mismatch goes to review. Another successful attempt on an already succeeded payment triggers duplicate-payment handling. Review the effective `duplicate_payment_action` policy rather than assuming every duplicate is automatically refunded.
 
 ## Routing hierarchy

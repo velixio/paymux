@@ -61,6 +61,7 @@ type payDetail struct {
 	Glance                                                                                                glanceView
 	Timeline                                                                                              []timelineItem
 	RiskPanel                                                                                             *riskView
+	Network                                                                                               *networkView
 	NoTries                                                                                               bool
 	Flags                                                                                                 []string
 	Pickable                                                                                              []attemptOpt
@@ -445,6 +446,14 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 		if _, info, found := connector.Lookup(det.RiskPanel.Provider); found {
 			det.RiskPanel.Provider = info.DisplayName
 		}
+	}
+	paidFrom := ""
+	if det.RiskPanel != nil {
+		paidFrom = det.RiskPanel.IPAddress
+	}
+	if det.Network, err = d.buildNetwork(ctx, p.ID, paidFrom); err != nil {
+		d.fail(w, err)
+		return
 	}
 	v := d.shell(r, s, "payments", "Payment "+p.ID)
 	v.Pay, v.Error, v.Notice = det, errMsg, notice

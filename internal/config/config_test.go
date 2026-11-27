@@ -339,3 +339,14 @@ func TestCustomerRate(t *testing.T) {
 		wantErr(t, err, "PAYMUX_CUSTOMER_RATE")
 	}
 }
+
+func TestIPLookupSettings(t *testing.T) {
+	c, err := Load(base("PAYMUX_IP_LOOKUP_URL", "https://ip.example.com/", "PAYMUX_VPNAPI_KEY", " k1 "))
+	if err != nil || c.IPLookupURL != "https://ip.example.com" || c.VPNAPIKey != "k1" {
+		t.Fatalf("%q %q %v", c.IPLookupURL, c.VPNAPIKey, err)
+	}
+	for _, u := range []string{"ip.example.com", "ftp://ip.example.com", "https://ip.example.com/?x=1", "https://u:p@ip.example.com"} {
+		_, err := Load(base("PAYMUX_IP_LOOKUP_URL", u))
+		wantErr(t, err, "PAYMUX_IP_LOOKUP_URL")
+	}
+}

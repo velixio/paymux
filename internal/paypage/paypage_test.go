@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -107,7 +108,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 		t.Fatal(err)
 	}
 	h := paypage.New(paypage.Options{Core: e.core, Flow: flow, Settings: e.set, Renderer: rend, Assets: web.AssetHandler(web.Embedded()),
-		CSRFKey: bytes.Repeat([]byte{9}, 32), Now: clk.Now})
+		CSRFKey: bytes.Repeat([]byte{9}, 32), Now: clk.Now, ClientIP: func(r *http.Request) string { return r.Header.Get("X-Test-Client-IP") }})
 	mux := http.NewServeMux()
 	h.Register(paypage.StdMux(mux))
 	h.RegisterSim(paypage.StdMux(mux))
@@ -213,6 +214,33 @@ func TestPayRedirects(t *testing.T) {
 		}
 		if e.count("SELECT COUNT(*) FROM payment_attempts WHERE payment_id = ?", c.id) != 1 {
 			t.Error("attempt not created")
+		}
+	})
+}
+
+func TestPayRecordsTheCheckoutIP(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		c := e.create(core.CreatePaymentInput{})
+		for _, ip := range []string{"203.0.113.24", "203.0.113.24", "198.51.100.9", "not an ip"} {
+			req, _ := http.NewRequest("GET", e.srv.URL+c.path(), nil)
+			req.Host = "pay.example.com"
+			req.Header.Set("X-Test-Client-IP", ip)
+			res, err := noRedirect.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res.Body.Close()
+			if res.StatusCode != 303 {
+				t.Fatalf("%s: %d", ip, res.StatusCode)
+			}
+		}
+		ips, _, err := e.core.CheckoutIPs(ctx, c.id)
+		var got []string
+		for _, ip := range ips {
+			got = append(got, ip.IP)
+		}
+		if slices.Sort(got); err != nil || strings.Join(got, ",") != "198.51.100.9,203.0.113.24" {
+			t.Fatalf("checkout IPs %+v %v", ips, err)
 		}
 	})
 }

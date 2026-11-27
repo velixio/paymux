@@ -8,6 +8,8 @@
 {{if .IPAddress}}<dt>IP</dt><dd>{{.IPAddress}}</dd>{{end}}
 {{if .AuthorizationCode}}<dt>Auth code</dt><dd>{{.AuthorizationCode}}</dd>{{end}}
 </dl>{{end}}
+{{define "net_row"}}<li><span class="net-ip">{{.IP}}</span>{{if .Flag}} <span class="risk-flag" aria-hidden="true">{{.Flag}}</span>{{end}}{{range .Tags}} <span class="risk-tag{{if .Warn}} risk-tag-warn{{end}}" title="{{.Title}}">{{.Label}}</span>{{end}}
+{{if or .Place .Org .Seen}}<br><span class="net-meta">{{.Place}}{{if and .Place .Org}} · {{end}}{{.Org}}{{if and .Seen (or .Place .Org)}} · {{end}}{{.Seen}}</span>{{end}}</li>{{end}}
 {{define "content"}}{{template "dash_open" .}}
 {{with .Pay}}
 <p><a href="/dashboard/payments">&larr; Payments</a></p>
@@ -77,6 +79,13 @@
 </dl>{{end}}
 {{if .Blocked}}<p class="flag">Blocked from paying: {{.Blocked}}{{if .BlockedAt}}, {{.BlockedAt}}{{end}}</p>{{end}}
 {{if .CanBlock}}<form method="post" action="/dashboard/payments/{{.PaymentID}}/customer-block" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}">{{if .Blocked}}<input type="hidden" name="blocked" value="0"><button class="btn" type="submit">Unblock customer</button>{{else}}<input type="hidden" name="blocked" value="1"><button class="btn" type="submit" title="They cannot start a payment, and a payment of theirs that succeeds goes to review">Block customer</button>{{end}}</form>{{end}}
+</div>{{end}}
+{{with .Network}}<div class="pt-panel pt-network">
+<h2>Checkout IPs</h2>
+<p class="risk-source">Browsers that opened the pay page</p>
+<ul class="net-list">{{range .Rows}}{{template "net_row" .}}{{end}}</ul>
+{{with .Paid}}<p class="risk-source">Paid from, as the provider saw it</p>
+<ul class="net-list">{{template "net_row" .}}</ul>{{end}}
 </div>{{end}}
 {{with .RiskPanel}}<div class="pt-panel pt-risk">
 <h2>Risk</h2>

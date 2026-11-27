@@ -213,6 +213,10 @@ The default `payment_ttl` is now 30 minutes, for new installations only. An exis
 
 Three new settings under **Settings → Fraud protection** watch for stolen cards tried one after another: a payment stops taking attempts after 5 different declined cards, a success after 3 declined cards goes to `needs_review`, and a customer is blocked after 10 declined cards across their payments. They are on by default. A payment held this way sends your app `payment.needs_review` instead of `payment.succeeded`; approve it on its dashboard page, or refund it. Check that your app does not grant access on `payment.needs_review`. Declined cards recorded before the upgrade count too, but a payment or customer is only stopped or blocked at its next decline. Renewals are not affected. To turn a rule off, set it to 0.
 
+## Release note: buyer IP checks
+
+Paymux now records the IP of each browser that opens a pay page, and two new settings under **Settings → Fraud protection**, on by default, send a success to `needs_review`: `review_vpn` (paid from a VPN, proxy or Tor IP; needs the new `PAYMUX_VPNAPI_KEY`) and `review_ip_mismatch` (paid from an IP that never opened the pay page; with `PAYMUX_VPNAPI_KEY` or the new `PAYMUX_IP_LOOKUP_URL`, only one in another country). Set `PAYMUX_TRUSTED_PROXIES` to include every proxy in front of Paymux first (a CDN such as Cloudflare too): a private proxy address is ignored, but a public one would be taken for the buyer and hold every success. Payments started before the upgrade have no checkout IP and are not compared. As with the card-testing rules, check that your app does not grant access on `payment.needs_review`.
+
 ## Updating from the dashboard
 
 Admins can update a server from **Update** in the dashboard menu (action
