@@ -41,7 +41,7 @@ type tagOption struct{ Value, Label string }
 // payTags are the flags the payments list filters on, fraud first.
 var payTags = []tagOption{
 	{core.FlagFraud, "Fraud"}, {core.FlagCardTesting, "Card testing"}, {core.FlagDeclinedCards, "Declined cards"},
-	{core.FlagCustomerBlocked, "Blocked customer"}, {core.FlagVPN, "VPN"}, {core.FlagIPMismatch, "IP mismatch"},
+	{core.FlagCustomerBlocked, "Blocked customer"}, {core.FlagVPN, "VPN"}, {core.FlagIPMismatch, "IP mismatch"}, {core.FlagAddressMismatch, "Address mismatch"},
 	{"late_success", "Late success"}, {"amount_mismatch", "Amount mismatch"}, {"duplicate_success", "Duplicate"},
 }
 
@@ -468,6 +468,7 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	paidFrom := ""
 	if det.RiskPanel != nil {
 		paidFrom = det.RiskPanel.IPAddress
+		det.RiskPanel.AddressNote = addressNote(cust, latestRiskJSON(timeline))
 	}
 	if det.Network, err = d.buildNetwork(ctx, p.ID, paidFrom); err != nil {
 		d.fail(w, err)
@@ -1014,4 +1015,21 @@ func (d *Dashboard) paymentCustomerBlockSubmit(w http.ResponseWriter, r *http.Re
 		notice = "Customer blocked: they cannot start a payment, and a payment of theirs that succeeds goes to review."
 	}
 	d.renderPayment(w, r, s, http.StatusOK, "", notice)
+}
+
+// addressNote says how the card billing address in the risk JSON differs from
+// the customer's billing address sent with the order, or "" when it does not
+// or cannot be compared.
+func addressNote(c store.Customer, riskJSON string) string {
+	var r connector.PaymentRisk
+	if c.ID == "" || riskJSON == "" || json.Unmarshal([]byte(riskJSON), &r) != nil {
+		return ""
+	}
+	if !core.AddressMismatch(c.Billing.Country, c.Billing.PostalCode, r.Country, r.PostalCode) {
+		return ""
+	}
+	if !strings.EqualFold(strings.TrimSpace(c.Billing.Country), strings.TrimSpace(r.Country)) {
+		return "Order billed to " + strings.ToUpper(c.Billing.Country)
+	}
+	return "Order postal code " + c.Billing.PostalCode
 }

@@ -1087,7 +1087,7 @@ components:
           type: array
           items:
             type: string
-            examples: [duplicate_success, duplicate_refunded, late_success, amount_mismatch, success_after_cancel, card_testing, declined_cards, customer_blocked, vpn, ip_mismatch, fraud]
+            examples: [duplicate_success, duplicate_refunded, late_success, amount_mismatch, success_after_cancel, card_testing, declined_cards, customer_blocked, vpn, ip_mismatch, address_mismatch, fraud]
     PaymentAttempt:
       type: object
       description: One try at paying, on one provider account. Useful for finding out why a payment failed.

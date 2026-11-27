@@ -108,7 +108,7 @@ func TestRiskTagsShowOnlyPassedChecksAndTheIPCountry(t *testing.T) {
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("tags %v, want %v", got, want)
 	}
-	if v.Flag != "🇨🇴" || v.FlagTitle != "Buyer IP in Colombia" {
+	if v.Flag != "🇨🇴" || v.FlagTitle != "Card billed in Colombia" {
 		t.Fatalf("flag %q %q", v.Flag, v.FlagTitle)
 	}
 
@@ -129,9 +129,9 @@ func TestPaymentsListAndPageShowRiskTags(t *testing.T) {
 	e.seedRiskPayment("pay_tags", `{"score":19,"country":"US","cvv_check":"match","address_check":"match"}`)
 	row := regexpFind(t, `(?s)(<tr>\s*<td><a href="/dashboard/payments/pay_tags".*?</tr>)`, e.pageOK(c, "/dashboard/payments"))
 	has(t, row, `class="risk-tag" title="CVV matched">CVV</span>`, `class="risk-tag" title="Address matched">AVS</span>`,
-		`class="risk-flag" title="Buyer IP in United States" aria-label="Buyer IP in United States">🇺🇸</span>`)
+		`class="risk-flag" title="Card billed in United States" aria-label="Card billed in United States">🇺🇸</span>`)
 	lacks(t, row, ">3DS<")
-	has(t, e.pageOK(c, "/dashboard/payments/pay_tags"), `title="CVV matched">CVV</span>`, "Buyer IP in United States")
+	has(t, e.pageOK(c, "/dashboard/payments/pay_tags"), `title="CVV matched">CVV</span>`, "Card billed in United States")
 }
 
 func TestPaymentPageShowsCheckoutIPs(t *testing.T) {
@@ -155,4 +155,23 @@ func TestPaymentPageShowsCheckoutIPs(t *testing.T) {
 	// No IP opened the checkout: no panel.
 	e.seedRiskPayment("pay_nonet", `{"score":30,"ip_address":"73.30.247.196"}`)
 	lacks(t, e.pageOK(c, "/dashboard/payments/pay_nonet"), `pt-network"`)
+}
+
+func TestPaymentPageSaysTheCardWasBilledElsewhere(t *testing.T) {
+	e := riskEnv(t)
+	c := e.roleClient("viewer")
+	e.seedRiskPayment("pay_addr", `{"score":30,"city":"Racheltown","region":"North Carolina","country":"IQ"}`)
+	err := e.db.Write(ctx, func(tx store.Tx) error {
+		if _, err := store.UpsertCustomer(ctx, tx, store.Customer{ID: "cus_addr", OrgID: store.DefaultOrgID, AppID: "app_pay-addr",
+			Mode: "live", ExternalRef: "u-addr", Email: "b@example.com", Billing: store.Billing{Country: "US", PostalCode: "10080"}}, e.clk.Now()); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE payments SET customer_id = 'cus_addr' WHERE id = 'pay_addr'`)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	has(t, e.pageOK(c, "/dashboard/payments/pay_addr"), "<dt>Card billing address</dt>", "Racheltown, North Carolina, IQ",
+		`risk-tag risk-tag-warn">Order billed to US</span>`)
 }

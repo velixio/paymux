@@ -24,12 +24,13 @@ func (p paymentEntity) risk() connector.PaymentRisk {
 		out.ThreeDSecure = &verified
 	}
 	var address struct {
-		City    string `json:"city"`
-		State   string `json:"state"`
-		Country string `json:"country"`
+		City       string `json:"city"`
+		State      string `json:"state"`
+		Country    string `json:"country"`
+		PostalCode string `json:"postal_code"`
 	}
 	if json.Unmarshal(p.BillingAddress, &address) == nil {
-		out.City, out.Region, out.Country = address.City, address.State, address.Country
+		out.City, out.Region, out.Country, out.PostalCode = address.City, address.State, address.Country, address.PostalCode
 	}
 	var checks struct {
 		AddressLine1      json.RawMessage `json:"address_line1"`

@@ -60,6 +60,8 @@ var metas = map[string]Meta{
 		Help: "A success paid from, or started on the pay page from, a VPN, proxy or Tor IP goes to review. Needs PAYMUX_VPNAPI_KEY."},
 	"review_ip_mismatch": {Kind: KindBool,
 		Help: "A success paid from an IP that never opened the pay page goes to review: one in another country with an IP lookup set (PAYMUX_VPNAPI_KEY or PAYMUX_IP_LOOKUP_URL), any other IP without one."},
+	"review_address_mismatch": {Kind: KindBool,
+		Help: "A success whose card billing address, as entered at the provider, is in another country than the billing address your app sent, or has another ZIP or postal code, goes to review."},
 	"attempt_ttl": {Kind: KindInt, Unit: "minutes", Min: 5, Max: 24 * 60,
 		Help: "How long a customer has to finish an attempt they started. A payment past its expiry waits for this limit. Once the provider reports processing, the payment waits for the provider's result instead."},
 	"pay_page_retry_buttons": {Kind: KindJSON, Help: `Buttons on the failed-payment screen: {"try_again": true, "pay_another_way": true}.`},

@@ -4,7 +4,7 @@
 {{define "pt_mark"}}{{if eq . "pass"}}<span aria-hidden="true">✓</span> {{else if eq . "fail"}}<span aria-hidden="true">✕</span> {{end}}{{end}}
 {{define "pt_risk_rows"}}<dl class="risk-checks">
 {{range .Checks}}<dt>{{.Label}}</dt><dd class="risk-check-{{.Tone}}"><span aria-hidden="true">{{.Mark}}</span> {{.Text}}</dd>{{end}}
-{{if .Location}}<dt>Location</dt><dd>{{.Location}}</dd>{{end}}
+{{if .Location}}<dt>Card billing address</dt><dd>{{.Location}}{{with .AddressNote}} <span class="risk-tag risk-tag-warn">{{.}}</span>{{end}}</dd>{{end}}
 {{if .IPAddress}}<dt>IP</dt><dd>{{.IPAddress}}</dd>{{end}}
 {{if .AuthorizationCode}}<dt>Auth code</dt><dd>{{.AuthorizationCode}}</dd>{{end}}
 </dl>{{end}}

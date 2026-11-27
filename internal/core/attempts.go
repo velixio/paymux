@@ -184,6 +184,7 @@ func safeRisk(in connector.PaymentRisk) connector.PaymentRisk {
 		City:              safeInstrumentText(in.City, 100),
 		Region:            safeInstrumentText(in.Region, 100),
 		Country:           safeCountry(in.Country),
+		PostalCode:        safeInstrumentText(in.PostalCode, 20),
 		AddressCheck:      safeInstrumentText(in.AddressCheck, 32),
 		PostalCheck:       safeInstrumentText(in.PostalCheck, 32),
 		CVVCheck:          safeInstrumentText(in.CVVCheck, 32),

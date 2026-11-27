@@ -111,6 +111,7 @@ var defs = []Def{
 	{"customer_decline_limit", `10`, orgApp, intRange(0, 100)},
 	{"review_vpn", `true`, orgApp, isBool},
 	{"review_ip_mismatch", `true`, orgApp, isBool},
+	{"review_address_mismatch", `true`, orgApp, isBool},
 	{"pay_page_retry_buttons", `{"try_again":true,"pay_another_way":true}`, orgApp, validRetryButtons},
 	{"invoice_delivery", `"app"`, orgApp, oneOf("app", "paymux", "both")},
 	{"issue_invoices", `true`, LevelApp, isBool},

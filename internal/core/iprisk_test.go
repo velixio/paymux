@@ -207,3 +207,52 @@ func TestTheBuyerIPTheAppSentIsCompared(t *testing.T) {
 		}
 	})
 }
+
+func TestAddressMismatch(t *testing.T) {
+	for _, tc := range []struct {
+		oc, op, cc, cp string
+		want           bool
+	}{
+		{"US", "10080", "IQ", "", true},       // another country
+		{"us", "10080", "US", "10080", false}, // same
+		{"US", "10080", "US", "10080-1234", false},
+		{"US", "10080", "US", "94105", true},
+		{"IN", "560 001", "IN", "560001", false},
+		{"US", "", "US", "94105", false}, // a side unknown
+		{"", "10080", "IQ", "", false},
+		{"US", "10080", "", "", false},
+	} {
+		if got := core.AddressMismatch(tc.oc, tc.op, tc.cc, tc.cp); got != tc.want {
+			t.Errorf("AddressMismatch(%q,%q,%q,%q) = %v", tc.oc, tc.op, tc.cc, tc.cp, got)
+		}
+	}
+}
+
+func TestCardBilledElsewhereGoesToReview(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		pay := func(cardCountry, cardPostal string) core.ApplyResult {
+			res, err := e.svc.CreatePayment(ctx, core.CreatePaymentInput{Scope: e.scope, Amount: 500, Currency: "INR",
+				Customer: &core.CustomerInput{ExternalRef: "u-" + cardCountry + cardPostal, Email: "b@example.com",
+					Billing: store.Billing{Country: "US", PostalCode: "10080", StateCode: "New York"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			snap := paidFromIP(500, "")
+			snap.Risk = connector.PaymentRisk{Country: cardCountry, PostalCode: cardPostal, City: "Racheltown"}
+			return e.apply(e.attempt(res.Payment.ID).ID, snap)
+		}
+		r := pay("IQ", "")
+		if r.Payment.Status != "needs_review" || !r.Payment.HasFlag(core.FlagAddressMismatch) || !core.Approvable(r.Payment) {
+			t.Fatalf("billed in Iraq: %s %v", r.Payment.Status, r.Payment.Flags)
+		}
+		if r := pay("US", "10080"); r.Payment.Status != "succeeded" {
+			t.Fatalf("same address: %s %v", r.Payment.Status, r.Payment.Flags)
+		}
+		if err := e.set.SetOrg(ctx, audit.System, store.DefaultOrgID, "review_address_mismatch", []byte(`false`)); err != nil {
+			t.Fatal(err)
+		}
+		if r := pay("IQ", "1"); r.Payment.Status != "succeeded" {
+			t.Fatalf("rule off: %s %v", r.Payment.Status, r.Payment.Flags)
+		}
+	})
+}

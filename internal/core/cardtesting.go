@@ -25,7 +25,7 @@ const (
 
 // reviewReasons are the needs_review reasons an operator may approve: the
 // money arrived in full, only the buyer is in doubt.
-var reviewReasons = []string{FlagCardTesting, FlagDeclinedCards, FlagCustomerBlocked, FlagVPN, FlagIPMismatch}
+var reviewReasons = []string{FlagCardTesting, FlagDeclinedCards, FlagCustomerBlocked, FlagVPN, FlagIPMismatch, FlagAddressMismatch}
 
 // BlockReasonDeclinedCards is the customer block reason set by the
 // customer_decline_limit rule. An operator's block has the reason "operator".
@@ -114,8 +114,10 @@ func (s *Service) reviewReason(ctx context.Context, tx store.Tx, p store.Payment
 	if p.HasFlag(FlagCardTesting) {
 		return FlagCardTesting, nil
 	}
+	var c store.Customer
 	if p.CustomerID != "" {
-		c, err := store.GetCustomer(ctx, tx, p.CustomerID)
+		var err error
+		c, err = store.GetCustomer(ctx, tx, p.CustomerID)
 		if err != nil && err != store.ErrNotFound {
 			return "", err
 		}
@@ -136,7 +138,10 @@ func (s *Service) reviewReason(ctx context.Context, tx store.Tx, p store.Payment
 			return FlagDeclinedCards, nil
 		}
 	}
-	return s.ipReason(ctx, tx, p, ipc)
+	if reason, err := s.ipReason(ctx, tx, p, ipc); reason != "" || err != nil {
+		return reason, err
+	}
+	return s.addressReason(ctx, tx, p, c, snap)
 }
 
 // guardDeclines applies the card-testing limits after a declined try on p:
