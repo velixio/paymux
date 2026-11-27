@@ -7,23 +7,30 @@ import (
 	"time"
 )
 
-// CheckoutIP is an IP that opened a payment's pay page or started its browser
-// checkout.
+// Checkout IP sources: the pay page saw the browser, or the app sent the IP.
+const (
+	CheckoutIPPayPage = "pay_page"
+	CheckoutIPApp     = "app"
+)
+
+// CheckoutIP is a buyer's IP at a payment's checkout. Source is where it was
+// first seen (CheckoutIPPayPage or CheckoutIPApp).
 type CheckoutIP struct {
-	IP                  string
+	IP, Source          string
 	FirstSeen, LastSeen time.Time
 }
 
-// NoteCheckoutIP records that ip opened payment paymentID's checkout at now.
-func NoteCheckoutIP(ctx context.Context, tx Tx, paymentID, ip string, now time.Time) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO checkout_ips (payment_id, ip, first_seen, last_seen) VALUES (?, ?, ?, ?)
-		ON CONFLICT (payment_id, ip) DO UPDATE SET last_seen = excluded.last_seen`, paymentID, ip, ms(now), ms(now))
+// NoteCheckoutIP records that ip was the buyer's at payment paymentID's
+// checkout at now, as source saw it.
+func NoteCheckoutIP(ctx context.Context, tx Tx, paymentID, ip, source string, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO checkout_ips (payment_id, ip, first_seen, last_seen, source) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT (payment_id, ip) DO UPDATE SET last_seen = excluded.last_seen`, paymentID, ip, ms(now), ms(now), source)
 	return err
 }
 
 // CheckoutIPs lists the IPs that opened payment paymentID's checkout, first seen first.
 func CheckoutIPs(ctx context.Context, q Queryer, paymentID string) ([]CheckoutIP, error) {
-	rows, err := q.QueryContext(ctx, `SELECT ip, first_seen, last_seen FROM checkout_ips WHERE payment_id = ? ORDER BY first_seen, ip`, paymentID)
+	rows, err := q.QueryContext(ctx, `SELECT ip, source, first_seen, last_seen FROM checkout_ips WHERE payment_id = ? ORDER BY first_seen, ip`, paymentID)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +39,7 @@ func CheckoutIPs(ctx context.Context, q Queryer, paymentID string) ([]CheckoutIP
 	for rows.Next() {
 		var c CheckoutIP
 		var first, last int64
-		if err := rows.Scan(&c.IP, &first, &last); err != nil {
+		if err := rows.Scan(&c.IP, &c.Source, &first, &last); err != nil {
 			return nil, err
 		}
 		c.FirstSeen, c.LastSeen = fromMS(first), fromMS(last)

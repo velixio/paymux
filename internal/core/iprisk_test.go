@@ -181,3 +181,29 @@ func TestCardTestingAfterSuccessSaysTheCardMayBeStolen(t *testing.T) {
 		}
 	})
 }
+
+func TestTheBuyerIPTheAppSentIsCompared(t *testing.T) {
+	each(t, func(t *testing.T, e *env) {
+		e.ips.set("170.62.103.12", iprep.Info{Country: "US", VPN: true})
+		e.ips.set("198.51.100.1", iprep.Info{Country: "IN"})
+		e.ips.set("203.0.113.24", iprep.Info{Country: "IQ"})
+		pay := func(buyer, paid string) core.ApplyResult {
+			res, err := e.svc.CreatePayment(ctx, core.CreatePaymentInput{Scope: e.scope, Amount: 500, Currency: "INR", BuyerIP: buyer})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return e.apply(e.attempt(res.Payment.ID).ID, paidFromIP(500, paid))
+		}
+		if r := pay("170.62.103.12", "73.30.247.196"); r.Payment.Status != "needs_review" || !r.Payment.HasFlag(core.FlagVPN) {
+			t.Fatalf("VPN at the order page: %s %v", r.Payment.Status, r.Payment.Flags)
+		}
+		if r := pay("198.51.100.1", "203.0.113.24"); r.Payment.Status != "needs_review" || !r.Payment.HasFlag(core.FlagIPMismatch) {
+			t.Fatalf("paid from another country: %s %v", r.Payment.Status, r.Payment.Flags)
+		}
+		r := pay("198.51.100.1", "198.51.100.1")
+		ips, _, err := e.svc.CheckoutIPs(ctx, r.Payment.ID)
+		if r.Payment.Status != "succeeded" || err != nil || len(ips) != 1 || ips[0].Source != store.CheckoutIPApp {
+			t.Fatalf("same IP: %s %+v %v", r.Payment.Status, ips, err)
+		}
+	})
+}

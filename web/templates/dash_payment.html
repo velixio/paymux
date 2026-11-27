@@ -82,7 +82,7 @@
 </div>{{end}}
 {{with .Network}}<div class="pt-panel pt-network">
 <h2>Checkout IPs</h2>
-<p class="risk-source">Browsers that opened the pay page</p>
+<p class="risk-source">Where the buyer was seen at checkout</p>
 <ul class="net-list">{{range .Rows}}{{template "net_row" .}}{{end}}</ul>
 {{with .Paid}}<p class="risk-source">Paid from, as the provider saw it</p>
 <ul class="net-list">{{template "net_row" .}}</ul>{{end}}

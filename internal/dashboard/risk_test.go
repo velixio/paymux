@@ -139,7 +139,7 @@ func TestPaymentPageShowsCheckoutIPs(t *testing.T) {
 	c := e.roleClient("viewer")
 	e.seedRiskPayment("pay_net", `{"score":30,"ip_address":"73.30.247.196","country":"IQ"}`)
 	err := e.db.Write(ctx, func(tx store.Tx) error {
-		if err := store.NoteCheckoutIP(ctx, tx, "pay_net", "170.62.103.12", e.clk.Now()); err != nil {
+		if err := store.NoteCheckoutIP(ctx, tx, "pay_net", "170.62.103.12", store.CheckoutIPApp, e.clk.Now()); err != nil {
 			return err
 		}
 		return store.PutIPLookup(ctx, tx, "170.62.103.12", `{"country":"US","city":"Dallas","region":"Texas","org":"EXAMPLE-VPN","vpn":true}`, e.clk.Now())
@@ -150,7 +150,7 @@ func TestPaymentPageShowsCheckoutIPs(t *testing.T) {
 	body := e.pageOK(c, "/dashboard/payments/pay_net")
 	panel := regexpFind(t, `(?s)(pt-network".*?</div>)`, body)
 	has(t, panel, "Checkout IPs", `<span class="net-ip">170.62.103.12</span>`, "🇺🇸", `risk-tag risk-tag-warn"`, ">VPN<",
-		"Dallas, Texas, United States · EXAMPLE-VPN", `<span class="net-ip">73.30.247.196</span>`, ">Not a checkout IP<")
+		"Dallas, Texas, United States · EXAMPLE-VPN", "sent by your app", `<span class="net-ip">73.30.247.196</span>`, ">Not a checkout IP<")
 
 	// No IP opened the checkout: no panel.
 	e.seedRiskPayment("pay_nonet", `{"score":30,"ip_address":"73.30.247.196"}`)

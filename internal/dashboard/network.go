@@ -6,10 +6,12 @@ import (
 	"strings"
 
 	"github.com/velixio/paymux/internal/iprep"
+	"github.com/velixio/paymux/internal/store"
 )
 
-// networkView is the Checkout IPs panel: the IPs that opened the pay page,
-// and how the IP the provider saw pay compares with them.
+// networkView is the Checkout IPs panel: the buyer's IPs at checkout (the
+// pay page saw them, or the app sent them), and how the IP the provider saw
+// pay compares with them.
 type networkView struct {
 	Rows []networkRow
 	Paid *networkRow
@@ -63,6 +65,11 @@ func (d *Dashboard) buildNetwork(ctx context.Context, paymentID, paidFrom string
 		info, known := infos[c.IP]
 		row := ipRow(c.IP, info, known)
 		row.Seen = d.fmtTimeShort(c.FirstSeen)
+		if c.Source == store.CheckoutIPApp {
+			row.Seen += ", sent by your app"
+		} else {
+			row.Seen += ", opened the pay page"
+		}
 		v.Rows = append(v.Rows, row)
 		seen = append(seen, c.IP)
 	}
@@ -70,9 +77,9 @@ func (d *Dashboard) buildNetwork(ctx context.Context, paymentID, paidFrom string
 		info, known := d.o.Core.IPInfo(ctx, paidFrom)
 		row := ipRow(paidFrom, info, known)
 		if slices.Contains(seen, paidFrom) {
-			row.Tags = append(row.Tags, networkTag{Label: "Matches checkout", Title: "The card was paid from an IP that opened the pay page"})
+			row.Tags = append(row.Tags, networkTag{Label: "Matches checkout", Title: "The card was paid from one of the buyer's checkout IPs"})
 		} else {
-			row.Tags = append(row.Tags, networkTag{Label: "Not a checkout IP", Title: "The card was paid from an IP that never opened the pay page", Warn: true})
+			row.Tags = append(row.Tags, networkTag{Label: "Not a checkout IP", Title: "The card was paid from an IP the buyer was never seen on", Warn: true})
 		}
 		v.Paid = &row
 	}

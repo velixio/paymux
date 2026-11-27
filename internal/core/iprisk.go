@@ -37,7 +37,7 @@ func (s *Service) NoteCheckoutIP(ctx context.Context, paymentID, ip string) erro
 		return nil
 	}
 	if err := s.db.Write(ctx, func(tx store.Tx) error {
-		return store.NoteCheckoutIP(ctx, tx, paymentID, ip, s.nowUTC())
+		return store.NoteCheckoutIP(ctx, tx, paymentID, ip, store.CheckoutIPPayPage, s.nowUTC())
 	}); err != nil {
 		return err
 	}
