@@ -39,6 +39,17 @@ const MaxAttempts = 30
 // because a customer can pay twice, which ApplyAttemptSnapshot then handles as
 // a double success.
 func (s *Service) CreateAttempt(ctx context.Context, paymentID, providerAccountID string) (store.Attempt, error) {
+	// The pre-charge rules read and may look IPs up, so they run before the
+	// payment lock is taken.
+	if p, err := s.GetPaymentByID(ctx, paymentID); err == nil {
+		if Blocked(p) {
+			return store.Attempt{}, newErr(ErrBlocked, "fraud protection refused this payment before any charge")
+		}
+		if block := s.prechargeCheck(ctx, p); block.Flag != "" {
+			s.recordPrechargeBlock(ctx, p.ID, block)
+			return store.Attempt{}, newErr(ErrBlocked, "fraud protection refused this payment before any charge (%s)", block.Flag)
+		}
+	}
 	var a store.Attempt
 	err := s.db.Write(ctx, func(tx store.Tx) error {
 		p, err := store.GetPaymentForUpdate(ctx, tx, paymentID)

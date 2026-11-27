@@ -185,6 +185,8 @@ func (h *Handler) action(w http.ResponseWriter, r *http.Request) {
 		actionFail(w, http.StatusBadGateway, "provider_unavailable", "no payment provider is available; try again")
 	case errors.Is(err, core.ErrNoRoute), errors.Is(err, core.ErrCurrencyNotAccepted):
 		actionFail(w, http.StatusUnprocessableEntity, "no_route", "no payment method is available")
+	case errors.Is(err, core.ErrBlocked):
+		actionFail(w, http.StatusForbidden, "payment_blocked", "this payment cannot be completed")
 	case errors.Is(err, core.ErrInvalidState):
 		fresh, getErr := h.o.Core.GetPaymentByID(r.Context(), p.ID)
 		if getErr == nil && h.actionComplete(w, fresh) {

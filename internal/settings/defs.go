@@ -112,6 +112,15 @@ var defs = []Def{
 	{"review_vpn", `true`, orgApp, isBool},
 	{"review_ip_mismatch", `true`, orgApp, isBool},
 	{"review_address_mismatch", `true`, orgApp, isBool},
+	// Pre-charge blocks: refuse a checkout before any card is charged, so no
+	// processing fee is paid on fraud. Counts look back 24 hours; 0 or false
+	// turns a rule off.
+	{"block_vpn_checkout", `true`, orgApp, isBool},
+	{"block_country_mismatch", `true`, orgApp, isBool},
+	{"block_fraud_linked", `true`, orgApp, isBool},
+	{"ip_payment_limit", `2`, orgApp, intRange(0, 100)},
+	{"ip_decline_limit", `2`, orgApp, intRange(0, 30)},
+	{"email_paid_limit", `0`, orgApp, intRange(0, 100)},
 	{"pay_page_retry_buttons", `{"try_again":true,"pay_another_way":true}`, orgApp, validRetryButtons},
 	{"invoice_delivery", `"app"`, orgApp, oneOf("app", "paymux", "both")},
 	{"issue_invoices", `true`, LevelApp, isBool},

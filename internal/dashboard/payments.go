@@ -40,7 +40,7 @@ type tagOption struct{ Value, Label string }
 
 // payTags are the flags the payments list filters on, fraud first.
 var payTags = []tagOption{
-	{core.FlagFraud, "Fraud"}, {core.FlagCardTesting, "Card testing"}, {core.FlagDeclinedCards, "Declined cards"},
+	{core.FlagFraud, "Fraud"}, {core.FlagRiskBlocked, "Blocked before charge"}, {core.FlagCardTesting, "Card testing"}, {core.FlagDeclinedCards, "Declined cards"},
 	{core.FlagCustomerBlocked, "Blocked customer"}, {core.FlagVPN, "VPN"}, {core.FlagIPMismatch, "IP mismatch"}, {core.FlagAddressMismatch, "Address mismatch"},
 	{"late_success", "Late success"}, {"amount_mismatch", "Amount mismatch"}, {"duplicate_success", "Duplicate"},
 }
@@ -79,6 +79,9 @@ type payDetail struct {
 	CanRefund, CanReplay, CanSync, CanApprove, CanBlock                                                   bool
 	// Fraud says the payment is tagged fraud; CanTagFraud shows the button.
 	Fraud, CanTagFraud bool
+	// CanAllow shows the button that lets a payment refused by a pre-charge
+	// rule be paid.
+	CanAllow bool
 	// RefundNonce is the single-use key of the refund form on this page.
 	RefundNonce string
 	// SimAttempts are the captured attempts on a test-mode simulator account,
@@ -431,6 +434,7 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	det.CanSync = s.can(authz.PaymentCancel) && d.o.PaymentSync != nil && len(attempts) > 0
 	det.CanApprove = s.can(authz.PaymentCancel) && core.Approvable(p)
 	det.Fraud, det.CanTagFraud = p.HasFlag(core.FlagFraud), s.can(authz.PaymentCancel)
+	det.CanAllow = s.can(authz.PaymentCancel) && core.Blocked(p)
 	det.CanBlock = s.can(authz.PaymentCancel) && cust.ID != ""
 	if det.Customer != nil {
 		det.Customer.CanBlock, det.Customer.PaymentID = det.CanBlock, p.ID
@@ -993,6 +997,19 @@ func (d *Dashboard) paymentFraudSubmit(w http.ResponseWriter, r *http.Request, s
 		notice = "Tagged as fraud. Refund it if it is not refunded yet, and block the customer if they should not pay again."
 	}
 	d.renderPayment(w, r, s, http.StatusOK, "", notice)
+}
+
+// paymentAllowSubmit lets a payment refused by a pre-charge rule be paid.
+func (d *Dashboard) paymentAllowSubmit(w http.ResponseWriter, r *http.Request, s *session) {
+	p, ok := d.reviewedPayment(w, r, s)
+	if !ok {
+		return
+	}
+	if _, err := d.o.Core.AllowCheckout(r.Context(), s.auditActor(), p.ID); err != nil {
+		d.fail(w, err)
+		return
+	}
+	d.renderPayment(w, r, s, http.StatusOK, "", "Allowed: the buyer can now pay this payment. The fraud protection rules no longer apply to it.")
 }
 
 // paymentCustomerBlockSubmit blocks (blocked=1) or unblocks the payment's customer.
