@@ -13,7 +13,7 @@
 {{define "content"}}{{template "dash_open" .}}
 {{with .Pay}}
 <p><a href="/dashboard/payments">&larr; Payments</a></p>
-<h1 class="pt-heading">{{.ID}} <span class="status status-{{.StatusClass}}">{{.Status}}</span> <span class="mode mode-{{.Mode}}">{{.Mode}}</span> <span class="pt-amount">{{.Amount}}</span></h1>
+<h1 class="pt-heading">{{.ID}} <span class="status status-{{.StatusClass}}">{{.Status}}</span>{{if .Fraud}} <span class="risk-tag risk-tag-bad">Fraud</span>{{end}} <span class="mode mode-{{.Mode}}">{{.Mode}}</span> <span class="pt-amount">{{.Amount}}</span></h1>
 {{with $.Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 {{with $.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 <section class="payment-timeline">
@@ -106,6 +106,7 @@
 </div>
 <div class="pt-actions">
 {{if .CanApprove}}<form method="post" action="/dashboard/payments/{{.ID}}/approve" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="pt-action" type="submit" title="Marks the payment succeeded and notifies your app. Refund it instead if the buyer is not genuine.">Approve payment</button></form>{{end}}
+{{if .CanTagFraud}}<form method="post" action="/dashboard/payments/{{.ID}}/fraud" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}">{{if .Fraud}}<input type="hidden" name="fraud" value="0"><button class="btn" type="submit">Remove fraud tag</button>{{else}}<input type="hidden" name="fraud" value="1"><button class="btn" type="submit" title="Tags the payment as fraud, to find it with the Fraud filter. It does not refund or block anything.">Tag as fraud</button>{{end}}</form>{{end}}
 {{if .CanSync}}<form method="post" action="/dashboard/payments/{{.ID}}/sync" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn" type="submit">Sync from provider</button></form>{{end}}
 {{if .CanRefund}}<button type="button" class="pt-action" command="show-modal" commandfor="refund-{{.ID}}" aria-haspopup="dialog">Refund</button>{{end}}
 {{if .CanReplay}}<form method="post" action="/dashboard/payments/{{.ID}}/webhook" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="pt-action" type="submit" title="Sends the current status as a new event">Send status webhook</button></form>{{end}}

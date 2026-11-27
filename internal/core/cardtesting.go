@@ -308,3 +308,39 @@ func (s *Service) SetCustomerBlocked(ctx context.Context, actor audit.Actor, cus
 	})
 	return changed, err
 }
+
+// FlagFraud is an operator's verdict that a payment is fraud: a stolen card,
+// card testing, a fraud alert from the provider. It changes nothing else on
+// the payment; refund it and block the customer as needed.
+const FlagFraud = "fraud"
+
+// SetFraud tags (fraud true) or untags payment paymentID as fraud on an
+// operator's word. It reports whether anything changed.
+func (s *Service) SetFraud(ctx context.Context, actor audit.Actor, paymentID string, fraud bool) (bool, error) {
+	var changed bool
+	err := s.db.Write(ctx, func(tx store.Tx) error {
+		changed = false
+		p, err := store.GetPaymentForUpdate(ctx, tx, paymentID)
+		if err != nil {
+			return mapStoreErr(err, "payment")
+		}
+		if p.HasFlag(FlagFraud) == fraud {
+			return nil
+		}
+		before := ViewPayment(p)
+		action := "payment.fraud_unmark"
+		if fraud {
+			addFlag(&p, FlagFraud)
+			action = "payment.fraud_mark"
+		} else {
+			p.Flags = slices.DeleteFunc(p.Flags, func(f string) bool { return f == FlagFraud })
+		}
+		if err := store.UpdatePayment(ctx, tx, &p, s.nowUTC()); err != nil {
+			return err
+		}
+		changed = true
+		return audit.Record(ctx, tx, audit.Entry{OrgID: p.OrgID, Actor: actor, Action: action, Target: p.ID,
+			Before: before, After: ViewPayment(p)})
+	})
+	return changed, err
+}

@@ -2592,3 +2592,9 @@ button.risk-close {
   color: var(--color-muted);
   font-size: 12px;
 }
+
+/* An operator's fraud tag. */
+.risk-tag-bad {
+  background: var(--status-bad-bg, color-mix(in srgb, var(--color-bad) 16%, transparent));
+  color: var(--status-bad-fg, var(--color-bad));
+}

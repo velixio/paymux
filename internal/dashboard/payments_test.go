@@ -895,3 +895,49 @@ func TestPaymentHeldForDeclinedCardsCanBeApprovedAndItsCustomerBlocked(t *testin
 		}
 	})
 }
+
+func TestPaymentCanBeTaggedFraudAndFiltered(t *testing.T) {
+	storetest.EachMigrated(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		app := e.seedApp("alpha")
+		p := e.seedPayment("pay_fraud", app.ID, "live", "succeeded", "ORD-FRAUD", 9950, e.clk.Now())
+		e.seedPayment("pay_clean", app.ID, "live", "succeeded", "ORD-CLEAN", 9950, e.clk.Now())
+		path := "/dashboard/payments/" + p.ID
+
+		viewer := e.roleClient("viewer")
+		body := e.pageOK(viewer, path)
+		lacks(t, body, path+"/fraud")
+		if r, _ := e.post(viewer, path+"/fraud", url.Values{"csrf": {csrfOf(t, body)}, "fraud": {"1"}}); r.StatusCode != http.StatusForbidden {
+			t.Fatalf("viewer tag: %d", r.StatusCode)
+		}
+
+		op := e.roleClient("operator")
+		r, body := e.post(op, path+"/fraud", url.Values{"csrf": {csrfOf(t, e.pageOK(op, path))}, "fraud": {"1"}})
+		if r.StatusCode != http.StatusOK || !strings.Contains(body, "Tagged as fraud") {
+			t.Fatalf("tag: %d\n%s", r.StatusCode, body)
+		}
+		has(t, body, `risk-tag risk-tag-bad">Fraud</span>`, "Remove fraud tag")
+		if n := auditCount(t, db, "payment.fraud_mark"); n != 1 {
+			t.Fatalf("payment.fraud_mark audit count = %d", n)
+		}
+		// Tagging again changes nothing and records nothing.
+		e.post(op, path+"/fraud", url.Values{"csrf": {csrfOf(t, body)}, "fraud": {"1"}})
+		if n := auditCount(t, db, "payment.fraud_mark"); n != 1 {
+			t.Fatalf("tagged twice: audit count = %d", n)
+		}
+
+		list := e.pageOK(viewer, "/dashboard/payments?tag=fraud")
+		has(t, list, "pay_fraud", `<option value="fraud" selected>Fraud</option>`, `title="Tagged as fraud by an operator">Fraud</span>`)
+		lacks(t, list, "pay_clean")
+		has(t, e.pageOK(viewer, "/dashboard/payments"), "pay_fraud", "pay_clean")
+		if r, _ := viewer.Get(e.srv.URL + "/dashboard/payments?tag=nope"); r.StatusCode != http.StatusBadRequest {
+			t.Fatalf("unknown tag: %d", r.StatusCode)
+		}
+
+		r, body = e.post(op, path+"/fraud", url.Values{"csrf": {csrfOf(t, e.pageOK(op, path))}, "fraud": {"0"}})
+		if r.StatusCode != http.StatusOK || !strings.Contains(body, "Fraud tag removed") || auditCount(t, db, "payment.fraud_unmark") != 1 {
+			t.Fatalf("untag: %d\n%s", r.StatusCode, body)
+		}
+		lacks(t, e.pageOK(viewer, "/dashboard/payments?tag=fraud"), "pay_fraud")
+	})
+}

@@ -30,9 +30,20 @@ type payRow struct {
 	Provider, ProviderKey, ProviderMark, Method, MethodMeta           string
 	Attempts                                                          int
 	Risk                                                              *riskView
+	Fraud                                                             bool
 }
 
-type payFilter struct{ App, Status, Q, From, To, Currency, Country string }
+type payFilter struct{ App, Status, Q, From, To, Currency, Country, Tag string }
+
+// tagOption is a flag the payments list filters on.
+type tagOption struct{ Value, Label string }
+
+// payTags are the flags the payments list filters on, fraud first.
+var payTags = []tagOption{
+	{core.FlagFraud, "Fraud"}, {core.FlagCardTesting, "Card testing"}, {core.FlagDeclinedCards, "Declined cards"},
+	{core.FlagCustomerBlocked, "Blocked customer"}, {core.FlagVPN, "VPN"}, {core.FlagIPMismatch, "IP mismatch"},
+	{"late_success", "Late success"}, {"amount_mismatch", "Amount mismatch"}, {"duplicate_success", "Duplicate"},
+}
 
 type customerDetail struct {
 	ExternalRef, Name, Email, Phone                                      string
@@ -66,6 +77,8 @@ type payDetail struct {
 	Flags                                                                                                 []string
 	Pickable                                                                                              []attemptOpt
 	CanRefund, CanReplay, CanSync, CanApprove, CanBlock                                                   bool
+	// Fraud says the payment is tagged fraud; CanTagFraud shows the button.
+	Fraud, CanTagFraud bool
 	// RefundNonce is the single-use key of the refund form on this page.
 	RefundNonce string
 	// SimAttempts are the captured attempts on a test-mode simulator account,
@@ -82,7 +95,11 @@ func (d *Dashboard) parseDay(s string) (time.Time, error) {
 func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *session) {
 	qv := r.URL.Query()
 	f := payFilter{App: qv.Get("app"), Status: qv.Get("status"), Q: strings.TrimSpace(qv.Get("q")), From: qv.Get("from"), To: qv.Get("to"),
-		Currency: strings.ToUpper(strings.TrimSpace(qv.Get("currency"))), Country: strings.TrimSpace(qv.Get("country"))}
+		Currency: strings.ToUpper(strings.TrimSpace(qv.Get("currency"))), Country: strings.TrimSpace(qv.Get("country")), Tag: qv.Get("tag")}
+	if f.Tag != "" && !slices.ContainsFunc(payTags, func(t tagOption) bool { return t.Value == f.Tag }) {
+		badRequest(w, "unknown tag")
+		return
+	}
 	if !strings.EqualFold(f.Country, "Unknown") {
 		f.Country = strings.ToUpper(f.Country)
 	} else {
@@ -94,7 +111,7 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 		return
 	}
 	sf := store.PaymentFilter{OrgID: org, AppID: f.App, Mode: d.mode(r, s), Status: f.Status, Search: f.Q,
-		Currency: f.Currency, Country: f.Country}
+		Currency: f.Currency, Country: f.Country, Flag: f.Tag}
 	if f.Currency != "" && len(f.Currency) != 3 {
 		badRequest(w, "currency must be a three-letter code")
 		return
@@ -184,7 +201,7 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 	}
 	for _, p := range rows {
 		status, statusClass := paymentDisplayStatus(p, d.o.Now())
-		row := payRow{ID: p.ID, App: names[p.AppID], Status: status, StatusClass: statusClass, Amount: fmtMoney(p.Amount, p.Currency), OrderRef: p.OrderRef,
+		row := payRow{Fraud: p.HasFlag(core.FlagFraud), ID: p.ID, App: names[p.AppID], Status: status, StatusClass: statusClass, Amount: fmtMoney(p.Amount, p.Currency), OrderRef: p.OrderRef,
 			Created: d.fmtTime(p.CreatedAt)}
 		paymentAttempts := attemptsByPayment[p.ID]
 		row.Attempts = providerAttemptCounts[p.ID]
@@ -216,14 +233,14 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 		}
 		v.Rows = append(v.Rows, row)
 	}
-	v.Filter = f
+	v.Filter, v.Tags = f, payTags
 	for _, st := range state.AllPaymentStatuses {
 		v.Statuses = append(v.Statuses, string(st))
 	}
 	if hasMore {
 		next := url.Values{}
 		for k, val := range map[string]string{"app": f.App, "status": f.Status, "q": f.Q, "from": f.From, "to": f.To,
-			"currency": f.Currency, "country": f.Country} {
+			"currency": f.Currency, "country": f.Country, "tag": f.Tag} {
 			if val != "" {
 				next.Set(k, val)
 			}
@@ -413,6 +430,7 @@ func (d *Dashboard) renderPayment(w http.ResponseWriter, r *http.Request, s *ses
 	det.CanRefund = s.can(authz.RefundCreate) && len(det.Pickable) > 0
 	det.CanSync = s.can(authz.PaymentCancel) && d.o.PaymentSync != nil && len(attempts) > 0
 	det.CanApprove = s.can(authz.PaymentCancel) && core.Approvable(p)
+	det.Fraud, det.CanTagFraud = p.HasFlag(core.FlagFraud), s.can(authz.PaymentCancel)
 	det.CanBlock = s.can(authz.PaymentCancel) && cust.ID != ""
 	if det.Customer != nil {
 		det.Customer.CanBlock, det.Customer.PaymentID = det.CanBlock, p.ID
@@ -956,6 +974,24 @@ func (d *Dashboard) paymentApproveSubmit(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	d.renderPayment(w, r, s, http.StatusOK, "", "Payment approved: it is now succeeded and your app was notified.")
+}
+
+// paymentFraudSubmit tags (fraud=1) or untags the payment as fraud.
+func (d *Dashboard) paymentFraudSubmit(w http.ResponseWriter, r *http.Request, s *session) {
+	p, ok := d.reviewedPayment(w, r, s)
+	if !ok {
+		return
+	}
+	fraud := r.PostFormValue("fraud") == "1"
+	if _, err := d.o.Core.SetFraud(r.Context(), s.auditActor(), p.ID, fraud); err != nil {
+		d.fail(w, err)
+		return
+	}
+	notice := "Fraud tag removed."
+	if fraud {
+		notice = "Tagged as fraud. Refund it if it is not refunded yet, and block the customer if they should not pay again."
+	}
+	d.renderPayment(w, r, s, http.StatusOK, "", notice)
 }
 
 // paymentCustomerBlockSubmit blocks (blocked=1) or unblocks the payment's customer.

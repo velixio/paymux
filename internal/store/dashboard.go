@@ -226,7 +226,9 @@ type PaymentFilter struct {
 	OrgID                       string // required: an empty org matches nothing
 	AppID, Mode, Status, Search string
 	Currency, Country           string
-	From, To                    time.Time
+	// Flag keeps payments carrying this flag (fraud, card_testing, ...).
+	Flag     string
+	From, To time.Time
 }
 
 // likeEscape escapes LIKE wildcards in s.
@@ -259,6 +261,10 @@ func SearchPayments(ctx context.Context, q Queryer, f PaymentFilter, afterID str
 	if f.Country != "" {
 		country := analyticsCountryExpr(`country`, `(SELECT billing_country FROM customers c WHERE c.id = payments.customer_id)`)
 		add(country+` = ?`, f.Country)
+	}
+	if f.Flag != "" {
+		// flags is a JSON array of strings; flag names have no quote or wildcard.
+		add(`flags LIKE ?`, `%"`+likeEscape(f.Flag)+`"%`)
 	}
 	if !f.From.IsZero() {
 		add("created_at >= ?", ms(f.From))
