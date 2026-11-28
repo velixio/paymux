@@ -210,20 +210,16 @@ func TestTheBuyerIPTheAppSentIsCompared(t *testing.T) {
 
 func TestAddressMismatch(t *testing.T) {
 	for _, tc := range []struct {
-		oc, op, cc, cp string
-		want           bool
+		oc, cc string
+		want   bool
 	}{
-		{"US", "10080", "IQ", "", true},       // another country
-		{"us", "10080", "US", "10080", false}, // same
-		{"US", "10080", "US", "10080-1234", false},
-		{"US", "10080", "US", "94105", true},
-		{"IN", "560 001", "IN", "560001", false},
-		{"US", "", "US", "94105", false}, // a side unknown
-		{"", "10080", "IQ", "", false},
-		{"US", "10080", "", "", false},
+		{"US", "IQ", true}, // another country
+		{"us", "US ", false},
+		{"", "IQ", false}, // a side unknown
+		{"US", "", false},
 	} {
-		if got := core.AddressMismatch(tc.oc, tc.op, tc.cc, tc.cp); got != tc.want {
-			t.Errorf("AddressMismatch(%q,%q,%q,%q) = %v", tc.oc, tc.op, tc.cc, tc.cp, got)
+		if got := core.AddressMismatch(tc.oc, tc.cc); got != tc.want {
+			t.Errorf("AddressMismatch(%q,%q) = %v", tc.oc, tc.cc, got)
 		}
 	}
 }

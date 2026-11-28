@@ -47,7 +47,7 @@ Your app gets `payment.needs_review`, not `payment.succeeded`, so do not grant a
 - `review_vpn`: a success paid from, or started from, a VPN, proxy or Tor IP goes to `needs_review` with the flag `vpn`. A privacy relay such as iCloud Private Relay does not count. This needs `PAYMUX_VPNAPI_KEY` (see [Configuration](configuration.md)).
 - `review_ip_mismatch`: a success paid from an IP that never opened the pay page goes to `needs_review` with the flag `ip_mismatch`. With an IP lookup (`PAYMUX_VPNAPI_KEY` or `PAYMUX_IP_LOOKUP_URL`), only an IP in another country than every checkout IP counts, so a phone moving between Wi-Fi and mobile data is not held. Without it, any other IP of the same family (IPv4 or IPv6) counts.
 
-- `review_address_mismatch`: a success whose card billing address, as the buyer entered it at the provider's checkout, is in another country than the billing address your app sent with the payment, or has another ZIP or postal code in the same country, goes to `needs_review` with the flag `address_mismatch`. A side the app or provider did not send is not compared. Only Whop reports the card billing address today.
+- `review_address_mismatch`: a success whose card billing address, as the buyer entered it at the provider's checkout, is in another country than the billing address your app sent with the payment goes to `needs_review` with the flag `address_mismatch`. Another ZIP or postal code in the same country does not. A side the app or provider did not send is not compared. Only Whop reports the card billing address today.
 
 ### Refusing a checkout before any charge
 
