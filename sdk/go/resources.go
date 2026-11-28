@@ -43,6 +43,36 @@ func (s *PaymentsService) CheckoutAction(ctx context.Context, id string, params 
 	err = s.client.doJSON(ctx, http.MethodPost, path, nil, params, &out, &cfg)
 	return &out, err
 }
+
+// Crypto returns the crypto checkout of payment id, for an app that shows its
+// own crypto pay page: the coins the buyer may choose and, once one is chosen,
+// the invoice to pay. Start it first with CheckoutAction on a payment routed
+// to a crypto provider account.
+func (s *PaymentsService) Crypto(ctx context.Context, id string) (*CryptoCheckout, error) {
+	path, err := objectPath("payments", id, "crypto")
+	if err != nil {
+		return nil, err
+	}
+	var out CryptoCheckout
+	err = s.client.doJSON(ctx, http.MethodGet, path, nil, nil, &out, nil)
+	return &out, err
+}
+
+// ChooseCryptoCoin creates (or, for the same coin, returns) the invoice that
+// pays payment id with params.Coin, one of CryptoCheckout.Coins.
+func (s *PaymentsService) ChooseCryptoCoin(ctx context.Context, id string, params ChooseCryptoCoinParams, options ...RequestOption) (*CryptoCheckout, error) {
+	path, err := objectPath("payments", id, "crypto")
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := mutationOptions(options)
+	if err != nil {
+		return nil, err
+	}
+	var out CryptoCheckout
+	err = s.client.doJSON(ctx, http.MethodPost, path, nil, params, &out, &cfg)
+	return &out, err
+}
 func (s *PaymentsService) List(ctx context.Context, params ListPaymentsParams) (*PaymentPage, error) {
 	q := url.Values{}
 	addPageQuery(q, params.Limit, params.StartingAfter)

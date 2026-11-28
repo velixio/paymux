@@ -314,7 +314,7 @@ func paymentListMethod(a store.Attempt) (string, string) {
 	summary, meta := paymentMethodSummary(a)
 	method := map[string]string{
 		"card": "Card", "upi": "UPI", "netbanking": "Net banking", "wallet": "Wallet",
-		"bank_transfer": "Bank transfer", "emi": "EMI", "paylater": "Pay later",
+		"bank_transfer": "Bank transfer", "emi": "EMI", "paylater": "Pay later", "crypto": "Crypto",
 	}[strings.ToLower(a.Method)]
 	if method == "" {
 		method = a.Method
@@ -324,7 +324,7 @@ func paymentListMethod(a store.Attempt) (string, string) {
 		if summary != "" {
 			method = strings.ReplaceAll(summary, "•••• ", "")
 		}
-	case "upi", "netbanking", "wallet", "bank_transfer":
+	case "upi", "netbanking", "wallet", "bank_transfer", "crypto":
 		if summary != "" {
 			if meta != "" {
 				meta += " · "

@@ -69,7 +69,7 @@ func IsCustomerRoute(path string) bool {
 // pagePrefixes are the customer pages. With a checkout origin the base host
 // redirects them there; /assets/ and /theme/ are not among them because the
 // dashboard needs them on the base host too.
-var pagePrefixes = []string{"/pay/", "/return/", "/i/", "/s/", "/l/", "/sim/"}
+var pagePrefixes = []string{"/pay/", "/return/", "/i/", "/s/", "/l/", "/sim/", "/crypto/"}
 
 func hasPrefix(path string, prefixes []string) bool {
 	for _, p := range prefixes {

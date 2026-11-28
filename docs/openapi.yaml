@@ -196,6 +196,76 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/StateConflict"
+  /v1/payments/{id}/crypto:
+    get:
+      operationId: getCryptoCheckout
+      x-required-scope: payments:read
+      summary: Get a crypto checkout
+      description: |
+        For an app that shows its own crypto pay page instead of the hub's
+        /crypto page. Start the checkout with `checkout-action` routed to a
+        crypto provider account (a connector implementing CryptoCheckout), then read the coins the buyer may choose
+        and, once one is chosen, the invoice: the exact amount to send, the
+        address, and its status (`pending`, `processing`, `paid`, `expired`).
+        The payment itself moves to `succeeded` as usual; poll this or wait for
+        the payment webhook.
+      parameters:
+        - $ref: "#/components/parameters/PaymentId"
+      responses:
+        "200":
+          description: The crypto checkout.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CryptoCheckout"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/StateConflict"
+    post:
+      operationId: chooseCryptoCoin
+      x-required-scope: payments:write
+      summary: Choose the coin of a crypto checkout
+      description: |
+        Creates the invoice for `coin` (one of `coins`, as CURRENCY_NETWORK,
+        for example `USDT_TRC20`). The same coin again returns the same pending
+        invoice; another coin starts a new one. A payment to an earlier invoice
+        still counts. A checkout already paid or confirming is returned as is.
+      parameters:
+        - $ref: "#/components/parameters/PaymentId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [coin]
+              additionalProperties: false
+              properties:
+                coin: {type: string, example: USDT_TRC20}
+                payer_ip: {type: string, description: "The buyer's IP, for the provider's risk checks."}
+      responses:
+        "200":
+          description: The crypto checkout with its invoice.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CryptoCheckout"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InsufficientScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/StateConflict"
   /v1/payments/{id}/checkout-action:
     post:
       operationId: createCheckoutAction
@@ -964,6 +1034,38 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
   schemas:
+    CryptoCheckout:
+      type: object
+      required: [object, payment_id, amount, currency, coins]
+      properties:
+        object: {type: string, enum: [crypto_checkout]}
+        payment_id: {type: string}
+        amount: {type: integer, description: Minor units of currency (USD cents).}
+        currency: {type: string, example: USD}
+        coins:
+          type: array
+          items:
+            type: object
+            required: [currency, network, label]
+            properties:
+              currency: {type: string, example: USDT}
+              network: {type: string, example: TRC20}
+              label: {type: string, example: "USDT · Tron (TRC20)"}
+        invoice:
+          type: object
+          description: Absent until a coin is chosen.
+          required: [id, status, coin, currency, network, amount, address]
+          properties:
+            id: {type: string}
+            status: {type: string, enum: [pending, processing, paid, expired]}
+            coin: {type: string, example: USDT_TRC20}
+            currency: {type: string}
+            network: {type: string}
+            amount: {type: string, description: The exact decimal amount to send; show it as is.}
+            address: {type: string}
+            confirmations: {type: integer}
+            confirmations_needed: {type: integer}
+            expires_at: {type: string, format: date-time}
     Error:
       type: object
       required: [error]

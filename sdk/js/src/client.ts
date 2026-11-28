@@ -62,6 +62,10 @@ export class Paymux {
     get: (paymentId: string, options?: RequestOptions) => this.request<T.Payment>("GET", `v1/payments/${id(paymentId)}`, undefined, options),
     list: (params: T.ListPaymentsParams = {}, options?: RequestOptions) => this.request<T.PaymentPage>("GET", "v1/payments", undefined, options, query(params)),
     cancel: (paymentId: string, options: MutationOptions) => this.request<T.Payment>("POST", `v1/payments/${id(paymentId)}/cancel`, undefined, options),
+    /** The crypto checkout of a payment, for an app that shows its own crypto pay page. */
+    crypto: (paymentId: string, options?: RequestOptions) => this.request<T.CryptoCheckout>("GET", `v1/payments/${id(paymentId)}/crypto`, undefined, options),
+    /** Creates (or, for the same coin, returns) the invoice paying the payment with `params.coin`. */
+    chooseCryptoCoin: (paymentId: string, params: T.ChooseCryptoCoinParams, options: MutationOptions) => this.request<T.CryptoCheckout>("POST", `v1/payments/${id(paymentId)}/crypto`, params, options),
   };
   readonly refunds = {
     create: (paymentId: string, params: T.CreateRefundParams, options: MutationOptions) => this.request<T.Refund>("POST", `v1/payments/${id(paymentId)}/refunds`, params, options),

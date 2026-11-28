@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -78,6 +79,29 @@ func TestCheckoutAction(t *testing.T) {
 	}
 	if action.PaymentID != "pay_1" || action.Launcher != "razorpay" || action.Action == nil || action.Action.Kind != "sdk" {
 		t.Fatalf("action = %+v", action)
+	}
+}
+
+func TestCryptoCheckout(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/payments/pay_1/crypto" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		if r.Method == http.MethodPost {
+			body, _ := io.ReadAll(r.Body)
+			if string(body) != `{"coin":"USDT_TRC20"}` {
+				t.Errorf("body = %s", body)
+			}
+		}
+		_, _ = w.Write([]byte(`{"object":"crypto_checkout","payment_id":"pay_1","amount":2500,"currency":"USD","coins":[{"currency":"USDT","network":"TRC20","label":"USDT"}],"invoice":{"id":"inv_1","status":"pending","coin":"USDT_TRC20","amount":"25.000000","address":"Tabc"}}`))
+	})
+	co, err := client.Payments.Crypto(context.Background(), "pay_1")
+	if err != nil || co.Coins[0].Code() != "USDT_TRC20" {
+		t.Fatalf("%+v %v", co, err)
+	}
+	co, err = client.Payments.ChooseCryptoCoin(context.Background(), "pay_1", ChooseCryptoCoinParams{Coin: "USDT_TRC20"}, WithIdempotencyKey("k1"))
+	if err != nil || co.Invoice == nil || co.Invoice.Amount != "25.000000" || co.Invoice.Address != "Tabc" {
+		t.Fatalf("%+v %v", co, err)
 	}
 }
 

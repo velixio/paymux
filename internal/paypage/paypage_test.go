@@ -112,6 +112,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 	mux := http.NewServeMux()
 	h.Register(paypage.StdMux(mux))
 	h.RegisterSim(paypage.StdMux(mux))
+	h.RegisterCrypto(paypage.StdMux(mux))
 	router := &domains.Router{BaseHost: "pay.example.com", Lookup: e.core, Base: mux, Customer: mux}
 	// The server's middleware sets X-Request-Id on every response; stand in for it.
 	e.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

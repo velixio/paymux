@@ -373,6 +373,21 @@ That is the only line outside your package. `init` registers the factory and
 `Info`; registering a name twice panics. A new third-party dependency needs a
 line in `docs/dependencies.md`; prefer the standard library.
 
+### Crypto checkout (`CryptoCheckout`)
+
+A crypto gateway with no hosted page of its own implements
+`connector.CryptoCheckout` (`CryptoCoins`, `CryptoState`, `ChooseCryptoCoin`).
+Its `CreateCheckout` redirects to `connector.CryptoPageURL(deps.URLs, ref)`
+and its `CheckoutHosts` returns `connector.CryptoCheckoutHosts(deps.URLs)`.
+The hub then serves `/crypto/{ref}`: the buyer picks a coin and sees the exact
+amount, the address and a QR code, and the page refreshes until the invoice is
+paid. An app with its own page uses `GET` and `POST /v1/payments/{id}/crypto`
+(Go SDK `Payments.Crypto` and `Payments.ChooseCryptoCoin`, JS SDK
+`payments.crypto` and `payments.chooseCryptoCoin`). The payment's state still
+comes from `FetchPayment` and webhooks, so a transfer to any invoice of the
+checkout must count. A private gateway can ship as its own module and be
+linked in with `paymux build --with` (see [Extending](extending.md)).
+
 ## 8. Testing
 
 ### The conformance kit

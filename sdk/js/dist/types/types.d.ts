@@ -376,3 +376,35 @@ export interface CreditNotePage {
     data: CreditNote[];
     has_more: boolean;
 }
+/** A coin the buyer may pay with; choose it as `${currency}_${network}`. */
+export interface CryptoCoin {
+    currency: string;
+    network: string;
+    label: string;
+}
+/** What the buyer must send, and where the payment stands. `amount` is exact decimal text: show it as is. */
+export interface CryptoInvoice {
+    id: string;
+    status: "pending" | "processing" | "paid" | "expired";
+    coin: string;
+    currency: string;
+    network: string;
+    amount: string;
+    address: string;
+    confirmations?: number;
+    confirmations_needed?: number;
+    expires_at?: string;
+}
+/** GET or POST /v1/payments/{id}/crypto. `invoice` is absent until a coin is chosen. */
+export interface CryptoCheckout {
+    object: "crypto_checkout";
+    payment_id: string;
+    amount: number;
+    currency: string;
+    coins: CryptoCoin[];
+    invoice?: CryptoInvoice;
+}
+export interface ChooseCryptoCoinParams {
+    coin: string;
+    payer_ip?: string;
+}

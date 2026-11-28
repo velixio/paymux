@@ -480,3 +480,43 @@ type PayoutPage struct {
 	HasMore    bool     `json:"has_more"`
 	NextCursor string   `json:"next_cursor,omitempty"`
 }
+
+// CryptoCheckout is a crypto checkout (GET or POST /v1/payments/{id}/crypto).
+type CryptoCheckout struct {
+	Object    string         `json:"object"`
+	PaymentID string         `json:"payment_id"`
+	Amount    int64          `json:"amount"` // minor units (USD cents)
+	Currency  string         `json:"currency"`
+	Coins     []CryptoCoin   `json:"coins"`
+	Invoice   *CryptoInvoice `json:"invoice,omitempty"` // nil until a coin is chosen
+}
+
+// CryptoCoin is a coin the buyer may pay with; Code() is what to choose.
+type CryptoCoin struct {
+	Currency string `json:"currency"` // USDT
+	Network  string `json:"network"`  // TRC20
+	Label    string `json:"label"`    // USDT · Tron (TRC20)
+}
+
+// Code is the coin as CURRENCY_NETWORK, for ChooseCryptoCoinParams.Coin.
+func (c CryptoCoin) Code() string { return c.Currency + "_" + c.Network }
+
+// CryptoInvoice is what the buyer must send, and where the payment stands.
+type CryptoInvoice struct {
+	ID                  string    `json:"id"`
+	Status              string    `json:"status"` // pending, processing, paid, expired
+	Coin                string    `json:"coin"`
+	Currency            string    `json:"currency"`
+	Network             string    `json:"network"`
+	Amount              string    `json:"amount"` // exact decimal text: show it as is
+	Address             string    `json:"address"`
+	Confirmations       int       `json:"confirmations"`
+	ConfirmationsNeeded int       `json:"confirmations_needed"`
+	ExpiresAt           time.Time `json:"expires_at"`
+}
+
+// ChooseCryptoCoinParams picks the coin of a crypto checkout.
+type ChooseCryptoCoinParams struct {
+	Coin    string `json:"coin"`               // CURRENCY_NETWORK, such as USDT_TRC20
+	PayerIP string `json:"payer_ip,omitempty"` // the buyer's IP, optional
+}

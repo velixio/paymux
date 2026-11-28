@@ -465,6 +465,7 @@ func (a *App) Start(ctx context.Context) error {
 	api.Register(srv)
 	pay.Register(srv)
 	pay.RegisterSim(srv) // base host only: custom domains serve no /sim
+	pay.RegisterCrypto(srv)
 	srv.HandleFunc("POST /hooks/{provider_account_id}", hooks.ServeHTTP)
 	cspViolations := reg.Counter("paymux_csp_violations_total", "Content-Security-Policy violations reported by browsers on the hosted pages.", "directive")
 	cspReports := web.NewCSPReports(web.CSPReportOptions{Logger: a.log, Count: func(d string) { cspViolations.Inc(d) },
@@ -499,6 +500,7 @@ func (a *App) Start(ctx context.Context) error {
 		// of their own that serves nothing else, and the base host redirects them.
 		checkoutMux := customerRoutes()
 		pay.RegisterSim(paypage.StdMux(checkoutMux))
+		pay.RegisterCrypto(paypage.StdMux(checkoutMux))
 		router.CheckoutHost, router.CheckoutOrigin, router.Checkout = co.Host, strings.TrimRight(co.String(), "/"), custLimit.Wrap(checkoutMux)
 		tlsAllow.ExtraHosts = []string{co.Host}
 	}

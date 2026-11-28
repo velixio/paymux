@@ -137,7 +137,29 @@ type PayPage struct {
 	Link *LinkForm
 	// the simulator's hosted page
 	Sim *SimPage
+	// the crypto checkout page
+	Crypto *CryptoPage
 }
+
+// CryptoPage is what the crypto checkout page shows: a coin picker until the
+// buyer chooses, then what to send where, until the payment lands.
+type CryptoPage struct {
+	Amount, Currency  string // what the order costs, "25.00" "USD"
+	Action, ReturnURL string
+	Coins             []CryptoCoin
+	Error             string
+	// Invoice, once a coin is chosen.
+	Coin, CoinLabel, Send, Address, Expires string
+	QRPath                                  string
+	QRBox                                   int
+	Confirmations, ConfNeeded               int
+	// Pending: waiting for the transfer. Confirming: seen, not final.
+	// Expired: the invoice ran out. Paid: done.
+	Pending, Confirming, Expired, Paid bool
+}
+
+// CryptoCoin is one choice of the coin picker.
+type CryptoCoin struct{ Code, Label string }
 
 // SimPage is what the simulator's hosted checkout page shows.
 type SimPage struct {
