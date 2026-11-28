@@ -31,6 +31,9 @@ type networkTag struct {
 func ipRow(ip string, info iprep.Info, known bool) networkRow {
 	row := networkRow{IP: ip}
 	if !known {
+		if iprep.Public(ip) {
+			row.Tags = append(row.Tags, networkTag{Label: "Not checked", Title: "This IP was not looked up, so whether it is a VPN is unknown"})
+		}
 		return row
 	}
 	var place []string
@@ -48,6 +51,8 @@ func ipRow(ip string, info iprep.Info, known bool) networkRow {
 		row.Tags = append(row.Tags, networkTag{Label: kind, Title: "The IP lookup says this is a " + kind + " IP: the buyer's real location is hidden", Warn: true})
 	} else if info.Relay {
 		row.Tags = append(row.Tags, networkTag{Label: "Relay", Title: "A privacy relay such as iCloud Private Relay; common for genuine buyers"})
+	} else {
+		row.Tags = append(row.Tags, networkTag{Label: "No VPN", Title: "The IP lookup found no VPN, proxy or Tor"})
 	}
 	return row
 }
