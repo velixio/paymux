@@ -2588,6 +2588,13 @@ button.risk-close {
 .net-ip {
   font-family: var(--font-mono, ui-monospace, monospace);
 }
+/* Looked up: green when not masked, red for a VPN, proxy or Tor. */
+.net-ip-ok {
+  color: var(--status-ok-fg, var(--color-ok));
+}
+.net-ip-bad {
+  color: var(--status-bad-fg, var(--color-bad));
+}
 .net-meta {
   color: var(--color-muted);
   font-size: 12px;
