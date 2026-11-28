@@ -32,11 +32,9 @@ type payRow struct {
 	Attempts                                                          int
 	Risk                                                              *riskView
 	Fraud                                                             bool
-	// Proxy is what the IP lookup said of the IPs that opened the checkout:
-	// "VPN", "Proxy", "Tor" (ProxyWarn), "Relay", "No proxy", "Pending"
-	// before any lookup, or "" when no public IP opened it.
-	Proxy     string
-	ProxyWarn bool
+	// Proxy is "VPN", "Proxy" or "Tor" when the IP lookup says an IP that
+	// opened the checkout is one, else "".
+	Proxy string
 }
 
 type payFilter struct{ App, Status, Q, From, To, Currency, Country, Tag string }
@@ -233,7 +231,7 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 			}
 		}
 		if ips, infos, err := d.o.Core.CheckoutIPs(r.Context(), p.ID); err == nil {
-			row.Proxy, row.ProxyWarn = checkoutProxy(ips, infos)
+			row.Proxy = checkoutProxy(ips, infos)
 		}
 		if p.CustomerID != "" {
 			_ = d.o.DB.Read(r.Context(), func(q store.Querier) error {
@@ -263,35 +261,15 @@ func (d *Dashboard) paymentsPage(w http.ResponseWriter, r *http.Request, s *sess
 	d.render(w, http.StatusOK, "dash_payments", v)
 }
 
-// checkoutProxy sums up the IP lookups of a checkout's IPs for the payments
-// list: the worst mask any of them wears, "Relay", "No proxy" when every
-// public IP was looked up and none is masked, "Pending" while one is not.
-func checkoutProxy(ips []store.CheckoutIP, infos map[string]iprep.Info) (string, bool) {
-	public, pending, relay := false, false, false
+// checkoutProxy names the worst mask ("VPN", "Proxy", "Tor") any IP that
+// opened the checkout wears, as the IP lookup said, or "" when none does.
+func checkoutProxy(ips []store.CheckoutIP, infos map[string]iprep.Info) string {
 	for _, c := range ips {
-		if !iprep.Public(c.IP) {
-			continue
+		if kind := infos[c.IP].Kind(); kind != "" {
+			return kind
 		}
-		public = true
-		info, ok := infos[c.IP]
-		if !ok {
-			pending = true
-			continue
-		}
-		if kind := info.Kind(); kind != "" {
-			return kind, true
-		}
-		relay = relay || info.Relay
 	}
-	switch {
-	case !public:
-		return "", false
-	case pending:
-		return "Pending", false
-	case relay:
-		return "Relay", false
-	}
-	return "No proxy", false
+	return ""
 }
 
 func paymentProviderMark(name string) string {

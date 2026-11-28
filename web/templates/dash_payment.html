@@ -8,7 +8,7 @@
 {{if .IPAddress}}<dt>IP</dt><dd>{{.IPAddress}}</dd>{{end}}
 {{if .AuthorizationCode}}<dt>Auth code</dt><dd>{{.AuthorizationCode}}</dd>{{end}}
 </dl>{{end}}
-{{define "net_row"}}<li><span class="net-ip">{{.IP}}</span>{{if .Flag}} <span class="risk-flag" aria-hidden="true">{{.Flag}}</span>{{end}}{{range .Tags}} <span class="risk-tag{{if .Warn}} risk-tag-warn{{end}}" title="{{.Title}}">{{.Label}}</span>{{end}}
+{{define "net_row"}}<li><span class="net-ip{{with .IPTone}} net-ip-{{.}}{{end}}">{{.IP}}</span>{{if .Flag}} <span class="risk-flag" aria-hidden="true">{{.Flag}}</span>{{end}}{{range .Tags}} <span class="risk-tag{{if .Warn}} risk-tag-warn{{end}}" title="{{.Title}}">{{.Label}}</span>{{end}}
 {{if or .Place .Org .Seen}}<br><span class="net-meta">{{.Place}}{{if and .Place .Org}} · {{end}}{{.Org}}{{if and .Seen (or .Place .Org)}} · {{end}}{{.Seen}}</span>{{end}}</li>{{end}}
 {{define "content"}}{{template "dash_open" .}}
 {{with .Pay}}

@@ -19,7 +19,10 @@ type networkView struct {
 
 type networkRow struct {
 	IP, Flag, Place, Org, Seen string
-	Tags                       []networkTag
+	// IPTone colours the IP: "bad" when the lookup says it is masked,
+	// "ok" when it says it is not, "" when it was not looked up.
+	IPTone string
+	Tags   []networkTag
 }
 
 // networkTag is a tag of the panel; Warn draws it as a warning.
@@ -31,9 +34,6 @@ type networkTag struct {
 func ipRow(ip string, info iprep.Info, known bool) networkRow {
 	row := networkRow{IP: ip}
 	if !known {
-		if iprep.Public(ip) {
-			row.Tags = append(row.Tags, networkTag{Label: "Not checked", Title: "This IP was not looked up, so whether it is a VPN is unknown"})
-		}
 		return row
 	}
 	var place []string
@@ -47,12 +47,10 @@ func ipRow(ip string, info iprep.Info, known bool) networkRow {
 		place = append(place, name)
 	}
 	row.Flag, row.Place, row.Org = flag, strings.Join(place, ", "), info.Org
+	row.IPTone = "ok"
 	if kind := info.Kind(); kind != "" {
+		row.IPTone = "bad"
 		row.Tags = append(row.Tags, networkTag{Label: kind, Title: "The IP lookup says this is a " + kind + " IP: the buyer's real location is hidden", Warn: true})
-	} else if info.Relay {
-		row.Tags = append(row.Tags, networkTag{Label: "Relay", Title: "A privacy relay such as iCloud Private Relay; common for genuine buyers"})
-	} else {
-		row.Tags = append(row.Tags, networkTag{Label: "No VPN", Title: "The IP lookup found no VPN, proxy or Tor"})
 	}
 	return row
 }
