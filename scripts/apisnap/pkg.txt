@@ -3,6 +3,13 @@
 package connector // import "github.com/velixio/paymux/pkg/connector"
 
 const (
+	CryptoPending    = "pending"
+	CryptoProcessing = "processing"
+	CryptoPaid       = "paid"
+	CryptoExpired    = "expired"
+)
+
+const (
 	OutcomeOK           = "ok"
 	OutcomeClientError  = "client_error"
 	OutcomeRateLimited  = "rate_limited"
@@ -25,6 +32,11 @@ const (
 const CallBodyLimit = 64 << 10
 
 var (
+	ErrCoinRefused    = errors.New("connector: this coin cannot be used")
+	ErrCheckoutClosed = errors.New("connector: this checkout is already paid")
+)
+
+var (
 	ErrNotFound           = errors.New("connector: not found")
 	ErrInvalidCredentials = errors.New("connector: invalid credentials")
 	ErrTemporary          = errors.New("connector: temporary failure")
@@ -37,6 +49,8 @@ var (
 )
 
 var ErrPrivateAddress = errors.New("connector: target is a private or special-use address")
+
+func CryptoPageURL(urls URLs, ref string) (string, error)
 
 func IsPrivateIP(ip net.IP) bool
 
@@ -149,6 +163,8 @@ type CheckoutHosts struct {
 	Self     string   `json:"-"`
 }
 
+func CryptoCheckoutHosts(urls URLs) CheckoutHosts
+
 func HostsOf(c Connector) CheckoutHosts
 
 type CheckoutRequest struct {
@@ -180,6 +196,39 @@ type Connector interface {
 	VerifyWebhook(ctx context.Context, req WebhookRequest) error
 	ParseWebhook(ctx context.Context, req WebhookRequest) ([]Notification, error)
 	FetchPayment(ctx context.Context, ref PaymentRef) (PaymentSnapshot, error)
+}
+
+type CryptoCheckout interface {
+	CryptoCoins() []CryptoCoin
+	CryptoState(ctx context.Context, ref string) (CryptoState, error)
+	ChooseCryptoCoin(ctx context.Context, ref, coin, payerIP string) (CryptoState, error)
+}
+
+type CryptoCoin struct {
+	Currency string `json:"currency"`
+	Network  string `json:"network"`
+	Label    string `json:"label"`
+}
+
+func (c CryptoCoin) Code() string
+
+type CryptoInvoice struct {
+	ID            string    `json:"id"`
+	Status        string    `json:"status"`
+	Coin          string    `json:"coin"`
+	Currency      string    `json:"currency"`
+	Network       string    `json:"network"`
+	Amount        string    `json:"amount"`
+	Address       string    `json:"address"`
+	Confirmations int       `json:"confirmations"`
+	ConfNeeded    int       `json:"confirmations_needed"`
+	ExpiresAt     time.Time `json:"expires_at"`
+}
+
+type CryptoState struct {
+	Amount   int64          `json:"amount"`
+	Currency string         `json:"currency"`
+	Invoice  *CryptoInvoice `json:"invoice,omitempty"`
 }
 
 type Cursor string

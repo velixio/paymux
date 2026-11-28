@@ -36,6 +36,10 @@ export declare class Paymux {
         get: (paymentId: string, options?: RequestOptions) => Promise<T.Payment>;
         list: (params?: T.ListPaymentsParams, options?: RequestOptions) => Promise<T.PaymentPage>;
         cancel: (paymentId: string, options: MutationOptions) => Promise<T.Payment>;
+        /** The crypto checkout of a payment, for an app that shows its own crypto pay page. */
+        crypto: (paymentId: string, options?: RequestOptions) => Promise<T.CryptoCheckout>;
+        /** Creates (or, for the same coin, returns) the invoice paying the payment with `params.coin`. */
+        chooseCryptoCoin: (paymentId: string, params: T.ChooseCryptoCoinParams, options: MutationOptions) => Promise<T.CryptoCheckout>;
     };
     readonly refunds: {
         create: (paymentId: string, params: T.CreateRefundParams, options: MutationOptions) => Promise<T.Refund>;

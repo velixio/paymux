@@ -1,0 +1,26 @@
+{{define "title"}}Pay with crypto{{end}}
+{{define "head"}}{{with .Crypto}}{{if or .Pending .Confirming}}<meta http-equiv="refresh" content="10">{{end}}{{end}}{{end}}
+{{define "content"}}{{with .Crypto}}
+<h1>Pay {{.Currency}} {{.Amount}} with crypto</h1>
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+
+{{if .Pending}}
+<p>Send exactly <strong class="mono">{{.Send}} {{.CoinLabel}}</strong> to this address{{if .Expires}} before {{.Expires}}{{end}}:</p>
+{{if .QRPath}}<svg class="qr" viewBox="0 0 {{.QRBox}} {{.QRBox}}" role="img" aria-label="QR code of the address" shape-rendering="crispEdges" width="200" height="200"><rect width="{{.QRBox}}" height="{{.QRBox}}" fill="#fff"/><path d="{{.QRPath}}" fill="#000"/></svg>{{end}}
+<p><code class="mono">{{.Address}}</code></p>
+<p class="muted">Send it on the network shown, in one transfer. This page updates by itself once the payment is seen.</p>
+{{else if .Confirming}}
+<p>Payment seen. Waiting for confirmations{{if .ConfNeeded}} ({{.Confirmations}} of {{.ConfNeeded}}){{end}}. This page updates by itself.</p>
+{{else if .Expired}}
+<p>This payment request expired. If you haven't sent anything, choose a coin to get a new one.</p>
+{{end}}
+
+{{if not .Confirming}}
+<form method="post" action="{{.Action}}">
+<p><label for="coin">{{if .Pending}}Pay with another coin instead{{else}}Choose a coin{{end}}</label><br>
+<select class="field" id="coin" name="coin" required>{{$cur := .Coin}}{{range .Coins}}<option value="{{.Code}}"{{if eq .Code $cur}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+<button class="btn" type="submit">{{if .Pending}}Switch{{else}}Continue{{end}}</button></p>
+</form>
+{{end}}
+<p><a href="{{.ReturnURL}}">Back to the merchant</a></p>
+{{end}}{{end}}

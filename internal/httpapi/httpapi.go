@@ -81,6 +81,8 @@ var RouteScopes = map[string]string{
 	"GET /v1/payments/{id}":                      authz.ScopePaymentsRead,
 	"GET /v1/payments":                           authz.ScopePaymentsRead,
 	"POST /v1/payments/{id}/cancel":              authz.ScopePaymentsWrite,
+	"GET /v1/payments/{id}/crypto":               authz.ScopePaymentsRead,
+	"POST /v1/payments/{id}/crypto":              authz.ScopePaymentsWrite,
 	"POST /v1/payments/{id}/refunds":             authz.ScopeRefundsWrite,
 	"GET /v1/refunds/{id}":                       authz.ScopeRefundsRead,
 	"POST /v1/subscriptions":                     authz.ScopeSubscriptionsWrite,
@@ -167,6 +169,8 @@ func (a *API) Register(m Mux) {
 	route("GET /v1/payments/{id}", a.getPayment, false)
 	route("GET /v1/payments", a.listPayments, false)
 	route("POST /v1/payments/{id}/cancel", a.cancelPayment, true)
+	route("GET /v1/payments/{id}/crypto", a.getCryptoCheckout, false)
+	route("POST /v1/payments/{id}/crypto", a.chooseCryptoCoin, true)
 	route("POST /v1/payments/{id}/refunds", a.createRefund, true)
 	route("GET /v1/refunds/{id}", a.getRefund, false)
 	route("POST /v1/subscriptions", a.createSubscription, true)
