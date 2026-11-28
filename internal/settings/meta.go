@@ -61,7 +61,7 @@ var metas = map[string]Meta{
 	"review_ip_mismatch": {Kind: KindBool,
 		Help: "A success paid from an IP that never opened the pay page goes to review: one in another country with an IP lookup set (PAYMUX_VPNAPI_KEY or PAYMUX_IP_LOOKUP_URL), any other IP without one."},
 	"review_address_mismatch": {Kind: KindBool,
-		Help: "A success whose card billing address, as entered at the provider, is in another country than the billing address your app sent, or has another ZIP or postal code, goes to review."},
+		Help: "A success whose card billing address, as entered at the provider, is in another country than the billing address your app sent goes to review. Another postal code in the same country does not."},
 	"block_vpn_checkout": {Kind: KindBool,
 		Help: "Refuse to start a checkout, before any card is charged, when the buyer's IP is a VPN, proxy or Tor exit. Needs PAYMUX_VPNAPI_KEY."},
 	"block_country_mismatch": {Kind: KindBool,

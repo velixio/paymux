@@ -235,7 +235,8 @@ func (s *Service) boolPolicy(ctx context.Context, q store.Queryer, appID, key st
 
 // FlagAddressMismatch marks a success whose card billing address, as the buyer
 // entered it at the provider, is in another country than the billing address
-// the app sent, or has another postal code in the same country. A review
+// the app sent. Another postal code in the same country is not judged: buyers
+// often give a nearby or older address, so it held genuine payments. A review
 // reason an operator may approve.
 const FlagAddressMismatch = "address_mismatch"
 
@@ -246,30 +247,15 @@ func (s *Service) addressReason(ctx context.Context, tx store.Tx, p store.Paymen
 	if err != nil || !on {
 		return "", err
 	}
-	if AddressMismatch(c.Billing.Country, c.Billing.PostalCode, snap.Risk.Country, snap.Risk.PostalCode) {
+	if AddressMismatch(c.Billing.Country, snap.Risk.Country) {
 		return FlagAddressMismatch, nil
 	}
 	return "", nil
 }
 
-// AddressMismatch compares the order's billing country and postal code with
-// the card's. A side that is missing is not judged. Postal codes are compared
-// without spaces or dashes, and one may extend the other (a US ZIP+4).
-func AddressMismatch(orderCountry, orderPostal, cardCountry, cardPostal string) bool {
+// AddressMismatch reports whether the order's billing country differs from
+// the card's. A side that is missing is not judged.
+func AddressMismatch(orderCountry, cardCountry string) bool {
 	orderCountry, cardCountry = strings.ToUpper(strings.TrimSpace(orderCountry)), strings.ToUpper(strings.TrimSpace(cardCountry))
-	if orderCountry == "" || cardCountry == "" {
-		return false
-	}
-	if orderCountry != cardCountry {
-		return true
-	}
-	a, b := normPostal(orderPostal), normPostal(cardPostal)
-	if len(a) < 3 || len(b) < 3 {
-		return false
-	}
-	return !strings.HasPrefix(a, b) && !strings.HasPrefix(b, a)
-}
-
-func normPostal(s string) string {
-	return strings.ToUpper(strings.NewReplacer(" ", "", "-", "", "\t", "").Replace(strings.TrimSpace(s)))
+	return orderCountry != "" && cardCountry != "" && orderCountry != cardCountry
 }

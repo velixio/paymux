@@ -1082,11 +1082,8 @@ func addressNote(c store.Customer, riskJSON string) string {
 	if c.ID == "" || riskJSON == "" || json.Unmarshal([]byte(riskJSON), &r) != nil {
 		return ""
 	}
-	if !core.AddressMismatch(c.Billing.Country, c.Billing.PostalCode, r.Country, r.PostalCode) {
+	if !core.AddressMismatch(c.Billing.Country, r.Country) {
 		return ""
 	}
-	if !strings.EqualFold(strings.TrimSpace(c.Billing.Country), strings.TrimSpace(r.Country)) {
-		return "Order billed to " + strings.ToUpper(c.Billing.Country)
-	}
-	return "Order postal code " + c.Billing.PostalCode
+	return "Order billed to " + strings.ToUpper(strings.TrimSpace(c.Billing.Country))
 }
